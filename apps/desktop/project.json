@@ -72,6 +72,8 @@
           "nx run desktop:build",
           "nx run desktop:build-preload",
           "cp apps/desktop/src/loader.html apps/desktop/dist/loader.html",
+          "cp apps/desktop/src/setup.html apps/desktop/dist/setup.html",
+          "cp apps/desktop/src/preferences.html apps/desktop/dist/preferences.html",
           "cp apps/desktop/assets/icon.png apps/desktop/dist/icon.png",
           "echo Desktop app built successfully"
         ],
@@ -101,7 +103,7 @@
       "dependsOn": ["build-all"],
       "options": {
         "commands": [
-          "electron-builder"
+          "electron-builder --publish never"
         ],
         "cwd": "{projectRoot}"
       }

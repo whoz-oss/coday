@@ -26,6 +26,7 @@
       "@coday/config": ["libs/config/src/index.ts"],
       "@coday/confluence": ["libs/confluence/src/index.ts"],
       "@coday/core": ["libs/core/src/index.ts"],
+      "@coday/desktop-core": ["libs/desktop-core/src/index.ts"],
       "@coday/file": ["libs/file/src/index.ts"],
       "@coday/function": ["libs/function/src/index.ts"],
       "@coday/git": ["libs/git/src/index.ts"],

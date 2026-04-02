@@ -1,9 +1,9 @@
 name: tm-eod-wrapup
-description: "Task Master: EOD Wrap-up (end of afternoon weekdays) — close Today, surface
+description: "TaskMaster: EOD Wrap-up (end of afternoon weekdays) — close Today, surface
   recent notes with unprocessed Action:: items, prep tomorrow"
 commands:
   - >
-    You are Task Master. It is end of afternoon Europe/Paris. Run the end-of-day wrap-up
+    You are @TaskMaster. It is end of afternoon Europe/Paris. Run the end-of-day wrap-up
     routine.
 
 

@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coday Setup</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #1a1030 0%, #0d0d1a 100%);
+        color: #e0e0e0;
+        padding: 40px;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+
+      .container {
+        max-width: 480px;
+        margin: 0 auto;
+        -webkit-app-region: no-drag;
+      }
+
+      h1 {
+        font-size: 28px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #ffffff;
+      }
+
+      .subtitle {
+        font-size: 14px;
+        color: #888;
+        margin-bottom: 32px;
+      }
+
+      .btn-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 24px;
+        gap: 12px;
+      }
+
+      button {
+        padding: 10px 28px;
+        border-radius: 8px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .btn-primary {
+        background: #533483;
+        color: #ffffff;
+      }
+
+      .btn-primary:hover {
+        background: #6b44a0;
+      }
+
+      .btn-primary:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+      }
+
+      .btn-secondary {
+        background: transparent;
+        color: #999;
+        border: 1px solid #333;
+      }
+
+      .btn-secondary:hover {
+        background: #1a2744;
+        color: #ccc;
+      }
+
+      .section {
+        background: #16213e;
+        border: 2px solid #0f3460;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      .section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+      }
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 12px;
+      }
+
+      .status-badge.configured {
+        background: #0d2818;
+        color: #4caf50;
+        border: 1px solid #1b5e20;
+      }
+
+      .status-badge.missing {
+        background: #2d1a00;
+        color: #ff9800;
+        border: 1px solid #e65100;
+      }
+
+      .api-key-input {
+        width: 100%;
+        padding: 10px 14px;
+        background: #0d1b2a;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        color: #e0e0e0;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        font-size: 13px;
+        outline: none;
+        transition: border-color 0.2s ease;
+        margin-top: 8px;
+      }
+
+      .api-key-input:focus {
+        border-color: #533483;
+      }
+
+      .api-key-input::placeholder {
+        color: #555;
+      }
+
+      .help-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Welcome to Coday</h1>
+      <p class="subtitle">Configure your AI API keys to get started.</p>
+
+      <div class="section">
+        <div class="section-title">Anthropic API Key</div>
+
+        <div id="api-key-status"></div>
+
+        <input
+          type="password"
+          class="api-key-input"
+          id="api-key-input"
+          placeholder="sk-ant-..."
+          oninput="onApiKeyInput()"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="help-text">
+          Get your API key from console.anthropic.com. It will be stored locally in your user configuration.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          OpenAI API Key <span style="font-weight: 400; text-transform: none; color: #666">&mdash; optional</span>
+        </div>
+
+        <div id="openai-key-status"></div>
+
+        <input
+          type="password"
+          class="api-key-input"
+          id="openai-key-input"
+          placeholder="sk-..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="help-text">Get your API key from platform.openai.com. Leave blank to use Anthropic only.</div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-primary" id="btn-finish" onclick="finish()" disabled>Finish Setup</button>
+      </div>
+    </div>
+
+    <script>
+      let hasExistingApiKey = false
+      let hasExistingOpenAiKey = false
+
+      async function init() {
+        try {
+          const status = await window.electronAPI.checkAnthropicApiKey()
+          hasExistingApiKey = status.configured
+          updateApiKeyStatus(status)
+        } catch (error) {
+          updateApiKeyStatus({ configured: false, source: null })
+        }
+
+        try {
+          const openAiStatus = await window.electronAPI.checkOpenAiApiKey()
+          hasExistingOpenAiKey = openAiStatus.configured
+          updateOpenAiKeyStatus(openAiStatus)
+        } catch (error) {
+          updateOpenAiKeyStatus({ configured: false, source: null })
+        }
+      }
+
+      function updateApiKeyStatus(status) {
+        const statusEl = document.getElementById('api-key-status')
+        const finishBtn = document.getElementById('btn-finish')
+
+        if (status.configured) {
+          let sourceText = 'user configuration'
+          if (status.source === 'env') sourceText = 'environment variable (ANTHROPIC_API_KEY)'
+          statusEl.innerHTML =
+            '<div class="status-badge configured">&#10003; Configured</div>' +
+            '<div class="help-text">API key found in ' +
+            sourceText +
+            '. You can override it below or continue.</div>'
+          finishBtn.disabled = false
+        } else {
+          statusEl.innerHTML =
+            '<div class="status-badge missing">&#9888; Not configured</div>' +
+            '<div class="help-text" style="margin-bottom: 4px;">Enter your Anthropic API key to get started.</div>'
+          finishBtn.disabled = true
+        }
+      }
+
+      function onApiKeyInput() {
+        const input = document.getElementById('api-key-input').value.trim()
+        document.getElementById('btn-finish').disabled = input.length === 0 && !hasExistingApiKey
+      }
+
+      function updateOpenAiKeyStatus(status) {
+        const statusEl = document.getElementById('openai-key-status')
+        if (status.configured) {
+          let sourceText = 'user configuration'
+          if (status.source === 'env') sourceText = 'environment variable (OPENAI_API_KEY)'
+          statusEl.innerHTML =
+            '<div class="status-badge configured">&#10003; Configured</div>' +
+            '<div class="help-text">API key found in ' +
+            sourceText +
+            '. You can override it below.</div>'
+        } else {
+          statusEl.innerHTML = ''
+        }
+      }
+
+      async function finish() {
+        const apiKeyInput = document.getElementById('api-key-input').value.trim()
+        if (apiKeyInput) {
+          try {
+            await window.electronAPI.saveAnthropicApiKey(apiKeyInput)
+          } catch (error) {
+            console.error('Failed to save Anthropic API key:', error)
+          }
+        }
+
+        const openAiKeyInput = document.getElementById('openai-key-input').value.trim()
+        if (openAiKeyInput) {
+          try {
+            await window.electronAPI.saveOpenAiApiKey(openAiKeyInput)
+          } catch (error) {
+            console.error('Failed to save OpenAI API key:', error)
+          }
+        }
+
+        await window.electronAPI.confirmSetup()
+      }
+
+      init()
+
+      // Resize the Electron window to fit content whenever the DOM changes
+      function fitWindow() {
+        const h = document.body.scrollHeight
+        if (window.electronAPI && window.electronAPI.resizeToContent) {
+          window.electronAPI.resizeToContent(h)
+        }
+      }
+
+      new MutationObserver(fitWindow).observe(document.body, { subtree: true, childList: true, attributes: true })
+      window.addEventListener('load', fitWindow)
+    </script>
+  </body>
+</html>
