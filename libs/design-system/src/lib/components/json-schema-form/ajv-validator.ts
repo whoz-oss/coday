@@ -8,7 +8,11 @@
  */
 import Ajv from 'ajv'
 
-const ajv = new Ajv({ allErrors: true })
+// `unknownFormats: 'ignore'` prevents Ajv from throwing on JSON Schema
+// format keywords it doesn't know (e.g. "password", "uri", "email").
+// Format validation is cosmetic for our use case — structural type checking
+// (string/number/boolean/required) is what matters here.
+const ajv = new Ajv({ allErrors: true, unknownFormats: 'ignore' })
 
 /**
  * Validate `data` against `schema` using Ajv v8.
