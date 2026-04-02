@@ -1,0 +1,24 @@
+# Embedded Neo4j persistence profile.
+# Activate with: --spring.profiles.active=embedded-neo4j
+# Or set: AGENTOS_PERSISTENCE_MODE=embedded-neo4j
+#
+# The embedded Neo4j engine starts automatically inside the JVM process.
+# No Docker, no Neo4j installation, no spring.neo4j.uri required.
+# Database files are stored under: <agentos.persistence.data-dir>/neo4j/
+#
+# Suitable for: local development, single-user desktop deployments.
+# Not suitable for: multi-user server deployments (use mode=neo4j instead).
+
+agentos:
+  persistence:
+    mode: embedded-neo4j
+
+# Suppress Spring Boot's Neo4j health check URI validation — the URI is
+# determined at runtime by the embedded engine, not from config properties.
+spring:
+  neo4j:
+    uri: bolt://localhost:0   # placeholder; overridden at runtime by EmbeddedNeo4jConfiguration
+  data:
+    neo4j:
+      repositories:
+        enabled: true
