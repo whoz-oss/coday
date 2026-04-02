@@ -29,6 +29,7 @@ class CaseServiceImpl(
     private val agentService: AgentService,
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
+    private val userService: io.whozoss.agentos.user.UserService,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -115,7 +116,7 @@ class CaseServiceImpl(
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content -> selectAgent(content, case.namespaceId, case.id) },
-            runAgent = { agentName, events, shouldContinue -> runAgent(agentName, case.id, events, shouldContinue) },
+            runAgent = { agentName, events, userId, shouldContinue -> runAgent(agentName, case.id, events, userId, shouldContinue) },
             inputEvents = inputEvents,
         )
 
@@ -209,11 +210,19 @@ class CaseServiceImpl(
         agentName: String,
         caseId: UUID,
         events: List<CaseEvent>,
+        userId: UUID?,
         shouldContinue: () -> Boolean,
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
+
+        if (userId == null || userService.findById(userId) == null) {
+            throw IllegalStateException(
+                "Cannot run agent for case $caseId: user ${userId ?: "<none>"} is not a valid active user"
+            )
+        }
+
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
-        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId)
+        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId, userId = userId)
         agentService
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)

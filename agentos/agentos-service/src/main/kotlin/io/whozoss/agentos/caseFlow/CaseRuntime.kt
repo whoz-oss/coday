@@ -43,7 +43,7 @@ class CaseRuntime(
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, shouldContinue: () -> Boolean) -> Unit,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
@@ -282,7 +282,13 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll()) { !interruptRequested.get() }
+                    val userId = events
+                        .filterIsInstance<MessageEvent>()
+                        .lastOrNull { it.actor.role == ActorRole.USER }
+                        ?.actor
+                        ?.id
+                        ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    runAgent(event.agentName, eventList.getAll(), userId) { !interruptRequested.get() }
                     return
                 }
 
