@@ -1,3 +1,15 @@
+## 0.111.1 (2026-04-02)
+
+### 🩹 Fixes
+
+- regenerate lockfile for Angular v21 resolution ([98e3060d](https://github.com/whoz-oss/coday/commit/98e3060d))
+- regenerate lockfile for Angular v21 resolution ([#709](https://github.com/whoz-oss/coday/pull/709))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.111.0 (2026-04-02)
 
 ### 🚀 Features
