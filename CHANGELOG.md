@@ -1,3 +1,15 @@
+## 0.110.0 (2026-04-02)
+
+### 🚀 Features
+
+- resolve {{projectRoot}} token in MCP server config fields ([efebd432](https://github.com/whoz-oss/coday/commit/efebd432))
+- resolve {{projectRoot}} token in MCP server config fields ([#706](https://github.com/whoz-oss/coday/pull/706))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.109.0 (2026-04-02)
 
 ### 🚀 Features
