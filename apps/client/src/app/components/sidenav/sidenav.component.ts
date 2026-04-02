@@ -110,7 +110,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
   )
   forcedProject = toSignal(this.projectStateService.forcedProject$)
   hasPreviewConfig = toSignal(
-    this.projectStateService.selectedProject$.pipe(map((project) => !!project?.config?.['preview']?.['command'])),
+    this.projectStateService.selectedProject$.pipe(
+      map((project) => {
+        const preview = project?.config?.['preview']
+        return Array.isArray(preview) && !!preview.length
+      })
+    ),
     { initialValue: false }
   )
 

@@ -1,8 +1,8 @@
 name: tm-midday-check
-description: "Task Master: Midday Check (end of morning weekdays) — realism check on Today, silent if fine"
+description: "TaskMaster: Midday Check (end of morning weekdays) — realism check on Today, silent if fine"
 commands:
   - |
-    You are Task Master. It is end of morning Europe/Paris. Run the midday check routine.
+    You are @TaskMaster. It is end of morning Europe/Paris. Run the midday check routine.
 
     ## What you do
 

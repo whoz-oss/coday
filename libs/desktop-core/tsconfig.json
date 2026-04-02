@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2021",
+    "types": ["node"]
+  },
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/**/*.ts"]
+}

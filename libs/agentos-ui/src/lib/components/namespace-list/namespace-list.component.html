@@ -1,73 +1,21 @@
-<div class="namespace-list">
-  <header class="namespace-list__header">
-    <h2>Namespaces</h2>
-    <ds-icon-button icon="add" variant="primary" title="Create namespace" (action)="openCreateForm()" />
-  </header>
+<ds-entity-list
+  title="Namespaces"
+  [items]="(namespaceItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No namespaces yet. Create one to get started."
+  [itemTemplate]="namespaceItemTpl"
+  (itemSelected)="navigateToCases($event)"
+  (createRequested)="navigateToCreate()"
+/>
 
-  @if (isCreating()) {
-    <form class="namespace-list__create-form" (ngSubmit)="submitCreate()">
-      <input class="namespace-list__input" type="text" placeholder="Namespace name *" [formControl]="nameControl" />
-      <input
-        class="namespace-list__input"
-        type="text"
-        placeholder="Description (optional)"
-        [formControl]="descriptionControl"
-      />
-      <div class="namespace-list__create-actions">
-        <ds-icon-button
-          icon="check"
-          variant="primary"
-          title="Confirm"
-          [disabled]="nameControl.invalid || isSubmitting()"
-          (action)="submitCreate()"
-        />
-        <ds-icon-button icon="close" title="Cancel" (action)="cancelCreate()" />
-      </div>
-    </form>
+<!-- Item template: renders NamespaceItemComponent for each entity-list card slot -->
+<ng-template #namespaceItemTpl let-item>
+  @if (resolveNamespace(item.id); as ns) {
+    <agentos-namespace-item
+      [namespace]="ns"
+      (selected)="navigateToCases($event.id)"
+      (editRequested)="navigateToEdit($event)"
+      (deleteRequested)="deleteNamespace($event)"
+    />
   }
-
-  @if (editingNamespace(); as editing) {
-    <form class="namespace-list__create-form namespace-list__edit-form" (ngSubmit)="submitEdit()">
-      <p class="namespace-list__edit-label">
-        Editing: <strong>{{ editing.name }}</strong>
-      </p>
-      <input class="namespace-list__input" type="text" placeholder="Namespace name *" [formControl]="editNameControl" />
-      <input
-        class="namespace-list__input"
-        type="text"
-        placeholder="Description (optional)"
-        [formControl]="editDescriptionControl"
-      />
-      <div class="namespace-list__create-actions">
-        <ds-icon-button
-          icon="check"
-          variant="primary"
-          title="Save changes"
-          [disabled]="editNameControl.invalid || isEditSubmitting()"
-          (action)="submitEdit()"
-        />
-        <ds-icon-button icon="close" title="Cancel" (action)="cancelEdit()" />
-      </div>
-    </form>
-  }
-
-  @if (namespaces$ | async; as namespaces) {
-    @if (namespaces.length === 0) {
-      <div class="namespace-list__empty">
-        <p>No namespaces yet. Create one above.</p>
-      </div>
-    } @else {
-      <ul class="namespace-list__items" role="list">
-        @for (ns of namespaces; track trackById($index, ns)) {
-          <agentos-namespace-item
-            [namespace]="ns"
-            (selected)="select($event)"
-            (editRequested)="openEditForm($event)"
-            (integrationsRequested)="openIntegrations($event)"
-            (deleteRequested)="deleteNamespace($event)"
-          />
-        }
-      </ul>
-    }
-  }
-</div>
+</ng-template>

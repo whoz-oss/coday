@@ -12,6 +12,18 @@ export const AGENTOS_ROUTES: Route[] = [
         loadComponent: () => import('./components/layout/layout.component').then((m) => m.LayoutComponent),
         children: [
           {
+            path: 'namespaces/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
+            path: 'namespaces/:namespaceId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
             path: 'namespaces',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>

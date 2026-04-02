@@ -5,6 +5,12 @@
 
 > See `YOU-MUST-READ.md` for guidance on what to write.
 
+> ⚠️ **Privacy notice**: This file is processed by AI agents. All content must comply with
+> `coday/docs/people-data-privacy-protocol.md`. Write **observations and facts only** —
+> no health information, no protected characteristics, no hearsay stated as fact, no
+> character conclusions. If operating in a GDPR jurisdiction, employees may have a right
+> to access information held about them in this system.
+
 ---
 
 ## Your Manager
@@ -20,18 +26,21 @@
 
 ## Your Direct Reports
 
-### [Name]
-- **Role**: 
-- **Level/Grade**: 
-- **Key strengths**: 
-- **Development areas**: 
-- **Current situation**: [Anything relevant — performance, engagement, projects]
+*For each person: record observable facts, specific dated events, and documented context.
+No health info, no protected characteristics, no character labels. See privacy protocol.*
 
 ### [Name]
 - **Role**: 
 - **Level/Grade**: 
-- **Key strengths**: 
-- **Development areas**: 
+- **Recent observations**: [Dated, specific, observable facts — not character assessments]
+- **Development focus** *(as discussed and agreed with them)*: 
+- **Current situation**: [Project context, stated goals — factual and observable only]
+
+### [Name]
+- **Role**: 
+- **Level/Grade**: 
+- **Recent observations**: 
+- **Development focus** *(as discussed and agreed with them)*: 
 - **Current situation**: 
 
 *(Add more as needed)*
