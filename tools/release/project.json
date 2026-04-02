@@ -1,0 +1,25 @@
+{
+  "name": "tools-release",
+  "targets": {
+    "release": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsx tools/release/release.ts",
+        "env": {
+          "HUSKY": "0"
+        }
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "jest tools/release/release.test.ts --config jest.config.ts"
+      },
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/release.ts",
+        "{projectRoot}/release.test.ts"
+      ]
+    }
+  }
+}

@@ -109,8 +109,10 @@ jobs:
           HUSKY: 0
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+          CODAY_WEBHOOK_URL: ${{ secrets.CODAY_WEBHOOK_URL }}
+          CODAY_CI_HEALING_PROMPT_ID: ${{ secrets.CODAY_CI_HEALING_PROMPT_ID }}
         run: |
-          pnpm nx release --yes
+          pnpm nx run tools-release:release
           # Capture the new version for desktop build from client package.json
           NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
