@@ -248,3 +248,13 @@ mcp:
         - 'chrome-devtools-mcp@latest'
       command: npx
       debug: false
+    - id: nx-mcp
+      name: NX
+      enabled: true
+      command: npx
+      args:
+        - nx
+        - mcp
+        - --no-minimal
+        - --disableTelemetry
+      cwd: "{{projectRoot}}"
