@@ -21,6 +21,7 @@ catalog:
   '@inquirer/prompts': '7.9.0'
   '@modelcontextprotocol/sdk': '1.23.1'
   '@vscode/ripgrep': '1.15.9'
+  ajv: '8.18.0'
   axios: '1.12.2'
   chalk: '5.6.2'
   date-fns: '4.1.0'

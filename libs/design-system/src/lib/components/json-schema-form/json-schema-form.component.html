@@ -1,0 +1,20 @@
+@if (hasFields()) {
+  <div class="ds-json-schema-form" [formGroup]="formGroup">
+    @for (key of fieldKeys(); track key) {
+      <ds-json-schema-field
+        [fieldKey]="key"
+        [fieldSchema]="getFieldSchema(key)"
+        [control]="getControl(key)"
+        [required]="isRequired(key)"
+      />
+    }
+
+    @if (validationErrors().length > 0) {
+      <ul class="ds-json-schema-form__errors" role="alert">
+        @for (error of validationErrors(); track error) {
+          <li>{{ error }}</li>
+        }
+      </ul>
+    }
+  </div>
+}

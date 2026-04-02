@@ -1,6 +1,6 @@
 import { AsyncPipe } from '@angular/common'
-import { Component, DestroyRef, inject, signal } from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
@@ -9,7 +9,7 @@ import {
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
 } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent } from '@whoz-oss/design-system'
+import { IconButtonComponent, JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
 import { BehaviorSubject, switchMap } from 'rxjs'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
@@ -18,15 +18,25 @@ import { IntegrationConfigItemComponent } from '../integration-config-item/integ
  *
  * Loaded at /:namespaceId/integrations. Responsibilities:
  * - Load and display the list of integration configs for the current namespace
- * - Inline creation form (name + integrationType selector + optional JSON parameters)
+ * - Inline creation form (name + integrationType selector + dynamic schema-driven parameters)
  * - Inline edit form
  * - Deletion with confirmation (delegated to IntegrationConfigItemComponent)
  * - Load available integration types from the server to populate the type selector
+ *
+ * Parameters are edited via ds-json-schema-form when the selected integration type
+ * provides a configSchema. When schema is null (no parameters needed), the
+ * parameters section is hidden entirely.
  */
 @Component({
   selector: 'agentos-namespace-integrations',
   standalone: true,
-  imports: [AsyncPipe, ReactiveFormsModule, IconButtonComponent, IntegrationConfigItemComponent],
+  imports: [
+    AsyncPipe,
+    ReactiveFormsModule,
+    IconButtonComponent,
+    IntegrationConfigItemComponent,
+    JsonSchemaFormComponent,
+  ],
   templateUrl: './namespace-integrations.component.html',
   styleUrl: './namespace-integrations.component.scss',
 })
@@ -47,6 +57,11 @@ export class NamespaceIntegrationsComponent {
 
   protected readonly integrationTypes$ = this.integrationTypeController.listTypes()
 
+  /** All known integration type descriptors as a signal (for schema lookup) */
+  protected readonly integrationTypes = toSignal(this.integrationTypes$, {
+    initialValue: [] as IntegrationTypeDescriptor[],
+  })
+
   // --- Create form ---
 
   protected readonly createNameControl = new FormControl<string>('', {
@@ -57,11 +72,20 @@ export class NamespaceIntegrationsComponent {
     nonNullable: true,
     validators: [Validators.required],
   })
-  protected readonly createParamsControl = new FormControl<string>('', { nonNullable: true })
 
   protected readonly isCreating = signal(false)
   protected readonly isSubmitting = signal(false)
-  protected readonly createParamsError = signal<string | null>(null)
+
+  /** Parsed parameters value from ds-json-schema-form for the create form */
+  protected readonly createParamsValue = signal<Record<string, unknown> | null>(null)
+
+  /** Currently selected type key in the create form, as a signal */
+  private readonly createSelectedType = toSignal(this.createTypeControl.valueChanges, {
+    initialValue: this.createTypeControl.value,
+  })
+
+  /** Schema for the currently selected type in the create form */
+  protected readonly createSchema = computed<JsonSchemaObject | null>(() => this.findSchema(this.createSelectedType()))
 
   // --- Edit form ---
 
@@ -73,11 +97,23 @@ export class NamespaceIntegrationsComponent {
     nonNullable: true,
     validators: [Validators.required],
   })
-  protected readonly editParamsControl = new FormControl<string>('', { nonNullable: true })
 
   protected readonly editingConfig = signal<IntegrationConfig | null>(null)
   protected readonly isEditSubmitting = signal(false)
-  protected readonly editParamsError = signal<string | null>(null)
+
+  /** Parsed parameters value from ds-json-schema-form for the edit form */
+  protected readonly editParamsValue = signal<Record<string, unknown> | null>(null)
+
+  /** Current params to seed the edit form with when opening */
+  protected readonly editInitialParams = signal<Record<string, unknown> | null>(null)
+
+  /** Currently selected type key in the edit form, as a signal */
+  private readonly editSelectedType = toSignal(this.editTypeControl.valueChanges, {
+    initialValue: this.editTypeControl.value,
+  })
+
+  /** Schema for the currently selected type in the edit form */
+  protected readonly editSchema = computed<JsonSchemaObject | null>(() => this.findSchema(this.editSelectedType()))
 
   // --- Navigation ---
 
@@ -90,8 +126,7 @@ export class NamespaceIntegrationsComponent {
   protected openCreateForm(): void {
     this.createNameControl.reset()
     this.createTypeControl.reset()
-    this.createParamsControl.reset()
-    this.createParamsError.set(null)
+    this.createParamsValue.set(null)
     this.isCreating.set(true)
     this.editingConfig.set(null)
   }
@@ -100,17 +135,21 @@ export class NamespaceIntegrationsComponent {
     this.isCreating.set(false)
   }
 
+  protected onCreateParamsChange(value: Record<string, unknown> | null): void {
+    this.createParamsValue.set(value)
+  }
+
   protected submitCreate(): void {
     if (this.createNameControl.invalid || this.createTypeControl.invalid || this.isSubmitting()) return
 
-    const parsedParams = this.parseParams(this.createParamsControl.value, this.createParamsError)
-    if (parsedParams === false) return
+    // If a schema exists, params must be valid (non-null from the form)
+    if (this.createSchema() !== null && this.createParamsValue() === null) return
 
     const payload = {
       name: this.createNameControl.value.trim(),
       integrationType: this.createTypeControl.value,
       namespaceId: this.namespaceId,
-      parameters: parsedParams,
+      parameters: this.createParamsValue(),
       metadata: {},
     } as unknown as IntegrationConfig
 
@@ -133,8 +172,8 @@ export class NamespaceIntegrationsComponent {
   protected openEditForm(config: IntegrationConfig): void {
     this.editNameControl.setValue(config.name)
     this.editTypeControl.setValue(config.integrationType)
-    this.editParamsControl.setValue(config.parameters ? JSON.stringify(config.parameters, null, 2) : '')
-    this.editParamsError.set(null)
+    this.editInitialParams.set(config.parameters as Record<string, unknown> | null)
+    this.editParamsValue.set(config.parameters as Record<string, unknown> | null)
     this.editingConfig.set(config)
     this.isCreating.set(false)
   }
@@ -143,18 +182,22 @@ export class NamespaceIntegrationsComponent {
     this.editingConfig.set(null)
   }
 
+  protected onEditParamsChange(value: Record<string, unknown> | null): void {
+    this.editParamsValue.set(value)
+  }
+
   protected submitEdit(): void {
     const config = this.editingConfig()
     if (!config || this.editNameControl.invalid || this.editTypeControl.invalid || this.isEditSubmitting()) return
 
-    const parsedParams = this.parseParams(this.editParamsControl.value, this.editParamsError)
-    if (parsedParams === false) return
+    // If a schema exists, params must be valid (non-null from the form)
+    if (this.editSchema() !== null && this.editParamsValue() === null) return
 
     const payload: IntegrationConfig = {
       ...config,
       name: this.editNameControl.value.trim(),
       integrationType: this.editTypeControl.value,
-      parameters: parsedParams,
+      parameters: this.editParamsValue(),
     }
 
     this.isEditSubmitting.set(true)
@@ -189,26 +232,12 @@ export class NamespaceIntegrationsComponent {
   }
 
   /**
-   * Parses a JSON string from a textarea.
-   * Returns the parsed value (or null if empty), or false if invalid JSON.
-   * Sets the error signal accordingly.
+   * Returns the configSchema for a given integration type key,
+   * or null if the type is unknown or has no schema.
    */
-  private parseParams(
-    raw: string,
-    errorSignal: ReturnType<typeof signal<string | null>>
-  ): Record<string, unknown> | null | false {
-    const trimmed = raw.trim()
-    if (!trimmed) {
-      errorSignal.set(null)
-      return null
-    }
-    try {
-      const parsed = JSON.parse(trimmed)
-      errorSignal.set(null)
-      return parsed
-    } catch {
-      errorSignal.set('Invalid JSON')
-      return false
-    }
+  private findSchema(typeKey: string): JsonSchemaObject | null {
+    if (!typeKey) return null
+    const descriptor = this.integrationTypes().find((d) => d.type === typeKey)
+    return (descriptor?.configSchema as JsonSchemaObject) ?? null
   }
 }

@@ -35,7 +35,8 @@
             "input": "apps/client/public"
           }
         ],
-        "styles": ["apps/client/src/styles.scss"]
+        "styles": ["apps/client/src/styles.scss"],
+        "allowedCommonJsDependencies": ["ajv"]
       },
       "configurations": {
         "production": {

@@ -1,6 +1,6 @@
 <div class="namespace-integrations">
   <header class="namespace-integrations__header">
-    <button class="namespace-integrations__back" type="button" (click)="goBack()">← Namespaces</button>
+    <button class="namespace-integrations__back" type="button" (click)="goBack()">&#8592; Namespaces</button>
     <h2>Integrations</h2>
     <ds-icon-button icon="add" variant="primary" title="Add integration" (action)="openCreateForm()" />
   </header>
@@ -20,14 +20,14 @@
 
       <input class="namespace-integrations__input" type="text" placeholder="Name *" [formControl]="createNameControl" />
 
-      <textarea
-        class="namespace-integrations__textarea"
-        placeholder="Parameters (JSON, optional)"
-        rows="4"
-        [formControl]="createParamsControl"
-      ></textarea>
-      @if (createParamsError()) {
-        <p class="namespace-integrations__error">{{ createParamsError() }}</p>
+      @if (createSchema(); as schema) {
+        <div class="namespace-integrations__schema-form">
+          <ds-json-schema-form
+            [schema]="schema"
+            [value]="createParamsValue()"
+            (valueChange)="onCreateParamsChange($event)"
+          />
+        </div>
       }
 
       <div class="namespace-integrations__form-actions">
@@ -60,14 +60,14 @@
 
       <input class="namespace-integrations__input" type="text" placeholder="Name *" [formControl]="editNameControl" />
 
-      <textarea
-        class="namespace-integrations__textarea"
-        placeholder="Parameters (JSON, optional)"
-        rows="4"
-        [formControl]="editParamsControl"
-      ></textarea>
-      @if (editParamsError()) {
-        <p class="namespace-integrations__error">{{ editParamsError() }}</p>
+      @if (editSchema(); as schema) {
+        <div class="namespace-integrations__schema-form">
+          <ds-json-schema-form
+            [schema]="schema"
+            [value]="editInitialParams()"
+            (valueChange)="onEditParamsChange($event)"
+          />
+        </div>
       }
 
       <div class="namespace-integrations__form-actions">
