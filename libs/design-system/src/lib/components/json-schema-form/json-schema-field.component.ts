@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, forwardRef, input } from '@angular/core'
+import { ChangeDetectionStrategy, Component, OnInit, forwardRef, input, signal } from '@angular/core'
 import { FormControl, ReactiveFormsModule } from '@angular/forms'
 import { JsonSchemaFormComponent } from './json-schema-form.component'
 import { JsonSchemaObject } from './json-schema.model'
@@ -32,13 +32,27 @@ import { JsonSchemaObject } from './json-schema.model'
   styleUrl: './json-schema-field.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class JsonSchemaFieldComponent {
+export class JsonSchemaFieldComponent implements OnInit {
   readonly fieldKey = input.required<string>()
   readonly fieldSchema = input.required<JsonSchemaObject>()
   readonly control = input.required<FormControl>()
   readonly required = input<boolean>(false)
   /** Validation error messages from Ajv, passed down by ds-json-schema-form. */
   readonly errors = input<string[]>([])
+
+  /**
+   * Initial value seed for the nested ds-json-schema-form.
+   * Set once in ngOnInit — signal inputs are not available during field
+   * property initialisation (NG0950).
+   * The nested form manages its own state after seeding; a live binding
+   * would cause infinite change-detection loops.
+   */
+  protected readonly nestedInitialValue = signal<Record<string, unknown> | null>(null)
+
+  ngOnInit(): void {
+    const v = this.control().value
+    this.nestedInitialValue.set(v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null)
+  }
 
   protected get label(): string {
     return this.fieldSchema().title ?? this.fieldKey()
@@ -102,21 +116,9 @@ export class JsonSchemaFieldComponent {
   /** Called by the nested JsonSchemaFormComponent when its value changes */
   protected onNestedValueChange(value: Record<string, unknown> | null): void {
     // Only update if the value actually changed to avoid infinite loops.
-    // JSON.stringify comparison is safe here: nested schemas have object values.
     const current = this.control().value
     if (JSON.stringify(current) !== JSON.stringify(value)) {
       this.control().setValue(value, { emitEvent: true })
     }
   }
-
-  /**
-   * Initial value seed for the nested ds-json-schema-form.
-   * Intentionally read once at render time — the nested form manages its own
-   * state after that. Binding a live getter here would cause infinite change
-   * detection because every valueChange would re-seed the nested form.
-   */
-  protected readonly nestedInitialValue: Record<string, unknown> | null = (() => {
-    const v = this.control().value
-    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
-  })()
 }
