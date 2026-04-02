@@ -45,27 +45,52 @@
         }
       </select>
     }
-    @case ('array') {
+    @case ('array-scalar') {
       <div class="ds-field__array">
         @for (item of itemArray.controls; track $index) {
           <div class="ds-field__array-row">
             <input
               class="ds-field__input ds-field__input--array-item"
               [type]="itemInputType"
-              [formControl]="getItemControl($index)"
+              [formControl]="getScalarItemControl($index)"
               [attr.aria-label]="label + ' item ' + ($index + 1)"
             />
             <button
               class="ds-field__array-remove"
               type="button"
-              (click)="removeItem($index)"
+              (click)="removeScalarItem($index)"
               [attr.aria-label]="'Remove ' + label + ' item ' + ($index + 1)"
             >
               &times;
             </button>
           </div>
         }
-        <button class="ds-field__array-add" type="button" (click)="addItem()">+ Add {{ label }}</button>
+        <button class="ds-field__array-add" type="button" (click)="addScalarItem()">+ Add {{ label }}</button>
+      </div>
+    }
+    @case ('array-object') {
+      <div class="ds-field__array">
+        @for (item of itemObjectValues(); track $index) {
+          <div class="ds-field__array-object-card">
+            <div class="ds-field__array-object-header">
+              <span class="ds-field__array-object-title">{{ itemObjectSchema?.title ?? label }} {{ $index + 1 }}</span>
+              <button
+                class="ds-field__array-remove"
+                type="button"
+                (click)="removeObjectItem($index)"
+                [attr.aria-label]="'Remove ' + label + ' item ' + ($index + 1)"
+              >
+                &times;
+              </button>
+            </div>
+            <ds-json-schema-form
+              [schema]="itemObjectSchema"
+              [value]="getObjectItemSeed($index)"
+              (valueChange)="onObjectItemChange($index, $event)"
+            />
+          </div>
+        }
+        <button class="ds-field__array-add" type="button" (click)="addObjectItem()">+ Add {{ label }}</button>
       </div>
     }
     @case ('nested-object') {
