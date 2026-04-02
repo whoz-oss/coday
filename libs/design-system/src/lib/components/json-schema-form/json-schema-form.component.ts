@@ -1,4 +1,4 @@
-import { Component, computed, effect, input, output, signal } from '@angular/core'
+import { Component, computed, effect, input, output, signal, untracked } from '@angular/core'
 import { FormControl, ReactiveFormsModule, UntypedFormGroup, Validators } from '@angular/forms'
 import { validateJsonSchema } from './ajv-validator'
 import { JsonSchemaFieldComponent } from './json-schema-field.component'
@@ -56,10 +56,16 @@ export class JsonSchemaFormComponent {
   protected readonly fieldErrors = signal<Map<string, string[]>>(new Map())
 
   constructor() {
+    // React only to schema changes — NOT to value changes.
+    // Reading value() here is intentional: we want the initial value at the
+    // moment the schema is set. But we use untracked() so that subsequent
+    // value() updates don't re-trigger this effect and rebuild the form,
+    // which would cause an infinite loop with nested forms:
+    //   valueChange -> setValue -> valueChanges -> emitValue -> valueChange ...
     effect(() => {
       const schema = this.schema()
-      const currentValue = this.value()
-      this.rebuildForm(schema, currentValue)
+      const initialValue = untracked(() => this.value())
+      this.rebuildForm(schema, initialValue)
     })
   }
 

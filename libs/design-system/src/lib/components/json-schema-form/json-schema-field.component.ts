@@ -101,12 +101,22 @@ export class JsonSchemaFieldComponent {
 
   /** Called by the nested JsonSchemaFormComponent when its value changes */
   protected onNestedValueChange(value: Record<string, unknown> | null): void {
-    this.control().setValue(value, { emitEvent: true })
+    // Only update if the value actually changed to avoid infinite loops.
+    // JSON.stringify comparison is safe here: nested schemas have object values.
+    const current = this.control().value
+    if (JSON.stringify(current) !== JSON.stringify(value)) {
+      this.control().setValue(value, { emitEvent: true })
+    }
   }
 
-  /** Extract current nested object value for the nested form's [value] input */
-  protected get nestedValue(): Record<string, unknown> | null {
+  /**
+   * Initial value seed for the nested ds-json-schema-form.
+   * Intentionally read once at render time — the nested form manages its own
+   * state after that. Binding a live getter here would cause infinite change
+   * detection because every valueChange would re-seed the nested form.
+   */
+  protected readonly nestedInitialValue: Record<string, unknown> | null = (() => {
     const v = this.control().value
     return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
-  }
+  })()
 }
