@@ -3,6 +3,22 @@ import { FormArray, FormControl, ReactiveFormsModule } from '@angular/forms'
 import { JsonSchemaFormComponent } from './json-schema-form.component'
 import { JsonSchemaObject } from './json-schema.model'
 
+/** Wrapper giving each array-of-objects item a stable identity for @for tracking. */
+interface ObjectItem {
+  /** Stable unique id — never changes after creation. Used for @for track. */
+  uid: number
+  /** Seed passed once to the child ds-json-schema-form as [value]. Never updated
+   *  after creation to avoid re-seeding the child form and triggering an infinite loop. */
+  seed: Record<string, unknown> | null
+  /** Current value emitted by the child ds-json-schema-form. */
+  value: Record<string, unknown> | null
+}
+
+let nextUid = 0
+function makeItem(seed: Record<string, unknown> | null): ObjectItem {
+  return { uid: nextUid++, seed, value: seed }
+}
+
 /**
  * ds-json-schema-field — renders a single form field from a JSON Schema property.
  *
@@ -21,8 +37,8 @@ import { JsonSchemaObject } from './json-schema.model'
  *
  * Array-of-scalars: each item is a typed <input> with an × remove button.
  * Array-of-objects: each item is rendered as a ds-json-schema-form card with
- *   an × remove button. Values are tracked in `itemObjectValues` and synced
- *   back to the parent FormControl as a plain array.
+ *   an × remove button. Items are tracked by a stable uid so Angular destroys
+ *   the correct DOM node on removal.
  *
  * This is an internal component used only by ds-json-schema-form.
  * It is NOT exported from the design-system public API.
@@ -57,20 +73,12 @@ export class JsonSchemaFieldComponent implements OnInit {
   // ---------------------------------------------------------------------------
 
   /**
-   * Current values for each object item in an array-of-objects field.
-   * Index-aligned with the rendered list. Each entry mirrors what the
-   * child ds-json-schema-form last emitted for that item.
-   * Stored as a signal so OnPush picks up add/remove changes.
+   * Items for an array-of-objects field. Each entry carries a stable `uid`
+   * (used for @for tracking so Angular destroys the correct DOM node on
+   * removal), an immutable `seed` (initial value for the child form), and
+   * the current `value` emitted by the child form.
    */
-  protected readonly itemObjectValues = signal<Array<Record<string, unknown> | null>>([])
-
-  /**
-   * Seed values passed to each child ds-json-schema-form as [value].
-   * Captured once at add/init time and never updated afterwards — updating
-   * them on every valueChange would re-seed the child form and cause an
-   * infinite loop: valueChange → seed update → form rebuild → valueChange …
-   */
-  protected readonly itemObjectSeeds = signal<Array<Record<string, unknown> | null>>([])
+  protected readonly objectItems = signal<ObjectItem[]>([])
 
   // ---------------------------------------------------------------------------
   // Nested-object state
@@ -137,34 +145,22 @@ export class JsonSchemaFieldComponent implements OnInit {
   private initObjectArray(): void {
     const existing = this.control().value
     const items: Array<Record<string, unknown>> = Array.isArray(existing) ? existing : []
-    const copies = items.map((item) => ({ ...item }))
-    this.itemObjectValues.set(copies)
-    this.itemObjectSeeds.set(copies)
+    this.objectItems.set(items.map((item) => makeItem({ ...item })))
   }
 
   protected addObjectItem(): void {
-    this.itemObjectValues.update((values) => [...values, null])
-    this.itemObjectSeeds.update((seeds) => [...seeds, null])
+    this.objectItems.update((items) => [...items, makeItem(null)])
     this.syncObjectArrayToControl()
   }
 
-  protected removeObjectItem(index: number): void {
-    this.itemObjectValues.update((values) => values.filter((_, i) => i !== index))
-    this.itemObjectSeeds.update((seeds) => seeds.filter((_, i) => i !== index))
+  protected removeObjectItem(uid: number): void {
+    this.objectItems.update((items) => items.filter((item) => item.uid !== uid))
     this.syncObjectArrayToControl()
   }
 
-  protected onObjectItemChange(index: number, value: Record<string, unknown> | null): void {
-    this.itemObjectValues.update((values) => {
-      const next = [...values]
-      next[index] = value
-      return next
-    })
+  protected onObjectItemChange(uid: number, value: Record<string, unknown> | null): void {
+    this.objectItems.update((items) => items.map((item) => (item.uid === uid ? { ...item, value } : item)))
     this.syncObjectArrayToControl()
-  }
-
-  protected getObjectItemSeed(index: number): Record<string, unknown> | null {
-    return this.itemObjectSeeds()[index] ?? null
   }
 
   /** Schema for object items — the `items` sub-schema. */
@@ -173,7 +169,10 @@ export class JsonSchemaFieldComponent implements OnInit {
   }
 
   private syncObjectArrayToControl(): void {
-    this.control().setValue(this.itemObjectValues(), { emitEvent: true })
+    this.control().setValue(
+      this.objectItems().map((item) => item.value),
+      { emitEvent: true }
+    )
   }
 
   // ---------------------------------------------------------------------------
