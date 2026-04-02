@@ -2,13 +2,14 @@ package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
+import org.springframework.web.server.ResponseStatusException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -117,67 +118,29 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // Upsert
+        // Uniqueness constraint on create
         // -------------------------------------------------------------------------
 
-        "upsert creates a new config when none exists" {
+        "create throws 409 when (namespaceId, name) already exists" {
             val service = newService()
             val nsId = UUID.randomUUID()
-            val cfg = config(namespaceId = nsId, name = "JIRA", integrationType = "JIRA")
+            service.create(config(namespaceId = nsId, name = "JIRA"))
 
-            val result = service.upsert(cfg)
-
-            result.metadata.id shouldBe cfg.metadata.id
-            service.findByParent(nsId) shouldHaveSize 1
+            shouldThrow<ResponseStatusException> {
+                service.create(config(namespaceId = nsId, name = "JIRA"))
+            }.statusCode.value() shouldBe 409
         }
 
-        "upsert updates existing config with same (namespaceId, name)" {
+        "create allows same name in different namespaces" {
             val service = newService()
-            val nsId = UUID.randomUUID()
-            val original = service.create(
-                config(
-                    namespaceId = nsId,
-                    name = "JIRA",
-                    integrationType = "JIRA",
-                    parametersJson = """{"apiUrl": "https://old.atlassian.net"}""",
-                )
-            )
+            val nsA = UUID.randomUUID()
+            val nsB = UUID.randomUUID()
 
-            val updated = service.upsert(
-                config(
-                    namespaceId = nsId,
-                    name = "JIRA",
-                    integrationType = "JIRA",
-                    parametersJson = """{"apiUrl": "https://new.atlassian.net"}""",
-                )
-            )
+            service.create(config(namespaceId = nsA, name = "JIRA"))
+            service.create(config(namespaceId = nsB, name = "JIRA")) // must not throw
 
-            // Same entity id preserved
-            updated.metadata.id shouldBe original.metadata.id
-            // Parameters updated
-            updated.parameters?.get("apiUrl")?.asText() shouldBe "https://new.atlassian.net"
-            // No duplicate created
-            service.findByParent(nsId) shouldHaveSize 1
-        }
-
-        "upsert with different name in same namespace creates a second config" {
-            val service = newService()
-            val nsId = UUID.randomUUID()
-
-            service.upsert(config(namespaceId = nsId, name = "JIRA_PROD"))
-            service.upsert(config(namespaceId = nsId, name = "JIRA_STAGING"))
-
-            service.findByParent(nsId) shouldHaveSize 2
-        }
-
-        "upsert preserves existing entity id" {
-            val service = newService()
-            val nsId = UUID.randomUUID()
-            val first = service.upsert(config(namespaceId = nsId, name = "JIRA"))
-
-            val second = service.upsert(config(namespaceId = nsId, name = "JIRA"))
-
-            second.metadata.id shouldBe first.metadata.id
+            service.findByParent(nsA) shouldHaveSize 1
+            service.findByParent(nsB) shouldHaveSize 1
         }
 
         // -------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 package io.whozoss.agentos.integrationConfig
 
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -16,7 +18,16 @@ import java.util.UUID
 class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
 ) : IntegrationConfigService {
-    override fun create(entity: IntegrationConfig): IntegrationConfig = repository.save(entity)
+    override fun create(entity: IntegrationConfig): IntegrationConfig {
+        val existing = findByNamespaceAndName(entity.namespaceId, entity.name)
+        if (existing != null) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "An integration config named '${entity.name}' already exists in namespace ${entity.namespaceId}",
+            )
+        }
+        return repository.save(entity)
+    }
 
     override fun update(entity: IntegrationConfig): IntegrationConfig = repository.save(entity)
 

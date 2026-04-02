@@ -363,24 +363,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationConfig"
-  /api/integration-configs/upsert:
-    post:
-      tags:
-      - integration-config-controller
-      operationId: upsert
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/IntegrationConfig"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationConfig"
   /api/integration-configs/by-ids:
     post:
       tags:
