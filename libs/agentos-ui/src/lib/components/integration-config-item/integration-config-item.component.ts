@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
+import { Router } from '@angular/router'
 import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 
@@ -6,7 +7,7 @@ import { IconButtonComponent } from '@whoz-oss/design-system'
  * IntegrationConfigItemComponent — presentational component for a single integration config row.
  *
  * Displays the config name, integration type, and action buttons (edit / delete).
- * All mutations are emitted upward — no service injection.
+ * Edit navigates to the dedicated edit route; delete is emitted upward.
  *
  * Delete uses the same two-step confirmation pattern as NamespaceItemComponent.
  */
@@ -19,15 +20,17 @@ import { IconButtonComponent } from '@whoz-oss/design-system'
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IntegrationConfigItemComponent {
-  @Input({ required: true }) config!: IntegrationConfig
+  private readonly router = inject(Router)
 
-  @Output() editRequested = new EventEmitter<IntegrationConfig>()
+  @Input({ required: true }) config!: IntegrationConfig
+  @Input({ required: true }) namespaceId!: string
+
   @Output() deleteRequested = new EventEmitter<IntegrationConfig>()
 
   protected readonly pendingDelete = signal(false)
 
   protected onEdit(): void {
-    this.editRequested.emit(this.config)
+    this.router.navigate(['/agentos', this.namespaceId, 'integrations', this.config.id, 'edit'])
   }
 
   protected onDeleteArmed(): void {
