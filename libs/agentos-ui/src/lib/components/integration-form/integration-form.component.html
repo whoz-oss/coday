@@ -10,7 +10,7 @@
   @if (isLoading()) {
     <p class="integration-form__loading">Loading&hellip;</p>
   } @else {
-    <form class="integration-form__form" (ngSubmit)="submit()">
+    <form class="integration-form__form" [formGroup]="form" (ngSubmit)="submit()">
       <div class="integration-form__field">
         <label class="integration-form__label" for="integration-type">Type <span aria-hidden="true">*</span></label>
         <select id="integration-type" class="integration-form__select" [formControl]="typeControl">

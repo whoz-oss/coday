@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms'
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   IntegrationConfig,
@@ -36,14 +36,23 @@ export class IntegrationFormComponent implements OnInit {
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
-  protected readonly nameControl = new FormControl<string>('', {
-    nonNullable: true,
-    validators: [Validators.required, Validators.minLength(1)],
+  protected readonly form = new FormGroup({
+    name: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.minLength(1)],
+    }),
+    type: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
   })
-  protected readonly typeControl = new FormControl<string>('', {
-    nonNullable: true,
-    validators: [Validators.required],
-  })
+
+  protected get nameControl() {
+    return this.form.controls.name
+  }
+  protected get typeControl() {
+    return this.form.controls.type
+  }
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
@@ -61,8 +70,8 @@ export class IntegrationFormComponent implements OnInit {
   })
 
   /** Currently selected type key as a signal — driven by typeControl value changes */
-  private readonly selectedType = toSignal(this.typeControl.valueChanges, {
-    initialValue: this.typeControl.value,
+  private readonly selectedType = toSignal(this.form.controls.type.valueChanges, {
+    initialValue: this.form.controls.type.value,
   })
 
   /** JSON Schema for the currently selected integration type, or null */
