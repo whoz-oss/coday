@@ -14,7 +14,7 @@ import java.util.UUID
  *
  * Parent type is [UUID] representing the namespaceId.
  */
-class Neo4jCaseRepository(
+open class Neo4jCaseRepository(
     private val sdnRepo: CaseNeo4jRepository,
 ) : CaseRepository {
     override fun save(entity: Case): Case {

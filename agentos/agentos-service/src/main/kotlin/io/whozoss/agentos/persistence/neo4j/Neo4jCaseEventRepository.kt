@@ -22,7 +22,7 @@ import java.util.UUID
  *
  * Parent type is [UUID] representing the caseId.
  */
-class Neo4jCaseEventRepository(
+open class Neo4jCaseEventRepository(
     private val sdnRepo: CaseEventNeo4jRepository,
     private val objectMapper: ObjectMapper,
 ) : CaseEventRepository {

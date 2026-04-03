@@ -15,7 +15,7 @@ import java.util.UUID
  * [findByParent] and [deleteByParent] ignore the actual value and operate on all
  * non-removed namespaces.
  */
-class Neo4jNamespaceRepository(
+open class Neo4jNamespaceRepository(
     private val sdnRepo: NamespaceNeo4jRepository,
 ) : NamespaceRepository {
     override fun save(entity: Namespace): Namespace {
