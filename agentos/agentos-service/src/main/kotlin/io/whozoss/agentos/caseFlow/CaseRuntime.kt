@@ -288,7 +288,11 @@ class CaseRuntime(
                         ?.actor
                         ?.id
                         ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-                    runAgent(event.agentName, eventList.getAll(), userId) { !interruptRequested.get() }
+                    runAgent(
+                        event.agentName,
+                        eventList.getAll(),
+                        userId
+                    ) { !interruptRequested.get() }
                     return
                 }
 

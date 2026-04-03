@@ -53,16 +53,15 @@ class AuthSecurityService(
         return userService.findByExternalId(email) ?: autoCreateUser(email)
     }
 
-    private fun resolveEmail(cfJwt: String?, forwardedEmail: String?): String? {
-        if (!cfJwt.isNullOrBlank()) {
-            return extractEmailFromJwt(cfJwt)
+    private fun resolveEmail(cfJwt: String?, forwardedEmail: String?): String? =
+        when {
+            !cfJwt.isNullOrBlank() -> extractEmailFromJwt(cfJwt)
+            !forwardedEmail.isNullOrBlank() -> {
+                logger.info { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwardedEmail" }
+                forwardedEmail
+            }
+            else -> null
         }
-        if (!forwardedEmail.isNullOrBlank()) {
-            logger.info { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwardedEmail" }
-            return forwardedEmail
-        }
-        return null
-    }
 
     /**
      * Decodes the JWT payload (middle segment) and extracts the `email` claim.

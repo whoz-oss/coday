@@ -10,7 +10,8 @@ import org.springframework.web.server.ResponseStatusException
 /**
  * Local-mode implementation of [SecurityService].
  *
- * Resolves the current user from the OS username (`user.name` system property).
+ * Resolves the current user from the OS username (`user.name` system property,
+ * with fallback to `USER` / `USERNAME` environment variables for Unix/macOS and Windows).
  * On first access, a [User] record is auto-created and persisted so that the rest
  * of AgentOS can reference a stable UUID for this identity.
  *
@@ -23,8 +24,7 @@ class LocalSecurityService(
 ) : SecurityService {
 
     override fun resolveCurrentUser(): User {
-        val username = System.getProperty("user.name") ?: System.getenv("USER")
-            ?: throw ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot determine OS username")
+        val username = resolveOsUsername()
 
         if (username in FORBIDDEN_USERNAMES) {
             throw ResponseStatusException(
@@ -36,6 +36,18 @@ class LocalSecurityService(
 
         return userService.findByExternalId(username) ?: createLocalUser(username)
     }
+
+    private fun resolveOsUsername(): String =
+        sequenceOf(
+            System.getProperty("user.name"),
+            System.getenv("USER"),      // Unix/macOS
+            System.getenv("USERNAME"),  // Windows
+        )
+            .firstOrNull { !it.isNullOrBlank() }
+            ?: throw ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Cannot determine OS username",
+            )
 
     private fun createLocalUser(username: String): User {
         logger.info { "[Security/local] Auto-creating user for OS username '$username'" }
