@@ -137,5 +137,6 @@ mandatoryDocs:
   - ./apps/client/docs/angular-guidelines.md
   - ./apps/client/docs/architecture.md
   - ./agentos/docs/architecture.md
+  - ./agentos/docs/code-style.md
   - ./agentos/README.md
   - ./agentos/agentos-sdk/README.md

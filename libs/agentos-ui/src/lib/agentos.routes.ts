@@ -64,6 +64,12 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
           },
           {
+            path: 'me',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
+          },
+          {
             path: '',
             redirectTo: 'namespaces',
             pathMatch: 'full',

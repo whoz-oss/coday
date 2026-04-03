@@ -47,12 +47,15 @@ export async function retrieveConfluencePage(
   }
 
   try {
-    const response = await axios.get(`${confluenceBaseUrl}/wiki/api/v2/pages/${pageId}?body-format=view`, {
-      auth: {
-        username: confluenceUsername,
-        password: confluenceApiToken,
-      },
-    })
+    const response = await axios.get(
+      `${confluenceBaseUrl}/wiki/api/v2/pages/${pageId}?body-format=view&include-properties=true&include-version=true`,
+      {
+        auth: {
+          username: confluenceUsername,
+          password: confluenceApiToken,
+        },
+      }
+    )
 
     // Extract HTML content from response
     const htmlContent = response.data.body?.view?.value || ''
@@ -83,11 +86,30 @@ ${plainText.substring(0, 10000)}...`
     const pageTitle = response.data.title || 'Untitled'
     const pageUrl = `${confluenceBaseUrl}/wiki/pages/${pageId}`
 
+    // Extract version info (always present in v2 response)
+    const version = response.data.version
+    const versionNumber = version?.number
+    const versionDate = version?.createdAt
+    const createdAt = response.data.createdAt
+
+    // Extract page status from properties (requires include-properties=true)
+    const properties: Array<{ key: string; value?: unknown }> = response.data.properties?.results ?? []
+    // The page status label is stored under the key 'page-status' in Confluence
+    const pageStatusProp = properties.find((p) => p.key === 'page-status')
+    const pageStatus = (pageStatusProp?.value as { label?: string } | undefined)?.label
+
+    const metaLines: string[] = []
+    if (pageStatus) metaLines.push(`**Status:** ${pageStatus}`)
+    if (versionNumber !== undefined) metaLines.push(`**Version:** ${versionNumber}`)
+    if (versionDate) metaLines.push(`**Last modified:** ${versionDate}`)
+    if (createdAt) metaLines.push(`**Created:** ${createdAt}`)
+
+    const metaBlock = metaLines.length > 0 ? `${metaLines.join('  \n')}\n\n` : ''
+
     const result = `# ${pageTitle}
 
-**Source:** [${pageUrl}](${pageUrl})
-
----
+**Source:** [${pageUrl}](${pageUrl})  
+${metaBlock}---
 
 ${markdownContent}`
 

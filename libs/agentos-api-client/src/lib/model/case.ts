@@ -7,14 +7,12 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { EntityMetadata } from './entity-metadata'
 
 export interface Case {
-  metadata: EntityMetadata
+  id?: string
   namespaceId: string
   status: CaseStatusEnum
-  title: string
-  id: string
+  title?: string
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',

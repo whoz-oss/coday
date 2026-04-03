@@ -55,38 +55,38 @@ run_as_user() {
 # Step 2b: Install Xcode Command Line Tools if not present, then accept the license.
 # On a fresh Mac, CLT are not installed. We use softwareupdate for a silent,
 # non-interactive install (no GUI popup) since we're running as root.
+# The CLT install is launched in the background so it does not block Homebrew
+# and the rest of the setup. Homebrew's own installer also handles missing CLT,
+# so the subsequent steps can proceed safely in parallel.
 if ! xcode-select -p &>/dev/null; then
-    echo "Xcode Command Line Tools not found, installing silently..."
-    # Touch the marker file that triggers softwareupdate to list the CLT package
-    touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
-    CLT_PACKAGE=$(softwareupdate -l 2>/dev/null | grep -B 1 'Command Line Tools' | grep -E '\*' | sed 's/.*\* //' | sort -V | tail -1)
-    if [ -n "$CLT_PACKAGE" ]; then
-        echo "Installing: $CLT_PACKAGE"
-        softwareupdate -i "$CLT_PACKAGE" --verbose
-    else
-        echo "Warning: CLT package not found via softwareupdate, falling back to xcode-select --install"
-        xcode-select --install 2>/dev/null || true
-        # Wait up to 3 minutes for the install to complete
-        for i in $(seq 1 36); do
-            xcode-select -p &>/dev/null && break
-            echo "Waiting for Xcode CLT install... ($((i * 5))s)"
-            sleep 5
-        done
-    fi
-    rm -f /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
-    echo "Xcode Command Line Tools installed"
+    echo "Xcode Command Line Tools not found, launching background install..."
+    (
+        touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+        CLT_PACKAGE=$(softwareupdate -l 2>/dev/null | grep -B 1 'Command Line Tools' | grep -E '\*' | sed 's/.*\* //' | sort -V | tail -1)
+        if [ -n "$CLT_PACKAGE" ]; then
+            echo "[CLT background] Installing: $CLT_PACKAGE"
+            softwareupdate -i "$CLT_PACKAGE" --verbose
+        else
+            echo "[CLT background] Package not found via softwareupdate, falling back to xcode-select --install"
+            xcode-select --install 2>/dev/null || true
+        fi
+        rm -f /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+        # Accept license once CLT are available
+        xcodebuild -license accept 2>/dev/null || true
+        echo "[CLT background] Xcode Command Line Tools install complete"
+    ) >> "$LOG_FILE" 2>&1 &
+    echo "Xcode CLT install running in background (PID $!), continuing setup..."
 else
     echo "Xcode Command Line Tools already installed: $(xcode-select -p)"
-fi
-
-# Accept Xcode license if needed (we're root, so this works non-interactively).
-# Homebrew and other CLI tools will refuse to run if the license is pending.
-if xcodebuild -checkFirstLaunchStatus 2>/dev/null; then
-    echo "Xcode CLI tools already accepted"
-else
-    echo "Accepting Xcode license..."
-    xcodebuild -license accept 2>/dev/null || true
-    echo "Xcode license accepted"
+    # Accept Xcode license if needed (we're root, so this works non-interactively).
+    # Homebrew and other CLI tools will refuse to run if the license is pending.
+    if xcodebuild -checkFirstLaunchStatus 2>/dev/null; then
+        echo "Xcode CLI tools already accepted"
+    else
+        echo "Accepting Xcode license..."
+        xcodebuild -license accept 2>/dev/null || true
+        echo "Xcode license accepted"
+    fi
 fi
 
 # Step 3: Install Homebrew if not present

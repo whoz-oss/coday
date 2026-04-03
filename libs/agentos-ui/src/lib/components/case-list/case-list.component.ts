@@ -50,11 +50,11 @@ export class CaseListComponent {
       .post<Case>(`${this.config.basePath}/api/cases`, { namespaceId: this.namespaceId, metadata: {} })
       .subscribe((createdCase) => {
         this.inputValue.set('')
-        this.router.navigate(['/agentos', this.namespaceId, 'cases', createdCase.id])
+        this.router.navigate(['/agentos', this.namespaceId, 'cases', createdCase.id ?? ''])
       })
   }
 
   protected trackById(_index: number, c: Case): string {
-    return c.id
+    return c.id ?? ''
   }
 }

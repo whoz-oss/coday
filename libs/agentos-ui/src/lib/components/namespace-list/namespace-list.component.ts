@@ -33,14 +33,14 @@ export class NamespaceListComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   /** Raw namespaces, kept for delete lookups. */
-  private readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll()))
+  private readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll1()))
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly namespaceItems$ = this.namespaces$.pipe(
     map((namespaces) =>
       namespaces.map(
         (ns): EntityListItem => ({
-          id: ns.id,
+          id: ns.id ?? '',
           name: ns.name,
           description: ns.description,
         })
@@ -53,7 +53,7 @@ export class NamespaceListComponent {
 
   constructor() {
     this.namespaces$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((namespaces) => {
-      this.namespacesById = new Map(namespaces.map((ns) => [ns.id, ns]))
+      this.namespacesById = new Map(namespaces.map((ns) => [ns.id ?? '', ns]))
     })
   }
 
@@ -68,7 +68,7 @@ export class NamespaceListComponent {
   }
 
   protected navigateToEdit(ns: Namespace): void {
-    this.router.navigate(['/agentos/namespaces', ns.id, 'edit'])
+    this.router.navigate(['/agentos/namespaces', ns.id ?? '', 'edit'])
   }
 
   protected openIntegrations(ns: Namespace): void {
@@ -79,7 +79,7 @@ export class NamespaceListComponent {
 
   protected deleteNamespace(ns: Namespace): void {
     this.namespaceController
-      ._delete(ns.id)
+      .delete1(ns.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }
