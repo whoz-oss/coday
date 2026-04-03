@@ -44,6 +44,8 @@ class IntegrationConfigServiceImpl(
         name: String,
     ): IntegrationConfig? = repository.findByParent(namespaceId).firstOrNull { it.name == name }
 
+    override fun findAll(): List<IntegrationConfig> = repository.findAll()
+
     override fun upsert(config: IntegrationConfig): IntegrationConfig {
         val existing = findByNamespaceAndName(config.namespaceId, config.name)
         return if (existing == null) {

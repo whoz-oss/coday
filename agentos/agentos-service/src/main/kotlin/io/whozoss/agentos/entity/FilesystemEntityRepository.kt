@@ -99,6 +99,23 @@ class FilesystemEntityRepository<T : Entity, P>(
         return count
     }
 
+    /**
+     * Return all non-removed entities across all parents.
+     *
+     * Collects the Java [Files.walk] stream into a Kotlin list first so that
+     * Kotlin extension functions ([isRegularFile], [mapNotNull], etc.) can be
+     * used safely on the result.
+     */
+    override fun findAll(): List<T> {
+        if (!rootDir.exists()) return emptyList()
+        val allPaths: List<Path> = Files.walk(rootDir, 2).use { it.toList() }
+        return allPaths
+            .filter { it.isRegularFile() && it.fileName.toString().endsWith(".json") }
+            .mapNotNull { readEntity(it) }
+            .filter { !it.metadata.removed }
+            .sortedWith(comparator)
+    }
+
     /** Lists all non-tmp JSON files directly under the parent directory. */
     private fun listEntityFiles(parentId: P): List<Path> {
         val parentDir = rootDir.resolve(parentId.toString())

@@ -10,8 +10,18 @@ import java.util.UUID
  * - [upsert]: create-or-update by (namespaceId, name) — enforces the uniqueness constraint
  *   that only one config per integration name may exist within a namespace.
  * - [findByNamespaceAndName]: point lookup by the natural key.
+ * - [findAll]: cross-namespace scan used by [io.whozoss.agentos.tool.ToolRegistryService]
+ *   to resolve plugin configurations at startup.
  */
 interface IntegrationConfigService : EntityService<IntegrationConfig, UUID> {
+    /**
+     * Return all [IntegrationConfig] entities across all namespaces.
+     *
+     * Intended for use by [io.whozoss.agentos.tool.ToolRegistryService] at startup to
+     * resolve plugin configurations before the registry is namespace-aware.
+     * Excludes removed entities.
+     */
+    fun findAll(): List<IntegrationConfig>
     /**
      * Create or update an [IntegrationConfig] identified by its natural key (namespaceId, name).
      *

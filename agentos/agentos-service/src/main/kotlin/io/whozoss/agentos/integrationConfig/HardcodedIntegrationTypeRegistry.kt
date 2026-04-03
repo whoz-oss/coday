@@ -6,27 +6,27 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import org.springframework.stereotype.Component
 
 /**
- * Static implementation of [IntegrationTypeRegistry].
+ * Fallback catalogue of hardcoded [IntegrationTypeDescriptor]s for integration types
+ * that have no loaded plugin yet (JIRA, GITHUB, SLACK).
  *
- * Intentional stand-in until ToolPlugin exposes a config-schema contribution point.
- * The JIRA schema is rich enough to exercise every form-field case the client must handle:
- *   - required vs optional scalar fields (string, integer, boolean)
- *   - a nested object (proxy settings)
- *   - an array of objects (project sync targets, each with a nested string array)
- *   - an enum (log level)
- *   - per-property title/description as UI labels
- *   - format hints (uri, email, password)
+ * This class is NOT the primary [IntegrationTypeRegistry] implementation — that role
+ * belongs to [CompositeIntegrationTypeRegistry], which merges these hardcoded entries
+ * with plugin-contributed ones. Plugin-contributed descriptors always take precedence
+ * over hardcoded ones for the same type.
+ *
+ * The JIRA schema is intentionally rich to exercise every form-field case the client
+ * must handle: required vs optional scalars, nested objects, arrays, enums, format hints.
  */
 @Component
 class HardcodedIntegrationTypeRegistry(
     private val objectMapper: ObjectMapper,
-) : IntegrationTypeRegistry {
+) {
 
     private val descriptors: List<IntegrationTypeDescriptor> by lazy { buildDescriptors() }
 
-    override fun listTypes(): List<IntegrationTypeDescriptor> = descriptors
+    fun listTypes(): List<IntegrationTypeDescriptor> = descriptors
 
-    override fun findByType(type: String): IntegrationTypeDescriptor? =
+    fun findByType(type: String): IntegrationTypeDescriptor? =
         descriptors.firstOrNull { it.type == type }
 
     private fun buildDescriptors(): List<IntegrationTypeDescriptor> =
@@ -163,11 +163,6 @@ class HardcodedIntegrationTypeRegistry(
             set<JsonNode>("username", stringProp("Proxy Username", "Optional username for proxy authentication."))
             set<JsonNode>("password", stringProp("Proxy Password", "Optional password.", format = "password"))
         }
-        val projectItemProps = obj().apply {
-            set<JsonNode>("projectKey", stringProp("Project Key", "Jira project key (e.g. PROJ, DEV, OPS)."))
-            set<JsonNode>("includeSubtasks", boolProp("Include Subtasks", "Include subtasks when syncing.", true))
-            set<JsonNode>("issueTypesFilter", arrayOfStringsProp("Issue Types Filter", "Restrict to these issue types. Leave empty for all."))
-        }
         val props = obj().apply {
             set<JsonNode>("apiUrl", stringProp("API URL", "Base URL of your Jira instance.", format = "uri"))
             set<JsonNode>("apiToken", stringProp("API Token", "Personal API token from Atlassian account settings.", format = "password"))
@@ -177,7 +172,7 @@ class HardcodedIntegrationTypeRegistry(
             set<JsonNode>("verifySSL", boolProp("Verify SSL", "Validate the server SSL certificate (recommended).", true))
             set<JsonNode>("logLevel", enumProp("Log Level", "Verbosity of integration logs.", listOf("DEBUG", "INFO", "WARN", "ERROR"), "INFO"))
             set<JsonNode>("proxy", nestedObjectProp("Proxy Settings", "Optional HTTP proxy for outbound requests.", listOf("host", "port"), proxyProps))
-            set<JsonNode>("projects", arrayOfObjectsProp("Project Sync Targets", "Projects to synchronise. Leave empty for all.", "Project", listOf("projectKey"), projectItemProps))
+            set<JsonNode>("projects", arrayOfStringsProp("Project Keys", "Jira project keys to synchronise (e.g. PROJ, DEV). Leave empty for all."))
         }
         return rootSchema("Jira Configuration", listOf("apiUrl", "apiToken", "userEmail"), props)
     }

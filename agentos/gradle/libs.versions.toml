@@ -19,7 +19,7 @@ springdoc = "2.8.9"
 springdocPlugin = "1.9.0"
 
 # AgentOS modules versions
-agentosSdk = "1.0.0"
+agentosSdk = "1.1.0"
 agentosService = "0.0.1-SNAPSHOT"
 
 [libraries]

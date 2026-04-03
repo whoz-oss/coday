@@ -133,5 +133,13 @@ class InMemoryEntityRepository<T : Entity, P>(
         return deletedCount
     }
 
+    /**
+     * Return all non-removed entities across all parents.
+     */
+    override fun findAll(): List<T> =
+        entitiesById.values
+            .filter { !it.metadata.removed }
+            .sortedWith(comparator)
+
     companion object : KLogging()
 }

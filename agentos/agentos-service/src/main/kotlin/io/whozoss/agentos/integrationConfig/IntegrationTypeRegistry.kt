@@ -1,5 +1,7 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.sdk.tool.ToolPlugin
+
 /**
  * Registry of available integration types.
  *
@@ -7,9 +9,13 @@ package io.whozoss.agentos.integrationConfig
  * Each descriptor carries a JSON Schema that describes the parameters an [IntegrationConfig]
  * of that type must supply.
  *
- * The current implementation ([HardcodedIntegrationTypeRegistry]) returns a static list.
- * Future implementations will aggregate contributions from loaded [io.whozoss.agentos.sdk.tool.ToolPlugin]s,
- * allowing plugins to declare their own configuration schema alongside their tools.
+ * Descriptors come from two sources, merged at startup:
+ * - Plugin-contributed: each loaded [ToolPlugin] that declares a non-null [ToolPlugin.configSchema]
+ *   registers itself via [registerFromPlugin].
+ * - Hardcoded fallback: static descriptors for integration types that have no plugin yet
+ *   (JIRA, GITHUB, SLACK) remain in [HardcodedIntegrationTypeRegistry].
+ *
+ * The active implementation is [CompositeIntegrationTypeRegistry].
  */
 interface IntegrationTypeRegistry {
     /**
@@ -21,4 +27,16 @@ interface IntegrationTypeRegistry {
      * Find a single descriptor by its [type] identifier, or null if unknown.
      */
     fun findByType(type: String): IntegrationTypeDescriptor?
+
+    /**
+     * Register a descriptor contributed by a loaded [ToolPlugin].
+     *
+     * Called by [io.whozoss.agentos.tool.ToolRegistryService] after each plugin is loaded.
+     * If a descriptor for [plugin.integrationType] already exists (e.g. from the hardcoded
+     * fallback), the plugin-contributed one takes precedence.
+     *
+     * Plugins with a null [ToolPlugin.configSchema] are silently ignored — they need no
+     * configuration and therefore have no descriptor to expose.
+     */
+    fun registerFromPlugin(plugin: ToolPlugin)
 }
