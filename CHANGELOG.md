@@ -1,3 +1,15 @@
+## 0.114.0 (2026-04-03)
+
+### 🚀 Features
+
+- #30778 implement core user registry in AgentOS ([#708](https://github.com/whoz-oss/coday/pull/708), [#30778](https://github.com/whoz-oss/coday/issues/30778))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent.audibert
+
 ## 0.113.1 (2026-04-03)
 
 ### 🩹 Fixes
