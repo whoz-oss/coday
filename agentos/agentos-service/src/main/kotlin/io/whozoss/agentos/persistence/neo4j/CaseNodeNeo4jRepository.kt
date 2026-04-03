@@ -6,7 +6,7 @@ import org.springframework.data.neo4j.repository.query.Query
 /**
  * Spring Data Neo4j repository for [CaseNode].
  */
-interface CaseNeo4jRepository : Neo4jRepository<CaseNode, String> {
+interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     /**
      * Find all non-removed cases belonging to a namespace, ordered by creation time.
      */

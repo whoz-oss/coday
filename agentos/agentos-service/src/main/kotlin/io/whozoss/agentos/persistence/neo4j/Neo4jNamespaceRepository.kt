@@ -4,6 +4,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository.Companion.NAMESPACE_PARENT_KEY
 import mu.KLogging
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
@@ -15,15 +16,14 @@ import java.util.UUID
  * [findByParent] and [deleteByParent] ignore the actual value and operate on all
  * non-removed namespaces.
  */
-open class Neo4jNamespaceRepository(
-    private val sdnRepo: NamespaceNeo4jRepository,
+class Neo4jNamespaceRepository(
+    private val sdnRepo: NamespaceNodeNeo4jRepository,
 ) : NamespaceRepository {
-    override fun save(entity: Namespace): Namespace {
-        val node = NamespaceNode.fromDomain(entity)
-        val saved = sdnRepo.save(node)
-        logger.debug { "[Neo4jNamespaceRepository] Saved namespace ${saved.id}" }
-        return saved.toDomain()
-    }
+    override fun save(entity: Namespace): Namespace =
+        sdnRepo
+            .save(NamespaceNode.fromDomain(entity))
+            .toDomain()
+            .also { logger.debug { "[Neo4jNamespaceRepository] Saved namespace ${it.id}" } }
 
     override fun findByIds(ids: Collection<UUID>): List<Namespace> =
         sdnRepo
@@ -35,16 +35,17 @@ open class Neo4jNamespaceRepository(
      * [parentId] is always [NAMESPACE_PARENT_KEY] = "all".
      * Returns all non-removed namespaces.
      */
-    override fun findByParent(parentId: String): List<Namespace> =
-        sdnRepo.findAllActive().map { it.toDomain() }
+    override fun findByParent(parentId: String): List<Namespace> = sdnRepo.findAllActive().map { it.toDomain() }
 
-    override fun delete(id: UUID): Boolean {
-        val node = sdnRepo.findById(id.toString()).orElse(null) ?: return false
-        if (node.removed) return false
-        sdnRepo.save(node.copy(removed = true))
-        logger.debug { "[Neo4jNamespaceRepository] Soft-deleted namespace $id" }
-        return true
-    }
+    override fun delete(id: UUID): Boolean =
+        sdnRepo
+            .findByIdOrNull(id.toString())
+            ?.takeIf { !it.removed }
+            ?.let { node ->
+                sdnRepo.save(node.copy(removed = true))
+                logger.debug { "[Neo4jNamespaceRepository] Soft-deleted namespace $id" }
+                true
+            } ?: false
 
     @Transactional
     override fun deleteByParent(parentId: String): Int {

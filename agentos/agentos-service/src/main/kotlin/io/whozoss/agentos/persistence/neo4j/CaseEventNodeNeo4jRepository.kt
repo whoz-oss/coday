@@ -6,7 +6,7 @@ import org.springframework.data.neo4j.repository.query.Query
 /**
  * Spring Data Neo4j repository for [CaseEventNode].
  */
-interface CaseEventNeo4jRepository : Neo4jRepository<CaseEventNode, String> {
+interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> {
     /**
      * Find all non-removed events for a case, ordered by timestamp then id
      * (stable sort matching [FilesystemCaseEventRepository]).

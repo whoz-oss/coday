@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
-import io.whozoss.agentos.persistence.neo4j.CaseEventNeo4jRepository
-import io.whozoss.agentos.persistence.neo4j.CaseNeo4jRepository
-import io.whozoss.agentos.persistence.neo4j.NamespaceNeo4jRepository
+import io.whozoss.agentos.persistence.neo4j.CaseEventNodeNeo4jRepository
+import io.whozoss.agentos.persistence.neo4j.CaseNodeNeo4jRepository
+import io.whozoss.agentos.persistence.neo4j.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseEventRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jNamespaceRepository
@@ -41,20 +41,20 @@ import org.springframework.context.annotation.Configuration
 )
 class Neo4jPersistenceConfiguration {
     @Bean
-    fun neo4jNamespaceRepository(sdnRepo: NamespaceNeo4jRepository): NamespaceRepository {
+    fun neo4jNamespaceRepository(sdnRepo: NamespaceNodeNeo4jRepository): NamespaceRepository {
         logger.info { "[Persistence] Neo4jNamespaceRepository active" }
         return Neo4jNamespaceRepository(sdnRepo)
     }
 
     @Bean
-    fun neo4jCaseRepository(sdnRepo: CaseNeo4jRepository): CaseRepository {
+    fun neo4jCaseRepository(sdnRepo: CaseNodeNeo4jRepository): CaseRepository {
         logger.info { "[Persistence] Neo4jCaseRepository active" }
         return Neo4jCaseRepository(sdnRepo)
     }
 
     @Bean
     fun neo4jCaseEventRepository(
-        sdnRepo: CaseEventNeo4jRepository,
+        sdnRepo: CaseEventNodeNeo4jRepository,
         objectMapper: ObjectMapper,
     ): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }

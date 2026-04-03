@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
@@ -22,37 +23,36 @@ import java.util.UUID
  *
  * Parent type is [UUID] representing the caseId.
  */
-open class Neo4jCaseEventRepository(
-    private val sdnRepo: CaseEventNeo4jRepository,
+class Neo4jCaseEventRepository(
+    private val sdnRepo: CaseEventNodeNeo4jRepository,
     private val objectMapper: ObjectMapper,
 ) : CaseEventRepository {
-    override fun save(entity: CaseEvent): CaseEvent {
-        val node = CaseEventNode.fromDomain(entity, objectMapper)
-        val saved = sdnRepo.save(node)
-        logger.debug { "[Neo4jCaseEventRepository] Saved ${saved.type} event ${saved.id} for case ${saved.caseId}" }
-        return saved.toDomain(objectMapper)
-    }
+    override fun save(entity: CaseEvent): CaseEvent =
+        sdnRepo
+            .save(CaseEventNode.fromDomain(entity, objectMapper))
+            .toDomain(objectMapper)
+            .also { logger.debug { "[Neo4jCaseEventRepository] Saved ${entity.type.value} event ${entity.id} for case ${entity.caseId}" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> {
-        val stringIds = ids.map { it.toString() }
-        return sdnRepo
-            .findAllById(stringIds)
+    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> =
+        sdnRepo
+            .findAllById(ids.map { it.toString() })
             .filter { !it.removed }
             .map { it.toDomain(objectMapper) }
-    }
 
     override fun findByParent(parentId: UUID): List<CaseEvent> =
         sdnRepo
             .findActiveByCaseId(parentId.toString())
             .map { it.toDomain(objectMapper) }
 
-    override fun delete(id: UUID): Boolean {
-        val node = sdnRepo.findById(id.toString()).orElse(null) ?: return false
-        if (node.removed) return false
-        sdnRepo.save(node.copy(removed = true))
-        logger.debug { "[Neo4jCaseEventRepository] Soft-deleted event $id" }
-        return true
-    }
+    override fun delete(id: UUID): Boolean =
+        sdnRepo
+            .findByIdOrNull(id.toString())
+            ?.takeIf { !it.removed }
+            ?.let { node ->
+                sdnRepo.save(node.copy(removed = true))
+                logger.debug { "[Neo4jCaseEventRepository] Soft-deleted event $id" }
+                true
+            } ?: false
 
     @Transactional
     override fun deleteByParent(parentId: UUID): Int {

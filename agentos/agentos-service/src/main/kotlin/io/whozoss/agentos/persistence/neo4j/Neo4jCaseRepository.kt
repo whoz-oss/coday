@@ -3,6 +3,7 @@ package io.whozoss.agentos.persistence.neo4j
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import mu.KLogging
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
@@ -14,36 +15,35 @@ import java.util.UUID
  *
  * Parent type is [UUID] representing the namespaceId.
  */
-open class Neo4jCaseRepository(
-    private val sdnRepo: CaseNeo4jRepository,
+class Neo4jCaseRepository(
+    private val sdnRepo: CaseNodeNeo4jRepository,
 ) : CaseRepository {
-    override fun save(entity: Case): Case {
-        val node = CaseNode.fromDomain(entity)
-        val saved = sdnRepo.save(node)
-        logger.debug { "[Neo4jCaseRepository] Saved case ${saved.id} under namespace ${saved.namespaceId}" }
-        return saved.toDomain()
-    }
+    override fun save(entity: Case): Case =
+        sdnRepo
+            .save(CaseNode.fromDomain(entity))
+            .toDomain()
+            .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<Case> {
-        val stringIds = ids.map { it.toString() }
-        return sdnRepo
-            .findAllById(stringIds)
+    override fun findByIds(ids: Collection<UUID>): List<Case> =
+        sdnRepo
+            .findAllById(ids.map { it.toString() })
             .filter { !it.removed }
             .map { it.toDomain() }
-    }
 
     override fun findByParent(parentId: UUID): List<Case> =
         sdnRepo
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
 
-    override fun delete(id: UUID): Boolean {
-        val node = sdnRepo.findById(id.toString()).orElse(null) ?: return false
-        if (node.removed) return false
-        sdnRepo.save(node.copy(removed = true))
-        logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id" }
-        return true
-    }
+    override fun delete(id: UUID): Boolean =
+        sdnRepo
+            .findByIdOrNull(id.toString())
+            ?.takeIf { !it.removed }
+            ?.let { node ->
+                sdnRepo.save(node.copy(removed = true))
+                logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id" }
+                true
+            } ?: false
 
     @Transactional
     override fun deleteByParent(parentId: UUID): Int {
