@@ -25,9 +25,15 @@ export async function searchConfluencePages(
     })
     interactor.displayText(`... received search results from Confluence.`)
 
-    // Confluence search api returns all matching text with some highlight marks that made my eyes bleed.
-    const stringified = JSON.stringify(response.data.results).replace(/@@@hl@@@|@@@endhl@@@/g, '')
-    return JSON.parse(stringified)
+    // Map to a clean, minimal structure — the raw API response is very noisy
+    return response.data.results.map((r: any) => ({
+      id: r.content?.id,
+      title: r.title,
+      excerpt: r.excerpt?.replace(/@@@hl@@@|@@@endhl@@@/g, '').trim(),
+      url: r.url,
+      space: r.resultGlobalContainer?.title,
+      lastModified: r.lastModified,
+    }))
   } catch (error: any) {
     interactor.warn(`Failed to search Confluence content`)
     return `Failed to perform search: "${query}": ${error.message}`
