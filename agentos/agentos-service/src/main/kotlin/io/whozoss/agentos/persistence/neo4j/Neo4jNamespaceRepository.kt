@@ -4,6 +4,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository.Companion.NAMESPACE_PARENT_KEY
 import mu.KLogging
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -45,9 +46,10 @@ class Neo4jNamespaceRepository(
         return true
     }
 
+    @Transactional
     override fun deleteByParent(parentId: String): Int {
         val active = sdnRepo.findAllActive()
-        active.forEach { sdnRepo.save(it.copy(removed = true)) }
+        sdnRepo.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jNamespaceRepository] Soft-deleted ${active.size} namespaces" }
         return active.size
     }

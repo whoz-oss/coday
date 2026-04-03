@@ -3,6 +3,7 @@ package io.whozoss.agentos.persistence.neo4j
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import mu.KLogging
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -44,9 +45,10 @@ class Neo4jCaseRepository(
         return true
     }
 
+    @Transactional
     override fun deleteByParent(parentId: UUID): Int {
         val active = sdnRepo.findActiveByNamespaceId(parentId.toString())
-        active.forEach { sdnRepo.save(it.copy(removed = true)) }
+        sdnRepo.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jCaseRepository] Soft-deleted ${active.size} cases under namespace $parentId" }
         return active.size
     }

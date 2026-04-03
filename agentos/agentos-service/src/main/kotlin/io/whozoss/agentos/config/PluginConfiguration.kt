@@ -60,25 +60,28 @@ private class NullSafeSpringPluginManager(pluginsRoot: Path) : SpringPluginManag
  * When [create] is called for an extension class that lives on the application
  * classpath (not inside a plugin JAR), [org.pf4j.Plugin.getWrapper] returns null.
  * The standard [SpringExtensionFactory] does not guard against this and throws
- * [NullPointerException] in `nameOf()`. This subclass falls back to the root
- * [ApplicationContext] in that case, which is the appropriate context for
- * app-classpath extensions.
+ * [NullPointerException] in `nameOf()` via `getWrapper().getPluginId()`.
+ *
+ * Fix: check [PluginManager.whichPlugin] before delegating to [SpringExtensionFactory].
+ * If no plugin owns the extension class, bypass the parent and instantiate directly
+ * via the root [ApplicationContext]. This avoids catching NPE broadly, which would
+ * mask unrelated failures inside [SpringExtensionFactory.create].
  */
 private class NullSafeSpringExtensionFactory(
     private val manager: SpringPluginManager,
 ) : SpringExtensionFactory(manager) {
     override fun <T : Any?> create(extensionClass: Class<T>): T? =
-        try {
-            super.create(extensionClass)
-        } catch (e: NullPointerException) {
-            // Plugin wrapper is null — extension is on the app classpath, not in a JAR.
-            // Fall back to instantiating via the root application context.
-            logger.warn {
-                "Extension ${extensionClass.name} has no plugin wrapper (app-classpath extension); " +
-                    "falling back to root ApplicationContext"
+        if (manager.whichPlugin(extensionClass) == null) {
+            // No plugin wrapper — extension lives on the app classpath, not in a JAR.
+            // SpringExtensionFactory.nameOf() would NPE here, so bypass it entirely.
+            logger.debug {
+                "Extension ${extensionClass.name} has no plugin wrapper; " +
+                    "instantiating via root ApplicationContext"
             }
             manager.applicationContext.autowireCapableBeanFactory
                 .createBean(extensionClass)
+        } else {
+            super.create(extensionClass)
         }
 
     companion object : KLogging()

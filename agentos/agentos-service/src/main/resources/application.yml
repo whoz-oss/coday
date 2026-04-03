@@ -62,6 +62,9 @@ agentos:
     #                              database stored under data-dir/neo4j/
     #   neo4j                    - standalone Neo4j server (requires spring.neo4j.* config)
     # Override with env var: AGENTOS_PERSISTENCE_MODE
+    # Default is embedded-neo4j: filesystem and in-memory modes are deprecated
+    # and will be removed in a future neo4j is the only supported
+    # production mode going forward.
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
 
 logging:

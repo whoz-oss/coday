@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -53,9 +54,10 @@ class Neo4jCaseEventRepository(
         return true
     }
 
+    @Transactional
     override fun deleteByParent(parentId: UUID): Int {
         val active = sdnRepo.findActiveByCaseId(parentId.toString())
-        active.forEach { sdnRepo.save(it.copy(removed = true)) }
+        sdnRepo.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jCaseEventRepository] Soft-deleted ${active.size} events for case $parentId" }
         return active.size
     }
