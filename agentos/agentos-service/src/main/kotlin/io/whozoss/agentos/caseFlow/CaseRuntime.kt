@@ -282,17 +282,7 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    val userId = events
-                        .filterIsInstance<MessageEvent>()
-                        .lastOrNull { it.actor.role == ActorRole.USER }
-                        ?.actor
-                        ?.id
-                        ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-                    runAgent(
-                        event.agentName,
-                        eventList.getAll(),
-                        userId
-                    ) { !interruptRequested.get() }
+                    runAgent(event.agentName, eventList.getAll(), resolveUserId(events)) { !interruptRequested.get() }
                     return
                 }
 
@@ -324,6 +314,18 @@ class CaseRuntime(
         logger.warn { "[CaseRuntime $id] No agent selection found in history, stopping" }
         interruptRequested.set(true)
     }
+
+    /**
+     * Scans the event history backward and returns the UUID of the last user actor,
+     * or null if no user message is found or the actor id is not a valid UUID.
+     */
+    private fun resolveUserId(events: List<CaseEvent>): UUID? =
+        events
+            .filterIsInstance<MessageEvent>()
+            .lastOrNull { it.actor.role == ActorRole.USER }
+            ?.actor
+            ?.id
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     companion object : KLogging()
 }

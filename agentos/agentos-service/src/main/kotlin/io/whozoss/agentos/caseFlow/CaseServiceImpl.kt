@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,7 @@ class CaseServiceImpl(
     private val agentService: AgentService,
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
-    private val userService: io.whozoss.agentos.user.UserService,
+    private val userService: UserService,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -176,17 +177,18 @@ class CaseServiceImpl(
             }
         }
 
-        val defaultName = agentService.getDefaultAgentName()
-            ?: run {
-                logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
-                return listOf(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "No AI model is configured. Load a plugin that provides an AiModel.",
-                    ),
-                )
-            }
+        val defaultName =
+            agentService.getDefaultAgentName()
+                ?: run {
+                    logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
+                    return listOf(
+                        WarnEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            message = "No AI model is configured. Load a plugin that provides an AiModel.",
+                        ),
+                    )
+                }
         logger.info { "[CaseService] Selecting default agent: $defaultName" }
         return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
     }
@@ -215,10 +217,11 @@ class CaseServiceImpl(
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
 
-        if (userId == null || userService.findById(userId) == null) {
-            throw IllegalStateException(
-                "Cannot run agent for case $caseId: user ${userId ?: "<none>"} is not a valid active user"
-            )
+        requireNotNull(userId) {
+            "Cannot run agent for case $caseId: no user identity found in event history"
+        }
+        requireNotNull(userService.findById(userId)) {
+            "Cannot run agent for case $caseId: user $userId does not exist"
         }
 
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }

@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -29,7 +30,7 @@ class AgentServiceImpl(
     private val toolRegistry: ToolRegistry,
     private val aiModelRegistry: AiModelRegistry,
     private val namespaceService: NamespaceService,
-    private val userService: io.whozoss.agentos.user.UserService,
+    private val userService: UserService,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -113,27 +114,29 @@ class AgentServiceImpl(
     ): String? =
         context?.let {
             val namespace = namespaceService.findById(it.namespaceId)
-            val namespaceBlock = buildString {
-                appendLine()
-                appendLine("""## Context: ${namespace?.name ?: it.namespaceId}""")
-                if (!namespace?.description.isNullOrBlank()) {
-                    appendLine(namespace!!.description!!)
-                }
-            }.trimEnd()
+            val namespaceBlock =
+                buildString {
+                    appendLine()
+                    appendLine("""## Context: ${namespace?.name ?: it.namespaceId}""")
+                    if (!namespace?.description.isNullOrBlank()) {
+                        appendLine(namespace!!.description!!)
+                    }
+                }.trimEnd()
 
-            val userBlock = it.userId?.let { userId ->
-                userService.findById(userId)?.let { user ->
-                    buildString {
-                        appendLine()
-                        appendLine("## User")
-                        appendLine("- id: ${user.metadata.id}")
-                        appendLine("- email: ${user.email}")
-                        if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
-                        if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
-                        if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
-                    }.trimEnd()
+            val userBlock =
+                it.userId?.let { userId ->
+                    userService.findById(userId)?.let { user ->
+                        buildString {
+                            appendLine()
+                            appendLine("## User")
+                            appendLine("- id: ${user.metadata.id}")
+                            appendLine("- email: ${user.email}")
+                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                        }.trimEnd()
+                    }
                 }
-            }
 
             val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
             if (userBlock != null) "$base\n$userBlock" else base
