@@ -149,7 +149,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
         function: {
           name: `${this.name}__create_worktree`,
           description:
-            'Creates a git worktree on the given branch (creates the branch if it does not exist) and registers it as a Coday sub-project. If a postCreateScript is configured in the GIT_WORKTREE integration, it runs automatically after creation with the working directory set to the new worktree. Returns projectName, worktreePath, branch, and optionally a warning if the post-create script failed.',
+            'Creates a git worktree on the given branch (creates the branch if it does not exist) and registers it as a Coday sub-project. Returns projectName, worktreePath and branch.',
           parameters: {
             type: 'object',
             properties: {
