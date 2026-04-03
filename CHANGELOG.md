@@ -1,3 +1,14 @@
+## 0.114.2 (2026-04-03)
+
+### 🩹 Fixes
+
+- #725 CONFLUENCE__getPage include version and properties via API v2 params ([#726](https://github.com/whoz-oss/coday/pull/726), [#725](https://github.com/whoz-oss/coday/issues/725))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.114.1 (2026-04-03)
 
 ### 🩹 Fixes
