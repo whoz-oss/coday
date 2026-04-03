@@ -1,3 +1,13 @@
+## 0.113.0 (2026-04-03)
+
+### 🚀 Features
+
+- Add Chrome mcp configuration to coday.template.yaml ([#716](https://github.com/whoz-oss/coday/pull/716))
+
+### ❤️ Thank You
+
+- David Palita
+
 ## 0.112.0 (2026-04-03)
 
 ### 🚀 Features
