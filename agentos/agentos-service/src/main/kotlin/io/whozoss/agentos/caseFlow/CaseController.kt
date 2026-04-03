@@ -4,6 +4,7 @@ import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
 import org.springframework.http.MediaType
@@ -22,7 +23,31 @@ import java.util.UUID
 class CaseController(
     private val caseService: CaseService,
     private val securityService: SecurityService,
-) : EntityController<Case, UUID>(caseService) {
+) : EntityController<Case, UUID, CaseResource>(caseService) {
+
+    // -------------------------------------------------------------------------
+    // Mapping between domain entity and HTTP resource
+    // -------------------------------------------------------------------------
+
+    override fun toResource(entity: Case): CaseResource =
+        CaseResource(
+            id = entity.metadata.id,
+            namespaceId = entity.namespaceId,
+            status = entity.status,
+            title = entity.title,
+        )
+
+    override fun toDomain(resource: CaseResource): Case =
+        Case(
+            metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
+            namespaceId = resource.namespaceId,
+            status = resource.status,
+            title = resource.title ?: "",
+        )
+
+    // -------------------------------------------------------------------------
+    // Additional endpoints
+    // -------------------------------------------------------------------------
 
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")

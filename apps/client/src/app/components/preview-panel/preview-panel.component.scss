@@ -3,22 +3,55 @@
 }
 
 .preview-panel {
-  padding: 0.5rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  padding: 0.25rem 0;
 }
 
-.preview-controls {
+// ── Entry row ────────────────────────────────────────────────────────────────
+
+.entry-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: nowrap;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  min-height: 36px;
+}
+
+.entry-name {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--on-surface, #e0e0e0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.preview-action-btn {
+.entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   flex-shrink: 0;
+}
+
+// Unified button sizing for all icon buttons in a row
+.entry-btn {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+  }
 
   &.start mat-icon {
     color: var(--color-primary);
@@ -26,6 +59,14 @@
 
   &.stop mat-icon {
     color: #e53935;
+  }
+
+  &.logs mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    color: var(--color-text-secondary);
   }
 
   &[disabled] mat-icon {
@@ -36,12 +77,15 @@
 .status-pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  justify-content: center;
+  padding: 1px 6px;
   border-radius: 12px;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   flex-shrink: 0;
+  min-width: 52px;
+  text-align: center;
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
@@ -56,14 +100,9 @@
 .preview-url {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
   text-decoration: none;
   color: var(--color-primary);
-  font-size: 0.8rem;
-  font-weight: 500;
-  min-width: 0;
-  overflow: hidden;
-  flex-shrink: 1;
+  flex-shrink: 0;
 
   &:hover {
     text-decoration: underline;
@@ -73,38 +112,23 @@
     font-size: 14px;
     width: 14px;
     height: 14px;
-    flex-shrink: 0;
-  }
-
-  .url-text {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 }
 
-.logs-btn {
-  margin-left: auto;
-  flex-shrink: 0;
-
-  mat-icon {
-    font-size: 18px;
-    width: 18px;
-    height: 18px;
-    color: var(--color-text-secondary);
-  }
-}
+// ── Error ────────────────────────────────────────────────────────────────────
 
 .preview-error {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: #c00;
-  padding: 0 0.25rem;
+  padding: 0 0.75rem;
 }
+
+// ── Logs ─────────────────────────────────────────────────────────────────────
 
 .logs-container {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  margin: 0.125rem 0.5rem 0.25rem;
   background: var(--color-bg-hover);
   border-radius: 8px;
   overflow: hidden;
@@ -114,24 +138,16 @@
 .logs-header {
   display: flex;
   align-items: center;
-  padding: 0.25rem 0.75rem 0.25rem 0.75rem;
+  padding: 0.25rem 0.75rem;
   border-bottom: 1px solid var(--color-border);
 
   .logs-title {
     flex: 1;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 600;
     color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-  }
-
-  .refresh-btn {
-    mat-icon {
-      font-size: 16px;
-      width: 16px;
-      height: 16px;
-    }
   }
 }
 
@@ -147,7 +163,6 @@
   max-height: 200px;
   overflow-y: auto;
 
-  // Scrollbar
   &::-webkit-scrollbar {
     width: 6px;
   }

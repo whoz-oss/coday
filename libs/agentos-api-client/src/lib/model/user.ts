@@ -7,14 +7,12 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { EntityMetadata } from './entity-metadata'
 
 export interface User {
-  metadata: EntityMetadata
-  externalId: string
+  id?: string
   email: string
+  externalId?: string
   firstname?: string
   lastname?: string
   bio?: string
-  id: string
 }
