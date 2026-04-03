@@ -115,9 +115,11 @@ export class SidenavComponent implements OnInit, OnDestroy {
   )
 
   ngOnInit(): void {
-    // Load saved sidenav state from preferences (mobile only)
-    const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
-    this.userOpenPreference.set(savedState ?? true)
+    // Default: open on wide screens (>= 1024px), closed on smaller ones.
+    // Overridden by the user's saved preference if it exists.
+    const defaultOpen = window.innerWidth >= 1024
+    const savedState = this.preferences.getPreference<boolean>('sidenavOpen', defaultOpen)
+    this.userOpenPreference.set(savedState ?? defaultOpen)
 
     // Load user config to check roles
     this.configApi
