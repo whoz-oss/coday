@@ -57,6 +57,22 @@ dependencies {
     // Neo4j persistence (Bolt-based, for server/container deployments)
     implementation(libs.spring.boot.starter.data.neo4j)
 
+    // Netty 4.2.x — explicit direct dependency to override Spring Boot BOM's 4.1.x pin.
+    // Neo4j 2026.x BoltServer requires MultiThreadIoEventLoopGroup and KQueueIoHandler
+    // which were introduced in Netty 4.2.x. Spring Boot BOM pins 4.1.x; without an
+    // explicit direct dependency IntelliJ's run configuration classpath uses 4.1.x
+    // regardless of resolutionStrategy rules (which only apply to Gradle's own resolution).
+    // Declaring these as direct runtime dependencies ensures IntelliJ picks up 4.2.x
+    // after a Gradle sync, with no VM option workarounds needed.
+    runtimeOnly("io.netty:netty-transport-classes-epoll:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-transport-classes-kqueue:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-common:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-buffer:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-transport:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-handler:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-codec:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-resolver:${libs.versions.netty.get()}")
+
     // Neo4j embedded engine (Community Edition)
     // Included as optional runtime — only activated when agentos.persistence.mode=embedded-neo4j.
     // The embedded engine starts an in-process Neo4j instance and exposes a Bolt port;
@@ -71,14 +87,19 @@ dependencies {
     //   We let Spring Boot win to avoid two versions of the driver on the classpath.
     implementation(libs.neo4j.embedded) {
         // ── Logging ─────────────────────────────────────────────────────────────
-        // Neo4j 2026.x bundles its own SLF4J API and provider JARs.
-        // Having a second copy of slf4j-api on the classpath causes SLF4J's
-        // ServiceLoader to bind to NOPLoggerFactory (no Logback visible in that
-        // classloader context), which then wins the global static binding race
-        // before Spring Boot can register LogbackServiceProvider.
-        // Fix: exclude ALL SLF4J artifacts from Neo4j — use Spring Boot's copy.
+        // Neo4j 2026.x ships two competing logging artifacts:
+        //
+        // 1. org.slf4j:slf4j-api — a second copy of the SLF4J API JAR.
+        //    Having two copies causes SLF4J's ServiceLoader to see duplicate
+        //    providers and bind to NOPLoggerFactory before Logback can register.
+        //    Fix: exclude the whole org.slf4j group; Spring Boot owns that copy.
         exclude(group = "org.slf4j")
-        // Also exclude any log4j-over-slf4j bridges Neo4j may pull in
+        //
+        // 2. org.neo4j:neo4j-slf4j-provider is excluded globally via configurations.all
+        //    below, which ensures it is removed from ALL configurations including
+        //    IntelliJ's module classpath after Gradle sync.
+        //
+        // Also exclude any log4j→SLF4J bridges Neo4j may pull in transitively.
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j-impl")
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
         // ── Driver ──────────────────────────────────────────────────────────────
@@ -133,17 +154,29 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
-// Neo4j 2026.x (embedded engine + test harness) requires Netty 4.2.x for BoltServer.
+// Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
+// as an SLF4J service provider. When it wins the ServiceLoader race over Logback,
+// Spring Boot's LogbackLoggingSystem fails with:
+//   "LoggerFactory is not a Logback LoggerContext"
+// Excluding it from the individual neo4j-embedded dependency declaration is not
+// always sufficient (IntelliJ may resolve a stale classpath). This global exclusion
+// across ALL configurations guarantees it never appears regardless of how the
+// classpath is assembled.
+configurations.all {
+    exclude(group = "org.neo4j", module = "neo4j-slf4j-provider")
+}
+
+// Neo4j 2026.x (embedded engine) requires Netty 4.2.x for BoltServer.
 // Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict resolution selects by
-// default (lower version wins). Force only the core Netty transport modules to 4.2.x
-// on the test classpath so that BoltServer can load its dependencies.
+// default (lower version wins). Force the core Netty transport modules to 4.2.x
+// across ALL configurations — runtime, test, and IntelliJ's module classpath.
 //
 // Excluded from forcing:
 // - netty-tcnative-* : native TLS helper — only published for specific 4.1.x builds;
 //   forcing 4.2.x causes a resolution failure (artifact does not exist on Maven Central).
 //
-// Spring Boot's HTTP stack uses spring-boot-starter-web (Tomcat), NOT Reactor Netty,
-// so upgrading these Netty modules on the test classpath has no effect on the HTTP server.
+// Spring Boot's HTTP stack uses spring-boot-starter-web (Tomcat), NOT Reactor Netty.
+// Reactor Netty is not on this module's runtime classpath, so this upgrade is safe.
 val nettyCoreModules =
     setOf(
         "netty-common",
@@ -153,8 +186,8 @@ val nettyCoreModules =
         "netty-transport-native-kqueue",
         "netty-transport-native-unix-common",
         // netty-transport-classes-* contain the platform-specific IoHandler classes
-        // (e.g. KQueueIoHandler, EpollIoHandler) introduced in Netty 4.2.x.
-        // BoltServer references these at init time; they must match the forced version.
+        // (e.g. KQueueIoHandler, EpollIoHandler, MultiThreadIoEventLoopGroup)
+        // introduced in Netty 4.2.x. BoltServer references these at init time.
         "netty-transport-classes-epoll",
         "netty-transport-classes-kqueue",
         "netty-handler",
@@ -166,7 +199,7 @@ val nettyCoreModules =
         "netty-resolver",
         "netty-resolver-dns",
     )
-configurations.testRuntimeClasspath {
+configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "io.netty" && requested.name in nettyCoreModules) {
             useVersion(libs.versions.netty.get())
@@ -178,6 +211,17 @@ configurations.testRuntimeClasspath {
 // Configure the bootJar task
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("agentos-service.jar")
+}
+
+// Set the working directory for bootRun to the agentos/ root so that
+// relative paths in application.yml (plugins/, agents/, aimodel/, aiprovider/,
+// data/) resolve to the same location regardless of which directory Gradle
+// is invoked from. Without this, bootRun uses the subproject directory
+// (agentos-service/) and misses the plugin JARs and YAML configs at the root.
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    // rootDir is agentos-service/ (subproject root); parentFile is agentos/ (composite root)
+    // where plugins/, agents/, aimodel/, aiprovider/, and data/ all live.
+    workingDir = rootDir.parentFile
 }
 
 // ========================================

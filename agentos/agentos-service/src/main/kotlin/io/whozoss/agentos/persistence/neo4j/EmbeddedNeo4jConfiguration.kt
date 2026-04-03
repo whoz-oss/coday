@@ -84,9 +84,8 @@ class EmbeddedNeo4jConfiguration(
         val service =
             DatabaseManagementServiceBuilder(dbDir)
                 .setConfig(BoltConnector.enabled, true)
-                // Port 0 → OS assigns a free port; avoids conflict with any existing Neo4j
-                .setConfig(BoltConnector.listen_address, SocketAddress("localhost", 0))
-                .setConfig(BoltConnector.advertised_address, SocketAddress("localhost", 0))
+                .setConfig(BoltConnector.listen_address, SocketAddress("localhost", props.embeddedBoltPort))
+                .setConfig(BoltConnector.advertised_address, SocketAddress("localhost", props.embeddedBoltPort))
                 .setConfig(GraphDatabaseSettings.transaction_timeout, Duration.ofSeconds(30))
                 .build()
 

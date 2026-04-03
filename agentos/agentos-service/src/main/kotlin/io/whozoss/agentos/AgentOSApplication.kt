@@ -16,5 +16,12 @@ import org.springframework.boot.runApplication
 class AgentOSApplication
 
 fun main(args: Array<String>) {
+    // Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers
+    // SLF4JLogBridge as an SLF4J 2.0 service provider. When it wins the
+    // ServiceLoader race over Logback, Spring Boot's LogbackLoggingSystem fails:
+    //   "LoggerFactory is not a Logback LoggerContext"
+    // Setting slf4j.provider before any logging initialisation forces SLF4J
+    // to use Logback regardless of classpath ordering or IDE classpath assembly.
+    System.setProperty("slf4j.provider", "ch.qos.logback.classic.spi.LogbackServiceProvider")
     runApplication<AgentOSApplication>(*args)
 }

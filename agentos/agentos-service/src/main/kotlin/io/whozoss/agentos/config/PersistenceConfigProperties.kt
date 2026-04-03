@@ -34,4 +34,11 @@ data class PersistenceConfigProperties(
      * Persistence mode: 'filesystem' (default) or 'in-memory'.
      */
     val mode: String = "filesystem",
+    /**
+     * Bolt port for the embedded Neo4j engine.
+     * Defaults to 7688 to avoid conflicting with a standalone Neo4j instance
+     * that typically runs on 7687. Set to 0 for a random OS-assigned port.
+     * Only used when mode=embedded-neo4j.
+     */
+    val embeddedBoltPort: Int = 7688,
 )
