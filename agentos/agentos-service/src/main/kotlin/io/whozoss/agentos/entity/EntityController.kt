@@ -3,6 +3,7 @@ package io.whozoss.agentos.entity
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.entity.Entity
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -102,7 +103,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     )
     @ResponseStatus(HttpStatus.CREATED)
     open fun create(
-        @RequestBody resource: ResourceType,
+        @Valid @RequestBody resource: ResourceType,
     ): ResourceType = toResource(service.create(toDomain(resource)))
 
     /**
@@ -115,7 +116,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     )
     open fun update(
         @PathVariable id: UUID,
-        @RequestBody resource: ResourceType,
+        @Valid @RequestBody resource: ResourceType,
     ): ResourceType {
         service.findById(id)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found: $id")
