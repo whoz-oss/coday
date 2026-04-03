@@ -24,6 +24,13 @@ The SDK is the stable public API. Plugins depend only on `agentos-sdk` (via `com
 | `plugin` | `PluginService` — PF4J plugin loading and management |
 | `tool` | `ToolRegistry` / `ToolExecutorService` / `ToolController` — tool registry and execution |
 
+## Kotlin Style Conventions
+
+Two rules apply across the entire codebase:
+
+- **Prefer `when` over chained `if`/`else if`** — even for simple two-branch conditions, `when` is more readable and scales better as cases are added.
+- **Avoid early returns in the middle of a method** — structure the logic so the single return is at the end (or use expression bodies). Early returns increase cyclomatic complexity and make control flow harder to follow.
+
 ## Package Map (`agentos-sdk`)
 
 | Package | Responsibility |
