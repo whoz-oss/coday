@@ -96,13 +96,16 @@
   }
 
   ::ng-deep .mat-drawer {
-    width: 35vw;
-    max-width: 90vw;
+    // Use % instead of vw so the drawer is sized relative to the content area,
+    // not the full viewport — avoids overflow when the left sidenav is open.
+    width: 35%;
+    min-width: 280px;
+    max-width: 480px;
     box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
 
     @media (max-width: 768px) {
-      width: 100vw; // Mobile: full screen
-      max-width: 100vw;
+      width: 100%; // Mobile: fill the content area
+      max-width: 100%;
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
   }
