@@ -110,14 +110,13 @@ class AgentServiceImpl(
     ): String? =
         context?.let {
             val namespace = namespaceService.findById(it.namespaceId)
-            val namespaceBlock =
-                buildString {
-                    appendLine()
-                    appendLine("## Context: ${namespace?.name ?: it.namespaceId}")
-                    if (!namespace?.description.isNullOrBlank()) {
-                        appendLine(namespace!!.description!!)
-                    }
-                }.trimEnd()
+            val namespaceBlock = buildString {
+                appendLine()
+                appendLine("""## Context: ${namespace?.name ?: it.namespaceId}""")
+                if (!namespace?.description.isNullOrBlank()) {
+                    appendLine(namespace!!.description!!)
+                }
+            }.trimEnd()
 
             if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
         } ?: model.instructions

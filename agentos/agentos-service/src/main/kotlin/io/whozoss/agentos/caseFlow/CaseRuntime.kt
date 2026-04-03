@@ -282,7 +282,11 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll()) { !interruptRequested.get() }
+                    runAgent(
+                        event.agentName,
+                        eventList.getAll(),
+                        { !interruptRequested.get() },
+                    )
                     return
                 }
 
