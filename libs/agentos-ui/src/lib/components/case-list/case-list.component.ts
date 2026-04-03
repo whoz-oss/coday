@@ -27,7 +27,7 @@ export class CaseListComponent {
 
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
-  protected readonly cases$: Observable<Case[]> = this.caseController.listByParent1(this.namespaceId)
+  protected readonly cases$: Observable<Case[]> = this.caseController.listByParent2(this.namespaceId)
 
   protected inputValue = signal('')
 
@@ -50,11 +50,11 @@ export class CaseListComponent {
       .post<Case>(`${this.config.basePath}/api/cases`, { namespaceId: this.namespaceId, metadata: {} })
       .subscribe((createdCase) => {
         this.inputValue.set('')
-        this.router.navigate(['/agentos', this.namespaceId, 'cases', createdCase.id])
+        this.router.navigate(['/agentos', this.namespaceId, 'cases', createdCase.id ?? ''])
       })
   }
 
   protected trackById(_index: number, c: Case): string {
-    return c.id
+    return c.id ?? ''
   }
 }

@@ -125,32 +125,32 @@ export class CaseControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public create1(
+  public create2(
     _case: Case,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Case>
-  public create1(
+  public create2(
     _case: Case,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Case>>
-  public create1(
+  public create2(
     _case: Case,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Case>>
-  public create1(
+  public create2(
     _case: Case,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (_case === null || _case === undefined) {
-      throw new Error('Required parameter _case was null or undefined when calling create1.')
+      throw new Error('Required parameter _case was null or undefined when calling create2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -202,32 +202,32 @@ export class CaseControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public delete1(
+  public delete2(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<any>
-  public delete1(
+  public delete2(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<any>>
-  public delete1(
+  public delete2(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<any>>
-  public delete1(
+  public delete2(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling delete1.')
+      throw new Error('Required parameter id was null or undefined when calling delete2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -271,32 +271,32 @@ export class CaseControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getById1(
+  public getById2(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Case>
-  public getById1(
+  public getById2(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Case>>
-  public getById1(
+  public getById2(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Case>>
-  public getById1(
+  public getById2(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling getById1.')
+      throw new Error('Required parameter id was null or undefined when calling getById2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -340,32 +340,32 @@ export class CaseControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Case>>
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Case>>>
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Case>>>
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIds1.')
+      throw new Error('Required parameter requestBody was null or undefined when calling getByIds2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -403,6 +403,75 @@ export class CaseControllerService extends BaseService {
     return this.httpClient.request<Array<Case>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: requestBody,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param caseId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public interruptCase(
+    caseId: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public interruptCase(
+    caseId: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public interruptCase(
+    caseId: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public interruptCase(
+    caseId: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling interruptCase.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/interrupt`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -486,32 +555,32 @@ export class CaseControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Case>>
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Case>>>
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Case>>>
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParent1.')
+      throw new Error('Required parameter parentId was null or undefined when calling listByParent2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -551,102 +620,33 @@ export class CaseControllerService extends BaseService {
   }
 
   /**
-   * @param caseId
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public stopCase(
-    caseId: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any>
-  public stopCase(
-    caseId: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<any>>
-  public stopCase(
-    caseId: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<any>>
-  public stopCase(
-    caseId: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (caseId === null || caseId === undefined) {
-      throw new Error('Required parameter caseId was null or undefined when calling stopCase.')
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/stop`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<any>('post', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
    * @param id
    * @param _case
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public update1(
+  public update2(
     id: string,
     _case: Case,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Case>
-  public update1(
+  public update2(
     id: string,
     _case: Case,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Case>>
-  public update1(
+  public update2(
     id: string,
     _case: Case,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Case>>
-  public update1(
+  public update2(
     id: string,
     _case: Case,
     observe: any = 'body',
@@ -654,10 +654,10 @@ export class CaseControllerService extends BaseService {
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling update1.')
+      throw new Error('Required parameter id was null or undefined when calling update2.')
     }
     if (_case === null || _case === undefined) {
-      throw new Error('Required parameter _case was null or undefined when calling update1.')
+      throw new Error('Required parameter _case was null or undefined when calling update2.')
     }
 
     let localVarHeaders = this.defaultHeaders

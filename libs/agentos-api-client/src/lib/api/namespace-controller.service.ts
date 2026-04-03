@@ -34,105 +34,36 @@ export class NamespaceControllerService extends BaseService {
   }
 
   /**
-   * @param id
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public _delete(
-    id: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any>
-  public _delete(
-    id: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<any>>
-  public _delete(
-    id: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<any>>
-  public _delete(
-    id: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling _delete.')
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
    * @param namespace
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public create(
+  public create1(
     namespace: Namespace,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Namespace>
-  public create(
+  public create1(
     namespace: Namespace,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Namespace>>
-  public create(
+  public create1(
     namespace: Namespace,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Namespace>>
-  public create(
+  public create1(
     namespace: Namespace,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (namespace === null || namespace === undefined) {
-      throw new Error('Required parameter namespace was null or undefined when calling create.')
+      throw new Error('Required parameter namespace was null or undefined when calling create1.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -184,32 +115,101 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getById(
+  public delete1(
+    id: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public delete1(
+    id: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public delete1(
+    id: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public delete1(
+    id: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling delete1.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param id
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getById1(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Namespace>
-  public getById(
+  public getById1(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Namespace>>
-  public getById(
+  public getById1(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Namespace>>
-  public getById(
+  public getById1(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling getById.')
+      throw new Error('Required parameter id was null or undefined when calling getById1.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -253,32 +253,32 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getByIds(
+  public getByIds1(
     requestBody: Array<string>,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Namespace>>
-  public getByIds(
+  public getByIds1(
     requestBody: Array<string>,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Namespace>>>
-  public getByIds(
+  public getByIds1(
     requestBody: Array<string>,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Namespace>>>
-  public getByIds(
+  public getByIds1(
     requestBody: Array<string>,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIds.')
+      throw new Error('Required parameter requestBody was null or undefined when calling getByIds1.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -329,22 +329,22 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listAll(
+  public listAll1(
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Namespace>>
-  public listAll(
+  public listAll1(
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Namespace>>>
-  public listAll(
+  public listAll1(
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Namespace>>>
-  public listAll(
+  public listAll1(
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -390,32 +390,32 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByParent(
+  public listByParent1(
     parentId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Namespace>>
-  public listByParent(
+  public listByParent1(
     parentId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Namespace>>>
-  public listByParent(
+  public listByParent1(
     parentId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Namespace>>>
-  public listByParent(
+  public listByParent1(
     parentId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParent.')
+      throw new Error('Required parameter parentId was null or undefined when calling listByParent1.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -460,28 +460,28 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public update(
+  public update1(
     id: string,
     namespace: Namespace,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Namespace>
-  public update(
+  public update1(
     id: string,
     namespace: Namespace,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Namespace>>
-  public update(
+  public update1(
     id: string,
     namespace: Namespace,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Namespace>>
-  public update(
+  public update1(
     id: string,
     namespace: Namespace,
     observe: any = 'body',
@@ -489,10 +489,10 @@ export class NamespaceControllerService extends BaseService {
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling update.')
+      throw new Error('Required parameter id was null or undefined when calling update1.')
     }
     if (namespace === null || namespace === undefined) {
-      throw new Error('Required parameter namespace was null or undefined when calling update.')
+      throw new Error('Required parameter namespace was null or undefined when calling update1.')
     }
 
     let localVarHeaders = this.defaultHeaders
