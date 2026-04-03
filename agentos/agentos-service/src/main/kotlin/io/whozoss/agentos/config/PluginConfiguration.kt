@@ -70,12 +70,19 @@ private class NullSafeSpringPluginManager(pluginsRoot: Path) : SpringPluginManag
 private class NullSafeSpringExtensionFactory(
     private val manager: SpringPluginManager,
 ) : SpringExtensionFactory(manager) {
-    override fun <T : Any?> create(extensionClass: Class<T>): T? =
-        if (manager.whichPlugin(extensionClass) == null) {
-            // No plugin wrapper — extension lives on the app classpath, not in a JAR.
-            // SpringExtensionFactory.nameOf() would NPE here, so bypass it entirely.
+    override fun <T : Any?> create(extensionClass: Class<T>): T? {
+        // SpringExtensionFactory.create() calls nameOf() which calls
+        // plugin.getWrapper().getPluginId(). When the extension was discovered
+        // via the app-classpath extensions.idx (e.g. from pf4j-spring itself)
+        // rather than from a plugin JAR, getWrapper() returns null and NPEs.
+        //
+        // We replicate the plugin-lookup that SpringExtensionFactory does and
+        // short-circuit to the root ApplicationContext when no owning plugin
+        // wrapper exists, avoiding the NPE without catching exceptions broadly.
+        val wrapper = manager.whichPlugin(extensionClass)
+        return if (wrapper?.plugin?.wrapper == null) {
             logger.debug {
-                "Extension ${extensionClass.name} has no plugin wrapper; " +
+                "Extension ${extensionClass.name} has no initialised plugin wrapper; " +
                     "instantiating via root ApplicationContext"
             }
             manager.applicationContext.autowireCapableBeanFactory
@@ -83,6 +90,7 @@ private class NullSafeSpringExtensionFactory(
         } else {
             super.create(extensionClass)
         }
+    }
 
     companion object : KLogging()
 }
