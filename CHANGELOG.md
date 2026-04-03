@@ -1,3 +1,16 @@
+## 0.112.0 (2026-04-03)
+
+### 🚀 Features
+
+- #715 GIT_WORKTREE — postCreateScript hook on worktree creation ([#715](https://github.com/whoz-oss/coday/issues/715))
+- #715 review ([#715](https://github.com/whoz-oss/coday/issues/715))
+- #715 GIT_WORKTREE — postCreateScript hook on worktree creation ([#717](https://github.com/whoz-oss/coday/pull/717), [#715](https://github.com/whoz-oss/coday/issues/715))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+- louis-alexandre.celton @la-celton-whoz
+
 ## 0.111.1 (2026-04-02)
 
 ### 🩹 Fixes
