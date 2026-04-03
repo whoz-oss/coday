@@ -81,9 +81,6 @@ class UserController(
 
     /**
      * GET /api/users/me — return the user record for the current caller.
-     *
-     * Delegates to [SecurityService.resolveCurrentUser] so the resolution logic
-     * (OS username in local mode, JWT email in auth mode) is centralised.
      */
     @GetMapping("/me")
     @ResponseStatus(HttpStatus.OK)

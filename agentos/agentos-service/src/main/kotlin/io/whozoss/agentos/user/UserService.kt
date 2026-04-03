@@ -22,4 +22,5 @@ interface UserService : EntityService<User, String> {
      * @return The matching user, or null if not found.
      */
     fun findByExternalId(externalId: String): User?
+
 }
