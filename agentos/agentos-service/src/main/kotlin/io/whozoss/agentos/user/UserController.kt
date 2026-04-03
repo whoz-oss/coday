@@ -3,7 +3,6 @@ package io.whozoss.agentos.user
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -29,7 +28,7 @@ import java.util.UUID
  *
  * Additional endpoints:
  *   GET    /api/users    — list all users
- *   GET    /api/users/me — resolve the caller’s own user record via [SecurityService]
+ *   GET    /api/users/me — resolve the caller's own user record
  */
 @RestController
 @RequestMapping(
@@ -38,7 +37,6 @@ import java.util.UUID
 )
 class UserController(
     private val userService: UserService,
-    private val securityService: SecurityService,
 ) : EntityController<User, String, UserResource>(userService) {
 
     // -------------------------------------------------------------------------
@@ -81,13 +79,15 @@ class UserController(
 
     /**
      * GET /api/users/me — return the user record for the current caller.
+     *
+     * Identity resolution is fully encapsulated in [UserService.getCurrentUser].
      */
     @GetMapping("/me")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Get the current user's profile")
     fun getMe(): UserResource {
         logger.info { "resolving current user" }
-        return toResource(securityService.resolveCurrentUser())
+        return toResource(userService.getCurrentUser())
     }
 
     companion object : KLogging()

@@ -5,7 +5,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.security.SecurityService
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
@@ -22,7 +22,7 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-    private val securityService: SecurityService,
+    private val userService: UserService,
 ) : EntityController<Case, UUID, CaseResource>(caseService) {
 
     // -------------------------------------------------------------------------
@@ -56,7 +56,7 @@ class CaseController(
         @RequestBody request: AddMessageRequest,
     ) {
         logger.info { "Adding message to case: $caseId" }
-        val user = securityService.resolveCurrentUser()
+        val user = userService.getCurrentUser()
         val userActor = Actor(id = user.metadata.id.toString(), displayName = user.email, role = ActorRole.USER)
         caseService.addMessage(
             caseId = caseId,

@@ -1,8 +1,5 @@
 package io.whozoss.agentos.security
 
-import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
@@ -10,20 +7,19 @@ import org.springframework.web.server.ResponseStatusException
 /**
  * Local-mode implementation of [SecurityService].
  *
- * Resolves the current user from the OS username (`user.name` system property,
+ * Resolves the current identity from the OS username (`user.name` system property,
  * with fallback to `USER` / `USERNAME` environment variables for Unix/macOS and Windows).
- * On first access, a [User] record is auto-created and persisted so that the rest
- * of AgentOS can reference a stable UUID for this identity.
  *
  * Rejects usernames that belong to system/service accounts (root, daemon, www-data, etc.)
  * to prevent a server running under a shared OS account from silently impersonating a
  * real user — mirrors the same guard in Coday's Express server.
+ *
+ * User persistence (lookup / auto-create) is handled upstream by
+ * [io.whozoss.agentos.user.UserService.resolveOrCreateByExternalId].
  */
-class LocalSecurityService(
-    private val userService: UserService,
-) : SecurityService {
+class LocalSecurityService : SecurityService {
 
-    override fun resolveCurrentUser(): User {
+    override fun resolveCurrentIdentity(): String {
         val username = resolveOsUsername()
 
         if (username in FORBIDDEN_USERNAMES) {
@@ -34,7 +30,7 @@ class LocalSecurityService(
             )
         }
 
-        return userService.findByExternalId(username) ?: createLocalUser(username)
+        return username
     }
 
     private fun resolveOsUsername(): String =
@@ -48,17 +44,6 @@ class LocalSecurityService(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "Cannot determine OS username",
             )
-
-    private fun createLocalUser(username: String): User {
-        logger.info { "[Security/local] Auto-creating user for OS username '$username'" }
-        val user = User(
-            metadata = EntityMetadata(),
-            externalId = username,
-            email = username,
-            firstname = username,
-        )
-        return userService.create(user)
-    }
 
     companion object : KLogging() {
         /**

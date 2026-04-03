@@ -6,7 +6,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.security.SecurityService
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
@@ -18,7 +17,7 @@ import java.util.UUID
  * - [UserController.toResource]  — domain → HTTP DTO mapping
  * - [UserController.toDomain]    — HTTP DTO → domain mapping
  * - [UserController.listAll]     — delegates to [UserService.findAll] and maps results
- * - [UserController.getMe]       — delegates to [SecurityService.resolveCurrentUser] and maps result
+ * - [UserController.getMe]       — delegates to [UserService.getCurrentUser] and maps result
  * - Inherited [EntityController] endpoints: getById (found / not-found),
  *   getByIds, create, update (found / not-found), delete (found / not-found)
  */
@@ -26,8 +25,7 @@ class UserControllerSpec : StringSpec({
     timeout = 5000
 
     val userService = mockk<UserService>()
-    val securityService = mockk<SecurityService>()
-    val controller = UserController(userService, securityService)
+    val controller = UserController(userService)
 
     fun user(
         id: UUID = UUID.randomUUID(),
@@ -122,14 +120,14 @@ class UserControllerSpec : StringSpec({
     // getMe
     // -------------------------------------------------------------------------
 
-    "getMe delegates to SecurityService and returns a UserResource" {
+    "getMe delegates to UserService.getCurrentUser and returns a UserResource" {
         val u = user(email = "me@example.com")
-        every { securityService.resolveCurrentUser() } returns u
+        every { userService.getCurrentUser() } returns u
 
         val result = controller.getMe()
 
         result shouldBe controller.toResource(u)
-        verify(exactly = 1) { securityService.resolveCurrentUser() }
+        verify(exactly = 1) { userService.getCurrentUser() }
     }
 
     // -------------------------------------------------------------------------

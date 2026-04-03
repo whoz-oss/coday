@@ -4,12 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.verify
-import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.web.context.request.RequestContextHolder
@@ -25,12 +19,6 @@ class AuthSecurityServiceTest : StringSpec({
     afterEach {
         RequestContextHolder.resetRequestAttributes()
     }
-
-    fun makeUser(email: String) = User(
-        metadata = EntityMetadata(),
-        externalId = email,
-        email = email,
-    )
 
     fun buildJwt(claims: Map<String, Any>): String {
         val header = Base64.getUrlEncoder().withoutPadding()
@@ -51,88 +39,62 @@ class AuthSecurityServiceTest : StringSpec({
 
     "extractEmailFromJwt returns email claim from valid CF JWT" {
         val jwt = buildJwt(mapOf("email" to "alice@example.com", "sub" to "user123"))
-        val service = AuthSecurityService(mockk(), objectMapper)
+        val service = AuthSecurityService(objectMapper)
 
         service.extractEmailFromJwt(jwt) shouldBe "alice@example.com"
     }
 
     "extractEmailFromJwt returns null when email claim is absent" {
         val jwt = buildJwt(mapOf("sub" to "user123"))
-        val service = AuthSecurityService(mockk(), objectMapper)
+        val service = AuthSecurityService(objectMapper)
 
         service.extractEmailFromJwt(jwt) shouldBe null
     }
 
     "extractEmailFromJwt returns null for malformed token" {
-        val service = AuthSecurityService(mockk(), objectMapper)
+        val service = AuthSecurityService(objectMapper)
 
         service.extractEmailFromJwt("not.a.jwt") shouldBe null
         service.extractEmailFromJwt("onlyone") shouldBe null
     }
 
     // -------------------------------------------------------------------------
-    // resolveCurrentUser — CF_Authorization header
+    // resolveCurrentIdentity — CF_Authorization header
     // -------------------------------------------------------------------------
 
-    "resolveCurrentUser resolves user from CF JWT header" {
+    "resolveCurrentIdentity returns email from CF JWT header" {
         val email = "bob@example.com"
         val jwt = buildJwt(mapOf("email" to email))
-        val user = makeUser(email)
-
-        val userService = mockk<UserService>()
-        every { userService.findByExternalId(email) } returns user
 
         setRequest { addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt) }
 
-        val service = AuthSecurityService(userService, objectMapper)
-        service.resolveCurrentUser() shouldBe user
+        val service = AuthSecurityService(objectMapper)
+        service.resolveCurrentIdentity() shouldBe email
     }
 
     // -------------------------------------------------------------------------
-    // resolveCurrentUser — x-forwarded-email fallback
+    // resolveCurrentIdentity — x-forwarded-email fallback
     // -------------------------------------------------------------------------
 
-    "resolveCurrentUser falls back to x-forwarded-email when CF header is absent" {
+    "resolveCurrentIdentity falls back to x-forwarded-email when CF header is absent" {
         val email = "carol@example.com"
-        val user = makeUser(email)
-
-        val userService = mockk<UserService>()
-        every { userService.findByExternalId(email) } returns user
 
         setRequest { addHeader(AuthSecurityService.X_FORWARDED_EMAIL_HEADER, email) }
 
-        val service = AuthSecurityService(userService, objectMapper)
-        service.resolveCurrentUser() shouldBe user
+        val service = AuthSecurityService(objectMapper)
+        service.resolveCurrentIdentity() shouldBe email
     }
 
     // -------------------------------------------------------------------------
-    // resolveCurrentUser — error cases
+    // resolveCurrentIdentity — error cases
     // -------------------------------------------------------------------------
 
-    "resolveCurrentUser throws 401 when no identity header is present" {
+    "resolveCurrentIdentity throws 401 when no identity header is present" {
         setRequest()
 
-        val service = AuthSecurityService(mockk(), objectMapper)
-        val ex = runCatching { service.resolveCurrentUser() }
+        val service = AuthSecurityService(objectMapper)
+        val ex = runCatching { service.resolveCurrentIdentity() }
             .exceptionOrNull() as? ResponseStatusException
         ex?.statusCode?.value() shouldBe HttpStatus.UNAUTHORIZED.value()
-    }
-
-    "resolveCurrentUser auto-creates user when email is resolved but not yet registered" {
-        val email = "unknown@example.com"
-        val jwt = buildJwt(mapOf("email" to email))
-        val createdUser = makeUser(email)
-
-        val userService = mockk<UserService>()
-        every { userService.findByExternalId(email) } returns null
-        every { userService.create(any()) } returns createdUser
-
-        setRequest { addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt) }
-
-        val service = AuthSecurityService(userService, objectMapper)
-        val result = service.resolveCurrentUser()
-
-        result shouldBe createdUser
-        verify(exactly = 1) { userService.create(match { it.externalId == email && it.email == email }) }
     }
 })
