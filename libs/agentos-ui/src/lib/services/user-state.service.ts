@@ -28,6 +28,7 @@ export class UserStateService {
     const existing = this.currentUser()
     if (!existing) throw new Error('Cannot update: current user not loaded')
 
+    if (!existing.id) throw new Error('Cannot update: current user has no id')
     const updated: User = { ...existing, ...patch }
     return this.userController.update(existing.id, updated).pipe(tap((user) => this.currentUser.set(user)))
   }

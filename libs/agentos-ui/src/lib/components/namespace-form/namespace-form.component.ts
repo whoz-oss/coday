@@ -83,7 +83,7 @@ export class NamespaceFormComponent implements OnInit {
     this.isSubmitting.set(true)
 
     const call$ = this.isEditMode()
-      ? this.namespaceController.update1(this.existingNamespace!.id, {
+      ? this.namespaceController.update1(this.existingNamespace!.id ?? '', {
           ...this.existingNamespace!,
           name: this.nameControl.value.trim(),
           description: this.descriptionControl.value.trim() || undefined,

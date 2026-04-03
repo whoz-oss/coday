@@ -40,7 +40,7 @@ export class NamespaceListComponent {
     map((namespaces) =>
       namespaces.map(
         (ns): EntityListItem => ({
-          id: ns.id,
+          id: ns.id ?? '',
           name: ns.name,
           description: ns.description,
         })
@@ -53,7 +53,7 @@ export class NamespaceListComponent {
 
   constructor() {
     this.namespaces$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((namespaces) => {
-      this.namespacesById = new Map(namespaces.map((ns) => [ns.id, ns]))
+      this.namespacesById = new Map(namespaces.map((ns) => [ns.id ?? '', ns]))
     })
   }
 
@@ -68,14 +68,14 @@ export class NamespaceListComponent {
   }
 
   protected navigateToEdit(ns: Namespace): void {
-    this.router.navigate(['/agentos/namespaces', ns.id, 'edit'])
+    this.router.navigate(['/agentos/namespaces', ns.id ?? '', 'edit'])
   }
 
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {
     this.namespaceController
-      .delete1(ns.id)
+      .delete1(ns.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }

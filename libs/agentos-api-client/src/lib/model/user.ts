@@ -11,6 +11,7 @@
 export interface User {
   id?: string
   email: string
+  externalId?: string
   firstname?: string
   lastname?: string
   bio?: string
