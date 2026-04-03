@@ -1,3 +1,14 @@
+## 0.114.1 (2026-04-03)
+
+### 🩹 Fixes
+
+- #720 FABs use position:absolute so sidenav doesn't hide them ([#721](https://github.com/whoz-oss/coday/pull/721), [#720](https://github.com/whoz-oss/coday/issues/720))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.114.0 (2026-04-03)
 
 ### 🚀 Features
