@@ -1,0 +1,50 @@
+<div class="namespace-form">
+  <header class="namespace-form__header">
+    <button class="namespace-form__back" type="button" (click)="cancel()" title="Back to namespaces">
+      <span class="namespace-form__back-icon">&#8592;</span>
+      Namespaces
+    </button>
+    <h1 class="namespace-form__title">{{ isEditMode() ? 'Edit namespace' : 'New namespace' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="namespace-form__loading">Loading…</p>
+  } @else {
+    <form class="namespace-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-name">Name <span aria-hidden="true">*</span></label>
+        <input
+          id="ns-name"
+          class="namespace-form__input"
+          type="text"
+          placeholder="Namespace name"
+          [formControl]="nameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-description">Description</label>
+        <input
+          id="ns-description"
+          class="namespace-form__input"
+          type="text"
+          placeholder="Optional description"
+          [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="namespace-form__actions">
+        <button
+          class="namespace-form__btn namespace-form__btn--primary"
+          type="submit"
+          [disabled]="nameControl.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="namespace-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

@@ -356,6 +356,13 @@ export class GenericOAuth {
     this.interactor.debug(`[OAuth:${this.integrationName}] saved tokens to storage`)
   }
 
+  /** Clears tokens from memory and storage, forcing a fresh OAuth flow on next request */
+  invalidateTokens(): void {
+    this.tokenData = null
+    this.clearTokensFromStorage()
+    this.interactor.debug(`[OAuth:${this.integrationName}] tokens invalidated`)
+  }
+
   private clearTokensFromStorage(): void {
     const oauth2Config =
       this.userService.config.projects?.[this.resolvedProjectName]?.integration?.[this.integrationName]?.oauth2

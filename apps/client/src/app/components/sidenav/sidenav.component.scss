@@ -40,6 +40,10 @@ $section-toggle-height: 50px;
   mat-sidenav-content {
     width: 100%;
     margin: 0 !important;
+
+    @media (min-width: 1024px) {
+      min-width: 0;
+    }
   }
 }
 
