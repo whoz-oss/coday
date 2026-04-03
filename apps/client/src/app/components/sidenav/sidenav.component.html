@@ -296,7 +296,7 @@
                 </a>
                 @if (expandedSections['preview']) {
                   <div class="section-content">
-                    <app-preview-panel></app-preview-panel>
+                    <app-preview-panel [projectName]="selectedProjectName()!"></app-preview-panel>
                   </div>
                 }
               </div>

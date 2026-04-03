@@ -1,3 +1,52 @@
+## 0.111.1 (2026-04-02)
+
+### 🩹 Fixes
+
+- regenerate lockfile for Angular v21 resolution ([98e3060d](https://github.com/whoz-oss/coday/commit/98e3060d))
+- regenerate lockfile for Angular v21 resolution ([#709](https://github.com/whoz-oss/coday/pull/709))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.111.0 (2026-04-02)
+
+### 🚀 Features
+
+- multiple preview entries per project ([#699](https://github.com/whoz-oss/coday/pull/699), [#698](https://github.com/whoz-oss/coday/issues/698))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.110.0 (2026-04-02)
+
+### 🚀 Features
+
+- resolve {{projectRoot}} token in MCP server config fields ([efebd432](https://github.com/whoz-oss/coday/commit/efebd432))
+- resolve {{projectRoot}} token in MCP server config fields ([#706](https://github.com/whoz-oss/coday/pull/706))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.109.0 (2026-04-02)
+
+### 🚀 Features
+
+- force build ([11b8c6f1](https://github.com/whoz-oss/coday/commit/11b8c6f1))
+
+### 🩹 Fixes
+
+- add GITHUB_TOKEN for pnpm install in macos host ([#705](https://github.com/whoz-oss/coday/pull/705))
+- force build ([d540142f](https://github.com/whoz-oss/coday/commit/d540142f))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.108.1 (2026-04-01)
 
 ### 🩹 Fixes

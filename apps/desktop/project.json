@@ -103,7 +103,7 @@
       "dependsOn": ["build-all"],
       "options": {
         "commands": [
-          "electron-builder"
+          "electron-builder --publish never"
         ],
         "cwd": "{projectRoot}"
       }
