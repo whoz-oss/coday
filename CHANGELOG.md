@@ -1,3 +1,13 @@
+## 0.113.1 (2026-04-03)
+
+### 🩹 Fixes
+
+- desktop-twin wrong configs ([#722](https://github.com/whoz-oss/coday/pull/722))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.113.0 (2026-04-03)
 
 ### 🚀 Features
