@@ -1,5 +1,5 @@
 <!-- Floating Action Button to toggle sidenav -->
-@if (!isOpen() && !isDesktop()) {
+@if (!isOpen()) {
   <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
   </button>
@@ -29,11 +29,9 @@
   >
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
-      @if (!isDesktop()) {
-        <button mat-icon-button (click)="close()" title="Close menu">
-          <mat-icon>chevron_left</mat-icon>
-        </button>
-      }
+      <button mat-icon-button (click)="close()" title="Close menu">
+        <mat-icon>chevron_left</mat-icon>
+      </button>
       <img
         [attr.src]="'CODAY-Logo.png'"
         alt="coday"

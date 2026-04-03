@@ -64,48 +64,30 @@ $section-toggle-height: 50px;
   flex-direction: column !important;
 }
 
-// Shared glass circle treatment for floating FABs on mobile
-@mixin fab-glass-mobile {
-  @media (max-width: 1023px) {
-    width: 40px !important;
-    height: 40px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
-    line-height: 1 !important;
-    background: var(--glass-bg) !important;
-    backdrop-filter: var(--glass-backdrop-blur) !important;
-    -webkit-backdrop-filter: var(--glass-backdrop-blur) !important;
-    border: 1px solid var(--glass-border) !important;
-    box-shadow: var(--glass-shadow) !important;
-    border-radius: 50% !important;
-
-    mat-icon {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      line-height: 1 !important;
-    }
-  }
+// Shared style for floating FABs (hamburger + new thread)
+%fab-glass {
+  position: fixed !important;
+  z-index: 1500 !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-backdrop-blur) !important;
+  -webkit-backdrop-filter: var(--glass-backdrop-blur) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow) !important;
 }
 
-// Floating toggle button (FAB)
 .sidenav-toggle-btn {
-  position: fixed !important;
+  @extend %fab-glass;
   top: 1rem !important;
   left: 1rem !important;
-  z-index: 1500 !important;
-
-  @include fab-glass-mobile;
 }
 
-// Floating new thread button
 .sidenav-new-thread-btn {
-  position: fixed !important;
+  @extend %fab-glass;
   top: calc(1rem + 40px + 0.5rem) !important;
   left: 1rem !important;
-  z-index: 1500 !important;
 
   mat-icon {
     color: var(--color-primary) !important;
@@ -113,13 +95,7 @@ $section-toggle-height: 50px;
 
   &:disabled {
     opacity: 0.5 !important;
-
-    mat-icon {
-      color: var(--color-text-secondary) !important;
-    }
   }
-
-  @include fab-glass-mobile;
 }
 
 // Floating logo button at bottom
@@ -768,13 +744,13 @@ $section-toggle-height: 50px;
   }
 
   .sidenav-toggle-btn {
-    left: 0.75rem !important;
     top: 0.75rem !important;
+    left: 0.75rem !important;
   }
 
   .sidenav-new-thread-btn {
-    left: 0.75rem !important;
     top: calc(0.75rem + 40px + 0.5rem) !important;
+    left: 0.75rem !important;
   }
 
   .error-notification {
