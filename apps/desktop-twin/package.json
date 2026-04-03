@@ -24,6 +24,20 @@
       "output": "release"
     },
     "electronVersion": "38.3.0",
+    "extraResources": [
+      {
+        "from": "macos/project.template.yaml",
+        "to": "project.template.yaml"
+      },
+      {
+        "from": "macos/vault-template",
+        "to": "vault-template"
+      },
+      {
+        "from": "macos/schedulers",
+        "to": "schedulers"
+      }
+    ],
     "files": [
       "dist/**/*",
       "assets/**/*"

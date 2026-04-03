@@ -214,12 +214,13 @@ function getResolvedTwinPath(): string {
  * Copies from the bundled vault-template if available, otherwise creates a basic structure.
  */
 function initializeVault(vaultPath: string): void {
-  if (fs.existsSync(vaultPath) && fs.readdirSync(vaultPath).length > 0) {
-    log('INFO', 'Vault directory already exists and is not empty:', vaultPath)
-    return
-  }
+  const vaultExists = fs.existsSync(vaultPath) && fs.readdirSync(vaultPath).length > 0
 
-  log('INFO', 'Initializing vault at:', vaultPath)
+  log(
+    'INFO',
+    vaultExists ? 'Vault directory exists, ensuring coday/ folder is present:' : 'Initializing vault at:',
+    vaultPath
+  )
   fs.mkdirSync(vaultPath, { recursive: true })
 
   // Try to find bundled vault-template (in packaged app)
@@ -238,10 +239,21 @@ function initializeVault(vaultPath: string): void {
   }
 
   if (templateDir) {
-    log('INFO', 'Copying vault template from:', templateDir)
-    copyDirRecursive(templateDir, vaultPath)
+    if (!vaultExists) {
+      // Brand-new vault: copy the full template (all dirs)
+      log('INFO', 'Copying full vault template from:', templateDir)
+      copyDirRecursive(templateDir, vaultPath)
+    } else {
+      // Pre-existing vault: only copy the coday/ subfolder, non-destructively
+      const codayTemplateSrc = join(templateDir, 'coday')
+      if (fs.existsSync(codayTemplateSrc)) {
+        log('INFO', 'Copying coday/ subfolder non-destructively from:', codayTemplateSrc)
+        copyDirNonDestructive(codayTemplateSrc, join(vaultPath, 'coday'))
+      }
+    }
 
     // Rename coday.template.yaml to coday.yaml and substitute placeholders
+    // (applies for both new and pre-existing vaults; guarded by coday.yaml absence)
     const templateYaml = join(vaultPath, 'coday', 'coday.template.yaml')
     const targetYaml = join(vaultPath, 'coday', 'coday.yaml')
     if (fs.existsSync(templateYaml) && !fs.existsSync(targetYaml)) {
@@ -295,6 +307,26 @@ function copyDirRecursive(src: string, dest: string): void {
 }
 
 /**
+ * Recursively copy a directory, skipping files that already exist at the destination.
+ * Directories are always created if missing. Existing files are never overwritten.
+ */
+function copyDirNonDestructive(src: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true })
+  const entries = fs.readdirSync(src, { withFileTypes: true })
+  for (const entry of entries) {
+    // Skip template files — they are meant to be processed, not copied raw
+    if (entry.name.endsWith('.template.yaml') || entry.name.endsWith('.template.yml')) continue
+    const srcPath = join(src, entry.name)
+    const destPath = join(dest, entry.name)
+    if (entry.isDirectory()) {
+      copyDirNonDestructive(srcPath, destPath)
+    } else if (!fs.existsSync(destPath)) {
+      fs.copyFileSync(srcPath, destPath)
+    }
+  }
+}
+
+/**
  * Copy scheduler YAML files from src to dest, rewriting the createdBy field
  * to match the current OS username so the user can see and manage them.
  */
@@ -322,10 +354,68 @@ function copySchedulersWithOwner(src: string, dest: string): void {
 }
 
 /**
- * Apply stored Google Calendar credentials into an existing project.yaml.
- * Only replaces placeholder values — will not overwrite real credentials.
+ * Apply Slack config into the live coday.yaml inside the vault.
+ * previousConfig must be read BEFORE the new config is stored.
+ * Handles both cases: replacing placeholders (1st time) and replacing existing values (updates).
  */
-function applyGoogleCalendarConfigToProject(config: GoogleCalendarConfig): void {
+function applySlackConfigToVault(config: SlackConfig, previousConfig: SlackConfig): void {
+  const vaultPath = getResolvedTwinPath()
+  const codayYaml = join(vaultPath, 'coday', 'coday.yaml')
+
+  if (!fs.existsSync(codayYaml)) {
+    log('WARN', 'applySlackConfigToVault: coday.yaml not found at', codayYaml)
+    return
+  }
+
+  try {
+    let content = fs.readFileSync(codayYaml, 'utf8')
+    let changed = false
+
+    if (config.webhookUrl) {
+      // Try replacing the previous real value first, then fall back to the placeholder
+      const candidates = [...new Set([previousConfig.webhookUrl, 'SLACK_NOTIFY_WEBHOOK_URL'].filter(Boolean))]
+      for (const candidate of candidates) {
+        if (content.includes(candidate) && candidate !== config.webhookUrl) {
+          content = content.replaceAll(candidate, config.webhookUrl)
+          changed = true
+          log('INFO', `Replaced "${candidate}" with new webhookUrl in coday.yaml`)
+          break
+        }
+      }
+    }
+
+    if (config.userId) {
+      const candidates = [...new Set([previousConfig.userId, 'SLACK_USER_ID'].filter(Boolean))]
+      for (const candidate of candidates) {
+        if (content.includes(candidate) && candidate !== config.userId) {
+          content = content.replaceAll(candidate, config.userId)
+          changed = true
+          log('INFO', `Replaced "${candidate}" with new userId in coday.yaml`)
+          break
+        }
+      }
+    }
+
+    if (changed) {
+      fs.writeFileSync(codayYaml, content, 'utf8')
+      log('INFO', 'Slack config applied to coday.yaml')
+    } else {
+      log('INFO', 'No changes needed in coday.yaml for Slack config')
+    }
+  } catch (error) {
+    log('ERROR', 'Failed to apply Slack config to coday.yaml:', error)
+  }
+}
+
+/**
+ * Apply Google Calendar credentials into an existing project.yaml.
+ * Uses text-based substitution to safely replace placeholder values or
+ * update existing credentials without disturbing the rest of the YAML structure.
+ * Handles two cases:
+ *   1. Placeholder values (GOOGLE_OAUTH2_CLIENT_ID / GOOGLE_OAUTH2_CLIENT_SECRET) → replaced in-place
+ *   2. Previously stored credentials → replaced with new values
+ */
+function applyGoogleCalendarConfigToProject(config: GoogleCalendarConfig, previousConfig: GoogleCalendarConfig): void {
   const os = require('os') as typeof import('os')
   const configFile = join(os.homedir(), '.coday', 'projects', 'CodayTwin', 'project.yaml')
 
@@ -338,22 +428,35 @@ function applyGoogleCalendarConfigToProject(config: GoogleCalendarConfig): void 
     let content = fs.readFileSync(configFile, 'utf8')
     let changed = false
 
-    if (config.clientId && content.includes('GOOGLE_OAUTH2_CLIENT_ID')) {
-      content = content.replaceAll('GOOGLE_OAUTH2_CLIENT_ID', config.clientId)
-      changed = true
-      log('INFO', 'Substituted GOOGLE_OAUTH2_CLIENT_ID in project.yaml')
+    if (config.clientId) {
+      const candidates = [...new Set([previousConfig.clientId, 'GOOGLE_OAUTH2_CLIENT_ID'].filter(Boolean))]
+      for (const candidate of candidates) {
+        if (content.includes(candidate) && candidate !== config.clientId) {
+          content = content.replaceAll(candidate, config.clientId)
+          changed = true
+          log('INFO', `Replaced "${candidate}" with new clientId in project.yaml`)
+          break
+        }
+      }
     }
-    if (config.clientSecret && content.includes('GOOGLE_OAUTH2_CLIENT_SECRET')) {
-      content = content.replaceAll('GOOGLE_OAUTH2_CLIENT_SECRET', config.clientSecret)
-      changed = true
-      log('INFO', 'Substituted GOOGLE_OAUTH2_CLIENT_SECRET in project.yaml')
+
+    if (config.clientSecret) {
+      const candidates = [...new Set([previousConfig.clientSecret, 'GOOGLE_OAUTH2_CLIENT_SECRET'].filter(Boolean))]
+      for (const candidate of candidates) {
+        if (content.includes(candidate) && candidate !== config.clientSecret) {
+          content = content.replaceAll(candidate, config.clientSecret)
+          changed = true
+          log('INFO', `Replaced "${candidate}" with new clientSecret in project.yaml`)
+          break
+        }
+      }
     }
 
     if (changed) {
       fs.writeFileSync(configFile, content, 'utf8')
       log('INFO', 'Google Calendar credentials applied to project.yaml')
     } else {
-      log('INFO', 'No placeholder substitution needed in project.yaml')
+      log('INFO', 'No changes needed in project.yaml for Google Calendar config')
     }
   } catch (error) {
     log('ERROR', 'Failed to apply Google Calendar config to project.yaml:', error)
@@ -567,7 +670,11 @@ function ensureTwinProjectConfig(twinProjectPath: string): void {
     // Apply Google credentials to existing file if they are stored
     const googleConfig = getStoredGoogleCalendarConfig()
     if (googleConfig.clientId || googleConfig.clientSecret) {
-      applyGoogleCalendarConfigToProject(googleConfig)
+      // Pass the stored config as both current and previous so the function
+      // can detect whether the placeholder or an old value needs replacing.
+      // previousConfig is left empty: the function will fall back to the
+      // placeholder string (GOOGLE_OAUTH2_CLIENT_ID) as the candidate.
+      applyGoogleCalendarConfigToProject(googleConfig, { clientId: '', clientSecret: '' })
     }
   }
 
@@ -814,7 +921,11 @@ function showPreferencesWindow(): void {
 
   ipcMain.handle('preferences:saveSlackConfig', async (_event: IpcMainInvokeEvent, config: SlackConfig) => {
     log('INFO', 'Saving Slack config, enabled:', config.enabled)
+    const previousSlackConfig = getStoredSlackConfig()
     storeSlackConfig(config)
+    if (config.webhookUrl || config.userId) {
+      applySlackConfigToVault(config, previousSlackConfig)
+    }
     log('INFO', 'Slack config saved')
   })
 
@@ -825,8 +936,9 @@ function showPreferencesWindow(): void {
   ipcMain.handle(
     'preferences:saveGoogleCalendarConfig',
     async (_event: IpcMainInvokeEvent, config: GoogleCalendarConfig) => {
+      const previousGoogleConfig = getStoredGoogleCalendarConfig()
       storeGoogleCalendarConfig(config)
-      applyGoogleCalendarConfigToProject(config)
+      applyGoogleCalendarConfigToProject(config, previousGoogleConfig)
       log('INFO', 'Google Calendar config saved')
     }
   )
