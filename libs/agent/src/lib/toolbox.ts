@@ -34,6 +34,8 @@ export class Toolbox implements Killable {
 
   private readonly mcpConfigs: McpServerConfig[]
   private tools: CodayTool[] = []
+  /** Thread ID used when acquiring MCP factories — stored so OAuth callbacks can find the right factory */
+  private currentThreadId: string | undefined
 
   constructor(
     private readonly interactor: Interactor,
@@ -167,6 +169,7 @@ export class Toolbox implements Killable {
     // Only include MCPs that are explicitly listed in the agent's integrations (or all if integrations is undefined)
     const mcpFactories: AssistantToolFactory[] = []
     if (threadId) {
+      this.currentThreadId = threadId
       for (const mcpConfig of this.mcpConfigs) {
         if (integrations && !integrations.has(mcpConfig.name)) {
           continue
@@ -277,9 +280,11 @@ export class Toolbox implements Killable {
     }
 
     // Check MCP factories via pool (matched by MCP server id)
+    // Use currentThreadId (stored when tools were acquired) so OAuth/noShare factories
+    // are found by their per-thread key, regardless of whether event.threadId is set.
     const mcpConfig = this.mcpConfigs.find((c) => c.id === event.integrationName)
     if (mcpConfig) {
-      const mcpFactory = await this.services.mcpPool.getMcpFactory(mcpConfig)
+      const mcpFactory = await this.services.mcpPool.getMcpFactory(mcpConfig, this.currentThreadId)
       if (mcpFactory && 'handleOAuthCallback' in mcpFactory && typeof mcpFactory.handleOAuthCallback === 'function') {
         try {
           await mcpFactory.handleOAuthCallback(event)
