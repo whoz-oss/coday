@@ -7,11 +7,9 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { EntityMetadata } from './entity-metadata'
 
 export interface Namespace {
-  metadata: EntityMetadata
+  id?: string
   name: string
   description?: string
-  id: string
 }

@@ -1,3 +1,170 @@
+## 0.114.2 (2026-04-03)
+
+### 🩹 Fixes
+
+- #725 CONFLUENCE__getPage include version and properties via API v2 params ([#726](https://github.com/whoz-oss/coday/pull/726), [#725](https://github.com/whoz-oss/coday/issues/725))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.114.1 (2026-04-03)
+
+### 🩹 Fixes
+
+- #720 FABs use position:absolute so sidenav doesn't hide them ([#721](https://github.com/whoz-oss/coday/pull/721), [#720](https://github.com/whoz-oss/coday/issues/720))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.114.0 (2026-04-03)
+
+### 🚀 Features
+
+- #30778 implement core user registry in AgentOS ([#708](https://github.com/whoz-oss/coday/pull/708), [#30778](https://github.com/whoz-oss/coday/issues/30778))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent.audibert
+
+## 0.113.1 (2026-04-03)
+
+### 🩹 Fixes
+
+- desktop-twin wrong configs ([#722](https://github.com/whoz-oss/coday/pull/722))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.113.0 (2026-04-03)
+
+### 🚀 Features
+
+- Add Chrome mcp configuration to coday.template.yaml ([#716](https://github.com/whoz-oss/coday/pull/716))
+
+### ❤️ Thank You
+
+- David Palita
+
+## 0.112.0 (2026-04-03)
+
+### 🚀 Features
+
+- #715 GIT_WORKTREE — postCreateScript hook on worktree creation ([#715](https://github.com/whoz-oss/coday/issues/715))
+- #715 review ([#715](https://github.com/whoz-oss/coday/issues/715))
+- #715 GIT_WORKTREE — postCreateScript hook on worktree creation ([#717](https://github.com/whoz-oss/coday/pull/717), [#715](https://github.com/whoz-oss/coday/issues/715))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+- louis-alexandre.celton @la-celton-whoz
+
+## 0.111.1 (2026-04-02)
+
+### 🩹 Fixes
+
+- regenerate lockfile for Angular v21 resolution ([98e3060d](https://github.com/whoz-oss/coday/commit/98e3060d))
+- regenerate lockfile for Angular v21 resolution ([#709](https://github.com/whoz-oss/coday/pull/709))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.111.0 (2026-04-02)
+
+### 🚀 Features
+
+- multiple preview entries per project ([#699](https://github.com/whoz-oss/coday/pull/699), [#698](https://github.com/whoz-oss/coday/issues/698))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.110.0 (2026-04-02)
+
+### 🚀 Features
+
+- resolve {{projectRoot}} token in MCP server config fields ([efebd432](https://github.com/whoz-oss/coday/commit/efebd432))
+- resolve {{projectRoot}} token in MCP server config fields ([#706](https://github.com/whoz-oss/coday/pull/706))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.109.0 (2026-04-02)
+
+### 🚀 Features
+
+- force build ([11b8c6f1](https://github.com/whoz-oss/coday/commit/11b8c6f1))
+
+### 🩹 Fixes
+
+- add GITHUB_TOKEN for pnpm install in macos host ([#705](https://github.com/whoz-oss/coday/pull/705))
+- force build ([d540142f](https://github.com/whoz-oss/coday/commit/d540142f))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.108.1 (2026-04-01)
+
+### 🩹 Fixes
+
+- #701 invalidate OAuth token on 401, surface 403 as permission error ([#702](https://github.com/whoz-oss/coday/pull/702), [#701](https://github.com/whoz-oss/coday/issues/701))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.108.0 (2026-04-01)
+
+### 🚀 Features
+
+- coday-twin enhancements ([#703](https://github.com/whoz-oss/coday/pull/703))
+
+### 🩹 Fixes
+
+- ensure lint staged uses project version of prettier ([c3478929](https://github.com/whoz-oss/coday/commit/c3478929))
+- ensure lint staged uses project version of prettier ([#700](https://github.com/whoz-oss/coday/pull/700))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Vincent Palita @vincent-palita-whoz
+
+## 0.107.3 (2026-03-31)
+
+### 🩹 Fixes
+
+- #691 file exchange drawer close button goes off-screen with wide content ([#691](https://github.com/whoz-oss/coday/issues/691))
+- #691 file exchange drawer close button goes off-screen with wide content ([#692](https://github.com/whoz-oss/coday/pull/692), [#691](https://github.com/whoz-oss/coday/issues/691))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.107.2 (2026-03-31)
+
+### 🩹 Fixes
+
+- #688 backfill username from email for existing users ([#689](https://github.com/whoz-oss/coday/pull/689), [#688](https://github.com/whoz-oss/coday/issues/688))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.107.1 (2026-03-27)
 
 ### 🩹 Fixes

@@ -198,6 +198,39 @@ export class GitWorktreeTools extends AssistantToolFactory {
 
             await projectService.registerWorktreeProject(projectName, worktreePath, parentProjectName)
             this.interactor.debug(`[WORKTREE] Registered project '${projectName}' at ${worktreePath}`)
+
+            // Run postCreateScript if configured
+            const postCreateScript = this.config?.postCreateScript
+            if (typeof postCreateScript === 'string' && postCreateScript.trim()) {
+              const scriptPath = path.resolve(projectRoot, postCreateScript)
+              let scriptWarning: string | undefined
+              let scriptOutput: string | undefined
+              try {
+                await fsp.access(scriptPath, fsp.constants.X_OK)
+                const scriptResult = await runBash({
+                  command: `"${scriptPath}"`,
+                  root: worktreePath,
+                  interactor: this.interactor,
+                })
+                if (scriptResult.startsWith('Command failed:')) {
+                  scriptWarning = `postCreateScript failed: ${scriptResult}`
+                  this.interactor.warn(`[WORKTREE] ${scriptWarning}`)
+                } else {
+                  scriptOutput = scriptResult
+                  this.interactor.displayText(`[WORKTREE] postCreateScript completed:\n${scriptResult}`)
+                }
+              } catch {
+                scriptWarning = `postCreateScript not found or not executable: ${scriptPath}`
+                this.interactor.warn(`[WORKTREE] ${scriptWarning}`)
+              }
+              return JSON.stringify({
+                projectName,
+                worktreePath,
+                branch,
+                ...(scriptWarning ? { warning: scriptWarning } : {}),
+                ...(scriptOutput ? { postCreateScriptOutput: scriptOutput } : {}),
+              })
+            }
             return JSON.stringify({ projectName, worktreePath, branch })
           },
         },

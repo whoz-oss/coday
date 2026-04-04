@@ -149,4 +149,22 @@ When one agent needs another to perform work, use **`delegate`** (keeps context 
 
 ---
 
+## People Data Privacy
+
+All agents apply `coday/docs/people-data-privacy-protocol.md` when handling information
+about real people. The protocol is a **mandatory doc** for Twin and VaultKeeper.
+
+Key system-wide rules:
+- Notes about people store **observations only** — no character conclusions, labels, or diagnoses
+- Certain data is **never stored**: health/medical info, protected characteristics, hearsay-as-fact
+- **Temporal decay**: observations older than 6 months are flagged in decision contexts
+- **Sparsity warning**: < 3 observations in 6 months → flag before generating assessments
+- **Pre-decision ritual**: before any career-consequential use of stored data, Twin prompts the
+  user through the Five Questions (observations vs. conclusions, currency, density, charity,
+  direct engagement)
+- **Erasure**: on request, all stored data about a named individual is removed across all notes,
+  MOC entries, and agent memories
+
+---
+
 *"Three agents, one goal: help you think clearly, decide wisely, and act effectively."*

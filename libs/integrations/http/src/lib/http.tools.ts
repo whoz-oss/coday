@@ -239,10 +239,42 @@ export class HttpTools extends AssistantToolFactory {
     })
 
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        // Token is invalid or rejected — trigger a fresh OAuth flow.
+        // Both 401 (expired/invalid token) and 403 (token rejected by provider, e.g. Figma) require re-auth.
+        // Note: authenticate() already clears tokens internally, so no explicit invalidation needed here.
+        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] got ${response.status}, re-authenticating`)
+        await this.oauth!.authenticate()
+        const newAccessToken = await this.oauth!.getAccessToken()
+
+        // Retry the request once with the fresh token
+        const retryResponse = await fetch(url.toString(), {
+          method: endpoint.method,
+          headers: {
+            Authorization: `Bearer ${newAccessToken}`,
+            ...(body ? { 'Content-Type': 'application/json' } : {}),
+          },
+          ...(body ? { body } : {}),
+        })
+
+        if (!retryResponse.ok) {
+          const retryErrorBody = await retryResponse.text()
+          throw new Error(
+            `HTTP ${retryResponse.status} from ${endpoint.method} ${resolvedPath} (after re-auth): ${retryErrorBody}`
+          )
+        }
+
+        return this.parseResponse(retryResponse, endpoint)
+      }
+
       const errorBody = await response.text()
       throw new Error(`HTTP ${response.status} from ${endpoint.method} ${resolvedPath}: ${errorBody}`)
     }
 
+    return this.parseResponse(response, endpoint)
+  }
+
+  private async parseResponse(response: Response, endpoint: HttpEndpointConfig): Promise<unknown> {
     // Parse response body: prefer JSON, fallback to text for non-JSON content-types
     let data: unknown
     const contentType = response.headers.get('content-type') ?? ''

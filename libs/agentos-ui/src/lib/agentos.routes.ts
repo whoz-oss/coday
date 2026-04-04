@@ -12,6 +12,18 @@ export const AGENTOS_ROUTES: Route[] = [
         loadComponent: () => import('./components/layout/layout.component').then((m) => m.LayoutComponent),
         children: [
           {
+            path: 'namespaces/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
+            path: 'namespaces/:namespaceId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
             path: 'namespaces',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
@@ -26,6 +38,12 @@ export const AGENTOS_ROUTES: Route[] = [
             path: ':namespaceId/cases/:caseId',
             canActivate: [agentosReadyGuard],
             loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
+          },
+          {
+            path: 'me',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
           },
           {
             path: '',

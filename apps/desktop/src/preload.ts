@@ -1,4 +1,6 @@
 import type { ContextBridge, IpcRenderer } from 'electron'
+import type { CodayDesktopAPI } from '@coday/desktop-core'
+import { registerCodayDesktopApi } from '@coday/desktop-core'
 
 const { contextBridge, ipcRenderer } = require('electron') as {
   contextBridge: ContextBridge
@@ -10,46 +12,43 @@ const { contextBridge, ipcRenderer } = require('electron') as {
  *
  * This script runs in a privileged context and can expose
  * safe APIs to the renderer process through contextBridge.
- *
- * Currently, the Coday web interface doesn't require any
- * special Electron APIs, so this is minimal. It can be
- * extended in the future if needed.
  */
 
-interface CodayDesktopStorageAPI {
-  get(key: string): Promise<string | null>
-  set(key: string, value: string): Promise<boolean>
-  remove(key: string): Promise<boolean>
-  clear(): Promise<boolean>
+/**
+ * Setup and preferences API — exposed as window.electronAPI.
+ * Used by setup.html and preferences.html.
+ * No workspace path management (desktop is multi-project, managed by ~/.coday).
+ */
+interface CodayDesktopSetupAPI {
+  /** Setup wizard: confirm setup complete (no path, no slack, no google) */
+  confirmSetup(): Promise<void>
+  /** Check whether an Anthropic API key is already configured */
+  checkAnthropicApiKey(): Promise<{ configured: boolean; source: string | null }>
+  /** Persist an Anthropic API key to user.yaml */
+  saveAnthropicApiKey(apiKey: string): Promise<void>
+  /** Check whether an OpenAI API key is already configured */
+  checkOpenAiApiKey(): Promise<{ configured: boolean; source: string | null }>
+  /** Persist an OpenAI API key to user.yaml */
+  saveOpenAiApiKey(apiKey: string): Promise<void>
+  /** Preferences: close the preferences window */
+  preferencesClose(): Promise<void>
+  /** Resize the setup/preferences window to fit its content */
+  resizeToContent(height: number): Promise<void>
 }
 
-interface CodayDesktopLogsAPI {
-  getPath(): Promise<string>
-  openFolder(): Promise<void>
-}
+// Expose shared app version, platform info, storage API, and logs API
+registerCodayDesktopApi(contextBridge, ipcRenderer)
 
-interface CodayDesktopAPI {
-  platform: NodeJS.Platform
-  version: string
-  storage: CodayDesktopStorageAPI
-  logs: CodayDesktopLogsAPI
-}
-
-// Expose app version, platform info, storage API, and logs API
-contextBridge.exposeInMainWorld('codayDesktop', {
-  platform: process.platform,
-  version: process.env['npm_package_version'] ?? 'unknown',
-  storage: {
-    get: (key: string) => ipcRenderer.invoke('storage:get', key),
-    set: (key: string, value: string) => ipcRenderer.invoke('storage:set', key, value),
-    remove: (key: string) => ipcRenderer.invoke('storage:remove', key),
-    clear: () => ipcRenderer.invoke('storage:clear'),
-  } as CodayDesktopStorageAPI,
-  logs: {
-    getPath: () => ipcRenderer.invoke('logs:getPath'),
-    openFolder: () => ipcRenderer.invoke('logs:openFolder'),
-  } as CodayDesktopLogsAPI,
-} as CodayDesktopAPI)
+// Expose setup / preferences APIs (used by setup.html and preferences.html)
+contextBridge.exposeInMainWorld('electronAPI', {
+  confirmSetup: () => ipcRenderer.invoke('setup:confirm'),
+  checkAnthropicApiKey: () => ipcRenderer.invoke('setup:checkAnthropicApiKey'),
+  saveAnthropicApiKey: (apiKey: string) => ipcRenderer.invoke('setup:saveAnthropicApiKey', apiKey),
+  checkOpenAiApiKey: () => ipcRenderer.invoke('setup:checkOpenAiApiKey'),
+  saveOpenAiApiKey: (apiKey: string) => ipcRenderer.invoke('setup:saveOpenAiApiKey', apiKey),
+  preferencesClose: () => ipcRenderer.invoke('preferences:close'),
+  resizeToContent: (height: number) => ipcRenderer.invoke('window:resizeToContent', height),
+} as CodayDesktopSetupAPI)
 
 console.log('Coday Desktop preload script loaded')
 
@@ -57,5 +56,6 @@ console.log('Coday Desktop preload script loaded')
 declare global {
   interface Window {
     codayDesktop: CodayDesktopAPI
+    electronAPI: CodayDesktopSetupAPI
   }
 }

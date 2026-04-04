@@ -8,6 +8,14 @@ import { Observable } from 'rxjs'
 export interface PreviewStatusResponse {
   status: 'running' | 'stopped'
   port?: number
+}
+
+/**
+ * A single preview entry as returned by the API
+ */
+export interface PreviewEntryResponse {
+  name: string
+  command: string
   url?: string
 }
 
@@ -89,19 +97,23 @@ export class ProjectApiService {
 
   // ── Preview server ─────────────────────────────────────────────────────────────────
 
-  startPreview(projectName: string): Observable<PreviewStatusResponse> {
-    return this.http.post<PreviewStatusResponse>(`${this.baseUrl}/${projectName}/preview/start`, {})
+  getPreviewEntries(projectName: string): Observable<{ entries: PreviewEntryResponse[] }> {
+    return this.http.get<{ entries: PreviewEntryResponse[] }>(`${this.baseUrl}/${projectName}/preview/entries`)
   }
 
-  stopPreview(projectName: string): Observable<{ status: string }> {
-    return this.http.post<{ status: string }>(`${this.baseUrl}/${projectName}/preview/stop`, {})
+  startPreview(projectName: string, entryName: string): Observable<PreviewStatusResponse> {
+    return this.http.post<PreviewStatusResponse>(`${this.baseUrl}/${projectName}/preview/${entryName}/start`, {})
   }
 
-  getPreviewStatus(projectName: string): Observable<PreviewStatusResponse> {
-    return this.http.get<PreviewStatusResponse>(`${this.baseUrl}/${projectName}/preview/status`)
+  stopPreview(projectName: string, entryName: string): Observable<{ status: string }> {
+    return this.http.post<{ status: string }>(`${this.baseUrl}/${projectName}/preview/${entryName}/stop`, {})
   }
 
-  getPreviewLogs(projectName: string): Observable<{ logs: string }> {
-    return this.http.get<{ logs: string }>(`${this.baseUrl}/${projectName}/preview/logs`)
+  getPreviewStatus(projectName: string, entryName: string): Observable<PreviewStatusResponse> {
+    return this.http.get<PreviewStatusResponse>(`${this.baseUrl}/${projectName}/preview/${entryName}/status`)
+  }
+
+  getPreviewLogs(projectName: string, entryName: string): Observable<{ logs: string }> {
+    return this.http.get<{ logs: string }>(`${this.baseUrl}/${projectName}/preview/${entryName}/logs`)
   }
 }

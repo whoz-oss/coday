@@ -1,6 +1,6 @@
 id: 24f0f09e-efd6-4018-b65a-1e1a630f8662
 name: Midday Check
-enabled: true
+enabled: false
 promptId: c2d3e4f5-6a7b-8c9d-0e1f-2a3b4c5d6e7f
 schedule:
   startTimestamp: 2026-01-01T12:00:00.000Z
