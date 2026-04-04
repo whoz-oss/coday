@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
 import { Interactor, OAuthCallbackEvent, ServerInteractor } from '@coday/model'
@@ -60,6 +61,24 @@ export class McpToolsFactory extends AssistantToolFactory {
   /** OAuth provider instance for remote MCP servers with oauth2: true */
   private oauthProvider: McpOAuthProvider | undefined
 
+  /**
+   * Whether kill() has been explicitly called.
+   * Prevents reconnection attempts after intentional shutdown.
+   */
+  private _killed: boolean = false
+
+  /**
+   * Whether the current transport is legacy SSE (fallback from StreamableHTTP).
+   * Used for diagnostics.
+   */
+  private _usingLegacySSE: boolean = false
+
+  /** Current reconnection attempt count (reset on successful connect) */
+  private _reconnectAttempts: number = 0
+
+  /** Delay in ms for the next reconnection attempt (doubles each time, capped at 30 s) */
+  private _reconnectDelay: number = 2000
+
   private readonly mcpInteractor?: Interactor
   private readonly mcpUserService?: UserService
   private readonly mcpProjectName?: string
@@ -89,6 +108,9 @@ export class McpToolsFactory extends AssistantToolFactory {
   }
 
   async kill(): Promise<void> {
+    this._killed = true
+    this._reconnectAttempts = 0
+    this._reconnectDelay = 2000
     this.tools = []
     console.log(`Closing mcp client ${this.serverConfig.name}`)
 
@@ -280,21 +302,11 @@ export class McpToolsFactory extends AssistantToolFactory {
     }
     // Connect to the server with timeout and better error handling
     try {
-      // Set a shorter timeout for MCP connections (default is 60s, we use MCP_CONNECT_TIMEOUT)
-      console.log(`[MCP] ${this.serverConfig.name}: connecting (timeout=${MCP_CONNECT_TIMEOUT}ms)...`)
-      const connectPromise = instance.connect(this.transport)
-      let timeoutHandle: NodeJS.Timeout
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(
-          () => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)),
-          MCP_CONNECT_TIMEOUT
-        )
-      })
+      await this.connectWithTimeout(instance)
 
-      try {
-        await Promise.race([connectPromise, timeoutPromise])
-      } finally {
-        clearTimeout(timeoutHandle!)
+      // For remote transports, wire up reconnection on unexpected close
+      if (this.serverConfig.url) {
+        this.wireRemoteReconnect(instance)
       }
 
       // Store the process PID for manual cleanup if needed
@@ -302,8 +314,16 @@ export class McpToolsFactory extends AssistantToolFactory {
         this.serverProcessPid = (this.transport as any).pid
         console.log(`Successfully connected to MCP server ${this.serverConfig.name} (PID: ${this.serverProcessPid})`)
       } else {
-        console.log(`Successfully connected to MCP server ${this.serverConfig.name}`)
+        console.log(
+          `Successfully connected to MCP server ${this.serverConfig.name}${
+            this._usingLegacySSE ? ' (legacy SSE transport)' : ''
+          }`
+        )
       }
+
+      // Reset reconnect counters on successful connection
+      this._reconnectAttempts = 0
+      this._reconnectDelay = 2000
 
       return instance
     } catch (error) {
@@ -341,6 +361,163 @@ export class McpToolsFactory extends AssistantToolFactory {
       }
 
       throw new Error(`MCP server ${this.serverConfig.name} connection failed: ${errorMessage}`)
+    }
+  }
+
+  /**
+   * Attempt to connect the client to this.transport within MCP_CONNECT_TIMEOUT ms.
+   *
+   * For remote transports (URL-based), if the initial StreamableHTTP connection fails with
+   * a signal that the server doesn't support the modern protocol (HTTP 4xx, or specific
+   * error messages), transparently falls back to legacy SSEClientTransport and retries.
+   */
+  private async connectWithTimeout(instance: Client): Promise<void> {
+    const isRemote = !!this.serverConfig.url
+
+    const doConnect = async (): Promise<void> => {
+      console.log(`[MCP] ${this.serverConfig.name}: connecting (timeout=${MCP_CONNECT_TIMEOUT}ms)...`)
+      const connectPromise = instance.connect(this.transport!)
+      let timeoutHandle: NodeJS.Timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)),
+          MCP_CONNECT_TIMEOUT
+        )
+      })
+      try {
+        await Promise.race([connectPromise, timeoutPromise])
+      } finally {
+        clearTimeout(timeoutHandle!)
+      }
+    }
+
+    if (!isRemote) {
+      // Stdio transport — no fallback needed
+      await doConnect()
+      return
+    }
+
+    // Remote transport: try StreamableHTTP first, fall back to legacy SSE on 4xx / unsupported
+    try {
+      await doConnect()
+      this._usingLegacySSE = false
+    } catch (streamableError) {
+      const msg = streamableError instanceof Error ? streamableError.message : String(streamableError)
+
+      if (!this.shouldFallbackToSSE(msg)) {
+        throw streamableError
+      }
+
+      console.warn(
+        `[MCP] ${this.serverConfig.name}: StreamableHTTP connection failed (${msg}), ` +
+          `falling back to legacy SSEClientTransport`
+      )
+
+      // Close the failed StreamableHTTP transport before switching
+      try {
+        await this.transport!.close()
+      } catch {
+        // Ignore close errors during fallback
+      }
+
+      // Build the legacy SSE transport, preserving auth if needed
+      const url = new URL(this.serverConfig.url!)
+      if (this.oauthProvider) {
+        this.transport = new SSEClientTransport(url, { authProvider: this.oauthProvider })
+      } else if (this.serverConfig.authToken) {
+        this.transport = new SSEClientTransport(url, {
+          requestInit: { headers: { Authorization: `Bearer ${this.serverConfig.authToken}` } },
+        })
+      } else {
+        this.transport = new SSEClientTransport(url)
+      }
+
+      this._usingLegacySSE = true
+      console.log(`[MCP] ${this.serverConfig.name}: retrying with legacy SSE transport`)
+      await doConnect()
+    }
+  }
+
+  /**
+   * Decide whether a StreamableHTTP connection error warrants a fallback to legacy SSE.
+   * We fall back on HTTP 4xx responses and specific "not supported" messages.
+   */
+  private shouldFallbackToSSE(errorMessage: string): boolean {
+    // HTTP 4xx status codes (the SDK includes the status code in the error message)
+    if (/\b4\d{2}\b/.test(errorMessage)) return true
+    // Explicit "not supported" or "method not allowed" wording
+    if (/not supported|method not allowed|unsupported/i.test(errorMessage)) return true
+    return false
+  }
+
+  /**
+   * Wire the transport's onclose handler so that unexpected disconnects trigger a
+   * reconnection attempt with exponential backoff.
+   *
+   * Only active for remote (URL-based) transports and only when kill() has not been called.
+   */
+  private wireRemoteReconnect(instance: Client): void {
+    if (!this.transport) return
+
+    const MAX_ATTEMPTS = 5
+    const MAX_DELAY = 30000 // 30 s
+
+    this.transport.onclose = () => {
+      if (this._killed) {
+        console.log(`[MCP] ${this.serverConfig.name}: transport closed (killed, no reconnect)`)
+        return
+      }
+
+      if (this._reconnectAttempts >= MAX_ATTEMPTS) {
+        console.error(
+          `[MCP] ${this.serverConfig.name}: transport closed after ${MAX_ATTEMPTS} reconnect attempts — giving up`
+        )
+        return
+      }
+
+      const attempt = ++this._reconnectAttempts
+      const delay = this._reconnectDelay
+      this._reconnectDelay = Math.min(this._reconnectDelay * 2, MAX_DELAY)
+
+      console.warn(
+        `[MCP] ${this.serverConfig.name}: transport closed unexpectedly — reconnecting in ${delay}ms ` +
+          `(attempt ${attempt}/${MAX_ATTEMPTS})`
+      )
+
+      setTimeout(async () => {
+        if (this._killed) {
+          console.log(`[MCP] ${this.serverConfig.name}: reconnect cancelled (killed)`)
+          return
+        }
+
+        console.log(`[MCP] ${this.serverConfig.name}: attempting reconnect #${attempt}...`)
+
+        // Reset promises so buildTools() will reinitialise on the next call
+        this.clientPromise = undefined
+        this.toolsPromise = undefined
+        this.tools = []
+        this.errorLogged = false
+
+        // Rebuild the transport for a fresh connection
+        this._usingLegacySSE = false
+        this.transport = this.buildRemoteTransport()
+
+        try {
+          await this.connectWithTimeout(instance)
+          this.wireRemoteReconnect(instance)
+          // Restore the client promise so subsequent buildTools() calls reuse this instance
+          this.clientPromise = Promise.resolve(instance)
+          console.log(`[MCP] ${this.serverConfig.name}: reconnected successfully (attempt ${attempt})`)
+          // Reset backoff on success
+          this._reconnectAttempts = 0
+          this._reconnectDelay = 2000
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(`[MCP] ${this.serverConfig.name}: reconnect #${attempt} failed: ${msg}`)
+          // The next onclose (or this close path) will schedule the following attempt
+          // only if the transport fired onclose again; otherwise we stop here.
+        }
+      }, delay)
     }
   }
 
