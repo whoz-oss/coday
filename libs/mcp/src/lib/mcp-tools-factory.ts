@@ -14,6 +14,7 @@ import { UserService } from '@coday/service'
 import { McpOAuthProvider } from './mcp-oauth-provider'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
+const MCP_OAUTH_CONNECT_TIMEOUT = 5 * 60 * 1000 // 5 minutes for OAuth flows requiring user interaction
 
 export class McpToolsFactory extends AssistantToolFactory {
   /**
@@ -373,16 +374,14 @@ export class McpToolsFactory extends AssistantToolFactory {
    */
   private async connectWithTimeout(instance: Client): Promise<void> {
     const isRemote = !!this.serverConfig.url
+    const timeout = this.serverConfig.oauth2 ? MCP_OAUTH_CONNECT_TIMEOUT : MCP_CONNECT_TIMEOUT
 
     const doConnect = async (): Promise<void> => {
-      console.log(`[MCP] ${this.serverConfig.name}: connecting (timeout=${MCP_CONNECT_TIMEOUT}ms)...`)
+      console.log(`[MCP] ${this.serverConfig.name}: connecting (timeout=${timeout}ms)...`)
       const connectPromise = instance.connect(this.transport!)
       let timeoutHandle: NodeJS.Timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(
-          () => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)),
-          MCP_CONNECT_TIMEOUT
-        )
+        timeoutHandle = setTimeout(() => reject(new Error(`Connection timeout after ${timeout}ms`)), timeout)
       })
       try {
         await Promise.race([connectPromise, timeoutPromise])
@@ -403,6 +402,27 @@ export class McpToolsFactory extends AssistantToolFactory {
       this._usingLegacySSE = false
     } catch (streamableError) {
       const msg = streamableError instanceof Error ? streamableError.message : String(streamableError)
+
+      // Check if the initial failure triggered an OAuth flow
+      const authPending = this.oauthProvider?.waitForAuth()
+      if (authPending) {
+        console.log(`[MCP] ${this.serverConfig.name}: waiting for OAuth authorization to complete...`)
+        await authPending // blocks until user completes the popup and handleCallback() resolves
+
+        // Close the old transport — finishAuth() ran on it but the SDK needs a fresh connection
+        try {
+          await this.transport!.close()
+        } catch {
+          // Ignore close errors
+        }
+
+        // Rebuild transport with the freshly obtained tokens
+        this.transport = this.buildRemoteTransport()
+        this._usingLegacySSE = false
+        console.log(`[MCP] ${this.serverConfig.name}: OAuth complete, retrying connection`)
+        await doConnect()
+        return
+      }
 
       if (!this.shouldFallbackToSSE(msg)) {
         throw streamableError

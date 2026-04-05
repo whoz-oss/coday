@@ -40,6 +40,14 @@ export class McpOAuthProvider implements OAuthClientProvider {
    */
   private finishAuth: ((code: string) => Promise<void>) | null = null
 
+  /**
+   * Pending auth promise: created in redirectToAuthorization(), resolved/rejected in handleCallback().
+   * Allows McpToolsFactory to wait for the OAuth flow to complete before retrying the connection.
+   */
+  private _pendingAuthPromise: Promise<void> | undefined
+  private _pendingAuthResolve: (() => void) | undefined
+  private _pendingAuthReject: ((err: Error) => void) | undefined
+
   constructor(
     private readonly interactor: Interactor,
     private readonly userService: UserService,
@@ -206,8 +214,17 @@ export class McpOAuthProvider implements OAuthClientProvider {
   // Authorization redirect
 
   /**
+   * Returns the pending auth promise if an OAuth flow has been initiated but not yet completed.
+   * McpToolsFactory uses this to wait for the user to complete authorization before retrying.
+   */
+  waitForAuth(): Promise<void> | undefined {
+    return this._pendingAuthPromise
+  }
+
+  /**
    * Called by the SDK when user authorization is needed.
    * Emits an OAuthRequestEvent so the frontend can open the auth URL.
+   * Also creates a pending promise that resolves when handleCallback() succeeds.
    */
   redirectToAuthorization(authorizationUrl: URL): void {
     this.interactor.warn(`[MCP OAuth:${this.mcpId}] OAuth authorization required — opening auth URL`)
@@ -227,6 +244,24 @@ export class McpOAuthProvider implements OAuthClientProvider {
     }
 
     this.interactor.debug(`[MCP OAuth:${this.mcpId}] redirecting to authorization: ${authorizationUrl}`)
+
+    // Create the pending promise so McpToolsFactory can await OAuth completion
+    if (!this._pendingAuthPromise) {
+      this._pendingAuthPromise = new Promise<void>((resolve, reject) => {
+        this._pendingAuthResolve = resolve
+        this._pendingAuthReject = reject
+      })
+      // Auto-clear promise reference once settled
+      this._pendingAuthPromise.then(
+        () => {
+          this._pendingAuthPromise = undefined
+        },
+        () => {
+          this._pendingAuthPromise = undefined
+        }
+      )
+    }
+
     this.interactor.sendEvent(
       new OAuthRequestEvent({
         authUrl: authorizationUrl.toString(),
@@ -241,6 +276,14 @@ export class McpOAuthProvider implements OAuthClientProvider {
   async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier'): Promise<void> {
     this.interactor.warn(`[MCP OAuth:${this.mcpId}] invalidating credentials: ${scope}`)
     const storage = this.loadRaw()
+
+    // Reject any pending auth promise — credentials are being invalidated
+    if (this._pendingAuthReject) {
+      this._pendingAuthReject(new Error(`[MCP OAuth:${this.mcpId}] credentials invalidated during pending auth flow`))
+      this._pendingAuthResolve = undefined
+      this._pendingAuthReject = undefined
+    }
+
     if (!storage) return
 
     switch (scope) {
@@ -280,24 +323,52 @@ export class McpOAuthProvider implements OAuthClientProvider {
           ? 'OAuth authentication denied by user'
           : `OAuth error: ${event.error}${event.errorDescription ? ' - ' + event.errorDescription : ''}`
       this.interactor.warn(msg)
+      if (this._pendingAuthReject) {
+        this._pendingAuthReject(new Error(msg))
+        this._pendingAuthResolve = undefined
+        this._pendingAuthReject = undefined
+      }
       return
     }
 
     if (!event.code) {
-      this.interactor.error(`[MCP OAuth:${this.mcpId}] callback missing authorization code`)
+      const msg = `[MCP OAuth:${this.mcpId}] callback missing authorization code`
+      this.interactor.error(msg)
+      if (this._pendingAuthReject) {
+        this._pendingAuthReject(new Error(msg))
+        this._pendingAuthResolve = undefined
+        this._pendingAuthReject = undefined
+      }
       return
     }
 
     if (!this.finishAuth) {
-      this.interactor.error(`[MCP OAuth:${this.mcpId}] no transport registered to receive auth code`)
+      const msg = `[MCP OAuth:${this.mcpId}] no transport registered to receive auth code`
+      this.interactor.error(msg)
+      if (this._pendingAuthReject) {
+        this._pendingAuthReject(new Error(msg))
+        this._pendingAuthResolve = undefined
+        this._pendingAuthReject = undefined
+      }
       return
     }
 
     this.interactor.debug(`[MCP OAuth:${this.mcpId}] received authorization code, completing auth flow`)
     try {
       await this.finishAuth(event.code)
+      // Resolve the pending promise so McpToolsFactory can retry the connection
+      if (this._pendingAuthResolve) {
+        this._pendingAuthResolve()
+        this._pendingAuthResolve = undefined
+        this._pendingAuthReject = undefined
+      }
     } catch (err: any) {
       this.interactor.error(`[MCP OAuth:${this.mcpId}] finishAuth failed: ${err.message}`)
+      if (this._pendingAuthReject) {
+        this._pendingAuthReject(err)
+        this._pendingAuthResolve = undefined
+        this._pendingAuthReject = undefined
+      }
     }
   }
 

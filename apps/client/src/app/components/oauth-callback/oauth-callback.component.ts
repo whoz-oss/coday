@@ -1,13 +1,17 @@
 import { Component, OnInit, inject } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 
+export const OAUTH_CALLBACK_STORAGE_KEY = 'coday_oauth_callback'
+
 @Component({
   selector: 'app-oauth-callback',
   standalone: true,
-  template: `<p>Authentication in progress...</p>`,
+  template: `<p>{{ message }}</p>`,
 })
 export class OAuthCallbackComponent implements OnInit {
   private route = inject(ActivatedRoute)
+
+  message = 'Authentication in progress...'
 
   ngOnInit(): void {
     console.log('[OAuth Callback] Component initialized')
@@ -24,7 +28,10 @@ export class OAuthCallbackComponent implements OnInit {
       console.log('[OAuth Callback] OAuth error received:', error, errorDescription)
 
       if (!window.opener) {
-        alert(`OAuth error: ${error}${errorDescription ? ' - ' + errorDescription : ''}. Please close this window.`)
+        console.warn('[OAuth Callback] No window.opener — using localStorage fallback for error')
+        localStorage.setItem(OAUTH_CALLBACK_STORAGE_KEY, JSON.stringify({ error, state, errorDescription }))
+        this.message = 'Authentication failed. You can close this window.'
+        setTimeout(() => window.close(), 1000)
         return
       }
 
@@ -45,21 +52,24 @@ export class OAuthCallbackComponent implements OnInit {
       return
     }
 
-    if (!code || !state) {
-      console.error('[OAuth Callback] Missing code or state')
+    if (!code) {
+      console.error('[OAuth Callback] Missing authorization code')
+      this.message = 'OAuth callback error: Missing authorization code.'
       return
     }
 
     if (!window.opener) {
-      console.error('[OAuth Callback] No window.opener - popup may have been opened incorrectly')
-      alert('OAuth callback error: No parent window found. Please close this window and try again.')
+      console.warn('[OAuth Callback] No window.opener — using localStorage fallback')
+      localStorage.setItem(OAUTH_CALLBACK_STORAGE_KEY, JSON.stringify({ code, state }))
+      this.message = 'Authentication complete. You can close this window.'
+      setTimeout(() => window.close(), 1000)
       return
     }
 
     try {
       // Send to parent window
       console.log('[OAuth Callback] Sending postMessage to parent')
-      window.opener.postMessage({ code, state }, window.location.origin)
+      window.opener.postMessage({ code, state }, window.location.origin) // state may be null — OAuthService handles the fallback
       console.log('[OAuth Callback] postMessage sent successfully')
 
       // Close popup after a short delay
