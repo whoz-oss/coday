@@ -5,242 +5,243 @@ import org.springframework.data.neo4j.core.schema.Node
 import java.time.Instant
 
 /**
- * Marker interface for all Spring Data Neo4j node projections of [io.whozoss.agentos.sdk.caseEvent.CaseEvent] subtypes.
+ * Base SDN entity for all [io.whozoss.agentos.sdk.caseEvent.CaseEvent] node projections.
  *
- * Each subtype has its own node class annotated with two labels: the primary
- * `:CaseEvent` label (for cross-subtype queries) and a secondary label matching
- * the subtype name (e.g. `:MessageEvent`). SDN uses the secondary label to
- * instantiate the correct node class when reading from the graph.
+ * Carries the `@Node("CaseEvent")` primary label, the `@Id`, and all shared
+ * audit/routing properties. Subclasses declare only their own subtype-specific
+ * fields — they do NOT redeclare the shared properties, which would cause SDN
+ * to report duplicate property definitions.
  *
- * Node classes are pure data holders — no mapping logic. All conversion between
- * domain objects and node classes is handled by [CaseEventNodeMapper].
+ * Sealed so [CaseEventNodeMapper] `when` expressions are exhaustive.
+ * Node classes are pure data holders; all conversion is in [CaseEventNodeMapper].
  */
-sealed interface CaseEventNode {
-    val id: String
-    val caseId: String
-    val namespaceId: String
-    val timestamp: Instant
-    val created: Instant
-    val createdBy: String?
-    val modified: Instant
-    val modifiedBy: String?
-    val removed: Boolean?
-}
+@Node("CaseEvent")
+sealed class CaseEventNode(
+    @Id open val id: String = "",
+    open val caseId: String = "",
+    open val namespaceId: String = "",
+    open val timestamp: Instant = Instant.EPOCH,
+    open val created: Instant = Instant.now(),
+    open val createdBy: String? = null,
+    open val modified: Instant = Instant.now(),
+    open val modifiedBy: String? = null,
+    open val removed: Boolean? = null,
+)
 
-@Node("CaseEvent", "CaseStatusEvent")
-data class CaseStatusEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("CaseStatusEvent")
+class CaseStatusEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val status: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "WarnEvent")
-data class WarnEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("WarnEvent")
+class WarnEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val message: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "AgentSelectedEvent")
-data class AgentSelectedEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("AgentSelectedEvent")
+class AgentSelectedEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val agentId: String,
     val agentName: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "AgentFinishedEvent")
-data class AgentFinishedEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("AgentFinishedEvent")
+class AgentFinishedEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val agentId: String,
     val agentName: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "AgentRunningEvent")
-data class AgentRunningEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("AgentRunningEvent")
+class AgentRunningEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val agentId: String,
     val agentName: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "MessageEvent")
-data class MessageEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("MessageEvent")
+class MessageEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val actorId: String,
     val actorDisplayName: String,
     val actorRole: String,
     /** JSON-serialised [List]<[io.whozoss.agentos.sdk.caseEvent.MessageContent]> */
     val contentJson: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "ToolRequestEvent")
-data class ToolRequestEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("ToolRequestEvent")
+class ToolRequestEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val toolRequestId: String,
     val toolName: String,
     val args: String?,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "ToolResponseEvent")
-data class ToolResponseEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("ToolResponseEvent")
+class ToolResponseEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val toolRequestId: String,
     val toolName: String,
     /** JSON-serialised [io.whozoss.agentos.sdk.caseEvent.MessageContent] */
     val outputJson: String,
     val success: Boolean = true,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "ThinkingEvent")
-data class ThinkingEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+@Node("ThinkingEvent")
+class ThinkingEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "QuestionEvent")
-data class QuestionEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("QuestionEvent")
+class QuestionEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val agentId: String,
     val agentName: String,
     val question: String,
     /** JSON-serialised [List]<[String]>?, null when no options */
     val options: String? = null,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "AnswerEvent")
-data class AnswerEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("AnswerEvent")
+class AnswerEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val questionId: String,
     val actorId: String,
     val actorDisplayName: String,
     val actorRole: String,
     val answer: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "IntentionGeneratedEvent")
-data class IntentionGeneratedEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("IntentionGeneratedEvent")
+class IntentionGeneratedEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val agentId: String,
     val intention: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "ToolSelectedEvent")
-data class ToolSelectedEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("ToolSelectedEvent")
+class ToolSelectedEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val agentId: String,
     val toolName: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
-@Node("CaseEvent", "TextChunkEvent")
-data class TextChunkEventNode(
-    @Id override val id: String,
-    override val caseId: String,
-    override val namespaceId: String,
-    override val timestamp: Instant,
+@Node("TextChunkEvent")
+class TextChunkEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
     val chunk: String,
-    override val created: Instant = Instant.now(),
-    override val createdBy: String? = null,
-    override val modified: Instant = Instant.now(),
-    override val modifiedBy: String? = null,
-    override val removed: Boolean? = null,
-) : CaseEventNode
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)

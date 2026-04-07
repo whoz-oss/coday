@@ -19,7 +19,7 @@ import java.util.UUID
  * [findByExternalId] delegates to an indexed Cypher query rather than the
  * O(n) filesystem scan used by [io.whozoss.agentos.user.FilesystemUserRepository].
  */
-class Neo4jUserRepository(
+open class Neo4jUserRepository(
     private val userNodeNeo4jRepository: UserNodeNeo4jRepository,
 ) : UserRepository {
     override fun save(entity: User): User =
@@ -53,7 +53,7 @@ class Neo4jUserRepository(
             } ?: false
 
     @Transactional
-    override fun deleteByParent(parentId: String): Int {
+    open override fun deleteByParent(parentId: String): Int {
         val active = userNodeNeo4jRepository.findAllActive()
         userNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jUserRepository] Soft-deleted ${active.size} users" }

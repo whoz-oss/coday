@@ -33,7 +33,7 @@ class EmbeddedNeo4jTestConfiguration {
     fun neo4jHarness(): Neo4j {
         logger.info { "[EmbeddedNeo4j-Test] Starting Neo4j harness" }
         return Neo4jBuilders.newInProcessBuilder()
-            .withDisabledServer() // no HTTP server, Bolt only
+            .withDisabledServer() // no HTTP server — Bolt only; remove this line temporarily to enable Neo4j Browser for debugging
             .build()
             .also { logger.info { "[EmbeddedNeo4j-Test] Harness Bolt URI: ${it.boltURI()}" } }
     }

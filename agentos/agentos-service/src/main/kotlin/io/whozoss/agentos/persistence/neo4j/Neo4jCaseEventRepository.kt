@@ -21,40 +21,41 @@ import java.util.UUID
  *
  * Parent type is [UUID] representing the caseId.
  */
-class Neo4jCaseEventRepository(
+open class Neo4jCaseEventRepository(
     private val caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository,
+    private val mapper: CaseEventNodeMapper,
 ) : CaseEventRepository {
     override fun save(entity: CaseEvent): CaseEvent =
         caseEventNodeNeo4jRepository
-            .save(CaseEventNodeMapper.fromDomain(entity))
-            .let { CaseEventNodeMapper.toDomain(it) }
+            .save(mapper.fromDomain(entity))
+            .let { mapper.toDomain(it) }
             .also { logger.debug { "[Neo4jCaseEventRepository] Saved ${entity.type.value} event ${entity.id} for case ${entity.caseId}" } }
 
     override fun findByIds(ids: Collection<UUID>): List<CaseEvent> =
         caseEventNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { it.removed != true }
-            .map { CaseEventNodeMapper.toDomain(it) }
+            .map { mapper.toDomain(it) }
 
     override fun findByParent(parentId: UUID): List<CaseEvent> =
         caseEventNodeNeo4jRepository
             .findActiveByCaseId(parentId.toString())
-            .map { CaseEventNodeMapper.toDomain(it) }
+            .map { mapper.toDomain(it) }
 
     override fun delete(id: UUID): Boolean =
         caseEventNodeNeo4jRepository
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
-                caseEventNodeNeo4jRepository.save(CaseEventNodeMapper.withRemoved(node, true))
+                caseEventNodeNeo4jRepository.save(mapper.withRemoved(node, true))
                 logger.debug { "[Neo4jCaseEventRepository] Soft-deleted event $id" }
                 true
             } ?: false
 
     @Transactional
-    override fun deleteByParent(parentId: UUID): Int {
+    open override fun deleteByParent(parentId: UUID): Int {
         val active = caseEventNodeNeo4jRepository.findActiveByCaseId(parentId.toString())
-        caseEventNodeNeo4jRepository.saveAll(active.map { CaseEventNodeMapper.withRemoved(it, true) })
+        caseEventNodeNeo4jRepository.saveAll(active.map { mapper.withRemoved(it, true) })
         logger.debug { "[Neo4jCaseEventRepository] Soft-deleted ${active.size} events for case $parentId" }
         return active.size
     }

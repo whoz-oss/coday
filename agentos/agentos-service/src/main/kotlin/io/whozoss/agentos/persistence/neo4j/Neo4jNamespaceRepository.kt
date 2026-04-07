@@ -16,7 +16,7 @@ import java.util.UUID
  * [findByParent] and [deleteByParent] ignore the actual value and operate on all
  * non-removed namespaces.
  */
-class Neo4jNamespaceRepository(
+open class Neo4jNamespaceRepository(
     private val namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository,
 ) : NamespaceRepository {
     override fun save(entity: Namespace): Namespace =
@@ -48,7 +48,7 @@ class Neo4jNamespaceRepository(
             } ?: false
 
     @Transactional
-    override fun deleteByParent(parentId: String): Int {
+    open override fun deleteByParent(parentId: String): Int {
         val active = namespaceNodeNeo4jRepository.findAllActive()
         namespaceNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jNamespaceRepository] Soft-deleted ${active.size} namespaces" }

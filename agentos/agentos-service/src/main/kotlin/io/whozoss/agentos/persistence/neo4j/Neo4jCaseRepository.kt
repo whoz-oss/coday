@@ -15,7 +15,7 @@ import java.util.UUID
  *
  * Parent type is [UUID] representing the namespaceId.
  */
-class Neo4jCaseRepository(
+open class Neo4jCaseRepository(
     private val caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
 ) : CaseRepository {
     override fun save(entity: Case): Case =
@@ -46,7 +46,7 @@ class Neo4jCaseRepository(
             } ?: false
 
     @Transactional
-    override fun deleteByParent(parentId: UUID): Int {
+    open override fun deleteByParent(parentId: UUID): Int {
         val active = caseNodeNeo4jRepository.findActiveByNamespaceId(parentId.toString())
         caseNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jCaseRepository] Soft-deleted ${active.size} cases under namespace $parentId" }
