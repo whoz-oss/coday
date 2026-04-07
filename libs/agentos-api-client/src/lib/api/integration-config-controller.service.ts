@@ -38,32 +38,32 @@ export class IntegrationConfigControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public create1(
+  public create2(
     integrationConfig: IntegrationConfig,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<IntegrationConfig>
-  public create1(
+  public create2(
     integrationConfig: IntegrationConfig,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<IntegrationConfig>>
-  public create1(
+  public create2(
     integrationConfig: IntegrationConfig,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<IntegrationConfig>>
-  public create1(
+  public create2(
     integrationConfig: IntegrationConfig,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (integrationConfig === null || integrationConfig === undefined) {
-      throw new Error('Required parameter integrationConfig was null or undefined when calling create1.')
+      throw new Error('Required parameter integrationConfig was null or undefined when calling create2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -115,32 +115,32 @@ export class IntegrationConfigControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public delete1(
+  public delete2(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<any>
-  public delete1(
+  public delete2(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<any>>
-  public delete1(
+  public delete2(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<any>>
-  public delete1(
+  public delete2(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling delete1.')
+      throw new Error('Required parameter id was null or undefined when calling delete2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -184,32 +184,32 @@ export class IntegrationConfigControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getById1(
+  public getById2(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<IntegrationConfig>
-  public getById1(
+  public getById2(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<IntegrationConfig>>
-  public getById1(
+  public getById2(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<IntegrationConfig>>
-  public getById1(
+  public getById2(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling getById1.')
+      throw new Error('Required parameter id was null or undefined when calling getById2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -253,32 +253,32 @@ export class IntegrationConfigControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<IntegrationConfig>>
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<IntegrationConfig>>>
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<IntegrationConfig>>>
-  public getByIds1(
+  public getByIds2(
     requestBody: Array<string>,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIds1.')
+      throw new Error('Required parameter requestBody was null or undefined when calling getByIds2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -399,32 +399,32 @@ export class IntegrationConfigControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<IntegrationConfig>>
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<IntegrationConfig>>>
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<IntegrationConfig>>>
-  public listByParent1(
+  public listByParent2(
     parentId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParent1.')
+      throw new Error('Required parameter parentId was null or undefined when calling listByParent2.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -469,28 +469,28 @@ export class IntegrationConfigControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public update1(
+  public update2(
     id: string,
     integrationConfig: IntegrationConfig,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<IntegrationConfig>
-  public update1(
+  public update2(
     id: string,
     integrationConfig: IntegrationConfig,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<IntegrationConfig>>
-  public update1(
+  public update2(
     id: string,
     integrationConfig: IntegrationConfig,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<IntegrationConfig>>
-  public update1(
+  public update2(
     id: string,
     integrationConfig: IntegrationConfig,
     observe: any = 'body',
@@ -498,10 +498,10 @@ export class IntegrationConfigControllerService extends BaseService {
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling update1.')
+      throw new Error('Required parameter id was null or undefined when calling update2.')
     }
     if (integrationConfig === null || integrationConfig === undefined) {
-      throw new Error('Required parameter integrationConfig was null or undefined when calling update1.')
+      throw new Error('Required parameter integrationConfig was null or undefined when calling update2.')
     }
 
     let localVarHeaders = this.defaultHeaders

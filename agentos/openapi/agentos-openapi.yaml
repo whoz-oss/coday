@@ -128,7 +128,7 @@ paths:
     get:
       tags:
       - integration-config-controller
-      operationId: getById_1
+      operationId: getById_2
       parameters:
       - name: id
         in: path
@@ -146,7 +146,7 @@ paths:
     put:
       tags:
       - integration-config-controller
-      operationId: update_1
+      operationId: update_2
       parameters:
       - name: id
         in: path
@@ -170,7 +170,7 @@ paths:
     delete:
       tags:
       - integration-config-controller
-      operationId: delete_1
+      operationId: delete_2
       parameters:
       - name: id
         in: path
@@ -185,7 +185,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: getById_2
+      operationId: getById_3
       parameters:
       - name: id
         in: path
@@ -203,7 +203,7 @@ paths:
     put:
       tags:
       - case-controller
-      operationId: update_2
+      operationId: update_3
       parameters:
       - name: id
         in: path
@@ -227,7 +227,7 @@ paths:
     delete:
       tags:
       - case-controller
-      operationId: delete_2
+      operationId: delete_3
       parameters:
       - name: id
         in: path
@@ -460,7 +460,7 @@ paths:
     post:
       tags:
       - integration-config-controller
-      operationId: create_1
+      operationId: create_2
       requestBody:
         content:
           application/json:
@@ -478,7 +478,7 @@ paths:
     post:
       tags:
       - integration-config-controller
-      operationId: getByIds_1
+      operationId: getByIds_2
       requestBody:
         content:
           application/json:
@@ -501,7 +501,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: create_2
+      operationId: create_3
       requestBody:
         content:
           application/json:
@@ -570,7 +570,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: getByIds_2
+      operationId: getByIds_3
       requestBody:
         content:
           application/json:
@@ -593,7 +593,7 @@ paths:
     post:
       tags:
       - case-event-rest-controller
-      operationId: getByIds_3
+      operationId: getByIds_4
       requestBody:
         content:
           application/json:
@@ -830,7 +830,7 @@ paths:
     get:
       tags:
       - integration-config-controller
-      operationId: listByParent_1
+      operationId: listByParent_2
       parameters:
       - name: parentId
         in: path
@@ -896,7 +896,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: listByParent_2
+      operationId: listByParent_3
       parameters:
       - name: parentId
         in: path
@@ -918,7 +918,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: getById_3
+      operationId: getById_4
       parameters:
       - name: id
         in: path
@@ -1019,24 +1019,22 @@ components:
     IntegrationConfig:
       type: object
       properties:
-        metadata:
-          $ref: "#/components/schemas/EntityMetadata"
+        id:
+          type: string
+          format: uuid
         namespaceId:
           type: string
           format: uuid
         name:
           type: string
+          minLength: 1
         integrationType:
           type: string
+          minLength: 1
         parameters:
           $ref: "#/components/schemas/JsonNode"
-        id:
-          type: string
-          format: uuid
       required:
-      - id
       - integrationType
-      - metadata
       - name
       - namespaceId
     JsonNode: {}

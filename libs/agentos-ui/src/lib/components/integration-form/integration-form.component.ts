@@ -96,7 +96,7 @@ export class IntegrationFormComponent implements OnInit {
   private loadConfig(id: string): void {
     this.isLoading.set(true)
     this.integrationConfigController
-      .getById1(id)
+      .getById2(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -124,19 +124,18 @@ export class IntegrationFormComponent implements OnInit {
     this.isSubmitting.set(true)
 
     const call$ = this.isEditMode()
-      ? this.integrationConfigController.update1(this.existingConfig!.id, {
+      ? this.integrationConfigController.update2(this.existingConfig!.id ?? '', {
           ...this.existingConfig!,
           name: this.nameControl.value.trim(),
           integrationType: this.typeControl.value,
           parameters: this.paramsValue(),
         })
-      : this.integrationConfigController.create1({
+      : this.integrationConfigController.create2({
           name: this.nameControl.value.trim(),
           integrationType: this.typeControl.value,
           namespaceId: this.namespaceId,
           parameters: this.paramsValue(),
-          metadata: {},
-        } as unknown as IntegrationConfig)
+        } as IntegrationConfig)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),

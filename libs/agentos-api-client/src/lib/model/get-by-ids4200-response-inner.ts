@@ -8,10 +8,4 @@
  * Do not edit the class manually.
  */
 
-export interface IntegrationConfig {
-  id?: string
-  namespaceId: string
-  name: string
-  integrationType: string
-  parameters?: any | null
-}
+export interface GetByIds4200ResponseInner {}

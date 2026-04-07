@@ -48,12 +48,12 @@ export class NamespaceIntegrationsComponent {
 
   protected deleteConfig(config: IntegrationConfig): void {
     this.integrationConfigController
-      .delete1(config.id)
+      .delete2(config.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }
 
   protected trackById(_index: number, config: IntegrationConfig): string {
-    return config.id
+    return config.id ?? ''
   }
 }
