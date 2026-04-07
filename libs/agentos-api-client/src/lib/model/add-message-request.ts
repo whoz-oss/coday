@@ -10,6 +10,5 @@
 
 export interface AddMessageRequest {
   content: string
-  userId: string
   answerToEventId?: string
 }

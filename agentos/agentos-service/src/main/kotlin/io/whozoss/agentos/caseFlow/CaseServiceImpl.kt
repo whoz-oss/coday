@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,7 @@ class CaseServiceImpl(
     private val agentService: AgentService,
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
+    private val userService: UserService,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -115,7 +117,7 @@ class CaseServiceImpl(
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content -> selectAgent(content, case.namespaceId, case.id) },
-            runAgent = { agentName, events, shouldContinue -> runAgent(agentName, case.id, events, shouldContinue) },
+            runAgent = { agentName, events, userId, shouldContinue -> runAgent(agentName, case.id, events, userId, shouldContinue) },
             inputEvents = inputEvents,
         )
 
@@ -175,17 +177,18 @@ class CaseServiceImpl(
             }
         }
 
-        val defaultName = agentService.getDefaultAgentName()
-            ?: run {
-                logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
-                return listOf(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "No AI model is configured. Load a plugin that provides an AiModel.",
-                    ),
-                )
-            }
+        val defaultName =
+            agentService.getDefaultAgentName()
+                ?: run {
+                    logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
+                    return listOf(
+                        WarnEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            message = "No AI model is configured. Load a plugin that provides an AiModel.",
+                        ),
+                    )
+                }
         logger.info { "[CaseService] Selecting default agent: $defaultName" }
         return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
     }
@@ -209,11 +212,20 @@ class CaseServiceImpl(
         agentName: String,
         caseId: UUID,
         events: List<CaseEvent>,
+        userId: UUID?,
         shouldContinue: () -> Boolean,
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
+
+        requireNotNull(userId) {
+            "Cannot run agent for case $caseId: no user identity found in event history"
+        }
+        requireNotNull(userService.findById(userId)) {
+            "Cannot run agent for case $caseId: user $userId does not exist"
+        }
+
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
-        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId)
+        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId, userId = userId)
         agentService
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)

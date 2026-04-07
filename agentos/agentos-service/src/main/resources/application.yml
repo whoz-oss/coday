@@ -51,6 +51,13 @@ management:
 agentos:
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
+  security:
+    # Identity resolution mode: 'local' (default) or 'auth'.
+    # local: uses the OS username; auto-creates a User record on first access.
+    # auth:  decodes the Cloudflare JWT (CF_Authorization header) or falls back
+    #        to x-forwarded-email; requires the User to be pre-registered.
+    # Override with env var: AGENTOS_SECURITY_MODE
+    mode: local
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR

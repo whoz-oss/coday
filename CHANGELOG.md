@@ -1,3 +1,70 @@
+## 0.114.2 (2026-04-03)
+
+### 🩹 Fixes
+
+- #725 CONFLUENCE__getPage include version and properties via API v2 params ([#726](https://github.com/whoz-oss/coday/pull/726), [#725](https://github.com/whoz-oss/coday/issues/725))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.114.1 (2026-04-03)
+
+### 🩹 Fixes
+
+- #720 FABs use position:absolute so sidenav doesn't hide them ([#721](https://github.com/whoz-oss/coday/pull/721), [#720](https://github.com/whoz-oss/coday/issues/720))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.114.0 (2026-04-03)
+
+### 🚀 Features
+
+- #30778 implement core user registry in AgentOS ([#708](https://github.com/whoz-oss/coday/pull/708), [#30778](https://github.com/whoz-oss/coday/issues/30778))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent.audibert
+
+## 0.113.1 (2026-04-03)
+
+### 🩹 Fixes
+
+- desktop-twin wrong configs ([#722](https://github.com/whoz-oss/coday/pull/722))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.113.0 (2026-04-03)
+
+### 🚀 Features
+
+- Add Chrome mcp configuration to coday.template.yaml ([#716](https://github.com/whoz-oss/coday/pull/716))
+
+### ❤️ Thank You
+
+- David Palita
+
+## 0.112.0 (2026-04-03)
+
+### 🚀 Features
+
+- #715 GIT_WORKTREE — postCreateScript hook on worktree creation ([#715](https://github.com/whoz-oss/coday/issues/715))
+- #715 review ([#715](https://github.com/whoz-oss/coday/issues/715))
+- #715 GIT_WORKTREE — postCreateScript hook on worktree creation ([#717](https://github.com/whoz-oss/coday/pull/717), [#715](https://github.com/whoz-oss/coday/issues/715))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+- louis-alexandre.celton @la-celton-whoz
+
 ## 0.111.1 (2026-04-02)
 
 ### 🩹 Fixes
