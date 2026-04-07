@@ -848,27 +848,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/IntegrationConfig"
-  /api/integration-configs/by-namespace/{namespaceId}:
-    get:
-      tags:
-      - integration-config-controller
-      operationId: listByNamespaceIntegrationConfig
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/IntegrationConfig"
   /api/cases/{caseId}/events:
     get:
       tags:
