@@ -3,6 +3,7 @@
   [items]="(namespaceItems$ | async) ?? []"
   [showCreate]="true"
   emptyMessage="No namespaces yet. Create one to get started."
+  cardMinWidth="400px"
   [itemTemplate]="namespaceItemTpl"
   (itemSelected)="navigateToCases($event)"
   (createRequested)="navigateToCreate()"
