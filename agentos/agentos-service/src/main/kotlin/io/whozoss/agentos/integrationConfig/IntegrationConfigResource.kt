@@ -3,6 +3,7 @@ package io.whozoss.agentos.integrationConfig
 import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import java.util.UUID
 
 /**
@@ -17,7 +18,8 @@ import java.util.UUID
 @Schema(name = "IntegrationConfig")
 data class IntegrationConfigResource(
     val id: UUID? = null,
-    val namespaceId: UUID,
+    @field:NotNull(message = "namespaceId must not be null")
+    val namespaceId: UUID?,
     @field:NotBlank(message = "name must not be blank")
     val name: String,
     @field:NotBlank(message = "integrationType must not be blank")

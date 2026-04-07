@@ -51,7 +51,9 @@ class IntegrationConfigController(
     override fun toDomain(resource: IntegrationConfigResource): IntegrationConfig =
         IntegrationConfig(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-            namespaceId = resource.namespaceId,
+            // namespaceId is guaranteed non-null by @NotNull on IntegrationConfigResource;
+            // !! is safe here — @Valid prevents toDomain from being called with a null value.
+            namespaceId = resource.namespaceId!!,
             name = resource.name,
             integrationType = resource.integrationType,
             parameters = resource.parameters,
