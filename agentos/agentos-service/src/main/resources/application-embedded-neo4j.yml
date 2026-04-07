@@ -7,3 +7,13 @@ agentos:
     # Default 7688 avoids conflict with a standalone Neo4j on the standard port 7687.
     # Set to 0 for a random OS-assigned port (previous behaviour).
     embedded-bolt-port: 7688
+
+# Spring Data Neo4j's auto-configuration requires spring.neo4j.uri to be set in order
+# to construct Neo4jConnectionDetails and the neo4jTemplate bean, even when a Driver
+# bean is provided manually. This URI must match embedded-bolt-host:embedded-bolt-port.
+spring:
+  neo4j:
+    uri: bolt://localhost:7688
+    authentication:
+      username: neo4j
+      password: ""

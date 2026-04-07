@@ -35,10 +35,12 @@ import javax.annotation.PreDestroy
  * is talking to an in-process engine rather than a standalone server.
  * All repository operations, transactions, and Cypher queries work identically.
  *
- * Crucially, `spring.neo4j.uri` does NOT need to be set in embedded mode.
- * Spring Boot's Neo4j auto-configuration detects that a [Driver] bean is already
- * present and uses it directly, skipping its own URI-based driver creation entirely.
- * The URI is only required in `neo4j` mode where Spring Boot creates the [Driver].
+ * `spring.neo4j.uri` must be set in `application-embedded-neo4j.yml` to match
+ * `agentos.persistence.embedded-bolt-host:embedded-bolt-port`. Spring Boot's
+ * `Neo4jDataAutoConfiguration` requires it to construct `Neo4jConnectionDetails`
+ * and the `neo4jTemplate` bean even when a `Driver` bean is provided manually.
+ * The `Driver` bean itself is created here and Spring Boot reuses it rather than
+ * opening a second connection.
  *
  * ## Data directory
  * The embedded database files are stored under

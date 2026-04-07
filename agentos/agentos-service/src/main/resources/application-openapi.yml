@@ -1,14 +1,8 @@
-# Spring profile used only during OpenAPI spec generation (generateOpenApiDocs task).
-# Disables all AI providers so the app starts without requiring API keys.
-spring:
-  ai:
-    openai:
-      api-key: "dummy"
-    anthropic:
-      api-key: "dummy"
-    google:
-      genai:
-        api-key: "dummy"
-    mcp:
-      client:
-        enabled: false
+# Profile active during OpenAPI spec generation (generateOpenApiDocs Gradle task).
+# Overrides the default persistence mode to filesystem so the application context
+# starts without any Neo4j dependency — no embedded engine, no Driver bean, no
+# spring.neo4j.uri required. The spec is generated from Spring MVC annotations
+# only; no actual persistence is exercised.
+agentos:
+  persistence:
+    mode: filesystem

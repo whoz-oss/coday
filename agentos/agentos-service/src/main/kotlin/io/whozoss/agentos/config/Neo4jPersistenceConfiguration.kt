@@ -20,6 +20,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 
 /**
  * Registers Neo4j-backed repository beans.
@@ -42,6 +43,7 @@ import org.springframework.context.annotation.Configuration
     "'\${agentos.persistence.mode:filesystem}' == 'neo4j' " +
         "or '\${agentos.persistence.mode:filesystem}' == 'embedded-neo4j'",
 )
+@EnableNeo4jRepositories(basePackages = ["io.whozoss.agentos.persistence.neo4j"])
 class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jNamespaceRepository(namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository): NamespaceRepository {

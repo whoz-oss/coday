@@ -227,6 +227,18 @@ tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
 // ========================================
 // OpenAPI spec generation
 // ========================================
+// springdoc-openapi-gradle-plugin 1.9.0 is not compatible with Gradle 9's
+// configuration cache: its forkedSpringBootRun task holds references to other
+// task instances which cannot be serialised. Exclude the affected tasks from
+// the configuration cache until the plugin ships a fix.
+listOf("forkedSpringBootRun", "forkedSpringBootStop", "generateOpenApiDocs").forEach { taskName ->
+    tasks.matching { it.name == taskName }.configureEach {
+        notCompatibleWithConfigurationCache(
+            "springdoc-openapi-gradle-plugin 1.9.0 holds task references incompatible with configuration cache"
+        )
+    }
+}
+
 val agentosPort = 8124
 
 openApi {
