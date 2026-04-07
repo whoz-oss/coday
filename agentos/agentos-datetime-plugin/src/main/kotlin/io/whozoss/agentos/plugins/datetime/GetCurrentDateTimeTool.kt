@@ -26,11 +26,9 @@ class GetCurrentDateTimeTool(
         """
         Get the current date and time in a specified timezone.
         Returns ISO-8601 formatted datetime string with timezone information.
-        IMPORTANT: Always pass the 'timezone' parameter using a valid IANA timezone ID
+        The 'timezone' parameter is optional: if omitted, the configured default ($defaultTimezone) is used.
+        When the user mentions a specific city or region, pass the matching IANA timezone ID
         (e.g. 'America/New_York', 'Europe/Paris', 'Asia/Tokyo', 'UTC').
-        When the user asks for the time in a specific city or region, derive the
-        correct IANA timezone and pass it directly - do NOT call this tool with an
-        empty argument and then convert the UTC result manually.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -46,7 +44,7 @@ class GetCurrentDateTimeTool(
             "properties": {
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone identifier for the desired local time. Examples: 'America/New_York', 'America/Los_Angeles', 'Europe/Paris', 'Europe/London', 'Asia/Tokyo', 'Asia/Shanghai', 'Australia/Sydney', 'UTC'. Always provide this when the user mentions a city, country, or timezone - never leave it empty and convert manually.",
+                    "description": "Optional IANA timezone identifier (e.g. 'America/New_York', 'Europe/Paris', 'UTC'). Defaults to $defaultTimezone if omitted.",
                     "default": "$defaultTimezone"
                 }
             },
