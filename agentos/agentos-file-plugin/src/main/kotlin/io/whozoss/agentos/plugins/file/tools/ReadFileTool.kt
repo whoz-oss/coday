@@ -2,8 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.resolveFilePath
-import io.whozoss.agentos.sdk.tool.ContextAwareTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionContext
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
@@ -11,6 +10,7 @@ import kotlinx.coroutines.withTimeout
 import java.nio.charset.MalformedInputException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.io.path.fileSize
 import kotlin.time.Duration.Companion.seconds
 
@@ -20,14 +20,17 @@ import kotlin.time.Duration.Companion.seconds
  * V1: Text files only (UTF-8). Binary files return "[binary or unreadable file]".
  * V2 planned: PDF and image support via MessageContent polymorphism.
  */
-class ReadFileTool : ContextAwareTool<ReadFileTool.Input> {
+class ReadFileTool(
+    private val projectRoot: Path,
+    private val configName: String? = null,
+) : StandardTool<ReadFileTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
         private const val READ_MAX_SIZE = 10 * 1024 * 1024 // 10 MB
     }
 
-    override val name: String = "FILES__readFile"
+    override val name: String = if (configName != null) "${configName}__FILES__readFile" else "FILES__readFile"
 
     override val description: String =
         """
@@ -60,21 +63,14 @@ class ReadFileTool : ContextAwareTool<ReadFileTool.Input> {
         val filePath: String = "",
     )
 
-    override fun executeWithContext(
-        input: Input?,
-        context: ToolExecutionContext,
-    ): String {
+    override fun execute(input: Input?): String {
         val params = input ?: Input()
 
         return try {
-            if (!context.fileRoots.containsKey("project")) {
-                return createErrorResponse("File tools require a configured namespace with project root")
-            }
-
             kotlinx.coroutines.runBlocking {
                 withTimeout(IO_TIMEOUT.seconds) {
                     withContext(Dispatchers.IO) {
-                        readFile(params.filePath, context)
+                        readFile(params.filePath)
                     }
                 }
             }
@@ -87,11 +83,8 @@ class ReadFileTool : ContextAwareTool<ReadFileTool.Input> {
         }
     }
 
-    private fun readFile(
-        filePath: String,
-        context: ToolExecutionContext,
-    ): String {
-        val resolved = resolveFilePath(filePath, context.fileRoots, createIntent = false)
+    private fun readFile(filePath: String): String {
+        val resolved = resolveFilePath(filePath, mapOf("project" to projectRoot), createIntent = false)
 
         // Check file size
         val size = resolved.absolutePath.fileSize()

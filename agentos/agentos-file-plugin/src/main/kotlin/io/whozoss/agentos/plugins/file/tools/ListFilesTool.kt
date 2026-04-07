@@ -2,14 +2,13 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.resolveFilePath
-import io.whozoss.agentos.sdk.tool.ContextAwareTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionContext
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
-import java.nio.file.LinkOption
+import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 import kotlin.time.Duration.Companion.seconds
@@ -20,13 +19,16 @@ import kotlin.time.Duration.Companion.seconds
  * Directories are suffixed with `/`. Inaccessible entries are marked with `(inaccessible)`.
  * Symlinks are validated and followed if they stay within the root boundary.
  */
-class ListFilesTool : ContextAwareTool<ListFilesTool.Input> {
+class ListFilesTool(
+    private val projectRoot: Path,
+    private val configName: String? = null,
+) : StandardTool<ListFilesTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
-    override val name: String = "FILES__ls"
+    override val name: String = if (configName != null) "${configName}__FILES__listFiles" else "FILES__listFiles"
 
     override val description: String =
         """
@@ -59,18 +61,10 @@ class ListFilesTool : ContextAwareTool<ListFilesTool.Input> {
         val relPath: String = "",
     )
 
-    override fun executeWithContext(
-        input: Input?,
-        context: ToolExecutionContext,
-    ): String {
+    override fun execute(input: Input?): String {
         val params = input ?: Input()
 
         return try {
-            // Validation context
-            if (!context.fileRoots.containsKey("project")) {
-                return createErrorResponse("File tools require a configured namespace with project root")
-            }
-
             // Require explicit prefix
             if (params.relPath.isEmpty() || params.relPath == "." || params.relPath == "/") {
                 return createErrorResponse(
@@ -84,7 +78,7 @@ class ListFilesTool : ContextAwareTool<ListFilesTool.Input> {
                 kotlinx.coroutines.runBlocking {
                     withTimeout(IO_TIMEOUT.seconds) {
                         withContext(Dispatchers.IO) {
-                            listDirectory(params.relPath, context)
+                            listDirectory(params.relPath)
                         }
                     }
                 }
@@ -99,11 +93,8 @@ class ListFilesTool : ContextAwareTool<ListFilesTool.Input> {
         }
     }
 
-    private fun listDirectory(
-        relPath: String,
-        context: ToolExecutionContext,
-    ): List<String> {
-        val resolved = resolveFilePath(relPath, context.fileRoots, createIntent = false)
+    private fun listDirectory(relPath: String): List<String> {
+        val resolved = resolveFilePath(relPath, mapOf("project" to projectRoot), createIntent = false)
 
         if (!resolved.absolutePath.isDirectory()) {
             throw IllegalArgumentException("Path is not a directory: $relPath")

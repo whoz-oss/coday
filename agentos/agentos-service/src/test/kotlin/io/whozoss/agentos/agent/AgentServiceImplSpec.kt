@@ -15,15 +15,20 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import org.springframework.ai.chat.client.ChatClient
 import java.util.UUID
 
 class AgentServiceImplSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
     private val toolRegistry: ToolRegistry = mockk()
+    private val toolRegistryService: ToolRegistryService = mockk()
     private val aiModelRegistry: AiModelRegistry = mockk()
     private val namespaceService: NamespaceService = mockk()
-    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistry, aiModelRegistry, namespaceService)
+    private val userService: UserService = mockk(relaxed = true)
+    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistry, toolRegistryService, aiModelRegistry, namespaceService, userService)
 
     // A context and matching namespace used across most tests
     private val namespaceId: UUID = UUID.randomUUID()
@@ -38,6 +43,7 @@ class AgentServiceImplSpec : StringSpec() {
 
     init {
         every { toolRegistry.listTools() } returns emptyList()
+        every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
 
         // The key scenario: name and modelName are intentionally different.
@@ -177,6 +183,117 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.findAgentByName("my-agent", context)
 
             verify(exactly = 1) { namespaceService.findById(namespaceId) }
+        }
+
+        // -------------------------------------------------------------------------
+        // User context injection into instructions
+        // -------------------------------------------------------------------------
+
+        "findAgentByName appends user fields to instructions when userId resolves a known user" {
+            val userId = UUID.randomUUID()
+            val user = User(
+                metadata = EntityMetadata(id = userId),
+                externalId = "ext-123",
+                email = "alice@example.com",
+                firstname = "Alice",
+                lastname = "Smith",
+                bio = "Backend engineer passionate about distributed systems.",
+            )
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val model = AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                name = "my-agent",
+                description = "desc",
+                modelName = "gpt-4o",
+                providerName = "openai",
+                instructions = "You are a helpful assistant.",
+            )
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { aiModelRegistry.findByName("my-agent") } returns model
+            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { userService.findById(userId) } returns user
+
+            val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
+
+            agent.instructions!! shouldContain user.email
+            agent.instructions!! shouldContain user.firstname!!
+            agent.instructions!! shouldContain user.lastname!!
+            agent.instructions!! shouldContain user.bio!!
+            agent.instructions!! shouldContain userId.toString()
+        }
+
+        "findAgentByName omits optional user fields that are blank" {
+            val userId = UUID.randomUUID()
+            val user = User(
+                metadata = EntityMetadata(id = userId),
+                externalId = "ext-456",
+                email = "bob@example.com",
+                firstname = null,
+                lastname = null,
+                bio = null,
+            )
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val model = AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                name = "my-agent",
+                description = "desc",
+                modelName = "gpt-4o",
+                providerName = "openai",
+                instructions = null,
+            )
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { aiModelRegistry.findByName("my-agent") } returns model
+            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { userService.findById(userId) } returns user
+
+            val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
+
+            agent.instructions!! shouldContain user.email
+            agent.instructions!! shouldNotContain "firstname"
+            agent.instructions!! shouldNotContain "lastname"
+            agent.instructions!! shouldNotContain "bio"
+        }
+
+        "findAgentByName skips user block when userId is null" {
+            val model = AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                name = "my-agent",
+                description = "desc",
+                modelName = "gpt-4o",
+                providerName = "openai",
+                instructions = "Base instructions.",
+            )
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { aiModelRegistry.findByName("my-agent") } returns model
+            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            // context has no userId (default null)
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions!! shouldNotContain "## User"
+            verify(exactly = 0) { userService.findById(any()) }
+        }
+
+        "findAgentByName skips user block when userId does not resolve to a known user" {
+            val unknownUserId = UUID.randomUUID()
+            val contextWithUnknownUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = unknownUserId)
+            val model = AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                name = "my-agent",
+                description = "desc",
+                modelName = "gpt-4o",
+                providerName = "openai",
+                instructions = "Base instructions.",
+            )
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { aiModelRegistry.findByName("my-agent") } returns model
+            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { userService.findById(unknownUserId) } returns null
+
+            val agent = agentService.findAgentByName("my-agent", contextWithUnknownUser) as AgentSimple
+
+            agent.instructions!! shouldNotContain "## User"
+            agent.instructions!! shouldContain "Base instructions."
         }
 
         // -------------------------------------------------------------------------

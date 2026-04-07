@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-desktop-twin",
-  "version": "0.107.1",
+  "version": "0.114.2",
   "description": "CodayTwin Desktop - Digital Twin Electron application",
   "repository": "https://github.com/whoz-oss/coday",
   "license": "MIT",
@@ -24,6 +24,20 @@
       "output": "release"
     },
     "electronVersion": "38.3.0",
+    "extraResources": [
+      {
+        "from": "macos/project.template.yaml",
+        "to": "project.template.yaml"
+      },
+      {
+        "from": "macos/vault-template",
+        "to": "vault-template"
+      },
+      {
+        "from": "macos/schedulers",
+        "to": "schedulers"
+      }
+    ],
     "files": [
       "dist/**/*",
       "assets/**/*"

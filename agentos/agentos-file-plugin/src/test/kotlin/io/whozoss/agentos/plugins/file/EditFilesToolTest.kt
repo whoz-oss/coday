@@ -5,11 +5,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.whozoss.agentos.plugins.file.tools.EditFilesTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionContext
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
-import java.util.UUID
 import kotlin.io.path.createFile
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -28,10 +26,9 @@ class EditFilesToolTest : StringSpec() {
             tempDir.toFile().deleteRecursively()
         }
         "write new file should create with content" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -41,7 +38,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "File write success"
@@ -50,12 +46,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "write overwrite file under 64KB should succeed" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val file = tempDir.resolve("small.txt")
             file.writeText("Old content")
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -65,7 +60,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "File write success"
@@ -73,13 +67,12 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "write overwrite file exceeding 64KB should reject with message" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val file = tempDir.resolve("large.txt")
             val largeContent = "x".repeat(65 * 1024) // 65 KB
             file.writeText(largeContent)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -89,7 +82,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "not accepted"
@@ -98,11 +90,10 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "write new file with 200KB content should succeed" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val largeContent = "y".repeat(200 * 1024) // 200 KB
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -112,7 +103,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "File write success"
@@ -120,10 +110,9 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "write should create parent directories" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -133,7 +122,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "File write success"
@@ -141,10 +129,9 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "atomic write cleanup - tmp file should be deleted after success" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            tool.executeWithContext(
+            tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -154,7 +141,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             // Check that no .tmp files exist
@@ -163,12 +149,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "patch with unique chunk >= 15 chars should apply replacement" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val file = tempDir.resolve("file.txt")
             file.writeText("Hello world, this is a test")
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -183,7 +168,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "successfully edited by chunks"
@@ -191,12 +175,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "patch with chunk not found should report error but still write file" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val file = tempDir.resolve("file.txt")
             file.writeText("Hello world")
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -211,7 +194,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "Chunks not found"
@@ -220,12 +202,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "patch with duplicate chunk should report error" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val file = tempDir.resolve("file.txt")
             file.writeText("Hello world here, Hello world here")
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -240,7 +221,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "Duplicate chunks found"
@@ -248,12 +228,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "patch with chunk too short < 15 chars should report error" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val file = tempDir.resolve("file.txt")
             file.writeText("Hello world")
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -268,7 +247,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "Chunks too short"
@@ -276,10 +254,9 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "batch edits on different files should all execute" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -294,7 +271,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "file1.txt: File write success"
@@ -304,12 +280,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "batch edits - failure on one should not prevent others" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val largeFile = tempDir.resolve("large.txt")
             largeFile.writeText("x".repeat(65 * 1024))
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -329,7 +304,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "success.txt: File write success"
@@ -341,10 +315,9 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "readOnly mode should reject edits" {
-            val tool = EditFilesTool()
-            val ctx = createContextReadOnly()
+            val tool = EditFilesTool(tempDir, readOnly = true)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -354,41 +327,15 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "Cannot modify files in read-only mode"
         }
 
-        "missing namespace project root should error" {
-            val tool = EditFilesTool()
-            val ctx = ToolExecutionContext(
-                namespaceId = UUID.randomUUID(),
-                caseId = UUID.randomUUID(),
-                fileRoots = emptyMap()
-            )
-
-            val result = tool.executeWithContext(
-                EditFilesTool.Input(
-                    edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://file.txt",
-                            "content" to "content"
-                        )
-                    )
-                ),
-                ctx
-            )
-
-            result shouldContain "File tools require a configured namespace with project root"
-        }
-
         "patch on non-existent file should error" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -403,7 +350,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "nonexistent.txt:"
@@ -411,12 +357,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "multiple patches in single edit should apply sequentially" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             val file = tempDir.resolve("file.txt")
             file.writeText("First line here\nSecond line here\nThird line here")
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -435,7 +380,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "successfully edited by chunks"
@@ -443,22 +387,19 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "empty edits list should return no edits provided" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(edits = emptyList()),
-                ctx
             )
 
             result shouldContain "No edits provided"
         }
 
         "write should handle unicode content" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -468,7 +409,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain "File write success"
@@ -478,8 +418,7 @@ class EditFilesToolTest : StringSpec() {
         "atomic write cleanup on move failure - tmp file should be cleaned up" {
             // This test verifies that if the atomic move fails (e.g., due to filesystem issues),
             // the .tmp file is still cleaned up
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
             // Create a subdirectory and make it read-only to cause move failure
             val readOnlyDir = tempDir.resolve("readonly")
@@ -494,7 +433,7 @@ class EditFilesToolTest : StringSpec() {
             }
 
             if (isPosix) {
-                val result = tool.executeWithContext(
+                val result = tool.execute(
                     EditFilesTool.Input(
                         edits = listOf(
                             mapOf(
@@ -504,7 +443,6 @@ class EditFilesToolTest : StringSpec() {
                             )
                         )
                     ),
-                    ctx
                 )
 
                 // Verify error occurred
@@ -523,10 +461,9 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "deny-list write attempt to .env should be rejected" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -536,7 +473,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain ".env:"
@@ -545,10 +481,9 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "deny-list write attempt to .env.local should be rejected" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -558,7 +493,6 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain ".env.local:"
@@ -567,11 +501,10 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "deny-list patch attempt to .env should be rejected" {
-            val tool = EditFilesTool()
-            val ctx = createContext()
+            val tool = EditFilesTool(tempDir)
             tempDir.resolve(".env").writeText("OLD_SECRET=value")
 
-            val result = tool.executeWithContext(
+            val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
                         mapOf(
@@ -586,29 +519,11 @@ class EditFilesToolTest : StringSpec() {
                         )
                     )
                 ),
-                ctx
             )
 
             result shouldContain ".env:"
             result shouldContain "Access denied"
             tempDir.resolve(".env").readText() shouldBe "OLD_SECRET=value" // Should remain unchanged
         }
-    }
-
-    private fun createContext(): ToolExecutionContext {
-        return ToolExecutionContext(
-            namespaceId = UUID.randomUUID(),
-            caseId = UUID.randomUUID(),
-            fileRoots = mapOf("project" to tempDir)
-        )
-    }
-
-    private fun createContextReadOnly(): ToolExecutionContext {
-        return ToolExecutionContext(
-            namespaceId = UUID.randomUUID(),
-            caseId = UUID.randomUUID(),
-            fileRoots = mapOf("project" to tempDir),
-            properties = mapOf("readOnly" to "true")
-        )
     }
 }

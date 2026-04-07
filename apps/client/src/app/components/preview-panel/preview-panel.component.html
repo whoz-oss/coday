@@ -1,73 +1,79 @@
 <div class="preview-panel">
-  <div class="preview-controls">
-    <!-- Start button -->
-    @if (status() === 'stopped') {
-      <button
-        mat-icon-button
-        class="preview-action-btn start"
-        [disabled]="!hasPreviewCommand() || isLoading()"
-        (click)="start()"
-        title="Start preview server"
-        type="button"
-      >
-        <mat-icon>play_arrow</mat-icon>
-      </button>
-    }
+  @for (entry of entryStates(); let i = $index; track entry.name) {
+    <!-- Entry row: order = i * 2 -->
 
-    <!-- Stop button -->
-    @if (status() === 'running') {
-      <button
-        mat-icon-button
-        class="preview-action-btn stop"
-        [disabled]="isLoading()"
-        (click)="stop()"
-        title="Stop preview server"
-        type="button"
-      >
-        <mat-icon>stop</mat-icon>
-      </button>
-    }
+    <div class="entry-row" [style.order]="i * 2">
+      <span class="entry-name">{{ entry.name }}</span>
 
-    <!-- Status pill -->
-    <span class="status-pill" [class.running]="status() === 'running'">
-      {{ status() === 'running' ? 'Running' : 'Stopped' }}
-    </span>
+      <div class="entry-actions">
+        <!-- Start / Stop -->
+        @if (entry.status === 'stopped') {
+          <button
+            mat-icon-button
+            class="entry-btn start"
+            [disabled]="entry.isLoading"
+            (click)="start(entry.name)"
+            title="Start"
+            type="button"
+          >
+            <mat-icon>play_arrow</mat-icon>
+          </button>
+        } @else {
+          <button
+            mat-icon-button
+            class="entry-btn stop"
+            [disabled]="entry.isLoading"
+            (click)="stop(entry.name)"
+            title="Stop"
+            type="button"
+          >
+            <mat-icon>stop</mat-icon>
+          </button>
+        }
 
-    <!-- Clickable URL when running -->
-    @if (status() === 'running' && previewUrl()) {
-      <a class="preview-url" [href]="previewUrl()" target="_blank" rel="noopener noreferrer" [title]="previewUrl()!">
-        <mat-icon class="link-icon">open_in_new</mat-icon>
-        <span class="url-text">{{ previewUrl() }}</span>
-      </a>
-    }
+        <!-- Status pill -->
+        <span class="status-pill" [class.running]="entry.status === 'running'">
+          {{ entry.status === 'running' ? 'Running' : 'Stopped' }}
+        </span>
 
-    <!-- Logs toggle -->
-    <button
-      mat-icon-button
-      class="logs-btn"
-      (click)="toggleLogs()"
-      [title]="showLogs() ? 'Hide logs' : 'Show logs'"
-      type="button"
-    >
-      <mat-icon>{{ showLogs() ? 'expand_less' : 'terminal' }}</mat-icon>
-    </button>
-  </div>
+        <!-- Optional URL -->
+        @if (entry.url) {
+          <a class="preview-url" [href]="entry.url" target="_blank" rel="noopener noreferrer" [title]="entry.url">
+            <mat-icon class="link-icon">open_in_new</mat-icon>
+          </a>
+        }
 
-  <!-- Error message -->
-  @if (errorMessage()) {
-    <div class="preview-error">{{ errorMessage() }}</div>
-  }
-
-  <!-- Logs viewer -->
-  @if (showLogs()) {
-    <div class="logs-container">
-      <div class="logs-header">
-        <span class="logs-title">Logs</span>
-        <button mat-icon-button class="refresh-btn" (click)="refreshLogs()" title="Refresh logs" type="button">
-          <mat-icon>refresh</mat-icon>
+        <!-- Logs toggle -->
+        <button
+          mat-icon-button
+          class="entry-btn logs"
+          (click)="toggleLogs(entry.name)"
+          [title]="logsOpenFor() === entry.name ? 'Hide logs' : 'Show logs'"
+          type="button"
+        >
+          <mat-icon>{{ logsOpenFor() === entry.name ? 'expand_less' : 'terminal' }}</mat-icon>
         </button>
       </div>
-      <pre class="logs-content">{{ logs() || '(empty)' }}</pre>
     </div>
+
+    <!-- Error: same order as entry row -->
+    @if (entry.errorMessage) {
+      <div class="preview-error" [style.order]="i * 2">{{ entry.errorMessage }}</div>
+    }
+
+    <!-- Logs panel: order = i * 2 + 1 (right after its entry) -->
+    @if (logsOpenFor() === entry.name) {
+      <div class="logs-container" [style.order]="i * 2 + 1">
+        <div class="logs-header">
+          <span class="logs-title">{{ entry.name }} logs</span>
+          @if (entry.status === 'running') {
+            <button mat-icon-button class="entry-btn" (click)="onManualRefresh()" title="Refresh logs" type="button">
+              <mat-icon>refresh</mat-icon>
+            </button>
+          }
+        </div>
+        <pre #logsContent class="logs-content">{{ logs() || '(empty)' }}</pre>
+      </div>
+    }
   }
 </div>

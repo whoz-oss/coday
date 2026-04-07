@@ -1,0 +1,25 @@
+<div class="namespace-integrations">
+  <header class="namespace-integrations__header">
+    <button class="namespace-integrations__back" type="button" (click)="goBack()">&#8592; Namespaces</button>
+    <h2>Integrations</h2>
+    <ds-icon-button icon="add" variant="primary" title="Add integration" (action)="openCreateForm()" />
+  </header>
+
+  @if (configs$ | async; as configs) {
+    @if (configs.length === 0) {
+      <div class="namespace-integrations__empty">
+        <p>No integrations configured yet. Add one above.</p>
+      </div>
+    } @else {
+      <ul class="namespace-integrations__items" role="list">
+        @for (config of configs; track trackById($index, config)) {
+          <agentos-integration-config-item
+            [config]="config"
+            [namespaceId]="namespaceId"
+            (deleteRequested)="deleteConfig($event)"
+          />
+        }
+      </ul>
+    }
+  }
+</div>

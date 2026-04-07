@@ -2,14 +2,14 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.resolveFilePath
-import io.whozoss.agentos.sdk.tool.ContextAwareTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionContext
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
+import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import kotlin.time.Duration.Companion.seconds
 
@@ -18,13 +18,17 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Only removes files, not directories. Fails if file doesn't exist or is a directory.
  */
-class RemoveFileTool : ContextAwareTool<RemoveFileTool.Input> {
+class RemoveFileTool(
+    private val projectRoot: Path,
+    private val configName: String? = null,
+    private val readOnly: Boolean = false,
+) : StandardTool<RemoveFileTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
-    override val name: String = "FILES__remove"
+    override val name: String = if (configName != null) "${configName}__FILES__remove" else "FILES__remove"
 
     override val description: String =
         """
@@ -56,26 +60,19 @@ class RemoveFileTool : ContextAwareTool<RemoveFileTool.Input> {
         val path: String = "",
     )
 
-    override fun executeWithContext(
-        input: Input?,
-        context: ToolExecutionContext,
-    ): String {
+    override fun execute(input: Input?): String {
         val params = input ?: Input()
 
         return try {
-            if (!context.fileRoots.containsKey("project")) {
-                return createErrorResponse("File tools require a configured namespace with project root")
-            }
-
             // Check read-only mode
-            if (context.properties["readOnly"] == "true") {
+            if (readOnly) {
                 return createErrorResponse("Cannot modify files in read-only mode")
             }
 
             kotlinx.coroutines.runBlocking {
                 withTimeout(IO_TIMEOUT.seconds) {
                     withContext(Dispatchers.IO) {
-                        removeFile(params.path, context)
+                        removeFile(params.path)
                     }
                 }
             }
@@ -88,11 +85,8 @@ class RemoveFileTool : ContextAwareTool<RemoveFileTool.Input> {
         }
     }
 
-    private fun removeFile(
-        path: String,
-        context: ToolExecutionContext,
-    ): String {
-        val resolved = resolveFilePath(path, context.fileRoots, createIntent = false)
+    private fun removeFile(path: String): String {
+        val resolved = resolveFilePath(path, mapOf("project" to projectRoot), createIntent = false)
 
         // Don't allow removing directories
         if (resolved.absolutePath.isDirectory()) {

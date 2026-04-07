@@ -4,14 +4,14 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.resolveFilePath
-import io.whozoss.agentos.sdk.tool.ContextAwareTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionContext
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.UUID
 import kotlin.io.path.exists
@@ -28,7 +28,11 @@ import kotlin.time.Duration.Companion.seconds
  * Edits are executed independently: failure on one file doesn't prevent others.
  * All writes use atomic move pattern with cleanup.
  */
-class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
+class EditFilesTool(
+    private val projectRoot: Path,
+    private val configName: String? = null,
+    private val readOnly: Boolean = false,
+) : StandardTool<EditFilesTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
@@ -37,7 +41,7 @@ class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
         private val PID = ProcessHandle.current().pid()
     }
 
-    override val name: String = "FILES__editFiles"
+    override val name: String = if (configName != null) "${configName}__FILES__editFiles" else "FILES__editFiles"
 
     override val description: String =
         """
@@ -131,19 +135,12 @@ class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
         val edits: List<Map<String, Any>> = emptyList(),
     )
 
-    override fun executeWithContext(
-        input: Input?,
-        context: ToolExecutionContext,
-    ): String {
+    override fun execute(input: Input?): String {
         val params = input ?: Input()
 
         return try {
-            if (!context.fileRoots.containsKey("project")) {
-                return createErrorResponse("File tools require a configured namespace with project root")
-            }
-
             // Check read-only mode
-            if (context.properties["readOnly"] == "true") {
+            if (readOnly) {
                 return createErrorResponse("Cannot modify files in read-only mode")
             }
 
@@ -154,7 +151,7 @@ class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
             kotlinx.coroutines.runBlocking {
                 withTimeout(IO_TIMEOUT.seconds) {
                     withContext(Dispatchers.IO) {
-                        processEdits(params.edits, context)
+                        processEdits(params.edits)
                     }
                 }
             }
@@ -165,10 +162,7 @@ class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
         }
     }
 
-    private fun processEdits(
-        edits: List<Map<String, Any>>,
-        context: ToolExecutionContext,
-    ): String {
+    private fun processEdits(edits: List<Map<String, Any>>): String {
         val results = mutableListOf<String>()
 
         for (editMap in edits) {
@@ -180,12 +174,12 @@ class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
                     when (operation) {
                         "write" -> {
                             val content = editMap["content"] as? String ?: ""
-                            processWrite(path, content, context)
+                            processWrite(path, content)
                         }
                         "patch" -> {
                             @Suppress("UNCHECKED_CAST")
                             val replacements = editMap["replacements"] as? List<Map<String, Any>> ?: emptyList()
-                            processPatch(path, replacements, context)
+                            processPatch(path, replacements)
                         }
                         else -> "$path: Unknown operation"
                     }
@@ -202,9 +196,8 @@ class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
     private fun processWrite(
         path: String,
         content: String,
-        context: ToolExecutionContext,
     ): String {
-        val resolved = resolveFilePath(path, context.fileRoots, createIntent = true)
+        val resolved = resolveFilePath(path, mapOf("project" to projectRoot), createIntent = true)
 
         // Check threshold on EXISTING files
         if (resolved.absolutePath.exists()) {
@@ -235,9 +228,8 @@ class EditFilesTool : ContextAwareTool<EditFilesTool.Input> {
     private fun processPatch(
         path: String,
         replacements: List<Map<String, Any>>,
-        context: ToolExecutionContext,
     ): String {
-        val resolved = resolveFilePath(path, context.fileRoots, createIntent = false)
+        val resolved = resolveFilePath(path, mapOf("project" to projectRoot), createIntent = false)
 
         if (!resolved.absolutePath.exists()) {
             return "$path: No file found"

@@ -5,8 +5,12 @@ import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseEvent.FilesystemCaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.FilesystemCaseRepository
+import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
+import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.namespace.FilesystemNamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.user.FilesystemUserRepository
+import io.whozoss.agentos.user.UserRepository
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -50,6 +54,18 @@ class PersistenceConfiguration(
     fun filesystemNamespaceRepository(objectMapper: ObjectMapper): NamespaceRepository {
         logger.info { "[Persistence] FilesystemNamespaceRepository -> ${dataDir.resolve("namespaces")}" }
         return FilesystemNamespaceRepository(dataDir, objectMapper)
+    }
+
+    @Bean
+    fun filesystemIntegrationConfigRepository(objectMapper: ObjectMapper): IntegrationConfigRepository {
+        logger.info { "[Persistence] FilesystemIntegrationConfigRepository -> ${dataDir.resolve("integration-configs")}" }
+        return FilesystemIntegrationConfigRepository(dataDir, objectMapper)
+    }
+
+    @Bean
+    fun filesystemUserRepository(objectMapper: ObjectMapper): UserRepository {
+        logger.info { "[Persistence] FilesystemUserRepository -> ${dataDir.resolve("users")}" }
+        return FilesystemUserRepository(dataDir, objectMapper)
     }
 
     companion object : KLogging()

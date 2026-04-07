@@ -1,8 +1,8 @@
 name: tm-daily-kickoff
-description: "Task Master: Daily Kickoff (morning time weekdays) — set Today's focus from This Week, Slack summary"
+description: "TaskMaster: Daily Kickoff (morning time weekdays) — set Today's focus from This Week, Slack summary"
 commands:
   - |
-    You are Task Master. It is morning time Europe/Paris. Run the daily kickoff routine.
+    You are @TaskMaster. It is morning time Europe/Paris. Run the daily kickoff routine.
 
     ## What you do
 

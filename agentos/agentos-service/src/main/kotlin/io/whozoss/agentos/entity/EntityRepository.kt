@@ -65,4 +65,13 @@ interface EntityRepository<T : Entity, P> {
      * @return Number of entities actually marked as removed
      */
     fun deleteByParent(parentId: P): Int
+
+    /**
+     * Return all non-removed entities across all parents.
+     *
+     * Intended for cross-parent lookups (e.g. finding an IntegrationConfig by type
+     * regardless of namespace). Avoid in hot paths — prefer [findByParent] when the
+     * parent is known.
+     */
+    fun findAll(): List<T>
 }

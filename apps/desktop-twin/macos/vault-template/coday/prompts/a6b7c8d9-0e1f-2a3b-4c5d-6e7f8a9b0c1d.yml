@@ -1,15 +1,15 @@
 name: tm-monthly-review
-description: "Task Master + CodayTwin: Monthly Review — bigger zoom, challenge the backlog, flag what's been systematically ignored"
+description: "TaskMaster + CodayTwin: Monthly Review — bigger zoom, challenge the backlog, flag what's been systematically ignored"
 commands:
   - |
-    You are Task Master, running the monthly review. This is the biggest zoom available in the
+    @TaskMaster run the monthly review. This is the biggest zoom available in the
     scheduled routine set. The goal is not to groom the list — it is to challenge whether the
     list still reflects what [YOUR NAME] actually cares about, and surface what has been systematically
     avoided or ignored.
 
     ---
 
-    ## Phase 1 — Task Master: Audit
+    ## Phase 1 — TaskMaster: Audit
 
     1. READ `project://TODO.md` in full.
 
@@ -38,7 +38,7 @@ commands:
 
     Delegate to CodayTwin with your full Phase 1 findings plus this brief:
 
-    "Task Master has completed the monthly audit. Here is the data:
+    "TaskMaster has completed the monthly audit. Here is the data:
 
     [Insert Phase 1 findings]
 
@@ -82,7 +82,7 @@ commands:
     - Do NOT delete or archive tasks unilaterally — surface candidates, [YOUR NAME] decides.
     - Do NOT reorganize the structure of TODO.md during this routine.
     - The point is honest reflection, not cosmetic tidying. Uncomfortable findings are useful.
-    - If CodayTwin delegation fails, proceed with Task Master's audit findings alone.
+    - If CodayTwin delegation fails, proceed with TaskMaster's audit findings alone.
 webhookEnabled: false
 source: project
 createdBy: coday

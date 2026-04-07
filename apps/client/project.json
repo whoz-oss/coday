@@ -35,7 +35,7 @@
             "input": "apps/client/public"
           }
         ],
-        "styles": ["apps/client/src/styles.scss"]
+        "styles": ["apps/client/src/styles.scss"],
       },
       "configurations": {
         "production": {

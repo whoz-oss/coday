@@ -21,7 +21,7 @@ import org.pf4j.PluginWrapper
  * - Deny-list for sensitive files (.env, *.key, credentials.json, etc.)
  * - Atomic writes with cleanup (no orphan .tmp files)
  * - Ripgrep sanitization (injection-safe)
- * - Read-only mode support via ToolExecutionContext
+ * - Read-only mode support via constructor injection
  */
 class FilePlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
     override fun start() {

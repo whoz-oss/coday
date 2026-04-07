@@ -3,8 +3,7 @@ package io.whozoss.agentos.plugins.file.tools
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.FilePrefixes
 import io.whozoss.agentos.plugins.file.resolveFilePath
-import io.whozoss.agentos.sdk.tool.ContextAwareTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionContext
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
@@ -24,14 +23,17 @@ import kotlin.time.Duration.Companion.seconds
  * Uses ripgrep when available, falls back to Java NIO.
  * Implements smart return: returns content if total size ≤ 200KB, otherwise just paths.
  */
-class SearchFilesTool : ContextAwareTool<SearchFilesTool.Input> {
+class SearchFilesTool(
+    private val projectRoot: Path,
+    private val configName: String? = null,
+) : StandardTool<SearchFilesTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
         private const val CONTENT_THRESHOLD = 200 * 1024 // 200 KB
     }
 
-    override val name: String = "FILES__searchFiles"
+    override val name: String = if (configName != null) "${configName}__FILES__searchFiles" else "FILES__searchFiles"
 
     override val description: String =
         """
@@ -80,17 +82,10 @@ class SearchFilesTool : ContextAwareTool<SearchFilesTool.Input> {
         val fileTypes: List<String>? = null,
     )
 
-    override fun executeWithContext(
-        input: Input?,
-        context: ToolExecutionContext,
-    ): String {
+    override fun execute(input: Input?): String {
         val params = input ?: Input()
 
         return try {
-            if (!context.fileRoots.containsKey("project")) {
-                return createErrorResponse("File tools require a configured namespace with project root")
-            }
-
             if (params.fileName.isNullOrBlank() && params.fileContent.isNullOrBlank()) {
                 return createErrorResponse("At least one of fileName or fileContent must be provided")
             }
@@ -98,7 +93,7 @@ class SearchFilesTool : ContextAwareTool<SearchFilesTool.Input> {
             kotlinx.coroutines.runBlocking {
                 withTimeout(IO_TIMEOUT.seconds) {
                     withContext(Dispatchers.IO) {
-                        searchFiles(params, context)
+                        searchFiles(params)
                     }
                 }
             }
@@ -111,15 +106,13 @@ class SearchFilesTool : ContextAwareTool<SearchFilesTool.Input> {
         }
     }
 
-    private fun searchFiles(
-        params: Input,
-        context: ToolExecutionContext,
-    ): String {
+    private fun searchFiles(params: Input): String {
+        val fileRoots = mapOf("project" to projectRoot)
         val searchRoot =
             if (params.path.isNullOrBlank()) {
-                context.fileRoots["project"]!!
+                projectRoot
             } else {
-                resolveFilePath(params.path, context.fileRoots, createIntent = false).absolutePath
+                resolveFilePath(params.path, fileRoots, createIntent = false).absolutePath
             }
 
         // Try ripgrep first if fileContent is provided
@@ -130,7 +123,7 @@ class SearchFilesTool : ContextAwareTool<SearchFilesTool.Input> {
                 searchWithNIO(searchRoot, params)
             }
 
-        return buildSearchResult(results, searchRoot, context.fileRoots["project"]!!)
+        return buildSearchResult(results, searchRoot, projectRoot)
     }
 
     private fun searchWithRipgrep(

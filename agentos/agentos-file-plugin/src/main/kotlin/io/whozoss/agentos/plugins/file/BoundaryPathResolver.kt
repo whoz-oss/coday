@@ -234,7 +234,7 @@ class BoundaryPathResolver(
  * security-enforced resolution.
  *
  * @param filePath Full path with prefix (e.g., "project://src/main.ts")
- * @param fileRoots Map of scope names to root paths (from ToolExecutionContext)
+ * @param fileRoots Map of scope names to root paths
  * @param createIntent If true, allows missing path segments (for file creation)
  * @param denyPatterns Custom deny-list patterns (defaults to SensitiveFilePatterns.DEFAULT_PATTERNS)
  * @return ResolvedPath with absolutePath, scope, and relativePath

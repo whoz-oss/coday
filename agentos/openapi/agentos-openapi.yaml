@@ -10,11 +10,68 @@ tags:
 - name: sse
   description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
 paths:
+  /api/users/{id}:
+    get:
+      tags:
+      - user-controller
+      operationId: getByIdUser
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    put:
+      tags:
+      - user-controller
+      operationId: updateUser
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      tags:
+      - user-controller
+      operationId: deleteUser
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/namespaces/{id}:
     get:
       tags:
       - namespace-controller
-      operationId: getById
+      operationId: getByIdNamespace
       parameters:
       - name: id
         in: path
@@ -32,7 +89,7 @@ paths:
     put:
       tags:
       - namespace-controller
-      operationId: update
+      operationId: updateNamespace
       parameters:
       - name: id
         in: path
@@ -56,7 +113,64 @@ paths:
     delete:
       tags:
       - namespace-controller
-      operationId: delete
+      operationId: deleteNamespace
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/integration-configs/{id}:
+    get:
+      tags:
+      - integration-config-controller
+      operationId: getByIdIntegrationConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+    put:
+      tags:
+      - integration-config-controller
+      operationId: updateIntegrationConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConfig"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+    delete:
+      tags:
+      - integration-config-controller
+      operationId: deleteIntegrationConfig
       parameters:
       - name: id
         in: path
@@ -71,7 +185,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: getById_1
+      operationId: getByIdCase
       parameters:
       - name: id
         in: path
@@ -89,7 +203,7 @@ paths:
     put:
       tags:
       - case-controller
-      operationId: update_1
+      operationId: updateCase
       parameters:
       - name: id
         in: path
@@ -113,7 +227,7 @@ paths:
     delete:
       tags:
       - case-controller
-      operationId: delete_1
+      operationId: deleteCase
       parameters:
       - name: id
         in: path
@@ -124,6 +238,60 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/users:
+    get:
+      tags:
+      - user-controller
+      operationId: listAllUser
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      tags:
+      - user-controller
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /api/users/by-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: getByIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
   /api/tools/{toolName}/execute:
     post:
       tags:
@@ -226,7 +394,7 @@ paths:
     post:
       tags:
       - plugin-controller
-      operationId: reloadAllAgents
+      operationId: reloadAllAgentsPlugin
       responses:
         "200":
           description: OK
@@ -238,7 +406,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listAll
+      operationId: listAllNamespace
       responses:
         "200":
           description: OK
@@ -251,7 +419,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: create
+      operationId: createNamespace
       requestBody:
         content:
           application/json:
@@ -269,7 +437,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: getByIds
+      operationId: getByIdsNamespace
       requestBody:
         content:
           application/json:
@@ -288,11 +456,52 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Namespace"
+  /api/integration-configs:
+    post:
+      tags:
+      - integration-config-controller
+      operationId: createIntegrationConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConfig"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+  /api/integration-configs/by-ids:
+    post:
+      tags:
+      - integration-config-controller
+      operationId: getByIdsIntegrationConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
   /api/cases:
     post:
       tags:
       - case-controller
-      operationId: create_1
+      operationId: createCase
       requestBody:
         content:
           application/json:
@@ -310,7 +519,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: addMessage
+      operationId: addMessageCase
       parameters:
       - name: caseId
         in: path
@@ -361,7 +570,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: getByIds_1
+      operationId: getByIdsCase
       requestBody:
         content:
           application/json:
@@ -384,7 +593,7 @@ paths:
     post:
       tags:
       - case-event-rest-controller
-      operationId: getByIds_2
+      operationId: getByIdsCaseEventRest
       requestBody:
         content:
           application/json:
@@ -417,6 +626,41 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/users/me:
+    get:
+      tags:
+      - user-controller
+      summary: Get the current user's profile
+      operationId: getMeUser
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /api/users/by-parentId/{parentId}:
+    get:
+      tags:
+      - user-controller
+      operationId: listByParentUser
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
   /api/tools:
     get:
       tags:
@@ -532,7 +776,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listByParent
+      operationId: listByParentNamespace
       parameters:
       - name: parentId
         in: path
@@ -550,6 +794,81 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Namespace"
+  /api/integration-types:
+    get:
+      tags:
+      - integration-type-controller
+      operationId: listTypesIntegrationType
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/integration-types/{type}:
+    get:
+      tags:
+      - integration-type-controller
+      operationId: getTypeIntegrationType
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/integration-configs/by-parentId/{parentId}:
+    get:
+      tags:
+      - integration-config-controller
+      operationId: listByParentIntegrationConfig
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
+  /api/integration-configs/by-namespace/{namespaceId}:
+    get:
+      tags:
+      - integration-config-controller
+      operationId: listByNamespaceIntegrationConfig
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -558,7 +877,7 @@ paths:
       description: "Server-Sent Events stream emitting all events generated during\
         \ case execution. Use the browser EventSource API to consume this endpoint,\
         \ not a regular HTTP client."
-      operationId: streamEvents
+      operationId: streamEventsCaseEventSse
       parameters:
       - name: caseId
         in: path
@@ -577,7 +896,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: listByParent_1
+      operationId: listByParentCase
       parameters:
       - name: parentId
         in: path
@@ -599,7 +918,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: getById_2
+      operationId: getByIdCaseEventRest
       parameters:
       - name: id
         in: path
@@ -632,7 +951,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: listByCase
+      operationId: listByCaseCaseEventRest
       parameters:
       - name: caseId
         in: path
@@ -665,50 +984,66 @@ paths:
                   - $ref: "#/components/schemas/WarnEvent"
 components:
   schemas:
-    EntityMetadata:
+    User:
       type: object
       properties:
         id:
           type: string
           format: uuid
-        created:
+        email:
           type: string
-          format: date-time
-        createdBy:
+          minLength: 1
+        externalId:
           type: string
-        modified:
+        firstname:
           type: string
-          format: date-time
-        modifiedBy:
+        lastname:
           type: string
-        removed:
-          type: boolean
+        bio:
+          type: string
       required:
-      - created
-      - id
-      - modified
-      - removed
+      - email
     Namespace:
       type: object
       properties:
-        metadata:
-          $ref: "#/components/schemas/EntityMetadata"
-        name:
-          type: string
-        description:
-          type: string
         id:
           type: string
           format: uuid
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
       required:
-      - id
-      - metadata
       - name
+    IntegrationConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        integrationType:
+          type: string
+          minLength: 1
+        parameters:
+          $ref: "#/components/schemas/JsonNode"
+      required:
+      - integrationType
+      - name
+      - namespaceId
+    JsonNode: {}
     Case:
       type: object
       properties:
-        metadata:
-          $ref: "#/components/schemas/EntityMetadata"
+        id:
+          type: string
+          format: uuid
         namespaceId:
           type: string
           format: uuid
@@ -722,15 +1057,9 @@ components:
           - ERROR
         title:
           type: string
-        id:
-          type: string
-          format: uuid
       required:
-      - id
-      - metadata
       - namespaceId
       - status
-      - title
     ToolExecutionResult:
       type: object
       properties:
@@ -779,14 +1108,11 @@ components:
       properties:
         content:
           type: string
-        userId:
-          type: string
         answerToEventId:
           type: string
           format: uuid
       required:
       - content
-      - userId
     Actor:
       type: object
       properties:
@@ -947,6 +1273,29 @@ components:
       - status
       - timestamp
       - type
+    EntityMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        modified:
+          type: string
+          format: date-time
+        modifiedBy:
+          type: string
+        removed:
+          type: boolean
+      required:
+      - created
+      - id
+      - modified
+      - removed
     Image:
       allOf:
       - $ref: "#/components/schemas/MessageContent"
@@ -1204,3 +1553,19 @@ components:
       - provider
       - state
       - version
+    IntegrationTypeDescriptor:
+      type: object
+      properties:
+        type:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        configSchema:
+          $ref: "#/components/schemas/JsonNode"
+      required:
+      - configSchema
+      - description
+      - displayName
+      - type

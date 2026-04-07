@@ -67,7 +67,7 @@ export class AgentCrudApiService {
    * Get a specific agent definition with metadata
    */
   getAgent(agentName: string): Observable<AgentWithMeta> {
-    return this.http.get<AgentWithMeta>(`${this.getBaseUrl()}/${agentName}`)
+    return this.http.get<AgentWithMeta>(`${this.getBaseUrl()}/${encodeURIComponent(agentName)}`)
   }
 
   /**
@@ -81,7 +81,7 @@ export class AgentCrudApiService {
    * Update an existing file-based agent
    */
   updateAgent(agentName: string, definition: AgentDefinition): Observable<AgentWithMeta> {
-    return this.http.put<AgentWithMeta>(`${this.getBaseUrl()}/${agentName}`, { definition })
+    return this.http.put<AgentWithMeta>(`${this.getBaseUrl()}/${encodeURIComponent(agentName)}`, { definition })
   }
 
   /**
@@ -121,6 +121,8 @@ export class AgentCrudApiService {
    * Delete a file-based agent
    */
   deleteAgent(agentName: string): Observable<{ success: boolean; message: string }> {
-    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl()}/${agentName}`)
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${this.getBaseUrl()}/${encodeURIComponent(agentName)}`
+    )
   }
 }

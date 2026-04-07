@@ -1,6 +1,6 @@
 id: 25b95287-52a0-48e0-9651-53fc2b7c30ba
 name: Monthly review
-enabled: true
+enabled: false
 promptId: a6b7c8d9-0e1f-2a3b-4c5d-6e7f8a9b0c1d
 schedule:
   startTimestamp: 2026-01-01T09:00:00.000Z

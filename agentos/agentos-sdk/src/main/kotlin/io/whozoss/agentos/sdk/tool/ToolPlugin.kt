@@ -1,21 +1,27 @@
 package io.whozoss.agentos.sdk.tool
 
+import com.fasterxml.jackson.databind.JsonNode
 import org.pf4j.ExtensionPoint
 
 /**
  * Extension point for plugins that provide tools.
  *
- * Plugins implement this interface to contribute tools to the AgentOS tool registry.
- * The AgentOS service will discover all implementations of this interface
- * using PF4J's extension mechanism and automatically register their tools.
+ * A ToolPlugin is a typed factory: it declares what configuration it needs
+ * ([integrationType], [configSchema]) and produces [StandardTool] instances
+ * from a supplied configuration ([provideTools]).
  *
- * A plugin consists of two classes:
- * 1. A Plugin class that extends org.pf4j.Plugin
- * 2. A ToolPlugin implementation annotated with @Extension
+ * The service layer is responsible for:
+ * 1. Collecting [configSchema] from each loaded plugin to populate the
+ *    [IntegrationTypeRegistry] catalogue exposed to clients.
+ * 2. Looking up the persisted [IntegrationConfig] for [integrationType] and
+ *    passing its [parameters][IntegrationConfig.parameters] to [provideTools].
+ *
+ * Plugins that require no configuration should declare [configSchema] as null
+ * and handle a null [config] in [provideTools] by using built-in defaults.
  *
  * Example usage:
  * ```kotlin
- * // 1. Plugin class
+ * // 1. Plugin lifecycle class
  * class MyPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
  *     override fun start() { logger.info("Plugin started") }
  *     override fun stop() { logger.info("Plugin stopped") }
@@ -24,21 +30,64 @@ import org.pf4j.ExtensionPoint
  * // 2. Tool provider with @Extension
  * @Extension
  * class MyToolProvider : ToolPlugin {
- *     override fun provideTools(): List<StandardTool<*>> {
- *         return listOf(
- *             MyCustomTool(),
- *             AnotherTool()
- *         )
+ *     override val integrationType = "MY_INTEGRATION"
+ *
+ *     override val configSchema: JsonNode? = jacksonObjectMapper().readTree("""
+ *         {
+ *             "type": "object",
+ *             "properties": {
+ *                 "apiKey": { "type": "string", "title": "API Key" }
+ *             },
+ *             "required": ["apiKey"]
+ *         }
+ *     """)
+ *
+ *     override fun provideTools(config: JsonNode?): List<StandardTool<*>> {
+ *         val apiKey = config?.get("apiKey")?.asText() ?: ""
+ *         return listOf(MyCustomTool(apiKey))
  *     }
  * }
  * ```
  */
 interface ToolPlugin : ExtensionPoint {
     /**
-     * Provide tools that this plugin contributes to the registry.
-     * Called once when the plugin is loaded during AgentOS initialization.
-     *
-     * @return List of tool implementations to register
+     * Machine-readable identifier for this integration type.
+     * Must be unique across all loaded plugins.
+     * Matches [IntegrationConfig.integrationType] for config lookup.
      */
-    fun provideTools(): List<StandardTool<*>>
+    val integrationType: String
+
+    /**
+     * JSON Schema (as a [JsonNode]) describing the configuration this plugin
+     * expects to receive in [provideTools].
+     *
+     * The service exposes this schema via [IntegrationTypeRegistry] so clients
+     * can render a configuration form dynamically.
+     *
+     * Return null if this plugin needs no configuration.
+     */
+    val configSchema: JsonNode?
+
+    /**
+     * Produce the tools this plugin contributes, instantiated from [config].
+     *
+     * [config] is the [IntegrationConfig.parameters] node stored for this
+     * [integrationType] in the current context, or null if no config has been
+     * persisted yet. Implementations must handle null gracefully by falling
+     * back to sensible defaults.
+     *
+     * [configName] is the [IntegrationConfig.name] of the config being instantiated,
+     * or null for config-less plugins. When a namespace has multiple configs of the
+     * same [integrationType] (e.g. two JIRA instances), plugins should incorporate
+     * [configName] into their tool names to avoid collisions in the registry
+     * using the convention `configName__ToolName`
+     * (e.g. "JIRA_PROD__GetIssue" and "JIRA_STAGING__GetIssue").
+     *
+     * @param config Parsed JSON parameters from the persisted IntegrationConfig,
+     *               or null if no configuration is available.
+     * @param configName The name of the IntegrationConfig being instantiated,
+     *                   or null for config-less plugins.
+     * @return List of tool implementations to register.
+     */
+    fun provideTools(config: JsonNode?, configName: String? = null): List<StandardTool<*>>
 }

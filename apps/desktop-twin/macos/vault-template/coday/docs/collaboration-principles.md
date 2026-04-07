@@ -84,6 +84,17 @@ Thread: <coday-thread-id>
 **Weekly**: Process inbox, review calendar, update active efforts, maintain MOCs, groom TODO.md.
 **Monthly**: Review themes/patterns, update key MOCs, archive completed efforts, vault health check.
 
+### 12. People Data Privacy
+Notes and memories about real people carry ethical and legal obligations. All agents apply the
+full protocol in `coday/docs/people-data-privacy-protocol.md`. Summary:
+- **Observations only** — store what happened or was said, never character conclusions or labels
+- **Hard prohibitions** — never store health info, protected characteristics, or hearsay-as-fact
+- **Temporal decay** — flag observations older than 6 months in any decision context
+- **Sparsity warning** — < 3 observations in 6 months is insufficient for an assessment
+- **Charitable interpretation** — always note an alternative reading of negative observations
+- **Pre-decision ritual** — Five Questions before career-consequential use of stored data
+- **Erasure compliance** — full deletion on request, including derived conclusions
+
 ---
 
 *"The goal isn't a perfect system. The goal is a system that helps you think clearly, decide wisely, and live well."*

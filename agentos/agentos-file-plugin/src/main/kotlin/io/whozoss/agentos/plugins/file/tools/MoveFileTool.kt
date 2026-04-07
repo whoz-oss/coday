@@ -2,8 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.resolveFilePath
-import io.whozoss.agentos.sdk.tool.ContextAwareTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionContext
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
@@ -12,6 +11,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import kotlin.time.Duration.Companion.seconds
 
@@ -21,13 +21,17 @@ import kotlin.time.Duration.Companion.seconds
  * Fails if source doesn't exist or destination already exists.
  * Cross-scope moves are not allowed.
  */
-class MoveFileTool : ContextAwareTool<MoveFileTool.Input> {
+class MoveFileTool(
+    private val projectRoot: Path,
+    private val configName: String? = null,
+    private val readOnly: Boolean = false,
+) : StandardTool<MoveFileTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
-    override val name: String = "FILES__moveFile"
+    override val name: String = if (configName != null) "${configName}__FILES__moveFile" else "FILES__moveFile"
 
     override val description: String =
         """
@@ -65,26 +69,19 @@ class MoveFileTool : ContextAwareTool<MoveFileTool.Input> {
         val to: String = "",
     )
 
-    override fun executeWithContext(
-        input: Input?,
-        context: ToolExecutionContext,
-    ): String {
+    override fun execute(input: Input?): String {
         val params = input ?: Input()
 
         return try {
-            if (!context.fileRoots.containsKey("project")) {
-                return createErrorResponse("File tools require a configured namespace with project root")
-            }
-
             // Check read-only mode
-            if (context.properties["readOnly"] == "true") {
+            if (readOnly) {
                 return createErrorResponse("Cannot modify files in read-only mode")
             }
 
             kotlinx.coroutines.runBlocking {
                 withTimeout(IO_TIMEOUT.seconds) {
                     withContext(Dispatchers.IO) {
-                        moveFile(params.from, params.to, context)
+                        moveFile(params.from, params.to)
                     }
                 }
             }
@@ -100,10 +97,10 @@ class MoveFileTool : ContextAwareTool<MoveFileTool.Input> {
     private fun moveFile(
         from: String,
         to: String,
-        context: ToolExecutionContext,
     ): String {
-        val resolvedFrom = resolveFilePath(from, context.fileRoots, createIntent = false)
-        val resolvedTo = resolveFilePath(to, context.fileRoots, createIntent = true)
+        val fileRoots = mapOf("project" to projectRoot)
+        val resolvedFrom = resolveFilePath(from, fileRoots, createIntent = false)
+        val resolvedTo = resolveFilePath(to, fileRoots, createIntent = true)
 
         // Verify same scope
         if (resolvedFrom.scope != resolvedTo.scope) {
