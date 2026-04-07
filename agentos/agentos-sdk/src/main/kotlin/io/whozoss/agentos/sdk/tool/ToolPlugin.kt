@@ -76,12 +76,17 @@ interface ToolPlugin : ExtensionPoint {
      * persisted yet. Implementations must handle null gracefully by falling
      * back to sensible defaults.
      *
-     * Called once per plugin load. The returned tools are registered in the
-     * [ToolRegistry] and remain active until the plugin is unloaded.
+     * [configName] is the [IntegrationConfig.name] of the config being instantiated,
+     * or null for config-less plugins. When a namespace has multiple configs of the
+     * same [integrationType] (e.g. two JIRA instances), plugins should incorporate
+     * [configName] into their tool names to avoid collisions in the registry
+     * (e.g. "GetIssue_JIRA_PROD" and "GetIssue_JIRA_STAGING").
      *
      * @param config Parsed JSON parameters from the persisted IntegrationConfig,
      *               or null if no configuration is available.
+     * @param configName The name of the IntegrationConfig being instantiated,
+     *                   or null for config-less plugins.
      * @return List of tool implementations to register.
      */
-    fun provideTools(config: JsonNode?): List<StandardTool<*>>
+    fun provideTools(config: JsonNode?, configName: String? = null): List<StandardTool<*>>
 }

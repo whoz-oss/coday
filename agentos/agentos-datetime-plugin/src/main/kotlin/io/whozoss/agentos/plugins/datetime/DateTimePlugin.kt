@@ -35,13 +35,13 @@ class DateTimeToolProvider : ToolPlugin {
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
-    override fun provideTools(config: JsonNode?): List<StandardTool<*>> {
+    override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
         val defaultTimezone = config
             ?.get("defaultTimezone")
             ?.asText()
             ?.takeIf { it.isNotBlank() }
             ?: "UTC"
-        return listOf(GetCurrentDateTimeTool(defaultTimezone))
+        return listOf(GetCurrentDateTimeTool(defaultTimezone = defaultTimezone, configName = configName))
     }
 
     companion object : KLogging() {

@@ -120,7 +120,7 @@ class ToolRegistryService(
                 return@forEach
             }
             try {
-                val providedTools = plugin.provideTools(config.parameters)
+                val providedTools = plugin.provideTools(config.parameters, config.name)
                 providedTools.forEach { tool ->
                     if (resolved.containsKey(tool.name)) {
                         logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from integrationType='${config.integrationType}' overrides an existing entry" }

@@ -15,12 +15,14 @@ import java.time.format.DateTimeFormatter
  */
 class GetCurrentDateTimeTool(
     private val defaultTimezone: String = "UTC",
+    configName: String? = null,
 ) : StandardTool<GetCurrentDateTimeTool.Input> {
+    private val toolSuffix = if (configName != null) "_$configName" else ""
     companion object {
         private val objectMapper = jacksonObjectMapper()
     }
 
-    override val name: String = "GetCurrentDateTime"
+    override val name: String = "GetCurrentDateTime$toolSuffix"
 
     override val description: String =
         """
