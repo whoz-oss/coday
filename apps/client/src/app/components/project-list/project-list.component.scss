@@ -6,6 +6,12 @@
   overflow-y: auto;
 }
 
+.project-page-layout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
 .project-list__logo {
   width: 40px;
   height: 40px;

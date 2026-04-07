@@ -180,9 +180,7 @@ $section-toggle-height: 50px;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-backdrop-blur);
   -webkit-backdrop-filter: var(--glass-backdrop-blur);
-  border-radius: 0;
-  overflow: hidden; // Clipped — scroll happens inside .thread-selector
-  overflow-x: hidden !important; // No horizontal scrollbar ever
+  overflow: hidden !important;
   display: flex;
   flex-direction: column;
 }
@@ -245,32 +243,47 @@ $section-toggle-height: 50px;
   }
 }
 
-// Loading Section
-.loading-section {
-  padding: 2rem 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+// Mission Control Section
+.mission-control-section {
+  padding: 0.25rem 1rem 0.5rem;
+  flex-shrink: 0;
 }
 
-.loading-content {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.mission-control-link {
+  display: inline-flex;
   align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  padding: 0;
 
-  mat-progress-bar {
-    width: 100%;
-    height: 4px;
-    border-radius: 2px;
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--color-text-secondary);
+    transition: color 0.2s ease;
   }
 
-  .loading-text {
-    margin: 0;
-    font-size: 0.875rem;
-    color: var(--color-text-secondary);
-    text-align: center;
+  &:hover {
+    color: var(--color-primary);
+    transform: translateX(3px);
+
+    mat-icon {
+      color: var(--color-primary);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
@@ -375,10 +388,6 @@ $section-toggle-height: 50px;
 }
 
 // Nav: sticky bottom of the sidenav — Control Center collapsible.
-// flex-shrink: 0 ensures it never shrinks away; the thread list above it
-// absorbs all available space via flex: 1.
-// max-height: 70% caps expansion so it never swallows the whole sidenav.
-// The control-center group manages its own internal scroll when expanded.
 .sidenav-nav {
   flex-shrink: 0;
   display: flex;
@@ -416,8 +425,6 @@ $section-toggle-height: 50px;
   }
 }
 
-// Control Center group: the outer collapsible that wraps all control items.
-// Its content area has no max-height cap — the sidenav column scrolls as a whole.
 .settings-group {
   > .section-content.settings-content {
     padding: 0;
@@ -453,13 +460,8 @@ $section-toggle-height: 50px;
   display: flex;
   flex-direction: column;
 
-  &.expanded {
-    display: flex;
-    flex-direction: column;
-
-    .section-content {
-      border-bottom: none;
-    }
+  &.expanded .section-content {
+    border-bottom: none;
   }
 }
 
@@ -496,7 +498,6 @@ $section-toggle-height: 50px;
     height: 20px;
     color: var(--color-text-secondary);
     transition: transform 0.2s ease;
-    transform: rotate(0deg);
     flex-shrink: 0;
   }
 
@@ -621,63 +622,6 @@ $section-toggle-height: 50px;
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-// Config links container
-.config-links {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.5rem 1rem;
-  margin-bottom: 1rem;
-}
-
-// Sidenav items (buttons)
-.sidenav-item {
-  width: 100%;
-
-  .item-icon {
-    font-size: 20px;
-    width: 20px;
-    height: 20px;
-    color: var(--color-text-secondary);
-  }
-
-  .item-text {
-    flex: 1;
-    font-size: 0.9rem;
-  }
-
-  .disabled-hint {
-    font-size: 0.7rem;
-    color: var(--color-text-secondary);
-    font-style: italic;
-  }
-}
-
-// Sidenav links
-.sidenav-link {
-  &.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    color: var(--color-text-secondary);
-
-    .item-icon {
-      color: var(--color-text-secondary);
-    }
-  }
-
-  .item-icon,
-  mat-icon {
-    font-size: 18px;
-    width: 18px;
-    height: 18px;
-    color: var(--color-primary);
-  }
-
-  .item-text {
-    font-size: 0.875rem;
   }
 }
 

@@ -171,6 +171,7 @@ export class ThreadService {
       parentEventId: thread.parentEventId,
       delegatedAgentName: thread.delegatedAgentName,
       delegatedTask: thread.delegatedTask,
+      worktreeProject: thread.worktreeProject,
     }
   }
 

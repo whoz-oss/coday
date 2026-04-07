@@ -61,6 +61,21 @@
       </a>
     </div>
 
+    <!-- Mission Control shortcut -->
+    @if (selectedProjectName()) {
+      <div class="mission-control-section">
+        <a
+          class="mission-control-link"
+          (click)="openMissionControl(); $event.preventDefault()"
+          role="button"
+          tabindex="0"
+        >
+          <mat-icon>rocket_launch</mat-icon>
+          <span class="mission-control-text">Mission Control</span>
+        </a>
+      </div>
+    }
+
     <!-- Thread section: fills remaining space, scrolls independently. Always open — not collapsible. -->
     <div class="sidenav-sections">
       <div class="section-container expanded">

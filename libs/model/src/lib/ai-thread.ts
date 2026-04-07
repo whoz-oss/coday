@@ -93,6 +93,8 @@ export class AiThread {
   parentEventId?: string
   delegatedAgentName?: string
   delegatedTask?: string
+  /** Worktree project name — set when this thread was created via the New Mission worktree flow */
+  worktreeProject?: string
 
   private parentThread: AiThread | undefined
 
@@ -124,6 +126,7 @@ export class AiThread {
     this.parentEventId = thread.parentEventId
     this.delegatedAgentName = thread.delegatedAgentName
     this.delegatedTask = thread.delegatedTask
+    this.worktreeProject = thread.worktreeProject
 
     // Filter on type first, then build events
     // Ensure messages is always initialized as an array, even if empty
@@ -420,6 +423,16 @@ export class AiThread {
   }
 
   /**
+   * Adds an invite or choice event to the thread.
+   * Used to persist queryUser questions so they survive reconnection and appear in history.
+   * @param questionEvent - The InviteEvent or ChoiceEvent to add
+   */
+  addInviteEvent(questionEvent: InviteEvent | ChoiceEvent): void {
+    this.add(questionEvent)
+    this.modifiedDate = new Date().toISOString()
+  }
+
+  /**
    * Adds a delegation event to the thread history.
    * This is an immutable branch marker — emitted once per sub-thread.
    * Duplicate events for the same subThreadId are ignored.
@@ -682,6 +695,7 @@ export class AiThread {
       parentEventId: this.parentEventId,
       delegatedAgentName: this.delegatedAgentName,
       delegatedTask: this.delegatedTask,
+      worktreeProject: this.worktreeProject,
       messages: this.messages,
     }
   }

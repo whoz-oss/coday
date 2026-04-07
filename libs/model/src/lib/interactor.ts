@@ -132,6 +132,14 @@ export abstract class Interactor {
     }
   }
 
+  /**
+   * Return the last pending invite event without re-emitting it.
+   * Used by project-level SSE to replay active status to new clients.
+   */
+  getLastInviteEvent(): InviteEvent | undefined {
+    return this.lastInviteEvent
+  }
+
   kill() {
     this.subs.forEach((s) => s.unsubscribe())
     this.events.complete()

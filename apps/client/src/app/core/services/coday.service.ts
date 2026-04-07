@@ -3,6 +3,7 @@ import { BehaviorSubject, Observable, Subject } from 'rxjs'
 import { takeUntil, tap } from 'rxjs/operators'
 import {
   AnswerEvent,
+  buildCodayEvent,
   ChoiceEvent,
   CodayEvent,
   DelegationEvent,
@@ -125,6 +126,33 @@ export class CodayService implements OnDestroy {
   }
 
   /**
+   * Pre-populate messages from the REST history (raw serialized events).
+   * Called by ThreadComponent after connectToThread() to show existing messages
+   * before — or instead of — the SSE replay from the backend.
+   *
+   * When the server instance is cold (no live Coday object), it cannot replay
+   * the history over SSE. This call fills that gap by fetching the persisted
+   * messages via REST and injecting them through the normal event pipeline.
+   *
+   * IMPORTANT: InviteEvent and ChoiceEvent are intentionally skipped.
+   * These represent interactive prompts whose state lives only in the running
+   * backend instance. A historical InviteEvent is already answered — treating
+   * it as "pending" would corrupt currentInviteEventSubject and cause the
+   * frontend to build a stale AnswerEvent when the user replies, breaking
+   * the conversation flow. The live pending invite arrives via SSE only.
+   *
+   * Uses addMessage() internally so duplicates from any SSE replay are silently skipped.
+   */
+  loadHistoryFromRest(rawMessages: any[]): void {
+    for (const raw of rawMessages) {
+      const event = buildCodayEvent(raw)
+      if (event) {
+        this.handleEvent(event)
+      }
+    }
+  }
+
+  /**
    * Reset messages when changing project or thread context
    */
   resetMessages(): void {
@@ -154,17 +182,16 @@ export class CodayService implements OnDestroy {
     if (pendingInvite) {
       // There is a pending InviteEvent: build a proper AnswerEvent with the correct parentKey
       // so the backend's promptText() can match it via its filter on parentKey.
-      // Using sendFreeMessage here would route through addUserMessage which only works
-      // if pendingQuestionEvent is still set server-side — an unreliable assumption.
       this.isThinkingSubject.next(true)
       this.tabTitleService?.setSystemActive()
       this.currentInviteEventSubject.next(null)
 
       const answerEvent = pendingInvite.buildAnswer(message)
 
-      // Optimistic UI: display the user's reply immediately without waiting for SSE bounce-back,
-      // aligning with the free-form path which gets immediate feedback via addUserMessage on server.
-      this.handleAnswerEvent(answerEvent)
+      // Do NOT display optimistically here: the ToolRequestEvent and InviteEvent that
+      // preceded this answer have not yet arrived via SSE. Inserting the AnswerEvent now
+      // would place it before those events in the list, breaking chronological order.
+      // The backend will emit the AnswerEvent over SSE in the correct position.
 
       this.messageApi.sendMessage(answerEvent).subscribe({
         error: (error) => {
@@ -385,7 +412,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: event.speaker ? 'assistant' : 'system',
       speaker: event.speaker ?? 'System',
-      content: [{ type: 'text', content: event.text }], // Convertir en contenu riche
+      content: [{ type: 'text', content: event.text }],
       timestamp: event.date,
       type: event.speaker ? 'text' : 'technical',
     }
@@ -394,6 +421,19 @@ export class CodayService implements OnDestroy {
   }
 
   private handleAnswerEvent(event: AnswerEvent): void {
+    // If this answer resolves the current pending invite (replay scenario),
+    // clear the invite so the input is not shown as active.
+    // Match by parentKey (new threads with parentKey) or by chronological order
+    // (legacy threads: any AnswerEvent after the invite clears it).
+    const pendingInvite = this.currentInviteEventSubject.value
+    if (pendingInvite) {
+      const matchesByKey = !!event.parentKey && event.parentKey === pendingInvite.timestamp
+      const matchesByOrder = !event.parentKey && event.date >= pendingInvite.date
+      if (matchesByKey || matchesByOrder) {
+        this.currentInviteEventSubject.next(null)
+      }
+    }
+
     // Display AnswerEvent as a user message
     const message: ChatMessage = {
       id: event.timestamp,
@@ -414,7 +454,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }], // Convertir en contenu riche
+      content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }],
       timestamp: event.date,
       type: 'error',
     }
@@ -427,7 +467,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: [{ type: 'text', content: `Warning: ${JSON.stringify(event.warning)}` }], // Convertir en contenu riche
+      content: [{ type: 'text', content: `Warning: ${JSON.stringify(event.warning)}` }],
       timestamp: event.date,
       type: 'warning',
     }
@@ -466,7 +506,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
+      content: [{ type: 'text', content: event.toSingleLineString() }],
       timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
@@ -480,7 +520,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
+      content: [{ type: 'text', content: event.toSingleLineString() }],
       timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
@@ -515,20 +555,10 @@ export class CodayService implements OnDestroy {
     // User should be able to respond instantly when an invite arrives
     this.stopThinking()
 
-    // Check if the last message already contains this invite content to avoid duplicates
-    const currentMessages = this.messagesSubject.value
-    const lastMessage = currentMessages[currentMessages.length - 1]
     const isInviteEventDefault = event.invite === InviteEventDefault
 
-    // Only add invite as a message if it's not already displayed
-    const inviteAlreadyDisplayed =
-      !isInviteEventDefault &&
-      lastMessage &&
-      lastMessage.role === 'assistant' &&
-      lastMessage.content.some((c) => c.type === 'text' && c.content.includes(event.invite))
-
-    if (!inviteAlreadyDisplayed && event.invite !== InviteEventDefault) {
-      // Create an assistant message with the invite content
+    if (!isInviteEventDefault) {
+      // Add the invite as a visible message (deduplicated by id)
       const inviteMessage: ChatMessage = {
         id: event.timestamp,
         role: 'assistant',
@@ -537,16 +567,28 @@ export class CodayService implements OnDestroy {
         timestamp: event.date,
         type: 'text',
       }
-
-      // Add the invite as a visible message in the chat
       this.addMessage(inviteMessage)
+
+      // Check if this invite is already answered:
+      // - by parentKey (new threads)
+      // - or by a chronologically later AnswerEvent already in the message list
+      //   (legacy threads where REST loaded the AnswerEvent before SSE sent the InviteEvent)
+      const currentMessages = this.messagesSubject.value
+      const isAlreadyAnswered = currentMessages.some(
+        (m) =>
+          m.parentKey === event.timestamp || // new threads: explicit link
+          (m.role === 'user' && m.timestamp > event.date) // legacy: any user reply after the invite
+      )
+
+      if (!isAlreadyAnswered) {
+        this.currentInviteEventSubject.next(event)
+        this.tabTitleService?.setSystemInactive()
+      }
+    } else {
+      // InviteEventDefault: main loop prompt, set as pending without displaying
+      this.currentInviteEventSubject.next(event)
+      this.tabTitleService?.setSystemInactive()
     }
-
-    // ALWAYS update the currentInviteEventSubject, even if we didn't display the message
-    // This is critical for components waiting for the invite (e.g., ThreadComponent with pending first message)
-    this.currentInviteEventSubject.next(event)
-
-    this.tabTitleService?.setSystemInactive()
   }
 
   /**
@@ -577,11 +619,6 @@ export class CodayService implements OnDestroy {
     const updatedMessages = currentMessages.slice(0, messageIndex)
 
     this.messagesSubject.next(updatedMessages)
-
-    // Clear any pending choice or invite since the conversation state has changed
-    // this.currentChoiceSubject.next(null)
-    // this.currentInviteEventSubject.next(null)
-    // this.currentChoiceEvent = null
 
     // Stop thinking state since we've truncated the conversation
     this.stopThinking()
@@ -620,7 +657,6 @@ export class CodayService implements OnDestroy {
     this.clearThinkingTimeout()
     this.isThinkingSubject.next(false)
 
-    // Notifier le service de titre que le système est inactif
     if (this.tabTitleService) {
       this.tabTitleService.setSystemInactive()
     }

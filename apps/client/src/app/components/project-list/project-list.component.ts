@@ -1,10 +1,11 @@
 import { Component, computed, inject } from '@angular/core'
 import { Router } from '@angular/router'
-import { filter, take } from 'rxjs'
+
 import { ProjectStateService } from '../../core/services/project-state.service'
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { ProjectInfo } from '../../core/services/project-api.service'
+import { GlobalMissionControlComponent } from '../global-mission-control/global-mission-control.component'
 
 /** Separator used in the worktree project naming convention: `parent__subProject` */
 const WORKTREE_SEPARATOR = '__'
@@ -21,7 +22,7 @@ const WORKTREE_SEPARATOR = '__'
 @Component({
   selector: 'app-project-selection',
   standalone: true,
-  imports: [EntityListComponent],
+  imports: [EntityListComponent, GlobalMissionControlComponent],
   templateUrl: './project-list.component.html',
   styleUrl: './project-list.component.scss',
 })
@@ -122,19 +123,7 @@ export class ProjectListComponent {
 
   protected readonly showCreateButton = computed(() => !this.forcedProject())
 
-  constructor() {
-    // Auto-redirect when a project is already selected and we're on '/'
-    this.projectStateService.selectedProject$
-      .pipe(
-        takeUntilDestroyed(),
-        filter((selection) => !!selection),
-        filter(() => this.router.url.split('?')[0] === '/'),
-        take(1)
-      )
-      .subscribe((selection) => {
-        this.router.navigate(['project', selection.name])
-      })
-  }
+  constructor() {}
 
   protected onItemSelected(projectName: string): void {
     this.projectStateService.selectProject(projectName)

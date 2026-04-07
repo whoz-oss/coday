@@ -223,6 +223,7 @@ export class ThreadFileRepository implements ThreadRepository {
                 parentEventId: data.parentEventId,
                 delegatedAgentName: data.delegatedAgentName,
                 delegatedTask: data.delegatedTask,
+                worktreeProject: data.worktreeProject,
               } as ThreadSummary
             })
         )

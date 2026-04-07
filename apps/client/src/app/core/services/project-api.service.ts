@@ -95,6 +95,37 @@ export class ProjectApiService {
     return this.http.post<{ success: boolean; message: string }>(this.baseUrl, { name, path })
   }
 
+  // ── Git ──────────────────────────────────────────────────────────────────────────────
+
+  getGitBranches(projectName: string): Observable<{ branches: string[] }> {
+    return this.http.get<{ branches: string[] }>(`${this.baseUrl}/${projectName}/git/branches`)
+  }
+
+  // ── Missions ─────────────────────────────────────────────────────────────────────────
+
+  createMission(
+    projectName: string,
+    agentName: string,
+    task: string,
+    mode: 'local' | 'worktree',
+    branch?: string,
+    issueNumber?: string,
+    branchType?: string
+  ): Observable<{ threadId: string; projectId: string }> {
+    return this.http.post<{ threadId: string; projectId: string }>(`${this.baseUrl}/${projectName}/missions`, {
+      agentName,
+      task,
+      mode,
+      branch,
+      issueNumber,
+      branchType,
+    })
+  }
+
+  closeMission(projectName: string, threadId: string): Observable<{ success: boolean }> {
+    return this.http.delete<{ success: boolean }>(`${this.baseUrl}/${projectName}/missions/${threadId}`)
+  }
+
   // ── Preview server ─────────────────────────────────────────────────────────────────
 
   getPreviewEntries(projectName: string): Observable<{ entries: PreviewEntryResponse[] }> {
