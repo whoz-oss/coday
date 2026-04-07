@@ -14,7 +14,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: getById
+      operationId: getUserById
       parameters:
       - name: id
         in: path
@@ -32,7 +32,7 @@ paths:
     put:
       tags:
       - user-controller
-      operationId: update
+      operationId: updateUser
       parameters:
       - name: id
         in: path
@@ -56,7 +56,7 @@ paths:
     delete:
       tags:
       - user-controller
-      operationId: delete
+      operationId: deleteUser
       parameters:
       - name: id
         in: path
@@ -71,7 +71,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: getById_1
+      operationId: getNamespaceById
       parameters:
       - name: id
         in: path
@@ -89,7 +89,7 @@ paths:
     put:
       tags:
       - namespace-controller
-      operationId: update_1
+      operationId: updateNamespace
       parameters:
       - name: id
         in: path
@@ -113,7 +113,7 @@ paths:
     delete:
       tags:
       - namespace-controller
-      operationId: delete_1
+      operationId: deleteNamespace
       parameters:
       - name: id
         in: path
@@ -128,7 +128,7 @@ paths:
     get:
       tags:
       - integration-config-controller
-      operationId: getById_2
+      operationId: getIntegrationConfigById
       parameters:
       - name: id
         in: path
@@ -146,7 +146,7 @@ paths:
     put:
       tags:
       - integration-config-controller
-      operationId: update_2
+      operationId: updateIntegrationConfig
       parameters:
       - name: id
         in: path
@@ -170,7 +170,7 @@ paths:
     delete:
       tags:
       - integration-config-controller
-      operationId: delete_2
+      operationId: deleteIntegrationConfig
       parameters:
       - name: id
         in: path
@@ -185,7 +185,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: getById_3
+      operationId: getCaseById
       parameters:
       - name: id
         in: path
@@ -203,7 +203,7 @@ paths:
     put:
       tags:
       - case-controller
-      operationId: update_3
+      operationId: updateCase
       parameters:
       - name: id
         in: path
@@ -227,7 +227,7 @@ paths:
     delete:
       tags:
       - case-controller
-      operationId: delete_3
+      operationId: deleteCase
       parameters:
       - name: id
         in: path
@@ -255,7 +255,7 @@ paths:
     post:
       tags:
       - user-controller
-      operationId: create
+      operationId: createUser
       requestBody:
         content:
           application/json:
@@ -273,7 +273,7 @@ paths:
     post:
       tags:
       - user-controller
-      operationId: getByIds
+      operationId: getUsersByIds
       requestBody:
         content:
           application/json:
@@ -419,7 +419,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: create_1
+      operationId: createNamespace
       requestBody:
         content:
           application/json:
@@ -437,7 +437,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: getByIds_1
+      operationId: getNamespacesByIds
       requestBody:
         content:
           application/json:
@@ -460,7 +460,7 @@ paths:
     post:
       tags:
       - integration-config-controller
-      operationId: create_2
+      operationId: createIntegrationConfig
       requestBody:
         content:
           application/json:
@@ -478,7 +478,7 @@ paths:
     post:
       tags:
       - integration-config-controller
-      operationId: getByIds_2
+      operationId: getIntegrationConfigsByIds
       requestBody:
         content:
           application/json:
@@ -501,7 +501,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: create_3
+      operationId: createCase
       requestBody:
         content:
           application/json:
@@ -570,7 +570,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: getByIds_3
+      operationId: getCasesByIds
       requestBody:
         content:
           application/json:
@@ -593,7 +593,7 @@ paths:
     post:
       tags:
       - case-event-rest-controller
-      operationId: getByIds_4
+      operationId: getByIds
       requestBody:
         content:
           application/json:
@@ -643,7 +643,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: listByParent
+      operationId: listUsersByParent
       parameters:
       - name: parentId
         in: path
@@ -776,7 +776,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listByParent_1
+      operationId: listNamespacesByParent
       parameters:
       - name: parentId
         in: path
@@ -830,7 +830,7 @@ paths:
     get:
       tags:
       - integration-config-controller
-      operationId: listByParent_2
+      operationId: listIntegrationConfigsByParent
       parameters:
       - name: parentId
         in: path
@@ -896,7 +896,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: listByParent_3
+      operationId: listCasesByParent
       parameters:
       - name: parentId
         in: path
@@ -918,7 +918,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: getById_4
+      operationId: getById
       parameters:
       - name: id
         in: path

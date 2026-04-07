@@ -24,7 +24,7 @@ model/answer-event.ts
 model/case-status-event.ts
 model/case.ts
 model/entity-metadata.ts
-model/get-by-ids4200-response-inner.ts
+model/get-by-ids200-response-inner.ts
 model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts

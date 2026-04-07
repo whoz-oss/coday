@@ -48,7 +48,7 @@ export class NamespaceIntegrationsComponent {
 
   protected deleteConfig(config: IntegrationConfig): void {
     this.integrationConfigController
-      .delete2(config.id ?? '')
+      .deleteIntegrationConfig(config.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }

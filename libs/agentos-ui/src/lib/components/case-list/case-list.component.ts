@@ -27,7 +27,7 @@ export class CaseListComponent {
 
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
-  protected readonly cases$: Observable<Case[]> = this.caseController.listByParent3(this.namespaceId)
+  protected readonly cases$: Observable<Case[]> = this.caseController.listCasesByParent(this.namespaceId)
 
   protected inputValue = signal('')
 

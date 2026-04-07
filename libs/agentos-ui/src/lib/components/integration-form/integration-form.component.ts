@@ -96,7 +96,7 @@ export class IntegrationFormComponent implements OnInit {
   private loadConfig(id: string): void {
     this.isLoading.set(true)
     this.integrationConfigController
-      .getById2(id)
+      .getIntegrationConfigById(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -124,13 +124,13 @@ export class IntegrationFormComponent implements OnInit {
     this.isSubmitting.set(true)
 
     const call$ = this.isEditMode()
-      ? this.integrationConfigController.update2(this.existingConfig!.id ?? '', {
+      ? this.integrationConfigController.updateIntegrationConfig(this.existingConfig!.id ?? '', {
           ...this.existingConfig!,
           name: this.nameControl.value.trim(),
           integrationType: this.typeControl.value,
           parameters: this.paramsValue(),
         })
-      : this.integrationConfigController.create2({
+      : this.integrationConfigController.createIntegrationConfig({
           name: this.nameControl.value.trim(),
           integrationType: this.typeControl.value,
           namespaceId: this.namespaceId,

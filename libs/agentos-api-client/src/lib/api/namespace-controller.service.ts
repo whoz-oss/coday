@@ -38,32 +38,32 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public create1(
+  public createNamespace(
     namespace: Namespace,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Namespace>
-  public create1(
+  public createNamespace(
     namespace: Namespace,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Namespace>>
-  public create1(
+  public createNamespace(
     namespace: Namespace,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Namespace>>
-  public create1(
+  public createNamespace(
     namespace: Namespace,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (namespace === null || namespace === undefined) {
-      throw new Error('Required parameter namespace was null or undefined when calling create1.')
+      throw new Error('Required parameter namespace was null or undefined when calling createNamespace.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -115,32 +115,32 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public delete1(
+  public deleteNamespace(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<any>
-  public delete1(
+  public deleteNamespace(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<any>>
-  public delete1(
+  public deleteNamespace(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<any>>
-  public delete1(
+  public deleteNamespace(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling delete1.')
+      throw new Error('Required parameter id was null or undefined when calling deleteNamespace.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -184,32 +184,32 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getById1(
+  public getNamespaceById(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Namespace>
-  public getById1(
+  public getNamespaceById(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Namespace>>
-  public getById1(
+  public getNamespaceById(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Namespace>>
-  public getById1(
+  public getNamespaceById(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling getById1.')
+      throw new Error('Required parameter id was null or undefined when calling getNamespaceById.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -253,32 +253,32 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getByIds1(
+  public getNamespacesByIds(
     requestBody: Array<string>,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Namespace>>
-  public getByIds1(
+  public getNamespacesByIds(
     requestBody: Array<string>,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Namespace>>>
-  public getByIds1(
+  public getNamespacesByIds(
     requestBody: Array<string>,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Namespace>>>
-  public getByIds1(
+  public getNamespacesByIds(
     requestBody: Array<string>,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIds1.')
+      throw new Error('Required parameter requestBody was null or undefined when calling getNamespacesByIds.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -390,32 +390,32 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByParent1(
+  public listNamespacesByParent(
     parentId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Namespace>>
-  public listByParent1(
+  public listNamespacesByParent(
     parentId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Namespace>>>
-  public listByParent1(
+  public listNamespacesByParent(
     parentId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Namespace>>>
-  public listByParent1(
+  public listNamespacesByParent(
     parentId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParent1.')
+      throw new Error('Required parameter parentId was null or undefined when calling listNamespacesByParent.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -460,28 +460,28 @@ export class NamespaceControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public update1(
+  public updateNamespace(
     id: string,
     namespace: Namespace,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Namespace>
-  public update1(
+  public updateNamespace(
     id: string,
     namespace: Namespace,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Namespace>>
-  public update1(
+  public updateNamespace(
     id: string,
     namespace: Namespace,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Namespace>>
-  public update1(
+  public updateNamespace(
     id: string,
     namespace: Namespace,
     observe: any = 'body',
@@ -489,10 +489,10 @@ export class NamespaceControllerService extends BaseService {
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling update1.')
+      throw new Error('Required parameter id was null or undefined when calling updateNamespace.')
     }
     if (namespace === null || namespace === undefined) {
-      throw new Error('Required parameter namespace was null or undefined when calling update1.')
+      throw new Error('Required parameter namespace was null or undefined when calling updateNamespace.')
     }
 
     let localVarHeaders = this.defaultHeaders
