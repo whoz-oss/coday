@@ -12,9 +12,6 @@ import org.springframework.boot.runApplication
 @SpringBootApplication(
     exclude = [
         org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration::class,
-        org.springframework.boot.autoconfigure.data.neo4j.Neo4jDataAutoConfiguration::class,
-        org.springframework.boot.autoconfigure.data.neo4j.Neo4jRepositoriesAutoConfiguration::class,
-        org.springframework.boot.autoconfigure.neo4j.Neo4jAutoConfiguration::class,
     ],
 )
 @EnableConfigurationProperties(AgentOsPluginsConfigProperties::class, PersistenceConfigProperties::class)
