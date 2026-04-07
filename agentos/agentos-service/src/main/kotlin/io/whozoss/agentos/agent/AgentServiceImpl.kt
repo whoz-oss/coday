@@ -6,7 +6,6 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistry
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -23,12 +22,12 @@ import java.util.UUID
  * - Resolve the namespace description and append it to the agent's system instructions,
  *   so the agent always knows which namespace it is operating in regardless of how long
  *   the conversation grows (system prompt is never compacted by the provider).
- * - (Future) scope tool resolution to the namespace and user.
+ * - Scope tool resolution to the namespace via [ToolRegistryService.resolveToolsForNamespace],
+ *   producing fresh tool instances for each agent run.
  */
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
-    private val toolRegistry: ToolRegistry,
     private val toolRegistryService: ToolRegistryService,
     private val aiModelRegistry: AiModelRegistry,
     private val namespaceService: NamespaceService,
@@ -66,13 +65,12 @@ class AgentServiceImpl(
     /**
      * Build a live [AgentSimple] instance from [model].
      *
-     * When [context] is provided the namespace description is appended to the model's
-     * system instructions so the LLM always receives it in the privileged system-prompt
-     * channel (Anthropic `system`, OpenAI `system` role) rather than in the message
-     * history where it could be compacted away.
+     * When [context] is provided:
+     * - The namespace description is appended to the model's system instructions.
+     * - Fresh tool instances are resolved for the namespace via [ToolRegistryService].
      *
      * When [context] is null (e.g. [listAgents] for registry inspection) the model's
-     * instructions are used as-is.
+     * instructions are used as-is and no tools are loaded — the agent is not meant to run.
      */
     private fun createAgentInstance(
         model: AiModel,
@@ -81,14 +79,15 @@ class AgentServiceImpl(
         logger.info { "[AgentService] Creating agent instance for: ${model.name}, context: $context" }
 
         val tools = if (context != null) {
-            toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+            val resolved = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+            logger.info {
+                "[AgentService] Loaded ${resolved.size} tool(s) " +
+                    "(sample-5 : ${resolved.take(5).map { it.name }}) " +
+                    "for agent: ${model.name}"
+            }
+            resolved
         } else {
-            toolRegistry.listTools()
-        }
-        logger.info {
-            "[AgentService] Loaded ${tools.size} tool(s) " +
-                "(sample-5 : ${tools.take(5).map { it.name }}) " +
-                "for agent: ${model.name}"
+            emptyList()
         }
 
         val chatClient = chatClientProvider.getChatClient(model.name)

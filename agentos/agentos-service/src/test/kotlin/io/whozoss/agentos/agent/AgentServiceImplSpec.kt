@@ -14,7 +14,6 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistry
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -23,12 +22,11 @@ import java.util.UUID
 
 class AgentServiceImplSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
-    private val toolRegistry: ToolRegistry = mockk()
     private val toolRegistryService: ToolRegistryService = mockk()
     private val aiModelRegistry: AiModelRegistry = mockk()
     private val namespaceService: NamespaceService = mockk()
     private val userService: UserService = mockk(relaxed = true)
-    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistry, toolRegistryService, aiModelRegistry, namespaceService, userService)
+    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistryService, aiModelRegistry, namespaceService, userService)
 
     // A context and matching namespace used across most tests
     private val namespaceId: UUID = UUID.randomUUID()
@@ -42,7 +40,6 @@ class AgentServiceImplSpec : StringSpec() {
         )
 
     init {
-        every { toolRegistry.listTools() } returns emptyList()
         every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
 
@@ -388,7 +385,7 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.getDefaultAgentName() shouldBe "my-agent"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistry.listTools() }
+            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -402,7 +399,7 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.resolveAgentName("my-agent") shouldBe "my-agent"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistry.listTools() }
+            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
         "resolveAgentName falls back to contains-match and returns canonical name without instantiating any agent" {
@@ -413,7 +410,7 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.resolveAgentName("agent") shouldBe "my-agent"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistry.listTools() }
+            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
         "resolveAgentName returns null when no model matches" {
