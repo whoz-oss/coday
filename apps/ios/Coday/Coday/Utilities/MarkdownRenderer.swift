@@ -25,14 +25,10 @@ struct MarkdownRenderer {
 }
 
 /// A SwiftUI view that renders markdown text.
-/// A SwiftUI view that renders markdown text.
-n: markdown)
-String {
- lists)
-
-
+struct MarkdownText: View {
+    let markdown: String
 
     var body: some View {
-        Text(MarkdownRenderer.re        Text(ent        Text(MarkdownRenderer.re        Text(ent        Text(Markdown          Text(MarkdownRenderer.re        Text(true)
+        Text(MarkdownRenderer.render(markdown))
     }
 }

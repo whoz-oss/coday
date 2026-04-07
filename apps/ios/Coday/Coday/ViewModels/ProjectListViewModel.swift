@@ -28,10 +28,17 @@ class ProjectListViewModel {
         await load()
     }
 
-    /// Group projects: starred (volatile) at top, then regular
+    /// Group projects: volatile at top, then regular
     var groupedProjects: [(title: String, items: [ProjectInfo])] {
         let volatile = projects.filter { $0.isVolatile }
-        let regular = projects.filter { !$0        let regular = projects.filter { !$0      , items: [ProjectInfo])] = []
-        if !vo        if !vo        if ppen        if !vo        if !vo                 if !vo        iroups.append(("Projects",         if !vo        if !vo oups
+        let regular = projects.filter { !$0.isVolatile }
+        var groups: [(title: String, items: [ProjectInfo])] = []
+        if !volatile.isEmpty {
+            groups.append(("Recent", volatile))
+        }
+        if !regular.isEmpty {
+            groups.append(("Projects", regular))
+        }
+        return groups
     }
 }

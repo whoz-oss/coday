@@ -29,9 +29,22 @@ extension String {
 // MARK: - View helpers
 extension View {
     @ViewBuilder
-    func `if`<Content: View>(_ condition:    func `if`<Content: View>(_ condition:    func `if`<Content: View>(_ condition:    func `if`<Content: View>(_
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
 }
 
-// MARK: - Color semantic aliase// MARK: - Color semantista// MARK: - ColoBu// MARK: - Color semantic aliase// bl// MARK: - Color semantic aliase/ v// MARK: - Color semantic aliase// .s// MARK: - Color semantic aliase// MARK: - Color semanColor { .red.opacit// MARK: - Color semantic aliase// MARK: - Color semantista// MARK: 2)// MARK:ta// Mvar m// MARK: - Color semanti .// MARK: - Color ) }
+// MARK: - Color semantic aliases
+extension Color {
+    static var messageUser: Color { .blue.opacity(0.12) }
+    static var messageAssistant: Color { .clear }
+    static var messageSystem: Color { .secondary.opacity(0.08) }
+    static var messageError: Color { .red.opacity(0.12) }
+    static var messageWarning: Color { .orange.opacity(0.12) }
+    static var messageTechnical: Color { .purple.opacity(0.08) }
     static var messageDelegation: Color { .blue.opacity(0.10) }
 }
