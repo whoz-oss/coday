@@ -294,58 +294,6 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // listAgents
-        // -------------------------------------------------------------------------
-
-        "listAgents calls getChatClient with model.name for every registered model" {
-            val model1 =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "agent-alpha",
-                    description = "First agent",
-                    modelName = "claude-3-5-sonnet-20241022",
-                    providerName = "anthropic",
-                )
-            val model2 =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "agent-beta",
-                    description = "Second agent",
-                    modelName = "gpt-4o-mini",
-                    providerName = "openai",
-                )
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { aiModelRegistry.getAll() } returns listOf(model1, model2)
-            every { chatClientProvider.getChatClient(any<String>()) } returns chatClient
-
-            agentService.listAgents()
-
-            verify(exactly = 1) { chatClientProvider.getChatClient("agent-alpha") }
-            verify(exactly = 1) { chatClientProvider.getChatClient("agent-beta") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("claude-3-5-sonnet-20241022") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-mini") }
-        }
-
-        "listAgents does not call namespaceService — no context available" {
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "agent-alpha",
-                    description = "First agent",
-                    modelName = "gpt-4o",
-                    providerName = "openai",
-                )
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.getAll() } returns listOf(model)
-            every { chatClientProvider.getChatClient(any<String>()) } returns chatClient
-
-            agentService.listAgents()
-
-            verify(exactly = 0) { namespaceService.findById(any()) }
-        }
-
-        // -------------------------------------------------------------------------
         // getDefaultAgent
         // -------------------------------------------------------------------------
 

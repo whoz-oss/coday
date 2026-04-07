@@ -24,6 +24,9 @@ import java.util.UUID
  *   the conversation grows (system prompt is never compacted by the provider).
  * - Scope tool resolution to the namespace via [ToolRegistryService.resolveToolsForNamespace],
  *   producing fresh tool instances for each agent run.
+ *
+ * Every agent-instantiating method requires a non-null [AgentExecutionContext].
+ * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) are context-free.
  */
 @Service
 class AgentServiceImpl(
@@ -46,8 +49,6 @@ class AgentServiceImpl(
         return createAgentInstance(model, context)
     }
 
-    override fun listAgents(): List<Agent> = aiModelRegistry.getAll().map { createAgentInstance(it, context = null) }
-
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
         val model = aiModelRegistry.getDefault() ?: return null
         logger.info { "Using default agent: ${model.name}" }
@@ -63,31 +64,22 @@ class AgentServiceImpl(
         )?.name
 
     /**
-     * Build a live [AgentSimple] instance from [model].
+     * Build a live [AgentSimple] instance from [model], scoped to [context].
      *
-     * When [context] is provided:
      * - The namespace description is appended to the model's system instructions.
      * - Fresh tool instances are resolved for the namespace via [ToolRegistryService].
-     *
-     * When [context] is null (e.g. [listAgents] for registry inspection) the model's
-     * instructions are used as-is and no tools are loaded — the agent is not meant to run.
      */
     private fun createAgentInstance(
         model: AiModel,
-        context: AgentExecutionContext?,
+        context: AgentExecutionContext,
     ): Agent {
         logger.info { "[AgentService] Creating agent instance for: ${model.name}, context: $context" }
 
-        val tools = if (context != null) {
-            val resolved = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
-            logger.info {
-                "[AgentService] Loaded ${resolved.size} tool(s) " +
-                    "(sample-5 : ${resolved.take(5).map { it.name }}) " +
-                    "for agent: ${model.name}"
-            }
-            resolved
-        } else {
-            emptyList()
+        val resolved = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+        logger.info {
+            "[AgentService] Loaded ${resolved.size} tool(s) " +
+                "(sample-5 : ${resolved.take(5).map { it.name }}) " +
+                "for agent: ${model.name}"
         }
 
         val chatClient = chatClientProvider.getChatClient(model.name)
@@ -99,7 +91,7 @@ class AgentServiceImpl(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
             model = model.copy(instructions = instructions),
             chatClient = chatClient,
-            tools = tools,
+            tools = resolved,
         )
     }
 
@@ -115,37 +107,36 @@ class AgentServiceImpl(
      */
     private fun buildInstructions(
         model: AiModel,
-        context: AgentExecutionContext?,
-    ): String? =
-        context?.let {
-            val namespace = namespaceService.findById(it.namespaceId)
-            val namespaceBlock =
-                buildString {
-                    appendLine()
-                    appendLine("""## Context: ${namespace?.name ?: it.namespaceId}""")
-                    if (!namespace?.description.isNullOrBlank()) {
-                        appendLine(namespace!!.description!!)
-                    }
-                }.trimEnd()
-
-            val userBlock =
-                it.userId?.let { userId ->
-                    userService.findById(userId)?.let { user ->
-                        buildString {
-                            appendLine()
-                            appendLine("## User")
-                            appendLine("- id: ${user.metadata.id}")
-                            appendLine("- email: ${user.email}")
-                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
-                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
-                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
-                        }.trimEnd()
-                    }
+        context: AgentExecutionContext,
+    ): String {
+        val namespace = namespaceService.findById(context.namespaceId)
+        val namespaceBlock =
+            buildString {
+                appendLine()
+                appendLine("""## Context: ${namespace?.name ?: context.namespaceId}""")
+                if (!namespace?.description.isNullOrBlank()) {
+                    appendLine(namespace!!.description!!)
                 }
+            }.trimEnd()
 
-            val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
-            if (userBlock != null) "$base\n$userBlock" else base
-        } ?: model.instructions
+        val userBlock =
+            context.userId?.let { userId ->
+                userService.findById(userId)?.let { user ->
+                    buildString {
+                        appendLine()
+                        appendLine("## User")
+                        appendLine("- id: ${user.metadata.id}")
+                        appendLine("- email: ${user.email}")
+                        if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                        if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                        if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                    }.trimEnd()
+                }
+            }
+
+        val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
+        return if (userBlock != null) "$base\n$userBlock" else base
+    }
 
     companion object : KLogging()
 }
