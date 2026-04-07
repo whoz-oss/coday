@@ -10,6 +10,9 @@ import io.whozoss.agentos.persistence.neo4j.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseEventRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jNamespaceRepository
+import io.whozoss.agentos.persistence.neo4j.Neo4jUserRepository
+import io.whozoss.agentos.persistence.neo4j.UserNodeNeo4jRepository
+import io.whozoss.agentos.user.UserRepository
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -59,6 +62,12 @@ class Neo4jPersistenceConfiguration {
     ): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }
         return Neo4jCaseEventRepository(sdnRepo, objectMapper)
+    }
+
+    @Bean
+    fun neo4jUserRepository(sdnRepo: UserNodeNeo4jRepository): UserRepository {
+        logger.info { "[Persistence] Neo4jUserRepository active" }
+        return Neo4jUserRepository(sdnRepo)
     }
 
     companion object : KLogging()
