@@ -80,7 +80,8 @@ interface ToolPlugin : ExtensionPoint {
      * or null for config-less plugins. When a namespace has multiple configs of the
      * same [integrationType] (e.g. two JIRA instances), plugins should incorporate
      * [configName] into their tool names to avoid collisions in the registry
-     * (e.g. "GetIssue_JIRA_PROD" and "GetIssue_JIRA_STAGING").
+     * using the convention `configName__ToolName`
+     * (e.g. "JIRA_PROD__GetIssue" and "JIRA_STAGING__GetIssue").
      *
      * @param config Parsed JSON parameters from the persisted IntegrationConfig,
      *               or null if no configuration is available.

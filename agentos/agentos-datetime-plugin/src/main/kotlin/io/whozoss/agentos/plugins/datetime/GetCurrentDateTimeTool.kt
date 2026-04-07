@@ -17,12 +17,11 @@ class GetCurrentDateTimeTool(
     private val defaultTimezone: String = "UTC",
     configName: String? = null,
 ) : StandardTool<GetCurrentDateTimeTool.Input> {
-    private val toolSuffix = if (configName != null) "_$configName" else ""
     companion object {
         private val objectMapper = jacksonObjectMapper()
     }
 
-    override val name: String = "GetCurrentDateTime$toolSuffix"
+    override val name: String = if (configName != null) "${configName}__GetCurrentDateTime" else "GetCurrentDateTime"
 
     override val description: String =
         """

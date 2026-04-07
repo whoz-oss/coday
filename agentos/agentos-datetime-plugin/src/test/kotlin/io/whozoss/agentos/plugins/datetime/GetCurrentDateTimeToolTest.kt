@@ -45,10 +45,10 @@ class GetCurrentDateTimeToolTest :
             tool.inputSchema shouldContain "timezone"
         }
 
-        "name should include configName suffix when provided" {
+        "name should be prefixed with configName when provided" {
             val tool = GetCurrentDateTimeTool(configName = "PARIS")
 
-            tool.name shouldBe "GetCurrentDateTime_PARIS"
+            tool.name shouldBe "PARIS__GetCurrentDateTime"
         }
 
         "name should have no suffix when configName is null" {
