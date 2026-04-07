@@ -24,6 +24,7 @@ klogger = "2.0.4"
 springdoc = "2.8.9"
 springdocPlugin = "1.9.0"
 neo4j = "5.26.5"
+# Calendar-versioned release line — keep neo4jTestcontainers in Neo4jContainerSupport.NEO4J_IMAGE in sync
 neo4jEmbedded = "2026.02.2"
 # Netty version required by neo4j-embedded 2026.x / neo4j-harness 2026.x (BoltServer).
 # Spring Boot BOM pins 4.1.x; we force 4.2.x on testRuntimeClasspath only.

@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
 
 /**
- * Runs the [AbstractCasePersistenceTest] contract against the embedded Neo4j
+ * Runs the [AbstractCasePersistenceSpec] contract against the embedded Neo4j
  * engine using the Neo4j test harness (`embedded-neo4j` persistence mode).
  *
  * The `embedded-neo4j` profile sets `agentos.persistence.mode=embedded-neo4j`,
@@ -19,4 +19,4 @@ import org.springframework.test.context.ActiveProfiles
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class EmbeddedNeo4jCasePersistenceTest : AbstractCasePersistenceTest()
+class EmbeddedNeo4jCasePersistenceSpec : AbstractCasePersistenceSpec()

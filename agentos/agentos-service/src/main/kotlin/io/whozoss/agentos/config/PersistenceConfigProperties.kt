@@ -45,4 +45,18 @@ data class PersistenceConfigProperties(
      * Only used when mode=embedded-neo4j.
      */
     val embeddedBoltPort: Int = 7688,
+
+    /**
+     * Host for the embedded Neo4j Bolt connector.
+     * Defaults to "localhost" but can be set to "127.0.0.1" to force IPv4
+     * on systems where localhost resolves to IPv6 (::1).
+     * Only used when mode=embedded-neo4j.
+     */
+    val embeddedBoltHost: String = "localhost",
+
+    /**
+     * Transaction timeout for the embedded Neo4j engine in seconds.
+     * Only used when mode=embedded-neo4j.
+     */
+    val embeddedTransactionTimeoutSeconds: Long = 30,
 )

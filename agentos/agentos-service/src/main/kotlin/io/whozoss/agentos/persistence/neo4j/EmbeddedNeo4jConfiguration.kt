@@ -20,6 +20,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
 import java.nio.file.Path
 import java.time.Duration
+import javax.annotation.PreDestroy
 
 /**
  * Starts an embedded Neo4j Community Edition instance and registers a
@@ -33,6 +34,11 @@ import java.time.Duration
  * registering the resulting [Driver] as a Spring bean, SDN is unaware that it
  * is talking to an in-process engine rather than a standalone server.
  * All repository operations, transactions, and Cypher queries work identically.
+ *
+ * Crucially, `spring.neo4j.uri` does NOT need to be set in embedded mode.
+ * Spring Boot's Neo4j auto-configuration detects that a [Driver] bean is already
+ * present and uses it directly, skipping its own URI-based driver creation entirely.
+ * The URI is only required in `neo4j` mode where Spring Boot creates the [Driver].
  *
  * ## Data directory
  * The embedded database files are stored under
@@ -84,15 +90,19 @@ class EmbeddedNeo4jConfiguration(
         val service =
             DatabaseManagementServiceBuilder(dbDir)
                 .setConfig(BoltConnector.enabled, true)
-                .setConfig(BoltConnector.listen_address, SocketAddress("localhost", props.embeddedBoltPort))
-                .setConfig(BoltConnector.advertised_address, SocketAddress("localhost", props.embeddedBoltPort))
-                .setConfig(GraphDatabaseSettings.transaction_timeout, Duration.ofSeconds(30))
+                .setConfig(BoltConnector.listen_address, SocketAddress(props.embeddedBoltHost, props.embeddedBoltPort))
+                .setConfig(BoltConnector.advertised_address, SocketAddress(props.embeddedBoltHost, props.embeddedBoltPort))
+                .setConfig(GraphDatabaseSettings.transaction_timeout, Duration.ofSeconds(props.embeddedTransactionTimeoutSeconds))
                 .build()
 
         managementService = service
+        Runtime.getRuntime().addShutdownHook(Thread {
+            logger.info { "[EmbeddedNeo4j] JVM shutdown hook triggered" }
+            service.shutdown()
+        })
 
         val boltPort = resolveBoltPort(service)
-        val boltUri = "bolt://localhost:$boltPort"
+        val boltUri = "bolt://${props.embeddedBoltHost}:$boltPort"
         logger.info { "[EmbeddedNeo4j] Bolt listening on $boltUri" }
 
         val driver = GraphDatabase.driver(boltUri, AuthTokens.none())
@@ -102,7 +112,7 @@ class EmbeddedNeo4jConfiguration(
         return driver
     }
 
-    @jakarta.annotation.PreDestroy
+    @PreDestroy
     fun stopEmbeddedNeo4j() {
         logger.info { "[EmbeddedNeo4j] Shutting down..." }
         managementService?.shutdown()

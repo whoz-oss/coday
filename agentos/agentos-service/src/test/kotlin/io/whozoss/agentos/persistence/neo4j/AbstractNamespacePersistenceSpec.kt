@@ -20,7 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired
  * Subclasses activate a specific persistence mode (Testcontainers or embedded)
  * and inherit all test cases, ensuring both modes satisfy the same contract.
  */
-abstract class AbstractNamespacePersistenceTest : StringSpec() {
+abstract class AbstractNamespacePersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired

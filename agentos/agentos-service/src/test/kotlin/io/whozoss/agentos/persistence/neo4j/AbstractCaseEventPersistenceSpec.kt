@@ -28,7 +28,7 @@ import java.util.UUID
  * Subclasses activate a specific persistence mode (Testcontainers or embedded)
  * and inherit all test cases, ensuring both modes satisfy the same contract.
  */
-abstract class AbstractCaseEventPersistenceTest : StringSpec() {
+abstract class AbstractCaseEventPersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired

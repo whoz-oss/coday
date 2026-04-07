@@ -8,7 +8,7 @@ import org.testcontainers.containers.Neo4jContainer
 import org.testcontainers.utility.DockerImageName
 
 /**
- * Runs the [AbstractCasePersistenceTest] contract against a real Neo4j server
+ * Runs the [AbstractCasePersistenceSpec] contract against a real Neo4j server
  * managed by Testcontainers (`neo4j` persistence mode).
  *
  * The `neo4j` profile sets `agentos.persistence.mode=neo4j`, which activates
@@ -17,10 +17,10 @@ import org.testcontainers.utility.DockerImageName
  */
 @SpringBootTest
 @ActiveProfiles("test", "neo4j")
-class Neo4jCasePersistenceTest : AbstractCasePersistenceTest() {
+class Neo4jCasePersistenceSpec : AbstractCasePersistenceSpec() {
     companion object {
         val neo4j: Neo4jContainer<*> =
-            Neo4jContainer(DockerImageName.parse("neo4j:5.26-community"))
+            Neo4jContainer(DockerImageName.parse(Neo4jContainerSupport.NEO4J_IMAGE))
                 .withoutAuthentication()
                 .also { it.start() }
 
