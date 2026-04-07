@@ -41,7 +41,7 @@ class ToolRegistryService(
     private val tools = ConcurrentHashMap<String, StandardTool<*>>()
 
     /** All loaded ToolPlugin extensions, indexed by integrationType for fast lookup. */
-    private val pluginsByType = mutableMapOf<String, ToolPlugin>()
+    private val pluginsByType = ConcurrentHashMap<String, ToolPlugin>()
 
     @PostConstruct
     fun initialize() {

@@ -14,6 +14,9 @@ import java.util.UUID
  *
  * Annotated with @Schema(name = "IntegrationConfig") so the generated OpenAPI spec
  * uses the clean name instead of "IntegrationConfigResource".
+ *
+ * TODO: [parameters] may contain sensitive credentials (API keys, tokens). Currently returned
+ *   in clear text. A future iteration should mask secrets in API responses.
  */
 @Schema(name = "IntegrationConfig")
 data class IntegrationConfigResource(

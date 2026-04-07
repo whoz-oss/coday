@@ -171,27 +171,6 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // listByNamespace (custom endpoint)
-    // -------------------------------------------------------------------------
-
-    "listByNamespace returns configs for the given namespaceId" {
-        val c1 = config(name = "A")
-        val c2 = config(name = "B")
-        every { service.findByParent(namespaceId) } returns listOf(c1, c2)
-
-        val result = controller.listByNamespace(namespaceId)
-
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-        verify(exactly = 1) { service.findByParent(namespaceId) }
-    }
-
-    "listByNamespace returns empty list when no configs exist for namespace" {
-        every { service.findByParent(namespaceId) } returns emptyList()
-
-        controller.listByNamespace(namespaceId) shouldBe emptyList()
-    }
-
-    // -------------------------------------------------------------------------
     // create (inherited)
     // -------------------------------------------------------------------------
 

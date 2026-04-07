@@ -22,6 +22,9 @@ import java.util.UUID
  *
  * Implements Entity for standard CRUD operations.
  * Parent: Namespace (via [namespaceId]).
+ *
+ * TODO: [parameters] may contain sensitive credentials (API keys, tokens). Currently stored and
+ *   returned in clear text. A future iteration should encrypt at-rest and mask in API responses.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)

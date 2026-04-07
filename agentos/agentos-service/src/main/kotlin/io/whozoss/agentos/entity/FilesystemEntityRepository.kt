@@ -106,7 +106,7 @@ class FilesystemEntityRepository<T : Entity, P>(
      * Kotlin extension functions ([isRegularFile], [mapNotNull], etc.) can be
      * used safely on the result.
      */
-    override fun findAll(): List<T> {
+    fun findAll(): List<T> {
         if (!rootDir.exists()) return emptyList()
         val allPaths: List<Path> = Files.walk(rootDir, 2).use { it.toList() }
         return allPaths

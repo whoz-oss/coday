@@ -136,7 +136,7 @@ class InMemoryEntityRepository<T : Entity, P>(
     /**
      * Return all non-removed entities across all parents.
      */
-    override fun findAll(): List<T> =
+    fun findAll(): List<T> =
         entitiesById.values
             .filter { !it.metadata.removed }
             .sortedWith(comparator)

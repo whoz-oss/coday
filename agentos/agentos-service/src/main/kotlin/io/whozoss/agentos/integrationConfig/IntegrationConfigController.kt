@@ -4,8 +4,6 @@ import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.http.MediaType
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -18,13 +16,10 @@ import java.util.UUID
  * Standard CRUD endpoints (inherited):
  *   GET    /api/integration-configs/{id}
  *   POST   /api/integration-configs/by-ids
- *   GET    /api/integration-configs/by-parentId/{namespaceId}
+ *   GET    /api/integration-configs/by-parentId/{namespaceId}  — list by namespace
  *   POST   /api/integration-configs
  *   PUT    /api/integration-configs/{id}
  *   DELETE /api/integration-configs/{id}
- *
- * Adds:
- *   GET    /api/integration-configs/by-namespace/{namespaceId} — explicit alias for by-parentId
  */
 @RestController
 @RequestMapping(
@@ -34,10 +29,6 @@ import java.util.UUID
 class IntegrationConfigController(
     private val integrationConfigService: IntegrationConfigService,
 ) : EntityController<IntegrationConfig, UUID, IntegrationConfigResource>(integrationConfigService) {
-
-    // -------------------------------------------------------------------------
-    // Mapping between domain entity and HTTP resource
-    // -------------------------------------------------------------------------
 
     override fun toResource(entity: IntegrationConfig): IntegrationConfigResource =
         IntegrationConfigResource(
@@ -58,25 +49,6 @@ class IntegrationConfigController(
             integrationType = resource.integrationType,
             parameters = resource.parameters,
         )
-
-    // -------------------------------------------------------------------------
-    // Additional endpoints
-    // -------------------------------------------------------------------------
-
-    /**
-     * List all integration configs for a given namespace.
-     *
-     * GET /api/integration-configs/by-namespace/{namespaceId}
-     *
-     * Alias for the inherited `by-parentId` endpoint, with a more explicit path.
-     */
-    @GetMapping("/by-namespace/{namespaceId}")
-    fun listByNamespace(
-        @PathVariable namespaceId: UUID,
-    ): List<IntegrationConfigResource> {
-        logger.info { "Listing integration configs for namespace $namespaceId" }
-        return integrationConfigService.findByParent(namespaceId).map { toResource(it) }
-    }
 
     companion object : KLogging()
 }
