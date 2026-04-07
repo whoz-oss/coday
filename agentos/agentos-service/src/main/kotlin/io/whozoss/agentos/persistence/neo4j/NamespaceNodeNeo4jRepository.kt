@@ -15,6 +15,6 @@ interface NamespaceNodeNeo4jRepository : Neo4jRepository<NamespaceNode, String> 
      * Used by [Neo4jNamespaceRepository.findByParent]
      * which passes a dummy parent (Unit — namespaces are root-level).
      */
-    @Query("MATCH (n:Namespace) WHERE n.removed IS NULL RETURN n")
+    @Query("MATCH (n:Namespace) WHERE n.removed IS NULL OR n.removed = false RETURN n")
     fun findAllActive(): List<NamespaceNode>
 }
