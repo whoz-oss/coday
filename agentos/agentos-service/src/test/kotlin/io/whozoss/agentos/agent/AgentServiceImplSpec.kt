@@ -15,6 +15,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.ai.chat.client.ChatClient
@@ -23,10 +24,11 @@ import java.util.UUID
 class AgentServiceImplSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
     private val toolRegistry: ToolRegistry = mockk()
+    private val toolRegistryService: ToolRegistryService = mockk()
     private val aiModelRegistry: AiModelRegistry = mockk()
     private val namespaceService: NamespaceService = mockk()
     private val userService: UserService = mockk(relaxed = true)
-    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistry, aiModelRegistry, namespaceService, userService)
+    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistry, toolRegistryService, aiModelRegistry, namespaceService, userService)
 
     // A context and matching namespace used across most tests
     private val namespaceId: UUID = UUID.randomUUID()
@@ -41,6 +43,7 @@ class AgentServiceImplSpec : StringSpec() {
 
     init {
         every { toolRegistry.listTools() } returns emptyList()
+        every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
 
         // The key scenario: name and modelName are intentionally different.

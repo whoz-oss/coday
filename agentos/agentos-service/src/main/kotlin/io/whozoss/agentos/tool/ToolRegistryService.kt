@@ -8,25 +8,26 @@ import jakarta.annotation.PostConstruct
 import mu.KLogging
 import org.pf4j.PluginManager
 import org.springframework.stereotype.Service
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Central registry for tool discovery and management.
+ * Central registry for tool discovery and namespace-scoped tool resolution.
  *
  * At startup ([initialize]):
  * 1. Discovers all [ToolPlugin] extensions via PF4J.
- * 2. For each plugin, looks up a persisted [IntegrationConfig][io.whozoss.agentos.integrationConfig.IntegrationConfig]
- *    matching [ToolPlugin.integrationType] (currently namespace-unscoped — first config found wins).
- * 3. Calls [ToolPlugin.provideTools] with the resolved config (or null if none exists).
- * 4. Registers the resulting tools in the in-memory map.
- * 5. Registers an [IntegrationTypeDescriptor][io.whozoss.agentos.integrationConfig.IntegrationTypeDescriptor]
- *    for each plugin that declares a non-null [ToolPlugin.configSchema], so clients can
- *    discover what configuration each integration type expects.
+ * 2. Registers an [IntegrationTypeDescriptor][io.whozoss.agentos.integrationConfig.IntegrationTypeDescriptor]
+ *    for each plugin that declares a non-null [ToolPlugin.configSchema].
+ * 3. For plugins that require **no** configuration ([ToolPlugin.configSchema] == null),
+ *    instantiates the tools immediately and registers them in the global registry.
+ *    These tools are available in every namespace without any explicit configuration.
  *
- * Note on namespace scoping: [IntegrationConfig] entities are namespace-scoped, but the
- * tool registry is currently global. Until the registry becomes namespace-aware, config
- * lookup is best-effort: the first config found for the matching [integrationType] is used.
- * Tools that receive no config fall back to their built-in defaults.
+ * At agent instantiation time, [resolveToolsForNamespace] is called with the target
+ * namespace to build the full tool set for that agent run:
+ * - Config-less plugins are included unconditionally (already in the global registry).
+ * - Config-requiring plugins are instantiated once per matching [IntegrationConfig]
+ *   found in the namespace, so a namespace can have multiple instances of the same
+ *   integration type (e.g. two JIRA configs → two sets of JIRA tools).
  *
  * This implementation is thread-safe: [ConcurrentHashMap] handles concurrent reads from
  * multiple agents and HTTP requests.
@@ -39,14 +40,17 @@ class ToolRegistryService(
 ) : ToolRegistry {
     private val tools = ConcurrentHashMap<String, StandardTool<*>>()
 
+    /** All loaded ToolPlugin extensions, indexed by integrationType for fast lookup. */
+    private val pluginsByType = mutableMapOf<String, ToolPlugin>()
+
     @PostConstruct
     fun initialize() {
         logger.info { "Initializing Tool Registry" }
-        loadToolsFromPlugins()
-        logger.info { "Tool Registry initialized with ${tools.size} tool(s)" }
+        loadPlugins()
+        logger.info { "Tool Registry initialized with ${tools.size} config-less tool(s)" }
     }
 
-    private fun loadToolsFromPlugins() {
+    private fun loadPlugins() {
         val toolPlugins = pluginManager.getExtensions(ToolPlugin::class.java)
         logger.info { "Found ${toolPlugins.size} ToolPlugin extension(s)" }
 
@@ -62,44 +66,76 @@ class ToolRegistryService(
                 "unknown"
             }
 
-            logger.info { "Loading tools from plugin: $pluginId (integrationType='${toolPlugin.integrationType}')" }
+            logger.info { "Registering plugin: $pluginId (integrationType='${toolPlugin.integrationType}')" }
 
             try {
                 // Register the IntegrationTypeDescriptor from the plugin's declared configSchema
                 integrationTypeRegistry.registerFromPlugin(toolPlugin)
 
-                // Resolve config: find any persisted IntegrationConfig for this integrationType.
-                // Best-effort — namespace-unscoped until the registry becomes namespace-aware.
-                val config = resolveConfig(toolPlugin.integrationType)
-                if (config != null) {
-                    logger.info { "Found persisted config for integrationType='${toolPlugin.integrationType}'" }
-                } else {
-                    logger.info { "No persisted config for integrationType='${toolPlugin.integrationType}' — using plugin defaults" }
-                }
+                // Index the plugin for namespace-scoped resolution
+                pluginsByType[toolPlugin.integrationType] = toolPlugin
 
-                val providedTools = toolPlugin.provideTools(config)
-                providedTools.forEach { registerTool(it, source = "plugin:$pluginId") }
-                logger.info { "Loaded ${providedTools.size} tool(s) from plugin: $pluginId" }
+                // Plugins with no configSchema need no IntegrationConfig — instantiate
+                // them immediately and register them in the global registry so they are
+                // available in every namespace without explicit configuration.
+                if (toolPlugin.configSchema == null) {
+                    logger.info { "Plugin '$pluginId' requires no config — registering tools globally" }
+                    val providedTools = toolPlugin.provideTools(null)
+                    providedTools.forEach { registerTool(it, source = "plugin:$pluginId") }
+                    logger.info { "Registered ${providedTools.size} config-less tool(s) from plugin: $pluginId" }
+                } else {
+                    logger.info { "Plugin '$pluginId' requires config — tools will be resolved per namespace" }
+                }
             } catch (e: Exception) {
-                logger.error(e) { "Error loading tools from plugin $pluginId: ${e.message}" }
+                logger.error(e) { "Error loading plugin $pluginId: ${e.message}" }
             }
         }
     }
 
     /**
-     * Resolve the configuration for a given [integrationType] across all namespaces.
+     * Resolve the full tool set for a given namespace.
      *
-     * Until the tool registry is namespace-scoped, this performs a best-effort lookup:
-     * it iterates all persisted [IntegrationConfig]s and returns the parameters of the
-     * first one whose [integrationType] matches.
+     * Combines:
+     * 1. Config-less tools already in the global registry (available everywhere).
+     * 2. Tools instantiated from each [IntegrationConfig] found in the namespace,
+     *    using the matching [ToolPlugin] as a factory.
      *
-     * Returns null if no matching config is found.
+     * A namespace with no [IntegrationConfig] for a given plugin type simply gets
+     * no tools from that plugin — silently.
+     *
+     * Called by [io.whozoss.agentos.agent.AgentServiceImpl] at agent instantiation time.
      */
-    private fun resolveConfig(integrationType: String) =
-        integrationConfigService
-            .findAll()
-            .firstOrNull { it.integrationType == integrationType }
-            ?.parameters
+    fun resolveToolsForNamespace(namespaceId: UUID): Collection<StandardTool<*>> {
+        // Start with the config-less tools available in every namespace
+        val resolved = tools.toMutableMap()
+
+        // For each IntegrationConfig in the namespace, find the matching plugin and instantiate
+        val configs = integrationConfigService.findByParent(namespaceId)
+        logger.info { "[ToolRegistry] Resolving tools for namespace $namespaceId: ${configs.size} IntegrationConfig(s) found" }
+
+        configs.forEach { config ->
+            val plugin = pluginsByType[config.integrationType]
+            if (plugin == null) {
+                logger.warn { "[ToolRegistry] No plugin found for integrationType='${config.integrationType}' (config id=${config.metadata.id}) — skipping" }
+                return@forEach
+            }
+            try {
+                val providedTools = plugin.provideTools(config.parameters)
+                providedTools.forEach { tool ->
+                    if (resolved.containsKey(tool.name)) {
+                        logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from integrationType='${config.integrationType}' overrides an existing entry" }
+                    }
+                    resolved[tool.name] = tool
+                }
+                logger.info { "[ToolRegistry] Resolved ${providedTools.size} tool(s) from integrationType='${config.integrationType}' for namespace $namespaceId" }
+            } catch (e: Exception) {
+                logger.error(e) { "[ToolRegistry] Error instantiating tools for integrationType='${config.integrationType}': ${e.message}" }
+            }
+        }
+
+        logger.info { "[ToolRegistry] Total tools for namespace $namespaceId: ${resolved.size}" }
+        return resolved.values
+    }
 
     override fun registerTool(tool: StandardTool<*>, source: String) {
         val name = tool.name

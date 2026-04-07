@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -28,6 +29,7 @@ import java.util.UUID
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
     private val toolRegistry: ToolRegistry,
+    private val toolRegistryService: ToolRegistryService,
     private val aiModelRegistry: AiModelRegistry,
     private val namespaceService: NamespaceService,
     private val userService: UserService,
@@ -78,7 +80,11 @@ class AgentServiceImpl(
     ): Agent {
         logger.info { "[AgentService] Creating agent instance for: ${model.name}, context: $context" }
 
-        val tools = toolRegistry.listTools()
+        val tools = if (context != null) {
+            toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+        } else {
+            toolRegistry.listTools()
+        }
         logger.info {
             "[AgentService] Loaded ${tools.size} tool(s) " +
                 "(sample-5 : ${tools.take(5).map { it.name }}) " +
