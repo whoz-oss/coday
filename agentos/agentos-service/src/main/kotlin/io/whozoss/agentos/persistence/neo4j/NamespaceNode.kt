@@ -4,7 +4,6 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
-import org.springframework.data.neo4j.core.schema.Property
 import java.time.Instant
 import java.util.UUID
 
@@ -27,8 +26,7 @@ data class NamespaceNode(
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
-    @Property("removed")
-    val removed: Boolean = false,
+    val removed: Boolean? = null,
 ) {
     fun toDomain(): Namespace =
         Namespace(
@@ -39,7 +37,7 @@ data class NamespaceNode(
                     createdBy = createdBy,
                     modified = modified,
                     modifiedBy = modifiedBy,
-                    removed = removed,
+                    removed = removed ?: false,
                 ),
             name = name,
             description = description,
@@ -55,7 +53,7 @@ data class NamespaceNode(
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,
                 modifiedBy = ns.metadata.modifiedBy,
-                removed = ns.metadata.removed,
+                removed = ns.metadata.removed.takeIf { it },
             )
     }
 }

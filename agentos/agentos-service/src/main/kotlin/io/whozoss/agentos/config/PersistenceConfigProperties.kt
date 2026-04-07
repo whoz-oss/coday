@@ -31,7 +31,11 @@ data class PersistenceConfigProperties(
      */
     val dataDir: String = "data/",
     /**
-     * Persistence mode: 'filesystem' (default) or 'in-memory'.
+     * Persistence mode:
+     * - 'embedded-neo4j' (default) — in-process Neo4j engine, no Docker required
+     * - 'neo4j'           — standalone Neo4j server (configure spring.neo4j.*)
+     * - 'filesystem'      — file-system backed repositories (deprecated, will be removed)
+     * - 'in-memory'       — in-memory repositories, data lost on restart (deprecated, will be removed)
      */
     val mode: String = "filesystem",
     /**

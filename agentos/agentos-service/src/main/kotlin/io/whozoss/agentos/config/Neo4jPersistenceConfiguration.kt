@@ -1,6 +1,5 @@
 package io.whozoss.agentos.config
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
@@ -33,8 +32,6 @@ import org.springframework.context.annotation.Configuration
  *   spring.neo4j.uri / spring.neo4j.authentication.*
  * Start a local server: `docker compose up neo4j`
  *
- * The ObjectMapper must be the application-wide instance (KotlinModule + Jackson
- * polymorphism) so that CaseEvent payload serialisation round-trips correctly.
  */
 @Configuration
 @EnableConfigurationProperties(PersistenceConfigProperties::class)
@@ -44,30 +41,27 @@ import org.springframework.context.annotation.Configuration
 )
 class Neo4jPersistenceConfiguration {
     @Bean
-    fun neo4jNamespaceRepository(sdnRepo: NamespaceNodeNeo4jRepository): NamespaceRepository {
+    fun neo4jNamespaceRepository(namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository): NamespaceRepository {
         logger.info { "[Persistence] Neo4jNamespaceRepository active" }
-        return Neo4jNamespaceRepository(sdnRepo)
+        return Neo4jNamespaceRepository(namespaceNodeNeo4jRepository)
     }
 
     @Bean
-    fun neo4jCaseRepository(sdnRepo: CaseNodeNeo4jRepository): CaseRepository {
+    fun neo4jCaseRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): CaseRepository {
         logger.info { "[Persistence] Neo4jCaseRepository active" }
-        return Neo4jCaseRepository(sdnRepo)
+        return Neo4jCaseRepository(caseNodeNeo4jRepository)
     }
 
     @Bean
-    fun neo4jCaseEventRepository(
-        sdnRepo: CaseEventNodeNeo4jRepository,
-        objectMapper: ObjectMapper,
-    ): CaseEventRepository {
+    fun neo4jCaseEventRepository(caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }
-        return Neo4jCaseEventRepository(sdnRepo, objectMapper)
+        return Neo4jCaseEventRepository(caseEventNodeNeo4jRepository)
     }
 
     @Bean
-    fun neo4jUserRepository(sdnRepo: UserNodeNeo4jRepository): UserRepository {
+    fun neo4jUserRepository(userNodeNeo4jRepository: UserNodeNeo4jRepository): UserRepository {
         logger.info { "[Persistence] Neo4jUserRepository active" }
-        return Neo4jUserRepository(sdnRepo)
+        return Neo4jUserRepository(userNodeNeo4jRepository)
     }
 
     companion object : KLogging()

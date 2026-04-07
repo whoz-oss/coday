@@ -12,7 +12,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Query(
         "MATCH (c:Case) " +
-            "WHERE c.namespaceId = \$namespaceId AND c.removed = false " +
+            "WHERE c.namespaceId = \$namespaceId AND c.removed IS NULL " +
             "RETURN c ORDER BY c.created ASC",
     )
     fun findActiveByNamespaceId(namespaceId: String): List<CaseNode>

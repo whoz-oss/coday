@@ -5,7 +5,6 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
-import org.springframework.data.neo4j.core.schema.Property
 import java.time.Instant
 import java.util.UUID
 
@@ -28,8 +27,7 @@ data class CaseNode(
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
-    @Property("removed")
-    val removed: Boolean = false,
+    val removed: Boolean? = null,
 ) {
     fun toDomain(): Case =
         Case(
@@ -40,7 +38,7 @@ data class CaseNode(
                     createdBy = createdBy,
                     modified = modified,
                     modifiedBy = modifiedBy,
-                    removed = removed,
+                    removed = removed ?: false,
                 ),
             namespaceId = UUID.fromString(namespaceId),
             status = CaseStatus.valueOf(status),
@@ -58,7 +56,7 @@ data class CaseNode(
                 createdBy = case.metadata.createdBy,
                 modified = case.metadata.modified,
                 modifiedBy = case.metadata.modifiedBy,
-                removed = case.metadata.removed,
+                removed = case.metadata.removed.takeIf { it },
             )
     }
 }

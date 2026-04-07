@@ -13,7 +13,7 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
      */
     @Query(
         "MATCH (e:CaseEvent) " +
-            "WHERE e.caseId = \$caseId AND e.removed = false " +
+            "WHERE e.caseId = \$caseId AND e.removed IS NULL " +
             "RETURN e ORDER BY e.timestamp ASC, e.id ASC",
     )
     fun findActiveByCaseId(caseId: String): List<CaseEventNode>
