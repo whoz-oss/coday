@@ -36,7 +36,6 @@
           }
         ],
         "styles": ["apps/client/src/styles.scss"],
-        "allowedCommonJsDependencies": ["ajv"]
       },
       "configurations": {
         "production": {
