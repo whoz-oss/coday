@@ -14,7 +14,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: getUserById
+      operationId: getByIdUser
       parameters:
       - name: id
         in: path
@@ -71,7 +71,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: getNamespaceById
+      operationId: getByIdNamespace
       parameters:
       - name: id
         in: path
@@ -128,7 +128,7 @@ paths:
     get:
       tags:
       - integration-config-controller
-      operationId: getIntegrationConfigById
+      operationId: getByIdIntegrationConfig
       parameters:
       - name: id
         in: path
@@ -185,7 +185,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: getCaseById
+      operationId: getByIdCase
       parameters:
       - name: id
         in: path
@@ -242,7 +242,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: listAll
+      operationId: listAllUser
       responses:
         "200":
           description: OK
@@ -273,7 +273,7 @@ paths:
     post:
       tags:
       - user-controller
-      operationId: getUsersByIds
+      operationId: getByIdsUser
       requestBody:
         content:
           application/json:
@@ -394,7 +394,7 @@ paths:
     post:
       tags:
       - plugin-controller
-      operationId: reloadAllAgents
+      operationId: reloadAllAgentsPlugin
       responses:
         "200":
           description: OK
@@ -406,7 +406,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listAll_1
+      operationId: listAllNamespace
       responses:
         "200":
           description: OK
@@ -437,7 +437,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: getNamespacesByIds
+      operationId: getByIdsNamespace
       requestBody:
         content:
           application/json:
@@ -478,7 +478,7 @@ paths:
     post:
       tags:
       - integration-config-controller
-      operationId: getIntegrationConfigsByIds
+      operationId: getByIdsIntegrationConfig
       requestBody:
         content:
           application/json:
@@ -519,7 +519,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: addMessage
+      operationId: addMessageCase
       parameters:
       - name: caseId
         in: path
@@ -570,7 +570,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: getCasesByIds
+      operationId: getByIdsCase
       requestBody:
         content:
           application/json:
@@ -593,7 +593,7 @@ paths:
     post:
       tags:
       - case-event-rest-controller
-      operationId: getByIds
+      operationId: getByIdsCaseEventRest
       requestBody:
         content:
           application/json:
@@ -631,7 +631,7 @@ paths:
       tags:
       - user-controller
       summary: Get the current user's profile
-      operationId: getMe
+      operationId: getMeUser
       responses:
         "200":
           description: OK
@@ -643,7 +643,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: listUsersByParent
+      operationId: listByParentUser
       parameters:
       - name: parentId
         in: path
@@ -776,7 +776,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listNamespacesByParent
+      operationId: listByParentNamespace
       parameters:
       - name: parentId
         in: path
@@ -798,7 +798,7 @@ paths:
     get:
       tags:
       - integration-type-controller
-      operationId: listTypes
+      operationId: listTypesIntegrationType
       responses:
         "200":
           description: OK
@@ -812,7 +812,7 @@ paths:
     get:
       tags:
       - integration-type-controller
-      operationId: getType
+      operationId: getTypeIntegrationType
       parameters:
       - name: type
         in: path
@@ -830,7 +830,7 @@ paths:
     get:
       tags:
       - integration-config-controller
-      operationId: listIntegrationConfigsByParent
+      operationId: listByParentIntegrationConfig
       parameters:
       - name: parentId
         in: path
@@ -852,7 +852,7 @@ paths:
     get:
       tags:
       - integration-config-controller
-      operationId: listByNamespace
+      operationId: listByNamespaceIntegrationConfig
       parameters:
       - name: namespaceId
         in: path
@@ -877,7 +877,7 @@ paths:
       description: "Server-Sent Events stream emitting all events generated during\
         \ case execution. Use the browser EventSource API to consume this endpoint,\
         \ not a regular HTTP client."
-      operationId: streamEvents
+      operationId: streamEventsCaseEventSse
       parameters:
       - name: caseId
         in: path
@@ -896,7 +896,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: listCasesByParent
+      operationId: listByParentCase
       parameters:
       - name: parentId
         in: path
@@ -918,7 +918,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: getById
+      operationId: getByIdCaseEventRest
       parameters:
       - name: id
         in: path
@@ -951,7 +951,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: listByCase
+      operationId: listByCaseCaseEventRest
       parameters:
       - name: caseId
         in: path

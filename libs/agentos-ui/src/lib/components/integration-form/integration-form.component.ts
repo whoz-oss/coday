@@ -65,7 +65,7 @@ export class IntegrationFormComponent implements OnInit {
   protected readonly initialParams = signal<Record<string, unknown> | null>(null)
 
   /** All known integration type descriptors */
-  protected readonly integrationTypes = toSignal(this.integrationTypeController.listTypes(), {
+  protected readonly integrationTypes = toSignal(this.integrationTypeController.listTypesIntegrationType(), {
     initialValue: [] as IntegrationTypeDescriptor[],
   })
 
@@ -96,7 +96,7 @@ export class IntegrationFormComponent implements OnInit {
   private loadConfig(id: string): void {
     this.isLoading.set(true)
     this.integrationConfigController
-      .getIntegrationConfigById(id)
+      .getByIdIntegrationConfig(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {

@@ -38,32 +38,32 @@ export class IntegrationTypeControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getType(
+  public getTypeIntegrationType(
     type: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<IntegrationTypeDescriptor>
-  public getType(
+  public getTypeIntegrationType(
     type: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<IntegrationTypeDescriptor>>
-  public getType(
+  public getTypeIntegrationType(
     type: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<IntegrationTypeDescriptor>>
-  public getType(
+  public getTypeIntegrationType(
     type: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (type === null || type === undefined) {
-      throw new Error('Required parameter type was null or undefined when calling getType.')
+      throw new Error('Required parameter type was null or undefined when calling getTypeIntegrationType.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -106,22 +106,22 @@ export class IntegrationTypeControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listTypes(
+  public listTypesIntegrationType(
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<IntegrationTypeDescriptor>>
-  public listTypes(
+  public listTypesIntegrationType(
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<IntegrationTypeDescriptor>>>
-  public listTypes(
+  public listTypesIntegrationType(
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<IntegrationTypeDescriptor>>>
-  public listTypes(
+  public listTypesIntegrationType(
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }

@@ -35,7 +35,7 @@ export class NamespaceIntegrationsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.integrationConfigController.listByNamespace(this.namespaceId))
+    switchMap(() => this.integrationConfigController.listByNamespaceIntegrationConfig(this.namespaceId))
   )
 
   protected goBack(): void {
