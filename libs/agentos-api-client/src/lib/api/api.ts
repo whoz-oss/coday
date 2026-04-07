@@ -12,8 +12,6 @@ export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
-export * from './tool-controller.service'
-import { ToolControllerService } from './tool-controller.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export const APIS = [
@@ -24,6 +22,5 @@ export const APIS = [
   NamespaceControllerService,
   PluginControllerService,
   SseService,
-  ToolControllerService,
   UserControllerService,
 ]

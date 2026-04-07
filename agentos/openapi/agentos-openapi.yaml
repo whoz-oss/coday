@@ -292,31 +292,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-  /api/tools/{toolName}/execute:
-    post:
-      tags:
-      - tool-controller
-      operationId: executeTool
-      parameters:
-      - name: toolName
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ToolExecutionResult"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -661,38 +636,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-  /api/tools:
-    get:
-      tags:
-      - tool-controller
-      operationId: listTools
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ToolOutput"
-  /api/tools/{toolName}:
-    get:
-      tags:
-      - tool-controller
-      operationId: getTool
-      parameters:
-      - name: toolName
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ToolOutput"
   /api/plugins:
     get:
       tags:
@@ -1039,27 +982,6 @@ components:
       required:
       - namespaceId
       - status
-    ToolExecutionResult:
-      type: object
-      properties:
-        toolName:
-          type: string
-        success:
-          type: boolean
-        output:
-          type: string
-        executionDurationMs:
-          type: integer
-          format: int64
-        errorType:
-          type: string
-        errorMessage:
-          type: string
-      required:
-      - executionDurationMs
-      - output
-      - success
-      - toolName
     PluginActionResponse:
       type: object
       properties:
@@ -1482,22 +1404,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    ToolOutput:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        version:
-          type: string
-        inputSchema:
-          type: string
-      required:
-      - description
-      - inputSchema
-      - name
-      - version
     PluginInfo:
       type: object
       properties:
