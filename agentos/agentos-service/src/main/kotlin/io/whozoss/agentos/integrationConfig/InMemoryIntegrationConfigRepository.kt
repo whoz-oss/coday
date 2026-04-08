@@ -10,7 +10,6 @@ import java.util.UUID
  * In-memory implementation of [IntegrationConfigRepository].
  *
  * Active only when `agentos.persistence.mode=in-memory`.
- * The default mode is file-system persistence via [FilesystemIntegrationConfigRepository].
  *
  * Entities are sorted by [IntegrationConfig.name] within each namespace.
  */
