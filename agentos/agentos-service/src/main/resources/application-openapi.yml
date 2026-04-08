@@ -1,8 +1,0 @@
-# Profile active during OpenAPI spec generation (generateOpenApiDocs Gradle task).
-# Overrides the default persistence mode to filesystem so the application context
-# starts without any Neo4j dependency — no embedded engine, no Driver bean, no
-# spring.neo4j.uri required. The spec is generated from Spring MVC annotations
-# only; no actual persistence is exercised.
-agentos:
-  persistence:
-    mode: filesystem
