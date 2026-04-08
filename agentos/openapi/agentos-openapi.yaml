@@ -14,7 +14,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: getById
+      operationId: getByIdUser
       parameters:
       - name: id
         in: path
@@ -32,7 +32,7 @@ paths:
     put:
       tags:
       - user-controller
-      operationId: update
+      operationId: updateUser
       parameters:
       - name: id
         in: path
@@ -56,7 +56,7 @@ paths:
     delete:
       tags:
       - user-controller
-      operationId: delete
+      operationId: deleteUser
       parameters:
       - name: id
         in: path
@@ -71,7 +71,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: getById_1
+      operationId: getByIdNamespace
       parameters:
       - name: id
         in: path
@@ -89,7 +89,7 @@ paths:
     put:
       tags:
       - namespace-controller
-      operationId: update_1
+      operationId: updateNamespace
       parameters:
       - name: id
         in: path
@@ -113,7 +113,7 @@ paths:
     delete:
       tags:
       - namespace-controller
-      operationId: delete_1
+      operationId: deleteNamespace
       parameters:
       - name: id
         in: path
@@ -128,7 +128,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: getById_2
+      operationId: getByIdCase
       parameters:
       - name: id
         in: path
@@ -146,7 +146,7 @@ paths:
     put:
       tags:
       - case-controller
-      operationId: update_2
+      operationId: updateCase
       parameters:
       - name: id
         in: path
@@ -170,7 +170,7 @@ paths:
     delete:
       tags:
       - case-controller
-      operationId: delete_2
+      operationId: deleteCase
       parameters:
       - name: id
         in: path
@@ -185,7 +185,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: listAll
+      operationId: listAllUser
       responses:
         "200":
           description: OK
@@ -198,7 +198,7 @@ paths:
     post:
       tags:
       - user-controller
-      operationId: create
+      operationId: createUser
       requestBody:
         content:
           application/json:
@@ -216,7 +216,7 @@ paths:
     post:
       tags:
       - user-controller
-      operationId: getByIds
+      operationId: getByIdsUser
       requestBody:
         content:
           application/json:
@@ -337,7 +337,7 @@ paths:
     post:
       tags:
       - plugin-controller
-      operationId: reloadAllAgents
+      operationId: reloadAllAgentsPlugin
       responses:
         "200":
           description: OK
@@ -349,7 +349,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listAll_1
+      operationId: listAllNamespace
       responses:
         "200":
           description: OK
@@ -362,7 +362,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: create_1
+      operationId: createNamespace
       requestBody:
         content:
           application/json:
@@ -380,7 +380,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: getByIds_1
+      operationId: getByIdsNamespace
       requestBody:
         content:
           application/json:
@@ -403,7 +403,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: create_2
+      operationId: createCase
       requestBody:
         content:
           application/json:
@@ -421,7 +421,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: addMessage
+      operationId: addMessageCase
       parameters:
       - name: caseId
         in: path
@@ -472,7 +472,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: getByIds_2
+      operationId: getByIdsCase
       requestBody:
         content:
           application/json:
@@ -495,7 +495,7 @@ paths:
     post:
       tags:
       - case-event-rest-controller
-      operationId: getByIds_3
+      operationId: getByIdsCaseEventRest
       requestBody:
         content:
           application/json:
@@ -533,7 +533,7 @@ paths:
       tags:
       - user-controller
       summary: Get the current user's profile
-      operationId: getMe
+      operationId: getMeUser
       responses:
         "200":
           description: OK
@@ -545,7 +545,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: listByParent
+      operationId: listByParentUser
       parameters:
       - name: parentId
         in: path
@@ -678,7 +678,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listByParent_1
+      operationId: listByParentNamespace
       parameters:
       - name: parentId
         in: path
@@ -704,7 +704,7 @@ paths:
       description: "Server-Sent Events stream emitting all events generated during\
         \ case execution. Use the browser EventSource API to consume this endpoint,\
         \ not a regular HTTP client."
-      operationId: streamEvents
+      operationId: streamEventsCaseEventSse
       parameters:
       - name: caseId
         in: path
@@ -723,7 +723,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: listByParent_2
+      operationId: listByParentCase
       parameters:
       - name: parentId
         in: path
@@ -745,7 +745,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: getById_3
+      operationId: getByIdCaseEventRest
       parameters:
       - name: id
         in: path
@@ -778,7 +778,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: listByCase
+      operationId: listByCaseCaseEventRest
       parameters:
       - name: caseId
         in: path
