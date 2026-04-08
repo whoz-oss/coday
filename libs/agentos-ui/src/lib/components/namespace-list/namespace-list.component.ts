@@ -33,7 +33,7 @@ export class NamespaceListComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   /** Raw namespaces, kept for delete lookups. */
-  private readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll1()))
+  private readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAllNamespace()))
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly namespaceItems$ = this.namespaces$.pipe(
@@ -75,7 +75,7 @@ export class NamespaceListComponent {
 
   protected deleteNamespace(ns: Namespace): void {
     this.namespaceController
-      .delete1(ns.id ?? '')
+      .deleteNamespace(ns.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }

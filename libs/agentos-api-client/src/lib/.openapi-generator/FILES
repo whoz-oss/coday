@@ -22,7 +22,7 @@ model/answer-event.ts
 model/case-status-event.ts
 model/case.ts
 model/entity-metadata.ts
-model/get-by-ids3200-response-inner.ts
+model/get-by-ids-case-event-rest200-response-inner.ts
 model/image.ts
 model/intention-generated-event.ts
 model/message-content.ts
