@@ -56,7 +56,7 @@ export class McpInstancePool {
     threadId: string,
     factoryCreator: () => McpToolsFactory
   ): Promise<McpToolsFactory> {
-    const hash = computeMcpConfigHash(config)
+    const hash = computeMcpConfigHash(config, threadId)
     let instance = this.instances.get(hash)
 
     if (!instance) {
@@ -145,6 +145,15 @@ export class McpInstancePool {
     this.instances.clear()
 
     console.log('MCP instance pool shutdown complete')
+  }
+
+  /**
+   * Get an existing MCP factory by config (without creating one).
+   * Returns undefined if no instance exists for this config.
+   */
+  getMcpFactory(config: McpServerConfig, threadId?: string): McpToolsFactory | undefined {
+    const hash = computeMcpConfigHash(config, threadId)
+    return this.instances.get(hash)?.mcpFactory
   }
 
   /**

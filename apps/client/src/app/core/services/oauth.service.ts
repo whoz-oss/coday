@@ -4,6 +4,7 @@ import { BehaviorSubject } from 'rxjs'
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
 import { filter } from 'rxjs/operators'
+import { OAUTH_CALLBACK_STORAGE_KEY } from '../../components/oauth-callback/oauth-callback.component'
 
 @Injectable({
   providedIn: 'root',
@@ -14,12 +15,15 @@ export class OAuthService implements OnDestroy {
 
   private readonly pendingStates = new Map<string, string>() // state -> integrationName
   private popupCheckInterval: ReturnType<typeof setInterval> | null = null
+  private popupClosedAt: number | null = null
+  private static readonly POPUP_CLOSE_GRACE_MS = 2000
 
   /** Emits the current pending OAuth request, or null when none is pending. */
   readonly pendingRequest$ = new BehaviorSubject<OAuthRequestEvent | null>(null)
 
-  // Store the handler reference so we can remove it on destroy
+  // Store the handler references so we can remove them on destroy
   private readonly messageHandler = (event: MessageEvent) => this.handlePopupMessage(event)
+  private readonly storageHandler = (event: StorageEvent) => this.handleStorageEvent(event)
 
   constructor() {
     // Listen to OAuthRequestEvent — store it for the inline panel instead of opening popup directly
@@ -29,10 +33,17 @@ export class OAuthService implements OnDestroy {
 
     // Listen to popup messages (postMessage)
     window.addEventListener('message', this.messageHandler)
+
+    // Listen to localStorage events (fallback for when window.opener is null)
+    window.addEventListener('storage', this.storageHandler)
+
+    // Process any callback that arrived before this service was ready
+    this.drainLocalStorage()
   }
 
   ngOnDestroy(): void {
     window.removeEventListener('message', this.messageHandler)
+    window.removeEventListener('storage', this.storageHandler)
     this.pendingRequest$.complete()
     if (this.popupCheckInterval) {
       clearInterval(this.popupCheckInterval)
@@ -48,12 +59,28 @@ export class OAuthService implements OnDestroy {
       clearInterval(this.popupCheckInterval)
     }
 
-    // Check every 500ms if popup is closed
+    // Check every 500ms if popup is closed.
+    // A grace period of POPUP_CLOSE_GRACE_MS is applied after detecting closure:
+    // the OAuth callback page (OAuthCallbackComponent) needs time to bootstrap Angular,
+    // send the postMessage, and have it processed — before we conclude it's a cancellation.
     this.popupCheckInterval = setInterval(() => {
       if (popup.closed) {
-        console.log('[OAuth Service] Popup closed by user')
+        if (this.popupClosedAt === null) {
+          this.popupClosedAt = Date.now()
+          console.log('[OAuth Service] Popup closed, waiting for postMessage grace period...')
+          return
+        }
+
+        const elapsed = Date.now() - this.popupClosedAt
+        if (elapsed < OAuthService.POPUP_CLOSE_GRACE_MS) {
+          // Still within grace period — wait for postMessage to arrive
+          return
+        }
+
+        console.log('[OAuth Service] Grace period elapsed, popup closed by user')
         clearInterval(this.popupCheckInterval!)
         this.popupCheckInterval = null
+        this.popupClosedAt = null
 
         // Check if state is still pending (no callback received)
         if (this.pendingStates.has(state)) {
@@ -77,6 +104,12 @@ export class OAuthService implements OnDestroy {
               error: (err) => console.error('[OAuth Service] Failed to send cancellation:', err),
             })
           }
+        }
+      } else {
+        // Popup is still open (navigating) — reset grace period if it was set
+        if (this.popupClosedAt !== null) {
+          console.log('[OAuth Service] Popup reopened/navigating, resetting grace period')
+          this.popupClosedAt = null
         }
       }
     }, 500)
@@ -153,20 +186,63 @@ export class OAuthService implements OnDestroy {
       return
     }
 
-    const { code, state, error, errorDescription } = event.data ?? {}
+    this.processCallbackData(event.data)
+  }
+
+  /**
+   * Handle the storage event — picks up OAuth callbacks written to localStorage
+   * by OAuthCallbackComponent when window.opener is null.
+   */
+  private handleStorageEvent(event: StorageEvent): void {
+    if (event.key !== OAUTH_CALLBACK_STORAGE_KEY || !event.newValue) return
+    console.log('[OAuth Service] Received localStorage callback fallback')
+    this.drainLocalStorage()
+  }
+
+  /**
+   * Read and process any pending OAuth callback stored in localStorage.
+   * Called on init and on each storage event for the callback key.
+   */
+  private drainLocalStorage(): void {
+    const raw = localStorage.getItem(OAUTH_CALLBACK_STORAGE_KEY)
+    if (!raw) return
+
+    // Remove immediately to prevent double-processing
+    localStorage.removeItem(OAUTH_CALLBACK_STORAGE_KEY)
+    console.log('[OAuth Service] Processing localStorage OAuth callback fallback')
+
+    try {
+      const data = JSON.parse(raw)
+      this.processCallbackData(data)
+    } catch (err) {
+      console.error('[OAuth Service] Failed to parse localStorage OAuth callback:', err)
+    }
+  }
+
+  /**
+   * Core callback processing logic — shared by postMessage and localStorage paths.
+   */
+  private processCallbackData(data: {
+    code?: string
+    state?: string
+    error?: string
+    errorDescription?: string
+  }): void {
+    const { code, state, error, errorDescription } = data ?? {}
 
     // Handle OAuth errors (e.g., access_denied)
     if (error) {
       console.log('[OAuth Service] OAuth error received:', error, errorDescription)
 
-      const integrationName = this.pendingStates.get(state)
+      const integrationName = this.pendingStates.get(state!)
       if (integrationName) {
-        this.pendingStates.delete(state)
+        this.pendingStates.delete(state!)
 
         // Stop popup monitoring
         if (this.popupCheckInterval) {
           clearInterval(this.popupCheckInterval)
           this.popupCheckInterval = null
+          this.popupClosedAt = null
         }
 
         // Send OAuthCallbackEvent with error
@@ -185,17 +261,31 @@ export class OAuthService implements OnDestroy {
       return
     }
 
-    if (!code || !state) {
-      console.warn('[OAuth Service] Message missing code or state:', event.data)
+    if (!code) {
+      console.warn('[OAuth Service] Message missing code:', data)
       return
     }
 
     console.log('[OAuth Service] Processing callback - code:', code, 'state:', state)
 
-    const integrationName = this.pendingStates.get(state)
+    // Look up integration by state, with fallback for providers that don't return state (e.g. HubSpot)
+    let integrationName = state ? this.pendingStates.get(state) : undefined
+    let resolvedState = state
+
+    if (!integrationName && this.pendingStates.size === 1) {
+      // Safe fallback: provider omitted state but we have exactly one pending flow
+      const firstEntry = this.pendingStates.entries().next().value as [string, string] | undefined
+      if (firstEntry) {
+        const [onlyState, onlyIntegration] = firstEntry
+        console.warn('[OAuth Service] State missing from callback, using sole pending flow:', onlyIntegration)
+        integrationName = onlyIntegration
+        resolvedState = onlyState
+      }
+    }
+
     if (!integrationName) {
       console.warn(
-        '[OAuth Service] Unknown state received:',
+        '[OAuth Service] Unknown or ambiguous state:',
         state,
         'Pending states:',
         Array.from(this.pendingStates.keys())
@@ -206,14 +296,15 @@ export class OAuthService implements OnDestroy {
     console.log('[OAuth Service] Found integration:', integrationName)
 
     // Clean up state and stop popup monitoring
-    this.pendingStates.delete(state)
+    this.pendingStates.delete(resolvedState!)
     if (this.popupCheckInterval) {
       clearInterval(this.popupCheckInterval)
       this.popupCheckInterval = null
+      this.popupClosedAt = null
     }
 
-    // Create and send event to backend
-    const callbackEvent = new OAuthCallbackEvent({ code, state, integrationName })
+    // Create and send event to backend (use resolvedState so the backend receives the original state value)
+    const callbackEvent = new OAuthCallbackEvent({ code, state: resolvedState, integrationName })
 
     console.log('[OAuth Service] Sending callback to backend...')
     this.messageApi.sendMessage(callbackEvent).subscribe({

@@ -57,6 +57,28 @@ services:
           cpus: '0.5'
           memory: 512M
 
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: agentos-neo4j
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/agentos-dev
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    networks:
+      - agentos-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
 networks:
   agentos-network:
     driver: bridge
@@ -64,3 +86,5 @@ networks:
 volumes:
   plugins-data:
   logs-data:
+  neo4j-data:
+  neo4j-logs:

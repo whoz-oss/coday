@@ -1,0 +1,19 @@
+package io.whozoss.agentos.persistence.neo4j
+
+import org.springframework.data.neo4j.repository.Neo4jRepository
+import org.springframework.data.neo4j.repository.query.Query
+
+/**
+ * Spring Data Neo4j repository for [CaseNode].
+ */
+interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
+    /**
+     * Find all non-removed cases belonging to a namespace, ordered by creation time.
+     */
+    @Query(
+        "MATCH (c:Case) " +
+            "WHERE c.namespaceId = \$namespaceId AND (c.removed IS NULL OR c.removed = false) " +
+            "RETURN c ORDER BY c.created ASC",
+    )
+    fun findActiveByNamespaceId(namespaceId: String): List<CaseNode>
+}

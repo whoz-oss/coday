@@ -7,9 +7,8 @@ import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.pf4j.Extension
 import org.pf4j.Plugin
-import org.pf4j.PluginWrapper
 
-class DateTimePlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
+class DateTimePlugin : Plugin() {
     override fun start() {
         logger.info { "DateTime Plugin started!" }
     }
