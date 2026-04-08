@@ -3,15 +3,16 @@ import { Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, switchMap } from 'rxjs'
+import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
 /**
  * NamespaceIntegrationsComponent — list view for integration configs of a namespace.
  *
  * Loaded at /:namespaceId/integrations. Responsibilities:
- * - Load and display the list of integration configs for the current namespace
+ * - Load and display the list of integration configs via ds-entity-list
+ * - Navigate back to the namespace list
  * - Navigate to the create form (/:namespaceId/integrations/new)
  * - Deletion with confirmation (delegated to IntegrationConfigItemComponent)
  *
@@ -20,7 +21,7 @@ import { IntegrationConfigItemComponent } from '../integration-config-item/integ
 @Component({
   selector: 'agentos-namespace-integrations',
   standalone: true,
-  imports: [AsyncPipe, IconButtonComponent, IntegrationConfigItemComponent],
+  imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent],
   templateUrl: './namespace-integrations.component.html',
   styleUrl: './namespace-integrations.component.scss',
 })
@@ -34,9 +35,32 @@ export class NamespaceIntegrationsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  protected readonly configs$ = this.refresh$.pipe(
+  /** Raw configs, kept for delete lookups. */
+  private readonly configs$ = this.refresh$.pipe(
     switchMap(() => this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId))
   )
+
+  /** Mapped to EntityListItem[] for ds-entity-list. */
+  protected readonly configItems$ = this.configs$.pipe(
+    map((configs) =>
+      configs.map(
+        (c): EntityListItem => ({
+          id: c.id ?? '',
+          name: c.name,
+          description: c.integrationType,
+        })
+      )
+    )
+  )
+
+  /** Full config objects indexed by id — used to resolve itemTemplate events. */
+  private configsById = new Map<string, IntegrationConfig>()
+
+  constructor() {
+    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs) => {
+      this.configsById = new Map(configs.map((c) => [c.id ?? '', c]))
+    })
+  }
 
   protected goBack(): void {
     this.router.navigate(['/agentos', 'namespaces'])
@@ -53,7 +77,7 @@ export class NamespaceIntegrationsComponent {
       .subscribe(() => this.refresh$.next())
   }
 
-  protected trackById(_index: number, config: IntegrationConfig): string {
-    return config.id ?? ''
+  protected resolveConfig(id: string): IntegrationConfig | null {
+    return this.configsById.get(id) ?? null
   }
 }

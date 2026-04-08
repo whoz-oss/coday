@@ -1,25 +1,24 @@
-<div class="namespace-integrations">
-  <header class="namespace-integrations__header">
-    <button class="namespace-integrations__back" type="button" (click)="goBack()">&#8592; Namespaces</button>
-    <h2>Integrations</h2>
-    <ds-icon-button icon="add" variant="primary" title="Add integration" (action)="openCreateForm()" />
-  </header>
+<ds-entity-list
+  title="Integrations"
+  [items]="(configItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No integrations configured yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="integrationItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="namespace-integrations__back" type="button" (click)="goBack()">
+    &#8592; Namespaces
+  </button>
+</ds-entity-list>
 
-  @if (configs$ | async; as configs) {
-    @if (configs.length === 0) {
-      <div class="namespace-integrations__empty">
-        <p>No integrations configured yet. Add one above.</p>
-      </div>
-    } @else {
-      <ul class="namespace-integrations__items" role="list">
-        @for (config of configs; track trackById($index, config)) {
-          <agentos-integration-config-item
-            [config]="config"
-            [namespaceId]="namespaceId"
-            (deleteRequested)="deleteConfig($event)"
-          />
-        }
-      </ul>
-    }
+<!-- Item template: renders IntegrationConfigItemComponent for each entity-list card slot -->
+<ng-template #integrationItemTpl let-item>
+  @if (resolveConfig(item.id); as config) {
+    <agentos-integration-config-item
+      [config]="config"
+      [namespaceId]="namespaceId"
+      (deleteRequested)="deleteConfig($event)"
+    />
   }
-</div>
+</ng-template>

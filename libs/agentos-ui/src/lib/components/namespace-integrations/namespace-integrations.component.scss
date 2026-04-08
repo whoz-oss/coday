@@ -1,55 +1,17 @@
-.namespace-integrations {
-  display: flex;
-  flex-direction: column;
-  padding: 2rem;
-  gap: 1.5rem;
-  max-width: 720px;
-  margin: 0 auto;
+// Layout and grid fully delegated to ds-entity-list.
 
-  &__header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+.namespace-integrations__back {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--color-primary, #007aff);
+  font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
 
-    h2 {
-      flex: 1;
-      margin: 0;
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--color-text, #1d1d1f);
-      letter-spacing: -0.02em;
-    }
-  }
-
-  &__back {
-    background: none;
-    border: none;
-    padding: 0.25rem 0;
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: var(--color-primary, #007aff);
-    font-family: inherit;
-    white-space: nowrap;
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-
-  &__items {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  &__empty {
-    p {
-      color: var(--color-text-secondary, #6e6e73);
-      font-size: 0.9rem;
-      margin: 0;
-    }
+  &:hover {
+    text-decoration: underline;
   }
 }
