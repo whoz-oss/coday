@@ -41,12 +41,13 @@ class UserControllerMvcTest : StringSpec() {
         // POST /api/users — create
         // -------------------------------------------------------------------------
 
-        "POST /api/users with blank email returns 400" {
+        "POST /api/users with no email returns 201" {
+            // email is now optional — omitting it is valid (local mode: no email known)
             mockMvc.perform(
                 post("/api/users")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "email": "" }""")
-            ).andExpect(status().isBadRequest)
+                    .content("""{}""")
+            ).andExpect(status().isCreated)
         }
 
         "POST /api/users with invalid email format returns 400" {
@@ -69,16 +70,6 @@ class UserControllerMvcTest : StringSpec() {
         // PUT /api/users/{id} — update
         // -------------------------------------------------------------------------
 
-        "PUT /api/users/{id} with blank email returns 400" {
-            val id = UUID.randomUUID()
-
-            mockMvc.perform(
-                put("/api/users/$id")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "$id", "email": "" }""")
-            ).andExpect(status().isBadRequest)
-        }
-
         "PUT /api/users/{id} with invalid email format returns 400" {
             val id = UUID.randomUUID()
 
@@ -89,6 +80,25 @@ class UserControllerMvcTest : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
+        "PUT /api/users/{id} with null email returns 200" {
+            val id = UUID.randomUUID()
+
+            // Pre-create the user so the update finds it
+            val created = userService.create(
+                User(
+                    metadata = EntityMetadata(id = id),
+                    externalId = "local-username",
+                )
+            )
+
+            // email omitted (null) — valid in local mode
+            mockMvc.perform(
+                put("/api/users/${created.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}" }""")
+            ).andExpect(status().isOk)
+        }
+
         "PUT /api/users/{id} with valid email returns 200" {
             val id = UUID.randomUUID()
 
@@ -96,8 +106,7 @@ class UserControllerMvcTest : StringSpec() {
             val created = userService.create(
                 User(
                     metadata = EntityMetadata(id = id),
-                    externalId = "alice@example.com",
-                    email = "alice@example.com",
+                    externalId = "local-username",
                 )
             )
 

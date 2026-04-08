@@ -45,7 +45,7 @@ class UserControllerSpec : StringSpec({
 
     fun resource(
         id: UUID? = UUID.randomUUID(),
-        email: String = "alice@example.com",
+        email: String? = "alice@example.com",
         firstname: String? = "Alice",
         lastname: String? = "Smith",
         bio: String? = null,
@@ -70,6 +70,14 @@ class UserControllerSpec : StringSpec({
         result shouldBe UserResource(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev")
     }
 
+    "toResource returns null email when user has no email (local mode)" {
+        val u = user(email = "", externalId = "local-username")
+
+        val result = controller.toResource(u)
+
+        result.email shouldBe null
+    }
+
     // -------------------------------------------------------------------------
     // toDomain mapping
     // -------------------------------------------------------------------------
@@ -82,7 +90,7 @@ class UserControllerSpec : StringSpec({
 
         result.metadata.id shouldBe id
         result.email shouldBe "carol@example.com"
-        result.externalId shouldBe "carol@example.com"
+        result.externalId shouldBe ""   // server-managed — never sourced from request body
         result.firstname shouldBe "Carol"
         result.lastname shouldBe "White"
         result.bio shouldBe "qa"
@@ -192,7 +200,11 @@ class UserControllerSpec : StringSpec({
     "update delegates to service when user exists and returns mapped resource" {
         val u = user()
         val updatedResource = resource(id = u.id, email = u.email, firstname = "Updated")
-        val updatedDomain = controller.toDomain(updatedResource)
+        // toDomain produces externalId=""; update() replaces it with the existing entity's externalId
+        val updatedDomain = controller.toDomain(updatedResource).copy(
+            metadata = u.metadata,
+            externalId = u.externalId,
+        )
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
         every { userService.findById(u.id) } returns u
         every { userService.update(any()) } returns updatedDomain
