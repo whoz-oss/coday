@@ -57,7 +57,10 @@ class CaseController(
     ) {
         logger.info { "Adding message to case: $caseId" }
         val user = userService.getCurrentUser()
-        val userActor = Actor(id = user.metadata.id.toString(), displayName = user.email, role = ActorRole.USER)
+        val displayName = listOfNotNull(user.firstname, user.lastname)
+            .joinToString(" ")
+            .ifBlank { user.metadata.id.toString() }
+        val userActor = Actor(id = user.metadata.id.toString(), displayName = displayName, role = ActorRole.USER)
         caseService.addMessage(
             caseId = caseId,
             actor = userActor,
