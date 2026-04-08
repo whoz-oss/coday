@@ -31,7 +31,32 @@ data class PersistenceConfigProperties(
      */
     val dataDir: String = "data/",
     /**
-     * Persistence mode: 'filesystem' (default) or 'in-memory'.
+     * Persistence mode:
+     * - 'embedded-neo4j' (default) — in-process Neo4j engine, no Docker required
+     * - 'neo4j'           — standalone Neo4j server (configure spring.neo4j.*)
+     * - 'filesystem'      — file-system backed repositories (deprecated, will be removed)
+     * - 'in-memory'       — in-memory repositories, data lost on restart (deprecated, will be removed)
      */
     val mode: String = "filesystem",
+    /**
+     * Bolt port for the embedded Neo4j engine.
+     * Defaults to 7688 to avoid conflicting with a standalone Neo4j instance
+     * that typically runs on 7687. Set to 0 for a random OS-assigned port.
+     * Only used when mode=embedded-neo4j.
+     */
+    val embeddedBoltPort: Int = 7688,
+
+    /**
+     * Host for the embedded Neo4j Bolt connector.
+     * Defaults to "localhost" but can be set to "127.0.0.1" to force IPv4
+     * on systems where localhost resolves to IPv6 (::1).
+     * Only used when mode=embedded-neo4j.
+     */
+    val embeddedBoltHost: String = "localhost",
+
+    /**
+     * Transaction timeout for the embedded Neo4j engine in seconds.
+     * Only used when mode=embedded-neo4j.
+     */
+    val embeddedTransactionTimeoutSeconds: Long = 30,
 )
