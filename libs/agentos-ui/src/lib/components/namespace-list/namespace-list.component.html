@@ -13,7 +13,7 @@
   @if (resolveNamespace(item.id); as ns) {
     <agentos-namespace-item
       [namespace]="ns"
-      (selected)="navigateToCases($event.id)"
+      (selected)="navigateToCases($event.id ?? '')"
       (editRequested)="navigateToEdit($event)"
       (deleteRequested)="deleteNamespace($event)"
     />

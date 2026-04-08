@@ -9,6 +9,8 @@ import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -57,7 +59,13 @@ class CaseServiceImplSpec :
         timeout = 10_000
 
         val namespaceId: UUID = UUID.randomUUID()
-        val userActor = Actor(id = "user-1", displayName = "Test User", role = ActorRole.USER)
+        val userId: UUID = UUID.randomUUID()
+        val userActor = Actor(id = userId.toString(), displayName = "Test User", role = ActorRole.USER)
+        val activeUser = User(
+            metadata = EntityMetadata(id = userId),
+            externalId = "ext-1",
+            email = "test@example.com",
+        )
         val agentName = "test-agent"
         val agentId: UUID = UUID.nameUUIDFromBytes(agentName.toByteArray())
 
@@ -82,7 +90,10 @@ class CaseServiceImplSpec :
             }
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
-        fun buildService(agent: Agent = finishingAgent()): CaseServiceImpl {
+        fun buildService(
+            agent: Agent = finishingAgent(),
+            userService: UserService = mockk { every { findById(userId) } returns activeUser },
+        ): CaseServiceImpl {
             val agentService =
                 mockk<AgentService> {
                     every { getDefaultAgentName() } returns agentName
@@ -90,7 +101,7 @@ class CaseServiceImplSpec :
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            return CaseServiceImpl(agentService, caseRepository, caseEventService)
+            return CaseServiceImpl(agentService, caseRepository, caseEventService, userService)
         }
 
         // -------------------------------------------------------------------------
@@ -154,6 +165,58 @@ class CaseServiceImplSpec :
         // Event sequence persisted to the event store
         // -------------------------------------------------------------------------
 
+        // -------------------------------------------------------------------------
+        // User validation: case must not run without a valid active user
+        // -------------------------------------------------------------------------
+
+        "case transitions to ERROR when userId is null (actor id is not a valid UUID)" {
+            val actorWithNonUuidId = Actor(id = "not-a-uuid", displayName = "Unknown", role = ActorRole.USER)
+            val service = buildService()
+            val case = service.create(Case(namespaceId = namespaceId))
+
+            service.addMessage(
+                caseId = case.id,
+                actor = actorWithNonUuidId,
+                content = listOf(MessageContent.Text("hello")),
+            )
+
+            val deadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < deadline) {
+                val status = service.getById(case.id).status
+                if (status == CaseStatus.ERROR || status == CaseStatus.IDLE) break
+                Thread.sleep(50)
+            }
+
+            service.getById(case.id).status shouldBe CaseStatus.ERROR
+        }
+
+        "case transitions to ERROR when userId does not resolve to a known user" {
+            val unknownUserId = UUID.randomUUID()
+            val actorWithUnknownUser = Actor(id = unknownUserId.toString(), displayName = "Ghost", role = ActorRole.USER)
+            val userService = mockk<UserService> { every { findById(any()) } returns null }
+            val service = buildService(userService = userService)
+            val case = service.create(Case(namespaceId = namespaceId))
+
+            service.addMessage(
+                caseId = case.id,
+                actor = actorWithUnknownUser,
+                content = listOf(MessageContent.Text("hello")),
+            )
+
+            val deadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < deadline) {
+                val status = service.getById(case.id).status
+                if (status == CaseStatus.ERROR || status == CaseStatus.IDLE) break
+                Thread.sleep(50)
+            }
+
+            service.getById(case.id).status shouldBe CaseStatus.ERROR
+        }
+
+        // -------------------------------------------------------------------------
+        // Event sequence persisted to the event store
+        // -------------------------------------------------------------------------
+
         "persisted events contain the full agent lifecycle sequence" {
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val agentService =
@@ -161,7 +224,8 @@ class CaseServiceImplSpec :
                     every { getDefaultAgentName() } returns agentName
                     every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
-            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService)
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService)
             val case = service.create(Case(namespaceId = namespaceId))
 
             service.addMessage(

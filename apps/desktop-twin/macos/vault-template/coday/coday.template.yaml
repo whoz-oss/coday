@@ -34,6 +34,13 @@ mcp:
         - mcp-server-fetch
         - --ignore-robots-txt
       command: uvx
+    - id: chrome
+      name: CHROME
+      enabled: true
+      args:
+        - "chrome-devtools-mcp@latest"
+      command: npx
+      debug: false
 
 scripts:
   notify:

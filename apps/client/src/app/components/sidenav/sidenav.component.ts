@@ -61,17 +61,17 @@ export class SidenavComponent implements OnInit, OnDestroy {
 
   private readonly breakpointObserver = inject(BreakpointObserver)
 
-  /** True when viewport is >= 1400px — sidenav is locked open. */
+  /** True when viewport is >= 1400px. Used to hide the floating FABs (the inline close button is shown instead). */
   protected readonly isDesktop = toSignal(
     this.breakpointObserver.observe('(min-width: 1400px)').pipe(map((state) => state.matches)),
     { initialValue: false }
   )
 
-  /** User's open/close preference, only meaningful on mobile. */
+  /** User's open/close preference — drives the sidenav state on all screen sizes. */
   private readonly userOpenPreference = signal(true)
 
-  /** Effective open state — always open on desktop, user-controlled on mobile. */
-  protected readonly isOpen = computed(() => this.isDesktop() || this.userOpenPreference())
+  /** Effective open state — always driven by user preference, never locked. */
+  protected readonly isOpen = computed(() => this.userOpenPreference())
 
   // Role-based access control
   isAdmin = false
@@ -120,9 +120,11 @@ export class SidenavComponent implements OnInit, OnDestroy {
   )
 
   ngOnInit(): void {
-    // Load saved sidenav state from preferences (mobile only)
-    const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
-    this.userOpenPreference.set(savedState ?? true)
+    // Default: open on wide screens (>= 1024px), closed on smaller ones.
+    // Overridden by the user's saved preference if it exists.
+    const defaultOpen = window.innerWidth >= 1024
+    const savedState = this.preferences.getPreference<boolean>('sidenavOpen', defaultOpen)
+    this.userOpenPreference.set(savedState ?? defaultOpen)
 
     // Load user config to check roles
     this.configApi
@@ -147,7 +149,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   toggle(): void {
-    if (this.isDesktop()) return
     const next = !this.userOpenPreference()
     this.userOpenPreference.set(next)
     this.saveSidenavState(next)
@@ -155,7 +156,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   close(): void {
-    if (this.isDesktop() || !this.userOpenPreference()) return
+    if (!this.userOpenPreference()) return
     this.userOpenPreference.set(false)
     this.saveSidenavState(false)
     this.sidenavStateChange.emit(false)
@@ -409,6 +410,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     if (!this.isDesktop()) {
       this.close()
     }
+    // On desktop the sidenav stays open after thread selection (user preference preserved)
   }
 
   /**

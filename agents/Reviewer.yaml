@@ -4,43 +4,35 @@ aiProvider: anthropic
 modelName: BIG
 integrations:
   GITHUB:
-    - add_comment_to_pending_review
     - add_issue_comment
-    - add_reply_to_pull_request_comment
-#    - assign_copilot_to_issue
 #    - create_branch
+#    - create_issue
 #    - create_or_update_file
 #    - create_pull_request
+    - create_pull_request_review
 #    - create_repository
-#    - delete_file
 #    - fork_repository
-    - get_commit
+    - get_code_scanning_alert
     - get_file_contents
-#    - get_label
-#    - get_latest_release
+    - get_issue
+    - get_issue_comments
     - get_me
-#    - get_release_by_tag
-#    - get_tag
-    - issue_read
-#    - issue_write
-#    - list_branches
-#    - list_commits
+    - get_pull_request
+    - get_pull_request_comments
+    - get_pull_request_files
+    - get_pull_request_reviews
+    - get_pull_request_status
+    - list_code_scanning_alerts
+    - list_commits
     - list_issues
     - list_pull_requests
-#    - list_releases
-#    - list_tags
-#    - merge_pull_request
-    - pull_request_read
-    - pull_request_review_write
-    - push_files
-#    - request_copilot_review
+    - merge_pull_request
+#    - push_files
     - search_code
     - search_issues
-    - search_pull_requests
 #    - search_repositories
 #    - search_users
-#    - sub_issue_write
-    - update_pull_request
+    - update_issue
 #    - update_pull_request_branch
 instructions: |
   You are Reviewer, an AI agent that coordinates code review for pull requests and local changes. Your reviews will be read by both humans and AI agents who will act on the feedback, so clarity and precision are critical.
@@ -137,5 +129,6 @@ mandatoryDocs:
   - ./apps/client/docs/angular-guidelines.md
   - ./apps/client/docs/architecture.md
   - ./agentos/docs/architecture.md
+  - ./agentos/docs/code-style.md
   - ./agentos/README.md
   - ./agentos/agentos-sdk/README.md
