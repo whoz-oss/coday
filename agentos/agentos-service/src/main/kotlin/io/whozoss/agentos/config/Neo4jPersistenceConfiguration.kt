@@ -4,16 +4,22 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
+import io.whozoss.agentos.llmConfig.LlmConfigRepository
+import io.whozoss.agentos.llmModelConfig.LlmModelConfigRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.persistence.neo4j.CaseEventNodeMapper
 import io.whozoss.agentos.persistence.neo4j.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.CaseNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.IntegrationConfigNodeNeo4jRepository
+import io.whozoss.agentos.persistence.neo4j.LlmConfigNodeNeo4jRepository
+import io.whozoss.agentos.persistence.neo4j.LlmModelConfigNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.MessageContentSerializer
 import io.whozoss.agentos.persistence.neo4j.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseEventRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jIntegrationConfigRepository
+import io.whozoss.agentos.persistence.neo4j.Neo4jLlmConfigRepository
+import io.whozoss.agentos.persistence.neo4j.Neo4jLlmModelConfigRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jNamespaceRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jUserRepository
 import io.whozoss.agentos.persistence.neo4j.UserNodeNeo4jRepository
@@ -83,6 +89,22 @@ class Neo4jPersistenceConfiguration {
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper)
+    }
+
+    @Bean
+    fun neo4jLlmConfigRepository(
+        llmConfigNodeNeo4jRepository: LlmConfigNodeNeo4jRepository,
+    ): LlmConfigRepository {
+        logger.info { "[Persistence] Neo4jLlmConfigRepository active" }
+        return Neo4jLlmConfigRepository(llmConfigNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jLlmModelConfigRepository(
+        llmModelConfigNodeNeo4jRepository: LlmModelConfigNodeNeo4jRepository,
+    ): LlmModelConfigRepository {
+        logger.info { "[Persistence] Neo4jLlmModelConfigRepository active" }
+        return Neo4jLlmModelConfigRepository(llmModelConfigNodeNeo4jRepository)
     }
 
     companion object : KLogging()
