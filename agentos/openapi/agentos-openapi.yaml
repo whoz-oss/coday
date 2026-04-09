@@ -976,6 +976,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/LlmModelConfig"
+  /api/llm-configs/by-userId/{userId}:
+    get:
+      tags:
+      - llm-config-controller
+      operationId: listByUserIdLlmConfig
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LlmConfig"
   /api/llm-configs/by-parentId/{parentId}:
     get:
       tags:
@@ -985,6 +1006,27 @@ paths:
       - name: parentId
         in: path
         description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LlmConfig"
+  /api/llm-configs/by-namespaceId/{namespaceId}:
+    get:
+      tags:
+      - llm-config-controller
+      operationId: listByNamespaceIdLlmConfig
+      parameters:
+      - name: namespaceId
+        in: path
         required: true
         schema:
           type: string
@@ -1236,6 +1278,9 @@ components:
         namespaceId:
           type: string
           format: uuid
+        userId:
+          type: string
+          format: uuid
         name:
           type: string
           minLength: 1
@@ -1252,7 +1297,6 @@ components:
       required:
       - apiType
       - name
-      - namespaceId
     IntegrationConfig:
       type: object
       properties:

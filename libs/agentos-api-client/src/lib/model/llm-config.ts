@@ -10,7 +10,8 @@
 
 export interface LlmConfig {
   id?: string
-  namespaceId: string
+  namespaceId?: string
+  userId?: string
   name: string
   apiType: LlmConfigApiTypeEnum
   baseUrl?: string
