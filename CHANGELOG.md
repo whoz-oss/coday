@@ -1,3 +1,15 @@
+## 0.115.1 (2026-04-09)
+
+### 🩹 Fixes
+
+- #WZ-31310 and #WZ-31311 user fixes in logs and local mode ([#738](https://github.com/whoz-oss/coday/pull/738))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent.audibert
+
 ## 0.115.0 (2026-04-09)
 
 ### 🚀 Features
