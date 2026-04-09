@@ -6,8 +6,8 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -137,8 +137,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         val ex = runCatching { controller.getById(id) }.exceptionOrNull()
 
-        (ex is ResponseStatusException) shouldBe true
-        (ex as ResponseStatusException).statusCode.value() shouldBe 404
+        (ex is ResourceNotFoundException) shouldBe true
     }
 
     // -------------------------------------------------------------------------
@@ -209,8 +208,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         val ex = runCatching { controller.update(id, r) }.exceptionOrNull()
 
-        (ex is ResponseStatusException) shouldBe true
-        (ex as ResponseStatusException).statusCode.value() shouldBe 404
+        (ex is ResourceNotFoundException) shouldBe true
     }
 
     // -------------------------------------------------------------------------
@@ -232,7 +230,6 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         val ex = runCatching { controller.delete(id) }.exceptionOrNull()
 
-        (ex is ResponseStatusException) shouldBe true
-        (ex as ResponseStatusException).statusCode.value() shouldBe 404
+        (ex is ResourceNotFoundException) shouldBe true
     }
 })

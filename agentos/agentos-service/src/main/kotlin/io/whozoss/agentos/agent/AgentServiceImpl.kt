@@ -126,13 +126,13 @@ class AgentServiceImpl(
                         appendLine()
                         appendLine("## User")
                         appendLine("- id: ${user.metadata.id}")
-                        appendLine("- email: ${user.email}")
-                        if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
-                        if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
-                        if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
-                    }.trimEnd()
+                        if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
+                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                        }.trimEnd()
+                    }
                 }
-            }
 
         val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
         return if (userBlock != null) "$base\n$userBlock" else base

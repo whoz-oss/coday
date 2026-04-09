@@ -10,7 +10,7 @@
 
 export interface User {
   id?: string
-  email: string
+  email?: string
   externalId?: string
   firstname?: string
   lastname?: string

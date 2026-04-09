@@ -914,7 +914,6 @@ components:
           format: uuid
         email:
           type: string
-          minLength: 1
         externalId:
           type: string
         firstname:
@@ -923,8 +922,6 @@ components:
           type: string
         bio:
           type: string
-      required:
-      - email
     Namespace:
       type: object
       properties:
