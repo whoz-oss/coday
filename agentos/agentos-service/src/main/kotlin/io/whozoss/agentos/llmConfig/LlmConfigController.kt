@@ -26,6 +26,8 @@ import java.util.UUID
  *   PUT    /api/llm-configs/{id}
  *   DELETE /api/llm-configs/{id}
  *
+ * Models are managed as independent [LlmModelConfig] entities via /api/llm-model-configs.
+ *
  * API key handling:
  * - [toResource] always masks [LlmConfig.apiKey] before returning it to the client.
  * - [update] detects a masked sentinel in the incoming resource and preserves the
@@ -41,10 +43,6 @@ class LlmConfigController(
     private val llmConfigService: LlmConfigService,
 ) : EntityController<LlmConfig, UUID, LlmConfigResource>(llmConfigService) {
 
-    // -------------------------------------------------------------------------
-    // Mapping between domain entity and HTTP resource
-    // -------------------------------------------------------------------------
-
     override fun toResource(entity: LlmConfig): LlmConfigResource =
         LlmConfigResource(
             id = entity.metadata.id,
@@ -53,7 +51,6 @@ class LlmConfigController(
             apiType = entity.apiType,
             baseUrl = entity.baseUrl,
             apiKey = maskApiKey(entity.apiKey),
-            models = entity.models.map { it.toResource() },
         )
 
     override fun toDomain(resource: LlmConfigResource): LlmConfig =
@@ -64,7 +61,6 @@ class LlmConfigController(
             apiType = resource.apiType!!,
             baseUrl = resource.baseUrl,
             apiKey = resource.apiKey,
-            models = resource.models.map { it.toDomain() },
         )
 
     /**
@@ -96,28 +92,6 @@ class LlmConfigController(
         )
         return toResource(llmConfigService.update(updated))
     }
-
-    // -------------------------------------------------------------------------
-    // Private mapping helpers
-    // -------------------------------------------------------------------------
-
-    private fun LlmModelEntry.toResource() =
-        LlmModelEntryResource(
-            apiName = apiName,
-            alias = alias,
-            displayName = displayName,
-            temperature = temperature,
-            maxTokens = maxTokens,
-        )
-
-    private fun LlmModelEntryResource.toDomain() =
-        LlmModelEntry(
-            apiName = apiName,
-            alias = alias,
-            displayName = displayName,
-            temperature = temperature,
-            maxTokens = maxTokens,
-        )
 
     companion object : KLogging()
 }

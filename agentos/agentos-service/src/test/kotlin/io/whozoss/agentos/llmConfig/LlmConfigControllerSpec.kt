@@ -36,14 +36,12 @@ class LlmConfigControllerSpec : StringSpec({
         name: String = "anthropic",
         apiType: AiApiType = AiApiType.Anthropic,
         apiKey: String? = null,
-        models: List<LlmModelEntry> = emptyList(),
     ) = LlmConfig(
         metadata = EntityMetadata(id = id),
         namespaceId = namespaceId,
         name = name,
         apiType = apiType,
         apiKey = apiKey,
-        models = models,
     )
 
     fun resource(
@@ -51,14 +49,12 @@ class LlmConfigControllerSpec : StringSpec({
         name: String = "anthropic",
         apiType: AiApiType = AiApiType.Anthropic,
         apiKey: String? = null,
-        models: List<LlmModelEntryResource> = emptyList(),
     ) = LlmConfigResource(
         id = id,
         namespaceId = namespaceId,
         name = name,
         apiType = apiType,
         apiKey = apiKey,
-        models = models,
     )
 
     // -------------------------------------------------------------------------
@@ -66,51 +62,32 @@ class LlmConfigControllerSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "toResource masks a long apiKey (>= 12 chars)" {
-        val c = config(apiKey = "sk-ant-api03-abcdefghijklmnop")
-
-        val result = controller.toResource(c)
-
+        val result = controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop"))
         result.apiKey shouldBe "sk-a****mnop"
     }
 
     "toResource masks a medium apiKey (9-11 chars)" {
-        val c = config(apiKey = "123456789")
-
-        val result = controller.toResource(c)
-
+        val result = controller.toResource(config(apiKey = "123456789"))
         result.apiKey shouldBe "12****89"
     }
 
     "toResource masks a short apiKey (<= 8 chars) as ****" {
-        val c = config(apiKey = "secret")
-
-        val result = controller.toResource(c)
-
+        val result = controller.toResource(config(apiKey = "secret"))
         result.apiKey shouldBe "****"
     }
 
     "toResource returns null apiKey when no key is set" {
-        val c = config(apiKey = null)
-
-        val result = controller.toResource(c)
-
-        result.apiKey.shouldBeNull()
+        controller.toResource(config(apiKey = null)).apiKey.shouldBeNull()
     }
 
-    "toResource maps all other fields correctly" {
+    "toResource maps all non-sensitive fields correctly" {
         val id = UUID.randomUUID()
-        val models = listOf(LlmModelEntry(apiName = "claude-haiku-4-5", alias = "SMALL"))
-        val c = config(id = id, name = "anthropic", apiType = AiApiType.Anthropic, models = models)
-
-        val result = controller.toResource(c)
+        val result = controller.toResource(config(id = id, name = "anthropic", apiType = AiApiType.Anthropic))
 
         result.id shouldBe id
         result.namespaceId shouldBe namespaceId
         result.name shouldBe "anthropic"
         result.apiType shouldBe AiApiType.Anthropic
-        result.models.size shouldBe 1
-        result.models[0].apiName shouldBe "claude-haiku-4-5"
-        result.models[0].alias shouldBe "SMALL"
     }
 
     // -------------------------------------------------------------------------
@@ -119,8 +96,7 @@ class LlmConfigControllerSpec : StringSpec({
 
     "toDomain maps all fields from resource to domain" {
         val id = UUID.randomUUID()
-        val models = listOf(LlmModelEntryResource(apiName = "gpt-4o", alias = "BIG", temperature = 0.5))
-        val r = resource(id = id, name = "openai", apiType = AiApiType.OpenAI, apiKey = "sk-abc", models = models)
+        val r = resource(id = id, name = "openai", apiType = AiApiType.OpenAI, apiKey = "sk-abc")
 
         val result = controller.toDomain(r)
 
@@ -129,16 +105,10 @@ class LlmConfigControllerSpec : StringSpec({
         result.name shouldBe "openai"
         result.apiType shouldBe AiApiType.OpenAI
         result.apiKey shouldBe "sk-abc"
-        result.models.size shouldBe 1
-        result.models[0].apiName shouldBe "gpt-4o"
-        result.models[0].temperature shouldBe 0.5
     }
 
     "toDomain generates a random UUID when resource id is null" {
-        val r = resource(id = null)
-
-        val result = controller.toDomain(r)
-
+        val result = controller.toDomain(resource(id = null))
         result.metadata.id shouldBe result.metadata.id
     }
 
@@ -154,7 +124,6 @@ class LlmConfigControllerSpec : StringSpec({
 
         val result = controller.update(existing.id, incomingResource)
 
-        // The returned resource should show the masked form of the original key
         result.apiKey shouldBe maskApiKey("sk-ant-api03-real-secret")
         verify { service.update(match { it.apiKey == "sk-ant-api03-real-secret" }) }
     }
@@ -186,49 +155,32 @@ class LlmConfigControllerSpec : StringSpec({
         every { service.findById(id) } returns null
 
         val ex = runCatching { controller.update(id, resource(id = id)) }.exceptionOrNull()
-
         (ex is ResourceNotFoundException) shouldBe true
     }
 
     // -------------------------------------------------------------------------
-    // getById (inherited)
+    // Inherited endpoints
     // -------------------------------------------------------------------------
 
     "getById returns a resource when the entity is found" {
         val c = config()
         every { service.findById(c.id) } returns c
-
-        val result = controller.getById(c.id)
-
-        result shouldBe controller.toResource(c)
+        controller.getById(c.id) shouldBe controller.toResource(c)
     }
 
     "getById throws 404 when entity is not found" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null
-
         val ex = runCatching { controller.getById(id) }.exceptionOrNull()
-
         (ex is ResourceNotFoundException) shouldBe true
     }
-
-    // -------------------------------------------------------------------------
-    // getByIds (inherited)
-    // -------------------------------------------------------------------------
 
     "getByIds returns matching entities mapped to resources" {
         val c1 = config(name = "anthropic")
         val c2 = config(name = "openai")
         every { service.findByIds(listOf(c1.id, c2.id)) } returns listOf(c1, c2)
-
-        val result = controller.getByIds(listOf(c1.id, c2.id))
-
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+        controller.getByIds(listOf(c1.id, c2.id)) shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
     }
-
-    // -------------------------------------------------------------------------
-    // listByParent (inherited)
-    // -------------------------------------------------------------------------
 
     "listByParent returns configs for the given namespaceId" {
         val c1 = config(name = "anthropic")
@@ -241,11 +193,7 @@ class LlmConfigControllerSpec : StringSpec({
         verify(exactly = 1) { service.findByParent(namespaceId) }
     }
 
-    // -------------------------------------------------------------------------
-    // create (inherited)
-    // -------------------------------------------------------------------------
-
-    "create converts resource to domain, delegates to service, and returns mapped resource" {
+    "create delegates to service and returns mapped resource" {
         val r = resource(id = null)
         val saved = controller.toDomain(r)
         every { service.create(any()) } returns saved
@@ -256,25 +204,17 @@ class LlmConfigControllerSpec : StringSpec({
         verify(exactly = 1) { service.create(any()) }
     }
 
-    // -------------------------------------------------------------------------
-    // delete (inherited)
-    // -------------------------------------------------------------------------
-
     "delete succeeds when entity exists" {
         val id = UUID.randomUUID()
         every { service.delete(id) } returns true
-
         controller.delete(id)
-
         verify(exactly = 1) { service.delete(id) }
     }
 
     "delete throws 404 when service returns false" {
         val id = UUID.randomUUID()
         every { service.delete(id) } returns false
-
         val ex = runCatching { controller.delete(id) }.exceptionOrNull()
-
         (ex is ResourceNotFoundException) shouldBe true
     }
 })

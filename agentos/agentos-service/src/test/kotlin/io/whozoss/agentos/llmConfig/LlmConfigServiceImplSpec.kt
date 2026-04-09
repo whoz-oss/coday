@@ -28,7 +28,6 @@ class LlmConfigServiceImplSpec : StringSpec() {
         name: String = "anthropic",
         apiType: AiApiType = AiApiType.Anthropic,
         apiKey: String? = null,
-        models: List<LlmModelEntry> = emptyList(),
     ): LlmConfig =
         LlmConfig(
             metadata = EntityMetadata(),
@@ -36,7 +35,6 @@ class LlmConfigServiceImplSpec : StringSpec() {
             name = name,
             apiType = apiType,
             apiKey = apiKey,
-            models = models,
         )
 
     init {
@@ -137,40 +135,10 @@ class LlmConfigServiceImplSpec : StringSpec() {
             val nsB = UUID.randomUUID()
 
             service.create(config(namespaceId = nsA, name = "anthropic"))
-            service.create(config(namespaceId = nsB, name = "anthropic")) // must not throw
+            service.create(config(namespaceId = nsB, name = "anthropic"))
 
             service.findByParent(nsA) shouldHaveSize 1
             service.findByParent(nsB) shouldHaveSize 1
-        }
-
-        // -------------------------------------------------------------------------
-        // Models list
-        // -------------------------------------------------------------------------
-
-        "config with models is persisted and retrieved correctly" {
-            val service = newService()
-            val models = listOf(
-                LlmModelEntry(apiName = "claude-haiku-4-5", alias = "SMALL"),
-                LlmModelEntry(apiName = "claude-opus-4-6", alias = "BIG", temperature = 0.7),
-            )
-            val cfg = config(models = models)
-            val saved = service.create(cfg)
-
-            val found = service.findById(saved.metadata.id)
-            found.shouldNotBeNull()
-            found.models shouldHaveSize 2
-            found.models[0].apiName shouldBe "claude-haiku-4-5"
-            found.models[0].alias shouldBe "SMALL"
-            found.models[1].temperature shouldBe 0.7
-        }
-
-        "config with empty models list is valid" {
-            val service = newService()
-            val saved = service.create(config(models = emptyList()))
-
-            val found = service.findById(saved.metadata.id)
-            found.shouldNotBeNull()
-            found.models.shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------

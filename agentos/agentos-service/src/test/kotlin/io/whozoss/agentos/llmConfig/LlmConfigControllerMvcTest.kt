@@ -17,13 +17,6 @@ import java.util.UUID
 /**
  * MVC-layer test for [LlmConfigController] — verifies that Bean Validation is
  * triggered by the Spring MVC dispatcher on create and update endpoints.
- *
- * Uses a full Spring Boot context (webEnvironment = MOCK) with the "test" profile
- * so that the dispatcher, message converters, and validation are all active.
- * The "test" profile enables in-memory persistence so no external services are needed.
- *
- * These tests complement [LlmConfigControllerSpec], which exercises the controller
- * logic directly without a Spring context (and therefore cannot test @Valid activation).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -37,10 +30,6 @@ class LlmConfigControllerMvcTest : StringSpec() {
     private val namespaceId = UUID.randomUUID()
 
     init {
-
-        // -------------------------------------------------------------------------
-        // POST /api/llm-configs — create
-        // -------------------------------------------------------------------------
 
         "POST /api/llm-configs with missing namespaceId returns 400" {
             mockMvc.perform(
@@ -66,21 +55,6 @@ class LlmConfigControllerMvcTest : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
-        "POST /api/llm-configs with blank apiName in model returns 400" {
-            mockMvc.perform(
-                post("/api/llm-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {
-                            "namespaceId": "$namespaceId",
-                            "name": "anthropic",
-                            "apiType": "Anthropic",
-                            "models": [{ "apiName": "" }]
-                        }
-                    """)
-            ).andExpect(status().isBadRequest)
-        }
-
         "POST /api/llm-configs with valid minimal payload returns 201" {
             mockMvc.perform(
                 post("/api/llm-configs")
@@ -88,30 +62,6 @@ class LlmConfigControllerMvcTest : StringSpec() {
                     .content("""{ "namespaceId": "$namespaceId", "name": "anthropic", "apiType": "Anthropic" }""")
             ).andExpect(status().isCreated)
         }
-
-        "POST /api/llm-configs with full payload including models returns 201" {
-            val ns = UUID.randomUUID()
-            mockMvc.perform(
-                post("/api/llm-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {
-                            "namespaceId": "$ns",
-                            "name": "anthropic",
-                            "apiType": "Anthropic",
-                            "apiKey": "sk-ant-api03-secret",
-                            "models": [
-                                { "apiName": "claude-haiku-4-5", "alias": "SMALL" },
-                                { "apiName": "claude-opus-4-6", "alias": "BIG", "temperature": 0.7 }
-                            ]
-                        }
-                    """)
-            ).andExpect(status().isCreated)
-        }
-
-        // -------------------------------------------------------------------------
-        // PUT /api/llm-configs/{id} — update
-        // -------------------------------------------------------------------------
 
         "PUT /api/llm-configs/{id} with blank name returns 400" {
             val id = UUID.randomUUID()
@@ -143,14 +93,7 @@ class LlmConfigControllerMvcTest : StringSpec() {
             mockMvc.perform(
                 put("/api/llm-configs/${created.id}")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {
-                            "id": "${created.id}",
-                            "namespaceId": "$namespaceId",
-                            "name": "openai-to-update",
-                            "apiType": "OpenAI"
-                        }
-                    """)
+                    .content("""{ "id": "${created.id}", "namespaceId": "$namespaceId", "name": "openai-to-update", "apiType": "OpenAI" }""")
             ).andExpect(status().isOk)
         }
     }
