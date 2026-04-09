@@ -21,7 +21,7 @@ export class UserStateService {
   readonly currentUser = signal<User | null>(null)
 
   loadMe(): Observable<User> {
-    return this.userController.getMe().pipe(tap((user) => this.currentUser.set(user)))
+    return this.userController.getMeUser().pipe(tap((user) => this.currentUser.set(user)))
   }
 
   updateMe(patch: Pick<User, 'firstname' | 'lastname' | 'bio'>): Observable<User> {
@@ -30,6 +30,6 @@ export class UserStateService {
 
     if (!existing.id) throw new Error('Cannot update: current user has no id')
     const updated: User = { ...existing, ...patch }
-    return this.userController.update(existing.id, updated).pipe(tap((user) => this.currentUser.set(user)))
+    return this.userController.updateUser(existing.id, updated).pipe(tap((user) => this.currentUser.set(user)))
   }
 }

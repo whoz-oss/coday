@@ -10,8 +10,9 @@ description = "AgentOS SDK - Plugin interfaces and extension points"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(libs.versions.java.get().toInt())
     }
+    targetCompatibility = JavaVersion.toVersion(libs.versions.kotlinJvmTarget.get())
     withSourcesJar()
     withJavadocJar()
 }
@@ -43,6 +44,7 @@ dependencies {
 kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(libs.versions.kotlinJvmTarget.get()))
     }
 }
 

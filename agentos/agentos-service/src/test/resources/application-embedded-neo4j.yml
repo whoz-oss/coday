@@ -1,0 +1,7 @@
+# Test-specific override for the embedded-neo4j persistence profile.
+# Redirects the database directory into Gradle's build output so it is
+# cleaned by `./gradlew clean` and does not litter the project root.
+agentos:
+  persistence:
+    mode: embedded-neo4j
+    data-dir: build/test-neo4j-data/

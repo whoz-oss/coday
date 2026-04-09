@@ -27,9 +27,6 @@ import java.util.UUID
  * Each concrete controller declares its own resource/DTO class and implements
  * [toResource] and [toDomain] to convert between the two.
  *
- * For entities where no DTO separation is needed yet, extend [SimpleEntityController]
- * instead — it provides identity implementations of [toResource] and [toDomain].
- *
  * Standard endpoints provided:
  * - GET    /{id}                    — get by ID
  * - POST   /by-ids                  — get multiple by IDs

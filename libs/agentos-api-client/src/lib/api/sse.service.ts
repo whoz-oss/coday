@@ -37,32 +37,32 @@ export class SseService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public streamEvents(
+  public streamEventsCaseEventSse(
     caseId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any>
-  public streamEvents(
+  public streamEventsCaseEventSse(
     caseId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<any>>
-  public streamEvents(
+  public streamEventsCaseEventSse(
     caseId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<any>>
-  public streamEvents(
+  public streamEventsCaseEventSse(
     caseId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (caseId === null || caseId === undefined) {
-      throw new Error('Required parameter caseId was null or undefined when calling streamEvents.')
+      throw new Error('Required parameter caseId was null or undefined when calling streamEventsCaseEventSse.')
     }
 
     let localVarHeaders = this.defaultHeaders
