@@ -6,6 +6,8 @@ api/api.ts
 api/case-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
+api/llm-config-controller.service.ts
+api/llm-model-config-controller.service.ts
 api/namespace-controller.service.ts
 api/plugin-controller.service.ts
 api/sse.service.ts
@@ -28,6 +30,8 @@ model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts
 model/intention-generated-event.ts
+model/llm-config.ts
+model/llm-model-config.ts
 model/message-content.ts
 model/message-event.ts
 model/models.ts
