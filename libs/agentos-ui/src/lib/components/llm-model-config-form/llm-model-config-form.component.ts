@@ -1,0 +1,165 @@
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import { ActivatedRoute, Router } from '@angular/router'
+import {
+  LlmConfig,
+  LlmConfigControllerService,
+  LlmModelConfig,
+  LlmModelConfigControllerService,
+} from '@whoz-oss/agentos-api-client'
+
+/**
+ * LlmModelConfigFormComponent — full-page create / edit form for an LLM model.
+ *
+ * Mode is determined by the presence of `:modelId` in the route params:
+ * - `/:namespaceId/llm-models/new`               → create mode
+ * - `/:namespaceId/llm-models/:modelId/edit`      → edit mode
+ *
+ * The namespaceId is fixed at creation time and never shown as an editable field.
+ * The llmConfigId (provider) is chosen from a select in create mode and becomes
+ * read-only in edit mode — it cannot be reassigned after creation.
+ *
+ * On success or cancel, navigates back to /:namespaceId/llm-models.
+ */
+@Component({
+  selector: 'agentos-llm-model-config-form',
+  standalone: true,
+  imports: [ReactiveFormsModule],
+  templateUrl: './llm-model-config-form.component.html',
+  styleUrl: './llm-model-config-form.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class LlmModelConfigFormComponent implements OnInit {
+  private readonly route = inject(ActivatedRoute)
+  private readonly router = inject(Router)
+  private readonly destroyRef = inject(DestroyRef)
+  private readonly llmModelConfigController = inject(LlmModelConfigControllerService)
+  private readonly llmConfigController = inject(LlmConfigControllerService)
+
+  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  /** All providers for this namespace — used to populate the provider select. */
+  protected readonly providers = toSignal(this.llmConfigController.listByParentLlmConfig(this.namespaceId), {
+    initialValue: [] as LlmConfig[],
+  })
+
+  protected readonly form = new FormGroup({
+    llmConfigId: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    apiName: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.minLength(1)],
+    }),
+    alias: new FormControl<string>('', { nonNullable: true }),
+    displayName: new FormControl<string>('', { nonNullable: true }),
+    temperature: new FormControl<number | null>(null),
+    maxTokens: new FormControl<number | null>(null),
+  })
+
+  protected get llmConfigIdControl() {
+    return this.form.controls.llmConfigId
+  }
+  protected get apiNameControl() {
+    return this.form.controls.apiName
+  }
+  protected get aliasControl() {
+    return this.form.controls.alias
+  }
+  protected get displayNameControl() {
+    return this.form.controls.displayName
+  }
+  protected get temperatureControl() {
+    return this.form.controls.temperature
+  }
+  protected get maxTokensControl() {
+    return this.form.controls.maxTokens
+  }
+
+  protected readonly isEditMode = signal(false)
+  protected readonly isSubmitting = signal(false)
+  protected readonly isLoading = signal(false)
+
+  /** Kept for the update payload (preserves server-side fields). */
+  private existingModel: LlmModelConfig | null = null
+
+  /** Display label for the locked provider field in edit mode. */
+  protected readonly selectedProviderLabel = signal<string>('')
+
+  ngOnInit(): void {
+    const modelId = this.route.snapshot.paramMap.get('modelId')
+    if (modelId) {
+      this.isEditMode.set(true)
+      this.loadModel(modelId)
+    }
+  }
+
+  private loadModel(id: string): void {
+    this.isLoading.set(true)
+    this.llmModelConfigController
+      .getByIdLlmModelConfig(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (model) => {
+          this.existingModel = model
+          this.llmConfigIdControl.setValue(model.llmConfigId)
+          // Provider cannot be changed after creation — lock the control
+          this.llmConfigIdControl.disable()
+          const provider = this.providers().find((p) => p.id === model.llmConfigId)
+          this.selectedProviderLabel.set(provider ? `${provider.name} (${provider.apiType})` : model.llmConfigId)
+          this.apiNameControl.setValue(model.apiName)
+          this.aliasControl.setValue(model.alias ?? '')
+          this.displayNameControl.setValue(model.displayName ?? '')
+          this.temperatureControl.setValue(model.temperature ?? null)
+          this.maxTokensControl.setValue(model.maxTokens ?? null)
+          this.isLoading.set(false)
+        },
+        error: () => {
+          this.isLoading.set(false)
+          this.navigateBack()
+        },
+      })
+  }
+
+  protected submit(): void {
+    if (this.form.invalid || this.isSubmitting()) return
+
+    this.isSubmitting.set(true)
+
+    // getRawValue() includes disabled controls (llmConfigId in edit mode)
+    const raw = this.form.getRawValue()
+
+    const payload: LlmModelConfig = {
+      ...(this.existingModel ?? {}),
+      llmConfigId: raw.llmConfigId,
+      apiName: raw.apiName.trim(),
+      alias: raw.alias.trim() || undefined,
+      displayName: raw.displayName.trim() || undefined,
+      temperature: raw.temperature ?? undefined,
+      maxTokens: raw.maxTokens ?? undefined,
+    }
+
+    const call$ = this.isEditMode()
+      ? this.llmModelConfigController.updateLlmModelConfig(this.existingModel!.id ?? '', payload)
+      : this.llmModelConfigController.createLlmModelConfig(payload)
+
+    call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => this.navigateBack(),
+      error: () => this.isSubmitting.set(false),
+    })
+  }
+
+  protected cancel(): void {
+    this.navigateBack()
+  }
+
+  private navigateBack(): void {
+    this.router.navigate(['/agentos', this.namespaceId, 'llm-models'])
+  }
+
+  protected trackByProvider(_index: number, provider: LlmConfig): string {
+    return provider.id ?? ''
+  }
+}

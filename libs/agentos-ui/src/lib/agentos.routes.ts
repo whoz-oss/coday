@@ -106,7 +106,18 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceLlmModelsComponent
               ),
           },
-          // TODO: replace /new and /:id/edit routes with LlmConfigFormComponent once implemented
+          {
+            path: ':namespaceId/llm-configs/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/llm-config-form/llm-config-form.component').then((m) => m.LlmConfigFormComponent),
+          },
+          {
+            path: ':namespaceId/llm-configs/:llmConfigId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/llm-config-form/llm-config-form.component').then((m) => m.LlmConfigFormComponent),
+          },
           {
             path: ':namespaceId/llm-configs',
             canActivate: [agentosReadyGuard],
@@ -115,7 +126,22 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceLlmConfigsComponent
               ),
           },
-          // TODO: replace /new and /:id/edit routes with LlmModelConfigFormComponent once implemented
+          {
+            path: ':namespaceId/llm-models/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/llm-model-config-form/llm-model-config-form.component').then(
+                (m) => m.LlmModelConfigFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/llm-models/:modelId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/llm-model-config-form/llm-model-config-form.component').then(
+                (m) => m.LlmModelConfigFormComponent
+              ),
+          },
           {
             path: ':namespaceId/llm-models',
             canActivate: [agentosReadyGuard],

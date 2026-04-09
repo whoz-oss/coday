@@ -1,0 +1,117 @@
+<div class="llm-model-config-form">
+  <header class="llm-model-config-form__header">
+    <button class="llm-model-config-form__back" type="button" (click)="cancel()" title="Back to LLM models">
+      <span class="llm-model-config-form__back-icon">&#8592;</span>
+      LLM Models
+    </button>
+    <h1 class="llm-model-config-form__title">{{ isEditMode() ? 'Edit LLM model' : 'New LLM model' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="llm-model-config-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="llm-model-config-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="llm-model-config-form__field">
+        <label class="llm-model-config-form__label" for="model-provider">
+          Provider <span aria-hidden="true">*</span>
+        </label>
+        @if (isEditMode()) {
+          <!-- Read-only in edit mode: provider cannot be reassigned after creation -->
+          <input
+            id="model-provider"
+            class="llm-model-config-form__input llm-model-config-form__input--readonly"
+            type="text"
+            [value]="selectedProviderLabel()"
+            readonly
+            tabindex="-1"
+          />
+        } @else {
+          <select id="model-provider" class="llm-model-config-form__select" [formControl]="llmConfigIdControl">
+            <option value="" disabled>Select provider</option>
+            @for (provider of providers(); track trackByProvider($index, provider)) {
+              <option [value]="provider.id">{{ provider.name }} ({{ provider.apiType }})</option>
+            }
+          </select>
+        }
+      </div>
+
+      <div class="llm-model-config-form__field">
+        <label class="llm-model-config-form__label" for="model-api-name">
+          API name <span aria-hidden="true">*</span>
+        </label>
+        <input
+          id="model-api-name"
+          class="llm-model-config-form__input llm-model-config-form__input--mono"
+          type="text"
+          placeholder="e.g. gpt-4o, claude-3-5-sonnet-20241022"
+          [formControl]="apiNameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="llm-model-config-form__field">
+        <label class="llm-model-config-form__label" for="model-alias">Alias</label>
+        <input
+          id="model-alias"
+          class="llm-model-config-form__input"
+          type="text"
+          placeholder="e.g. fast, smart — short identifier used internally"
+          [formControl]="aliasControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="llm-model-config-form__field">
+        <label class="llm-model-config-form__label" for="model-display-name">Display name</label>
+        <input
+          id="model-display-name"
+          class="llm-model-config-form__input"
+          type="text"
+          placeholder="Human-readable label shown in the UI"
+          [formControl]="displayNameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="llm-model-config-form__row">
+        <div class="llm-model-config-form__field">
+          <label class="llm-model-config-form__label" for="model-temperature">Temperature</label>
+          <input
+            id="model-temperature"
+            class="llm-model-config-form__input"
+            type="number"
+            placeholder="0 – 2"
+            min="0"
+            max="2"
+            step="0.1"
+            [formControl]="temperatureControl"
+          />
+        </div>
+
+        <div class="llm-model-config-form__field">
+          <label class="llm-model-config-form__label" for="model-max-tokens">Max tokens</label>
+          <input
+            id="model-max-tokens"
+            class="llm-model-config-form__input"
+            type="number"
+            placeholder="e.g. 4096"
+            min="1"
+            step="1"
+            [formControl]="maxTokensControl"
+          />
+        </div>
+      </div>
+
+      <div class="llm-model-config-form__actions">
+        <button
+          class="llm-model-config-form__btn llm-model-config-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="llm-model-config-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>
