@@ -2,6 +2,7 @@ package io.whozoss.agentos.user
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.http.HttpStatus
@@ -76,10 +77,7 @@ class UserController(
     ): UserResource {
         val existing =
             userService.findById(id)
-                ?: throw org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.NOT_FOUND,
-                    "Entity not found: $id",
-                )
+                ?: throw ResourceNotFoundException("Entity not found: $id")
         val updated =
             toDomain(resource).copy(
                 metadata = existing.metadata,
