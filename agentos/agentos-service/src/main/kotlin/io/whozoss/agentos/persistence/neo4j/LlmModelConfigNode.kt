@@ -23,7 +23,7 @@ data class LlmModelConfigNode(
     @Id
     val id: String,
     val llmConfigId: String,
-    val namespaceId: String,
+    val namespaceId: String? = null,
     val userId: String? = null,
     val apiName: String,
     val alias: String? = null,
@@ -49,7 +49,7 @@ data class LlmModelConfigNode(
                     removed = removed ?: false,
                 ),
             llmConfigId = UUID.fromString(llmConfigId),
-            namespaceId = UUID.fromString(namespaceId),
+            namespaceId = namespaceId?.let { UUID.fromString(it) },
             userId = userId?.let { UUID.fromString(it) },
             apiName = apiName,
             alias = alias,
@@ -63,7 +63,7 @@ data class LlmModelConfigNode(
             LlmModelConfigNode(
                 id = model.id.toString(),
                 llmConfigId = model.llmConfigId.toString(),
-                namespaceId = model.namespaceId.toString(),
+                namespaceId = model.namespaceId?.toString(),
                 userId = model.userId?.toString(),
                 apiName = model.apiName,
                 alias = model.alias,

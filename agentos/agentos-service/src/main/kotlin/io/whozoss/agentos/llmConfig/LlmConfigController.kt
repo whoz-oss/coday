@@ -5,11 +5,14 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -21,18 +24,14 @@ import java.util.UUID
  * Standard CRUD endpoints (inherited):
  *   GET    /api/llm-configs/{id}
  *   POST   /api/llm-configs/by-ids
- *   GET    /api/llm-configs/by-parentId/{namespaceId}  — list by namespace
+ *   GET    /api/llm-configs/by-parentId/{namespaceId}  — list by namespace (convenience alias)
  *   POST   /api/llm-configs
  *   PUT    /api/llm-configs/{id}
  *   DELETE /api/llm-configs/{id}
  *
- * Models are managed as independent [LlmModelConfig] entities via /api/llm-model-configs.
- *
- * API key handling:
- * - [toResource] always masks [LlmConfig.apiKey] before returning it to the client.
- * - [update] detects a masked sentinel in the incoming resource and preserves the
- *   persisted key, so clients that echo back a masked value do not accidentally
- *   clear or corrupt the stored credential.
+ * Additional endpoints:
+ *   GET    /api/llm-configs/by-namespaceId/{namespaceId}  — list by namespace
+ *   GET    /api/llm-configs/by-userId/{userId}            — list by user
  */
 @RestController
 @RequestMapping(
@@ -47,6 +46,7 @@ class LlmConfigController(
         LlmConfigResource(
             id = entity.metadata.id,
             namespaceId = entity.namespaceId,
+            userId = entity.userId,
             name = entity.name,
             apiType = entity.apiType,
             baseUrl = entity.baseUrl,
@@ -56,7 +56,8 @@ class LlmConfigController(
     override fun toDomain(resource: LlmConfigResource): LlmConfig =
         LlmConfig(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-            namespaceId = resource.namespaceId!!,
+            namespaceId = resource.namespaceId,
+            userId = resource.userId,
             name = resource.name,
             apiType = resource.apiType!!,
             baseUrl = resource.baseUrl,
@@ -66,10 +67,7 @@ class LlmConfigController(
     /**
      * PUT /{id} — update an existing LLM config.
      *
-     * Overrides [EntityController.update] to handle masked [apiKey] values:
-     * if the incoming resource carries a masked sentinel (contains "****"),
-     * the persisted key is preserved unchanged. This lets clients echo back
-     * the masked representation without accidentally clearing the credential.
+     * Preserves the persisted [apiKey] when the incoming value is masked.
      */
     @PutMapping(
         "/{id}",
@@ -92,6 +90,26 @@ class LlmConfigController(
         )
         return toResource(llmConfigService.update(updated))
     }
+
+    /**
+     * GET /by-namespaceId/{namespaceId} — list all configs scoped to a namespace.
+     */
+    @GetMapping("/by-namespaceId/{namespaceId}")
+    @ResponseStatus(HttpStatus.OK)
+    fun listByNamespaceId(
+        @PathVariable namespaceId: UUID,
+    ): List<LlmConfigResource> =
+        llmConfigService.findByNamespaceId(namespaceId).map { toResource(it) }
+
+    /**
+     * GET /by-userId/{userId} — list all configs scoped to a user.
+     */
+    @GetMapping("/by-userId/{userId}")
+    @ResponseStatus(HttpStatus.OK)
+    fun listByUserId(
+        @PathVariable userId: UUID,
+    ): List<LlmConfigResource> =
+        llmConfigService.findByUserId(userId).map { toResource(it) }
 
     companion object : KLogging()
 }

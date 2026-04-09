@@ -26,7 +26,7 @@ import java.util.UUID
 data class LlmConfigNode(
     @Id
     val id: String,
-    val namespaceId: String,
+    val namespaceId: String? = null,
     val userId: String? = null,
     val name: String,
     val apiType: String,
@@ -50,7 +50,7 @@ data class LlmConfigNode(
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
                 ),
-            namespaceId = UUID.fromString(namespaceId),
+            namespaceId = namespaceId?.let { UUID.fromString(it) },
             userId = userId?.let { UUID.fromString(it) },
             name = name,
             apiType = AiApiType.valueOf(apiType),
@@ -62,7 +62,7 @@ data class LlmConfigNode(
         fun fromDomain(config: LlmConfig): LlmConfigNode =
             LlmConfigNode(
                 id = config.id.toString(),
-                namespaceId = config.namespaceId.toString(),
+                namespaceId = config.namespaceId?.toString(),
                 userId = config.userId?.toString(),
                 name = config.name,
                 apiType = config.apiType.name,

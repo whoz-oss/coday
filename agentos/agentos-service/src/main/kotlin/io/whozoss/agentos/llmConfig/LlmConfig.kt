@@ -7,24 +7,29 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * Persistent LLM provider configuration scoped to a namespace.
+ * Persistent LLM provider configuration.
  *
- * A single [LlmConfig] represents one provider connection (e.g. "anthropic", "internal-llm")
- * with its credentials. The models available under this provider are managed as separate
- * [LlmModelConfig] entities (parent: this config's id).
+ * Scoped to a namespace, a user, or both — at least one of [namespaceId] / [userId]
+ * must be non-null. This constraint is enforced by [LlmConfigServiceImpl.create].
  *
- * Uniqueness constraint: (namespaceId, name) must be unique — enforced by [LlmConfigServiceImpl].
+ * - namespace-only: shared provider config for all users of a namespace
+ * - user-only: personal provider config (e.g. a user's own Anthropic key)
+ * - both: a user-specific override within a namespace
+ *
+ * The models available under this provider are managed as separate [LlmModelConfig]
+ * entities (parent: this config's id).
+ *
+ * Uniqueness constraint: (namespaceId, userId, name) must be unique — enforced by
+ * [LlmConfigServiceImpl].
  *
  * [apiKey] is stored in clear text internally but is always masked in API responses
  * via [LlmConfigController.toResource]. On update, a masked value sent by the client
  * is detected and replaced with the persisted original (see [LlmConfigController.update]).
- *
- * Parent: Namespace (via [namespaceId]).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class LlmConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val namespaceId: UUID,
+    val namespaceId: UUID? = null,
     val userId: UUID? = null,
     val name: String,
     val apiType: AiApiType,

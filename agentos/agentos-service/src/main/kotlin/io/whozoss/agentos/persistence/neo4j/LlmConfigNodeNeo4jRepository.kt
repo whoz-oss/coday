@@ -8,7 +8,7 @@ import org.springframework.data.neo4j.repository.query.Query
  */
 interface LlmConfigNodeNeo4jRepository : Neo4jRepository<LlmConfigNode, String> {
     /**
-     * Find all non-removed LLM configs belonging to a namespace, ordered by name.
+     * Find all non-removed LLM configs scoped to a namespace, ordered by name.
      */
     @Query(
         "MATCH (c:LlmConfig) " +
@@ -16,4 +16,14 @@ interface LlmConfigNodeNeo4jRepository : Neo4jRepository<LlmConfigNode, String> 
             "RETURN c ORDER BY c.name ASC",
     )
     fun findActiveByNamespaceId(namespaceId: String): List<LlmConfigNode>
+
+    /**
+     * Find all non-removed LLM configs scoped to a user, ordered by name.
+     */
+    @Query(
+        "MATCH (c:LlmConfig) " +
+            "WHERE c.userId = \$userId AND (c.removed IS NULL OR c.removed = false) " +
+            "RETURN c ORDER BY c.name ASC",
+    )
+    fun findActiveByUserId(userId: String): List<LlmConfigNode>
 }

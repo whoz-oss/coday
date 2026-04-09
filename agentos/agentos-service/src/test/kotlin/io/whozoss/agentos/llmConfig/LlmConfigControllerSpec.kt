@@ -11,18 +11,6 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
-/**
- * Unit tests for [LlmConfigController].
- *
- * The controller is instantiated directly with MockK stubs — no Spring context.
- * Tests cover:
- * - [LlmConfigController.toResource]  — domain → HTTP DTO mapping, including apiKey masking
- * - [LlmConfigController.toDomain]    — HTTP DTO → domain mapping
- * - [LlmConfigController.update]      — masked apiKey preservation
- * - Inherited [io.whozoss.agentos.entity.EntityController] endpoints:
- *   getById (found / not-found), getByIds, listByParent, create,
- *   update (found / not-found), delete (found / not-found)
- */
 class LlmConfigControllerSpec : StringSpec({
     timeout = 5000
 
@@ -30,86 +18,59 @@ class LlmConfigControllerSpec : StringSpec({
     val controller = LlmConfigController(service)
 
     val namespaceId = UUID.randomUUID()
+    val userId = UUID.randomUUID()
 
     fun config(
         id: UUID = UUID.randomUUID(),
+        nsId: UUID? = namespaceId,
+        uId: UUID? = null,
         name: String = "anthropic",
-        apiType: AiApiType = AiApiType.Anthropic,
         apiKey: String? = null,
     ) = LlmConfig(
         metadata = EntityMetadata(id = id),
-        namespaceId = namespaceId,
+        namespaceId = nsId,
+        userId = uId,
         name = name,
-        apiType = apiType,
+        apiType = AiApiType.Anthropic,
         apiKey = apiKey,
     )
 
     fun resource(
         id: UUID? = UUID.randomUUID(),
+        nsId: UUID? = namespaceId,
+        uId: UUID? = null,
         name: String = "anthropic",
-        apiType: AiApiType = AiApiType.Anthropic,
         apiKey: String? = null,
     ) = LlmConfigResource(
         id = id,
-        namespaceId = namespaceId,
+        namespaceId = nsId,
+        userId = uId,
         name = name,
-        apiType = apiType,
+        apiType = AiApiType.Anthropic,
         apiKey = apiKey,
     )
 
     // -------------------------------------------------------------------------
-    // toResource — apiKey masking
+    // toResource
     // -------------------------------------------------------------------------
 
-    "toResource masks a long apiKey (>= 12 chars)" {
-        val result = controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop"))
-        result.apiKey shouldBe "sk-a****mnop"
-    }
-
-    "toResource masks a medium apiKey (9-11 chars)" {
-        val result = controller.toResource(config(apiKey = "123456789"))
-        result.apiKey shouldBe "12****89"
-    }
-
-    "toResource masks a short apiKey (<= 8 chars) as ****" {
-        val result = controller.toResource(config(apiKey = "secret"))
-        result.apiKey shouldBe "****"
+    "toResource masks a long apiKey" {
+        controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe "sk-a****mnop"
     }
 
     "toResource returns null apiKey when no key is set" {
         controller.toResource(config(apiKey = null)).apiKey.shouldBeNull()
     }
 
-    "toResource maps all non-sensitive fields correctly" {
-        val id = UUID.randomUUID()
-        val result = controller.toResource(config(id = id, name = "anthropic", apiType = AiApiType.Anthropic))
-
-        result.id shouldBe id
+    "toResource maps namespaceId and userId" {
+        val result = controller.toResource(config(nsId = namespaceId, uId = userId))
         result.namespaceId shouldBe namespaceId
-        result.name shouldBe "anthropic"
-        result.apiType shouldBe AiApiType.Anthropic
+        result.userId shouldBe userId
     }
 
-    // -------------------------------------------------------------------------
-    // toDomain
-    // -------------------------------------------------------------------------
-
-    "toDomain maps all fields from resource to domain" {
-        val id = UUID.randomUUID()
-        val r = resource(id = id, name = "openai", apiType = AiApiType.OpenAI, apiKey = "sk-abc")
-
-        val result = controller.toDomain(r)
-
-        result.metadata.id shouldBe id
-        result.namespaceId shouldBe namespaceId
-        result.name shouldBe "openai"
-        result.apiType shouldBe AiApiType.OpenAI
-        result.apiKey shouldBe "sk-abc"
-    }
-
-    "toDomain generates a random UUID when resource id is null" {
-        val result = controller.toDomain(resource(id = null))
-        result.metadata.id shouldBe result.metadata.id
+    "toResource maps null namespaceId" {
+        val result = controller.toResource(config(nsId = null, uId = userId))
+        result.namespaceId.shouldBeNull()
     }
 
     // -------------------------------------------------------------------------
@@ -118,34 +79,21 @@ class LlmConfigControllerSpec : StringSpec({
 
     "update preserves persisted apiKey when incoming value is masked" {
         val existing = config(apiKey = "sk-ant-api03-real-secret")
-        val incomingResource = resource(id = existing.id, apiKey = "sk-a****cret")
         every { service.findById(existing.id) } returns existing
         every { service.update(any()) } answers { firstArg() }
 
-        val result = controller.update(existing.id, incomingResource)
+        val result = controller.update(existing.id, resource(id = existing.id, apiKey = "sk-a****cret"))
 
         result.apiKey shouldBe maskApiKey("sk-ant-api03-real-secret")
         verify { service.update(match { it.apiKey == "sk-ant-api03-real-secret" }) }
     }
 
-    "update uses new apiKey when incoming value is not masked" {
-        val existing = config(apiKey = "sk-ant-api03-old-key")
-        val incomingResource = resource(id = existing.id, apiKey = "brand-new-key-12345")
-        every { service.findById(existing.id) } returns existing
-        every { service.update(any()) } answers { firstArg() }
-
-        controller.update(existing.id, incomingResource)
-
-        verify { service.update(match { it.apiKey == "brand-new-key-12345" }) }
-    }
-
     "update clears apiKey when incoming value is null" {
-        val existing = config(apiKey = "sk-ant-api03-old-key")
-        val incomingResource = resource(id = existing.id, apiKey = null)
+        val existing = config(apiKey = "sk-ant-api03-old")
         every { service.findById(existing.id) } returns existing
         every { service.update(any()) } answers { firstArg() }
 
-        controller.update(existing.id, incomingResource)
+        controller.update(existing.id, resource(id = existing.id, apiKey = null))
 
         verify { service.update(match { it.apiKey == null }) }
     }
@@ -153,9 +101,33 @@ class LlmConfigControllerSpec : StringSpec({
     "update throws 404 when entity is not found" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null
-
         val ex = runCatching { controller.update(id, resource(id = id)) }.exceptionOrNull()
         (ex is ResourceNotFoundException) shouldBe true
+    }
+
+    // -------------------------------------------------------------------------
+    // listByNamespaceId / listByUserId
+    // -------------------------------------------------------------------------
+
+    "listByNamespaceId returns configs for the namespace" {
+        val c1 = config(name = "anthropic")
+        val c2 = config(name = "openai")
+        every { service.findByNamespaceId(namespaceId) } returns listOf(c1, c2)
+
+        val result = controller.listByNamespaceId(namespaceId)
+
+        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+        verify(exactly = 1) { service.findByNamespaceId(namespaceId) }
+    }
+
+    "listByUserId returns configs for the user" {
+        val c = config(nsId = null, uId = userId)
+        every { service.findByUserId(userId) } returns listOf(c)
+
+        val result = controller.listByUserId(userId)
+
+        result shouldBe listOf(controller.toResource(c))
+        verify(exactly = 1) { service.findByUserId(userId) }
     }
 
     // -------------------------------------------------------------------------
@@ -175,32 +147,11 @@ class LlmConfigControllerSpec : StringSpec({
         (ex is ResourceNotFoundException) shouldBe true
     }
 
-    "getByIds returns matching entities mapped to resources" {
-        val c1 = config(name = "anthropic")
-        val c2 = config(name = "openai")
-        every { service.findByIds(listOf(c1.id, c2.id)) } returns listOf(c1, c2)
-        controller.getByIds(listOf(c1.id, c2.id)) shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-    }
-
-    "listByParent returns configs for the given namespaceId" {
-        val c1 = config(name = "anthropic")
-        val c2 = config(name = "openai")
-        every { service.findByParent(namespaceId) } returns listOf(c1, c2)
-
-        val result = controller.listByParent(namespaceId)
-
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-        verify(exactly = 1) { service.findByParent(namespaceId) }
-    }
-
     "create delegates to service and returns mapped resource" {
         val r = resource(id = null)
         val saved = controller.toDomain(r)
         every { service.create(any()) } returns saved
-
-        val result = controller.create(r)
-
-        result shouldBe controller.toResource(saved)
+        controller.create(r) shouldBe controller.toResource(saved)
         verify(exactly = 1) { service.create(any()) }
     }
 

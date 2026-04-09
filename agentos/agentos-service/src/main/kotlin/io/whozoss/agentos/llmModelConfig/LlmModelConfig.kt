@@ -32,7 +32,7 @@ import java.util.UUID
 data class LlmModelConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
     val llmConfigId: UUID,
-    val namespaceId: UUID,
+    val namespaceId: UUID? = null,
     val userId: UUID? = null,
     val apiName: String,
     val alias: String? = null,

@@ -10,10 +10,9 @@ import java.util.UUID
 /**
  * Neo4j-backed implementation of [LlmConfigRepository].
  *
- * Parent type is [UUID] representing the namespaceId.
- *
- * [apiKey] passes through unchanged — masking is the responsibility of the
- * controller layer, not persistence.
+ * [findByParent] delegates to [findByNamespaceId] by convention — namespace is the
+ * primary scope for this ticket. [findByUserId] will be the primary path once
+ * user-scoped configs are introduced (WZ-31210).
  */
 open class Neo4jLlmConfigRepository(
     private val neo4jRepository: LlmConfigNodeNeo4jRepository,
@@ -23,7 +22,7 @@ open class Neo4jLlmConfigRepository(
         neo4jRepository
             .save(LlmConfigNode.fromDomain(entity))
             .toDomain()
-            .also { logger.debug { "[Neo4jLlmConfigRepository] Saved LlmConfig ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
+            .also { logger.debug { "[Neo4jLlmConfigRepository] Saved LlmConfig ${it.id} ('${entity.name}')" } }
 
     override fun findByIds(ids: Collection<UUID>): List<LlmConfig> =
         neo4jRepository
@@ -31,9 +30,17 @@ open class Neo4jLlmConfigRepository(
             .filter { it.removed != true }
             .map { it.toDomain() }
 
-    override fun findByParent(parentId: UUID): List<LlmConfig> =
+    // findByParent by convention delegates to findByNamespaceId
+    override fun findByParent(parentId: UUID): List<LlmConfig> = findByNamespaceId(parentId)
+
+    override fun findByNamespaceId(namespaceId: UUID): List<LlmConfig> =
         neo4jRepository
-            .findActiveByNamespaceId(parentId.toString())
+            .findActiveByNamespaceId(namespaceId.toString())
+            .map { it.toDomain() }
+
+    override fun findByUserId(userId: UUID): List<LlmConfig> =
+        neo4jRepository
+            .findActiveByUserId(userId.toString())
             .map { it.toDomain() }
 
     override fun delete(id: UUID): Boolean =
