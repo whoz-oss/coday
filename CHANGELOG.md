@@ -1,3 +1,23 @@
+## 0.115.0 (2026-04-09)
+
+### 🚀 Features
+
+- WZ-28819: neoj repositories ([#718](https://github.com/whoz-oss/coday/pull/718))
+- wz-28819: remove file system repositories ([#739](https://github.com/whoz-oss/coday/pull/739))
+- #WZ-30532 tool configuration at namespace level ([#729](https://github.com/whoz-oss/coday/pull/729))
+
+### 🩹 Fixes
+
+- force release ([4bda3aba](https://github.com/whoz-oss/coday/commit/4bda3aba))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Thomas MARTIN @thomasmartin-whoz
+- Vincent Palita @vincent-palita-whoz
+- vincent.audibert
+
 ## 0.114.2 (2026-04-03)
 
 ### 🩹 Fixes
