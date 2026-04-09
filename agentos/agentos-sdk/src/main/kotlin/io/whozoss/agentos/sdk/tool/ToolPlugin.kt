@@ -42,9 +42,10 @@ import org.pf4j.ExtensionPoint
  *         }
  *     """)
  *
- *     override fun provideTools(config: JsonNode?): List<StandardTool<*>> {
+ *     override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
  *         val apiKey = config?.get("apiKey")?.asText() ?: ""
- *         return listOf(MyCustomTool(apiKey))
+ *         val prefix = configName?.let { "${it}__" } ?: ""
+ *         return listOf(MyCustomTool(name = "${prefix}MyTool", apiKey = apiKey))
  *     }
  * }
  * ```

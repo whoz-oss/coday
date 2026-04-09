@@ -10,8 +10,9 @@ description = "AgentOS datetime plugin - provides date/time tools"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(libs.versions.java.get().toInt())
     }
+    targetCompatibility = JavaVersion.toVersion(libs.versions.kotlinJvmTarget.get())
 }
 
 dependencies {
@@ -46,6 +47,7 @@ kapt {
 kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(libs.versions.kotlinJvmTarget.get()))
     }
 }
 

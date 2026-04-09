@@ -6,16 +6,17 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import org.springframework.stereotype.Component
 
 /**
- * Fallback catalogue of hardcoded [IntegrationTypeDescriptor]s for integration types
- * that have no loaded plugin yet (JIRA, GITHUB, SLACK).
+ * **Temporary** catalogue of hardcoded [IntegrationTypeDescriptor]s used while the
+ * corresponding plugins (JIRA, GITHUB, SLACK) are not yet available.
+ *
+ * This class exists solely to let the frontend iterate on the integration-config UI
+ * without depending on real plugin JARs. It will be removed once the plugins ship their
+ * own [io.whozoss.agentos.sdk.tool.ToolPlugin.configSchema].
  *
  * This class is NOT the primary [IntegrationTypeRegistry] implementation — that role
- * belongs to [CompositeIntegrationTypeRegistry], which merges these hardcoded entries
+ * belongs to [CompositeIntegrationTypeRegistry], which merges these temporary entries
  * with plugin-contributed ones. Plugin-contributed descriptors always take precedence
  * over hardcoded ones for the same type.
- *
- * The JIRA schema is intentionally rich to exercise every form-field case the client
- * must handle: required vs optional scalars, nested objects, arrays, enums, format hints.
  */
 @Component
 class HardcodedIntegrationTypeRegistry(

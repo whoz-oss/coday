@@ -14,15 +14,18 @@ import java.util.UUID
  *
  * Annotated with @Schema(name = "IntegrationConfig") so the generated OpenAPI spec
  * uses the clean name instead of "IntegrationConfigResource".
+ *
+ * TODO: [parameters] may contain sensitive credentials (API keys, tokens). Currently returned
+ *   in clear text. A future iteration should mask secrets in API responses.
  */
 @Schema(name = "IntegrationConfig")
 data class IntegrationConfigResource(
     val id: UUID? = null,
-    @field:NotNull(message = "namespaceId must not be null")
+    @field:NotNull
     val namespaceId: UUID?,
-    @field:NotBlank(message = "name must not be blank")
+    @field:NotBlank
     val name: String,
-    @field:NotBlank(message = "integrationType must not be blank")
+    @field:NotBlank
     val integrationType: String,
     val parameters: JsonNode? = null,
 )

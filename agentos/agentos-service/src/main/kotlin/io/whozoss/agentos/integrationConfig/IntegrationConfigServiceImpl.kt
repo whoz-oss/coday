@@ -10,9 +10,10 @@ import java.util.UUID
  *
  * Delegates persistence to [IntegrationConfigRepository].
  *
- * The [upsert] method enforces the (namespaceId, name) uniqueness constraint:
- * it scans existing configs for the namespace and, if a match is found, updates
- * it in-place rather than creating a duplicate.
+ * [create] enforces the (namespaceId, name) uniqueness constraint: a 409 is raised
+ * if a config with the same name already exists in the namespace.
+ * [update] replaces the entity as-is; additional business logic (schema validation,
+ * credential handling, etc.) will be added here as the feature matures.
  */
 @Service
 class IntegrationConfigServiceImpl(
@@ -43,20 +44,4 @@ class IntegrationConfigServiceImpl(
         namespaceId: UUID,
         name: String,
     ): IntegrationConfig? = repository.findByParent(namespaceId).firstOrNull { it.name == name }
-
-    override fun findAll(): List<IntegrationConfig> = repository.findAll()
-
-    override fun upsert(config: IntegrationConfig): IntegrationConfig {
-        val existing = findByNamespaceAndName(config.namespaceId, config.name)
-        return if (existing == null) {
-            repository.save(config)
-        } else {
-            repository.save(
-                existing.copy(
-                    integrationType = config.integrationType,
-                    parameters = config.parameters,
-                ),
-            )
-        }
-    }
 }

@@ -11,10 +11,11 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Merges two sources of [IntegrationTypeDescriptor]s:
  * 1. **Plugin-contributed** — registered at runtime via [registerFromPlugin] as each
- *    [ToolPlugin] is loaded. A plugin descriptor always takes precedence over a hardcoded one
- *    for the same [IntegrationTypeDescriptor.type].
- * 2. **Hardcoded fallback** — the static descriptors in [HardcodedIntegrationTypeRegistry]
- *    cover integration types that have no plugin yet (JIRA, GITHUB, SLACK).
+ *    [ToolPlugin] is loaded. A plugin descriptor always takes precedence over a temporary
+ *    hardcoded entry for the same [IntegrationTypeDescriptor.type].
+ * 2. **Temporary hardcoded fallback** — the static descriptors in [HardcodedIntegrationTypeRegistry]
+ *    are scaffolding used during frontend development, before the real plugins exist.
+ *    They will be removed once the corresponding plugins ship.
  *
  * Thread-safety: [ConcurrentHashMap] is used so that plugin registration (which happens
  * during [io.whozoss.agentos.tool.ToolRegistryService]'s @PostConstruct) is safe even if

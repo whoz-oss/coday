@@ -14,7 +14,6 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistry
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -23,12 +22,11 @@ import java.util.UUID
 
 class AgentServiceImplSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
-    private val toolRegistry: ToolRegistry = mockk()
     private val toolRegistryService: ToolRegistryService = mockk()
     private val aiModelRegistry: AiModelRegistry = mockk()
     private val namespaceService: NamespaceService = mockk()
     private val userService: UserService = mockk(relaxed = true)
-    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistry, toolRegistryService, aiModelRegistry, namespaceService, userService)
+    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistryService, aiModelRegistry, namespaceService, userService)
 
     // A context and matching namespace used across most tests
     private val namespaceId: UUID = UUID.randomUUID()
@@ -42,7 +40,6 @@ class AgentServiceImplSpec : StringSpec() {
         )
 
     init {
-        every { toolRegistry.listTools() } returns emptyList()
         every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
 
@@ -297,58 +294,6 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // listAgents
-        // -------------------------------------------------------------------------
-
-        "listAgents calls getChatClient with model.name for every registered model" {
-            val model1 =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "agent-alpha",
-                    description = "First agent",
-                    modelName = "claude-3-5-sonnet-20241022",
-                    providerName = "anthropic",
-                )
-            val model2 =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "agent-beta",
-                    description = "Second agent",
-                    modelName = "gpt-4o-mini",
-                    providerName = "openai",
-                )
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { aiModelRegistry.getAll() } returns listOf(model1, model2)
-            every { chatClientProvider.getChatClient(any<String>()) } returns chatClient
-
-            agentService.listAgents()
-
-            verify(exactly = 1) { chatClientProvider.getChatClient("agent-alpha") }
-            verify(exactly = 1) { chatClientProvider.getChatClient("agent-beta") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("claude-3-5-sonnet-20241022") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-mini") }
-        }
-
-        "listAgents does not call namespaceService — no context available" {
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "agent-alpha",
-                    description = "First agent",
-                    modelName = "gpt-4o",
-                    providerName = "openai",
-                )
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.getAll() } returns listOf(model)
-            every { chatClientProvider.getChatClient(any<String>()) } returns chatClient
-
-            agentService.listAgents()
-
-            verify(exactly = 0) { namespaceService.findById(any()) }
-        }
-
-        // -------------------------------------------------------------------------
         // getDefaultAgent
         // -------------------------------------------------------------------------
 
@@ -388,7 +333,7 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.getDefaultAgentName() shouldBe "my-agent"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistry.listTools() }
+            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -402,7 +347,7 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.resolveAgentName("my-agent") shouldBe "my-agent"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistry.listTools() }
+            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
         "resolveAgentName falls back to contains-match and returns canonical name without instantiating any agent" {
@@ -413,7 +358,7 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.resolveAgentName("agent") shouldBe "my-agent"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistry.listTools() }
+            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
         "resolveAgentName returns null when no model matches" {

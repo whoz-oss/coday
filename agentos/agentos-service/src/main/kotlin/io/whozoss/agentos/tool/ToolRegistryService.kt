@@ -18,36 +18,36 @@ import java.util.concurrent.ConcurrentHashMap
  * 1. Discovers all [ToolPlugin] extensions via PF4J.
  * 2. Registers an [IntegrationTypeDescriptor][io.whozoss.agentos.integrationConfig.IntegrationTypeDescriptor]
  *    for each plugin that declares a non-null [ToolPlugin.configSchema].
- * 3. For plugins that require **no** configuration ([ToolPlugin.configSchema] == null),
- *    instantiates the tools immediately and registers them in the global registry.
- *    These tools are available in every namespace without any explicit configuration.
+ * 3. Indexes all plugins by [ToolPlugin.integrationType] for fast lookup at resolution time.
  *
- * At agent instantiation time, [resolveToolsForNamespace] is called with the target
- * namespace to build the full tool set for that agent run:
- * - Config-less plugins are included unconditionally (already in the global registry).
- * - Config-requiring plugins are instantiated once per matching [IntegrationConfig]
- *   found in the namespace, so a namespace can have multiple instances of the same
- *   integration type (e.g. two JIRA configs → two sets of JIRA tools).
+ * At agent run time, [resolveToolsForNamespace] is called to build the tool set for
+ * that specific agent run. It produces **fresh instances** for every call:
+ * - Config-less plugins ([ToolPlugin.configSchema] == null) are instantiated on every call
+ *   so each agent run owns its own tool instances, preventing cross-run state sharing.
+ * - Config-requiring plugins are instantiated once per matching [IntegrationConfig] found
+ *   in the namespace, so a namespace can have multiple instances of the same integration
+ *   type (e.g. two JIRA configs → two sets of JIRA tools).
+ *
+ * Tool instances therefore live exactly as long as the agent run that created them —
+ * no tool instance outlives its owning agent run.
  *
  * This implementation is thread-safe: [ConcurrentHashMap] handles concurrent reads from
- * multiple agents and HTTP requests.
+ * multiple agents.
  */
 @Service
 class ToolRegistryService(
     private val pluginManager: PluginManager,
     private val integrationConfigService: IntegrationConfigService,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
-) : ToolRegistry {
-    private val tools = ConcurrentHashMap<String, StandardTool<*>>()
-
+) {
     /** All loaded ToolPlugin extensions, indexed by integrationType for fast lookup. */
-    private val pluginsByType = mutableMapOf<String, ToolPlugin>()
+    private val pluginsByType = ConcurrentHashMap<String, ToolPlugin>()
 
     @PostConstruct
     fun initialize() {
         logger.info { "Initializing Tool Registry" }
         loadPlugins()
-        logger.info { "Tool Registry initialized with ${tools.size} config-less tool(s)" }
+        logger.info { "Tool Registry initialized with ${pluginsByType.size} plugin(s)" }
     }
 
     private fun loadPlugins() {
@@ -75,14 +75,8 @@ class ToolRegistryService(
                 // Index the plugin for namespace-scoped resolution
                 pluginsByType[toolPlugin.integrationType] = toolPlugin
 
-                // Plugins with no configSchema need no IntegrationConfig — instantiate
-                // them immediately and register them in the global registry so they are
-                // available in every namespace without explicit configuration.
                 if (toolPlugin.configSchema == null) {
-                    logger.info { "Plugin '$pluginId' requires no config — registering tools globally" }
-                    val providedTools = toolPlugin.provideTools(null)
-                    providedTools.forEach { registerTool(it, source = "plugin:$pluginId") }
-                    logger.info { "Registered ${providedTools.size} config-less tool(s) from plugin: $pluginId" }
+                    logger.info { "Plugin '$pluginId' requires no config — will be instantiated per agent run" }
                 } else {
                     logger.info { "Plugin '$pluginId' requires config — tools will be resolved per namespace" }
                 }
@@ -93,11 +87,14 @@ class ToolRegistryService(
     }
 
     /**
-     * Resolve the full tool set for a given namespace.
+     * Resolve the full tool set for a given namespace and agent run.
+     *
+     * Every call produces **new tool instances** — tools are scoped to the agent run
+     * and discarded when the run ends. No tool instance is shared across runs.
      *
      * Combines:
-     * 1. Config-less tools already in the global registry (available everywhere).
-     * 2. Tools instantiated from each [IntegrationConfig] found in the namespace,
+     * 1. Fresh instances from config-less plugins (available in every namespace).
+     * 2. Fresh instances from each [IntegrationConfig] found in the namespace,
      *    using the matching [ToolPlugin] as a factory.
      *
      * A namespace with no [IntegrationConfig] for a given plugin type simply gets
@@ -106,8 +103,25 @@ class ToolRegistryService(
      * Called by [io.whozoss.agentos.agent.AgentServiceImpl] at agent instantiation time.
      */
     fun resolveToolsForNamespace(namespaceId: UUID): Collection<StandardTool<*>> {
-        // Start with the config-less tools available in every namespace
-        val resolved = tools.toMutableMap()
+        val resolved = mutableMapOf<String, StandardTool<*>>()
+
+        // Instantiate config-less tools fresh for this run
+        pluginsByType.values
+            .filter { it.configSchema == null }
+            .forEach { plugin ->
+                try {
+                    val providedTools = plugin.provideTools(null)
+                    providedTools.forEach { tool ->
+                        if (resolved.containsKey(tool.name)) {
+                            logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from config-less plugin overrides an existing entry" }
+                        }
+                        resolved[tool.name] = tool
+                    }
+                    logger.debug { "[ToolRegistry] Instantiated ${providedTools.size} config-less tool(s) from plugin '${plugin.integrationType}' for run in namespace $namespaceId" }
+                } catch (e: Exception) {
+                    logger.error(e) { "[ToolRegistry] Error instantiating config-less tools for plugin '${plugin.integrationType}': ${e.message}" }
+                }
+            }
 
         // For each IntegrationConfig in the namespace, find the matching plugin and instantiate
         val configs = integrationConfigService.findByParent(namespaceId)
@@ -136,33 +150,6 @@ class ToolRegistryService(
         logger.info { "[ToolRegistry] Total tools for namespace $namespaceId: ${resolved.size}" }
         return resolved.values
     }
-
-    override fun registerTool(tool: StandardTool<*>, source: String) {
-        val name = tool.name
-        val existing = tools[name]
-        if (existing is AutoCloseable) {
-            try {
-                existing.close()
-                logger.debug { "Closed old tool instance: $name" }
-            } catch (e: Exception) {
-                logger.error(e) { "Error closing old tool $name: ${e.message}" }
-            }
-        }
-        tools[name] = tool
-        logger.info { "Registered tool: $name v${tool.version} from $source" }
-    }
-
-    override fun findTool(name: String): StandardTool<*>? = tools[name]
-
-    override fun hasTool(name: String): Boolean = tools.containsKey(name)
-
-    override fun unregisterTool(name: String): Boolean {
-        val removed = tools.remove(name) != null
-        if (removed) logger.info { "Unregistered tool: $name" }
-        return removed
-    }
-
-    override fun listTools(): Collection<StandardTool<*>> = tools.values
 
     companion object : KLogging()
 }

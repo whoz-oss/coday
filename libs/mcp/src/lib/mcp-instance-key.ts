@@ -23,13 +23,22 @@ import { McpServerConfig } from '@coday/model'
  * - authToken (considered part of env if needed)
  * - noShare (affects pooling logic, not server behavior)
  *
+ * For OAuth servers (oauth2: true) and noShare servers, the instance must not be
+ * shared across threads. Pass the threadId to scope the key per thread, ensuring
+ * the same factory is reused within a thread (so stored tokens are not lost) while
+ * remaining isolated from other threads.
+ *
  * @param config The MCP server configuration
- * @returns A SHA-256 hash string (64 hex characters)
+ * @param threadId Optional thread ID — required for oauth2/noShare servers to scope the key per thread
+ * @returns A deterministic key string
  */
-export function computeMcpConfigHash(config: McpServerConfig): string {
-  // If noShare is true, return a unique hash to prevent sharing
-  if (config.noShare) {
-    return `no-share-${Date.now()}-${Math.random().toString(36).substring(2)}`
+export function computeMcpConfigHash(config: McpServerConfig, threadId?: string): string {
+  // oauth2 and noShare both prevent sharing across users/threads.
+  // Use a per-thread deterministic key so the same factory is reused within a thread
+  // (preserving in-memory OAuth state and stored tokens) but never shared across threads.
+  if (config.noShare || config.oauth2) {
+    const scope = threadId ?? `no-thread-${Date.now()}-${Math.random().toString(36).substring(2)}`
+    return `no-share-${config.id}-${scope}`
   }
 
   // Build a normalized object for hashing
