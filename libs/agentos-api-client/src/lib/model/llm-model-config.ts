@@ -11,6 +11,8 @@
 export interface LlmModelConfig {
   id?: string
   llmConfigId: string
+  namespaceId?: string
+  userId?: string
   apiName: string
   alias?: string
   displayName?: string

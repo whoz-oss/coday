@@ -955,6 +955,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/LlmModelConfig"
+  /api/llm-model-configs/by-namespaceId/{namespaceId}:
+    get:
+      tags:
+      - llm-model-config-controller
+      operationId: listByNamespaceIdLlmModelConfig
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LlmModelConfig"
   /api/llm-configs/by-parentId/{parentId}:
     get:
       tags:
@@ -1182,6 +1203,12 @@ components:
           type: string
           format: uuid
         llmConfigId:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        userId:
           type: string
           format: uuid
         apiName:
