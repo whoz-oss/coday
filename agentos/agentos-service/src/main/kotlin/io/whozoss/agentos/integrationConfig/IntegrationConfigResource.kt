@@ -21,11 +21,11 @@ import java.util.UUID
 @Schema(name = "IntegrationConfig")
 data class IntegrationConfigResource(
     val id: UUID? = null,
-    @field:NotNull(message = "namespaceId must not be null")
+    @field:NotNull
     val namespaceId: UUID?,
-    @field:NotBlank(message = "name must not be blank")
+    @field:NotBlank
     val name: String,
-    @field:NotBlank(message = "integrationType must not be blank")
+    @field:NotBlank
     val integrationType: String,
     val parameters: JsonNode? = null,
 )
