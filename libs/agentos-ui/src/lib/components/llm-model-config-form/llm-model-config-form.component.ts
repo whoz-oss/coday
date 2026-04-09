@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
@@ -82,11 +82,19 @@ export class LlmModelConfigFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
 
+  /**
+   * Display label for the locked provider field in edit mode.
+   * Derived reactively from providers + llmConfigId so it resolves correctly
+   * regardless of which signal settles first (providers load vs model load).
+   */
+  protected readonly selectedProviderLabel = computed(() => {
+    const id = this.llmConfigIdControl.value
+    const provider = this.providers().find((p) => p.id === id)
+    return provider ? `${provider.name} (${provider.apiType})` : id
+  })
+
   /** Kept for the update payload (preserves server-side fields). */
   private existingModel: LlmModelConfig | null = null
-
-  /** Display label for the locked provider field in edit mode. */
-  protected readonly selectedProviderLabel = signal<string>('')
 
   ngOnInit(): void {
     const modelId = this.route.snapshot.paramMap.get('modelId')
@@ -107,8 +115,6 @@ export class LlmModelConfigFormComponent implements OnInit {
           this.llmConfigIdControl.setValue(model.llmConfigId)
           // Provider cannot be changed after creation — lock the control
           this.llmConfigIdControl.disable()
-          const provider = this.providers().find((p) => p.id === model.llmConfigId)
-          this.selectedProviderLabel.set(provider ? `${provider.name} (${provider.apiType})` : model.llmConfigId)
           this.apiNameControl.setValue(model.apiName)
           this.aliasControl.setValue(model.alias ?? '')
           this.displayNameControl.setValue(model.displayName ?? '')
