@@ -9,12 +9,6 @@ import org.springframework.data.neo4j.repository.query.Query
 interface LlmModelConfigNodeNeo4jRepository : Neo4jRepository<LlmModelConfigNode, String> {
     /**
      * Find all non-removed model configs belonging to a provider config, ordered by apiName.
-     *
-     * Used for:
-     * - listing models under a provider ([Neo4jLlmModelConfigRepository.findByParent])
-     * - uniqueness checks on (llmConfigId, apiName) and (llmConfigId, alias)
-     * - alias-based resolution: find the model matching an alias, then load its parent
-     *   [LlmConfigNode] to get provider credentials
      */
     @Query(
         "MATCH (m:LlmModelConfig) " +
@@ -22,4 +16,15 @@ interface LlmModelConfigNodeNeo4jRepository : Neo4jRepository<LlmModelConfigNode
             "RETURN m ORDER BY m.apiName ASC",
     )
     fun findActiveByLlmConfigId(llmConfigId: String): List<LlmModelConfigNode>
+
+    /**
+     * Find all non-removed model configs belonging to a namespace, across all provider
+     * configs. Uses the denormalised [LlmModelConfigNode.namespaceId] property.
+     */
+    @Query(
+        "MATCH (m:LlmModelConfig) " +
+            "WHERE m.namespaceId = \$namespaceId AND (m.removed IS NULL OR m.removed = false) " +
+            "RETURN m ORDER BY m.apiName ASC",
+    )
+    fun findActiveByNamespaceId(namespaceId: String): List<LlmModelConfigNode>
 }

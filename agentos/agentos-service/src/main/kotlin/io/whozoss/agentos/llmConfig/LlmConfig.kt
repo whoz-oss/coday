@@ -25,6 +25,7 @@ import java.util.UUID
 data class LlmConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
     val namespaceId: UUID,
+    val userId: UUID? = null,
     val name: String,
     val apiType: AiApiType,
     val baseUrl: String? = null,

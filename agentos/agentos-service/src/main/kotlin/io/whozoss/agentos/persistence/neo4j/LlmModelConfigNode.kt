@@ -10,22 +10,21 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [LlmModelConfig].
  *
- * Stored as a (:LlmModelConfig) node with a [llmConfigId] property linking it to
- * its parent [LlmConfigNode] (represented as a property, not an SDN @Relationship,
- * consistent with the pattern used for all other parent-child relationships in this
- * codebase).
+ * Stored as a (:LlmModelConfig) node. Parent relationships are represented as
+ * plain string properties (not SDN @Relationship), consistent with the pattern
+ * used throughout this codebase.
  *
- * All numeric inference parameters ([temperature], [maxTokens]) are nullable and
- * stored directly as Neo4j properties — no serialisation needed.
- *
- * Properties kept flat (no nested objects) to avoid SDN's limited support for
- * embedded value types in Community Edition.
+ * [namespaceId] and [userId] are denormalised from the parent [LlmConfigNode] at
+ * creation time so that namespace-scoped queries can be served with a single
+ * WHERE clause without graph traversal.
  */
 @Node("LlmModelConfig")
 data class LlmModelConfigNode(
     @Id
     val id: String,
     val llmConfigId: String,
+    val namespaceId: String,
+    val userId: String? = null,
     val apiName: String,
     val alias: String? = null,
     val displayName: String? = null,
@@ -50,6 +49,8 @@ data class LlmModelConfigNode(
                     removed = removed ?: false,
                 ),
             llmConfigId = UUID.fromString(llmConfigId),
+            namespaceId = UUID.fromString(namespaceId),
+            userId = userId?.let { UUID.fromString(it) },
             apiName = apiName,
             alias = alias,
             displayName = displayName,
@@ -62,6 +63,8 @@ data class LlmModelConfigNode(
             LlmModelConfigNode(
                 id = model.id.toString(),
                 llmConfigId = model.llmConfigId.toString(),
+                namespaceId = model.namespaceId.toString(),
+                userId = model.userId?.toString(),
                 apiName = model.apiName,
                 alias = model.alias,
                 displayName = model.displayName,

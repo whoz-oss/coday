@@ -1,5 +1,6 @@
 package io.whozoss.agentos.llmModelConfig
 
+import io.whozoss.agentos.llmConfig.LlmConfigService
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -8,18 +9,18 @@ import java.util.UUID
 /**
  * Default implementation of [LlmModelConfigService].
  *
- * Delegates persistence to [LlmModelConfigRepository].
+ * [create] resolves [namespaceId] and [userId] from the parent [LlmConfig] via
+ * [LlmConfigService] and denormalises them onto the entity before saving, so that
+ * namespace-scoped queries can be served without joining through [LlmConfig].
  *
- * [create] enforces two uniqueness constraints:
+ * [create] also enforces two uniqueness constraints:
  * - (llmConfigId, apiName): a model can only be registered once per provider config
  * - (llmConfigId, alias): aliases must be unambiguous within a provider config
- *
- * [update] replaces the entity as-is; the caller is responsible for not violating
- * the uniqueness constraints (a future iteration may add explicit update validation).
  */
 @Service
 class LlmModelConfigServiceImpl(
     private val repository: LlmModelConfigRepository,
+    private val llmConfigService: LlmConfigService,
 ) : LlmModelConfigService {
     override fun create(entity: LlmModelConfig): LlmModelConfig {
         findByLlmConfigAndApiName(entity.llmConfigId, entity.apiName)?.let {
@@ -36,7 +37,13 @@ class LlmModelConfigServiceImpl(
                 )
             }
         }
-        return repository.save(entity)
+        val parent = llmConfigService.getById(entity.llmConfigId)
+        return repository.save(
+            entity.copy(
+                namespaceId = parent.namespaceId,
+                userId = parent.userId,
+            )
+        )
     }
 
     override fun update(entity: LlmModelConfig): LlmModelConfig = repository.save(entity)
@@ -48,6 +55,9 @@ class LlmModelConfigServiceImpl(
     override fun delete(id: UUID): Boolean = repository.delete(id)
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
+
+    override fun findByNamespaceId(namespaceId: UUID): List<LlmModelConfig> =
+        repository.findByNamespaceId(namespaceId)
 
     override fun findByLlmConfigAndApiName(
         llmConfigId: UUID,

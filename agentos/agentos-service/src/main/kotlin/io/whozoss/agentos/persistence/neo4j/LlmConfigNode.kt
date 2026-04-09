@@ -27,6 +27,7 @@ data class LlmConfigNode(
     @Id
     val id: String,
     val namespaceId: String,
+    val userId: String? = null,
     val name: String,
     val apiType: String,
     val baseUrl: String? = null,
@@ -50,6 +51,7 @@ data class LlmConfigNode(
                     removed = removed ?: false,
                 ),
             namespaceId = UUID.fromString(namespaceId),
+            userId = userId?.let { UUID.fromString(it) },
             name = name,
             apiType = AiApiType.valueOf(apiType),
             baseUrl = baseUrl,
@@ -61,6 +63,7 @@ data class LlmConfigNode(
             LlmConfigNode(
                 id = config.id.toString(),
                 namespaceId = config.namespaceId.toString(),
+                userId = config.userId?.toString(),
                 name = config.name,
                 apiType = config.apiType.name,
                 baseUrl = config.baseUrl,

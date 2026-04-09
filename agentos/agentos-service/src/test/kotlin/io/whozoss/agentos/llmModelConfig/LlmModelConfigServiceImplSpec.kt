@@ -7,6 +7,11 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.whozoss.agentos.llmConfig.LlmConfig
+import io.whozoss.agentos.llmConfig.LlmConfigService
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -14,16 +19,37 @@ import java.util.UUID
 /**
  * Unit tests for [LlmModelConfigServiceImpl].
  *
- * Uses an [InMemoryLlmModelConfigRepository] to keep tests fast and isolated.
+ * Uses an [InMemoryLlmModelConfigRepository] and a MockK [LlmConfigService].
  * Each test builds its own service instance to guarantee full isolation.
  */
 class LlmModelConfigServiceImplSpec : StringSpec() {
 
-    private fun newService(): LlmModelConfigServiceImpl =
-        LlmModelConfigServiceImpl(InMemoryLlmModelConfigRepository())
+    private val namespaceId = UUID.randomUUID()
+
+    private fun stubLlmConfig(
+        llmConfigId: UUID,
+        nsId: UUID = namespaceId,
+        userId: UUID? = null,
+    ): LlmConfig =
+        LlmConfig(
+            metadata = EntityMetadata(id = llmConfigId),
+            namespaceId = nsId,
+            userId = userId,
+            name = "anthropic",
+            apiType = AiApiType.Anthropic,
+        )
+
+    private fun newService(llmConfigId: UUID = UUID.randomUUID()): Pair<LlmModelConfigServiceImpl, UUID> {
+        val llmConfigService = mockk<LlmConfigService>()
+        every { llmConfigService.getById(any()) } answers {
+            stubLlmConfig(firstArg())
+        }
+        return LlmModelConfigServiceImpl(InMemoryLlmModelConfigRepository(), llmConfigService) to llmConfigId
+    }
 
     private fun modelConfig(
-        llmConfigId: UUID = UUID.randomUUID(),
+        llmConfigId: UUID,
+        nsId: UUID = namespaceId,
         apiName: String = "claude-haiku-4-5",
         alias: String? = null,
         temperature: Double? = null,
@@ -32,6 +58,7 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         LlmModelConfig(
             metadata = EntityMetadata(),
             llmConfigId = llmConfigId,
+            namespaceId = nsId,
             apiName = apiName,
             alias = alias,
             temperature = temperature,
@@ -44,9 +71,18 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         // Create / Read
         // -------------------------------------------------------------------------
 
+        "create resolves namespaceId from parent LlmConfig" {
+            val (service, llmConfigId) = newService()
+            val m = modelConfig(llmConfigId = llmConfigId)
+
+            val saved = service.create(m)
+
+            saved.namespaceId shouldBe namespaceId
+        }
+
         "create and findById returns the same model config" {
-            val service = newService()
-            val m = modelConfig(alias = "SMALL", temperature = 0.3)
+            val (service, llmConfigId) = newService()
+            val m = modelConfig(llmConfigId = llmConfigId, alias = "SMALL", temperature = 0.3)
 
             val saved = service.create(m)
             val found = service.findById(saved.metadata.id)
@@ -58,12 +94,14 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         }
 
         "findById returns null for unknown id" {
-            val service = newService()
+            val (service, _) = newService()
             service.findById(UUID.randomUUID()).shouldBeNull()
         }
 
         "findByParent returns only model configs for the given llmConfigId" {
-            val service = newService()
+            val llmConfigService = mockk<LlmConfigService>()
+            every { llmConfigService.getById(any()) } answers { stubLlmConfig(firstArg()) }
+            val service = LlmModelConfigServiceImpl(InMemoryLlmModelConfigRepository(), llmConfigService)
             val providerA = UUID.randomUUID()
             val providerB = UUID.randomUUID()
 
@@ -77,14 +115,13 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         }
 
         "findByParent returns model configs sorted by apiName" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
+            val (service, llmConfigId) = newService()
 
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-opus-4-6"))
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5"))
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-sonnet-4-6"))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-opus-4-6"))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-sonnet-4-6"))
 
-            val names = service.findByParent(providerId).map { it.apiName }
+            val names = service.findByParent(llmConfigId).map { it.apiName }
             names shouldBe listOf("claude-haiku-4-5", "claude-opus-4-6", "claude-sonnet-4-6")
         }
 
@@ -93,27 +130,17 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "findByLlmConfigAndApiName returns the matching model config" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5"))
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
 
-            val found = service.findByLlmConfigAndApiName(providerId, "claude-haiku-4-5")
+            val found = service.findByLlmConfigAndApiName(llmConfigId, "claude-haiku-4-5")
             found.shouldNotBeNull()
             found.apiName shouldBe "claude-haiku-4-5"
         }
 
         "findByLlmConfigAndApiName returns null when apiName does not exist" {
-            val service = newService()
+            val (service, _) = newService()
             service.findByLlmConfigAndApiName(UUID.randomUUID(), "claude-haiku-4-5").shouldBeNull()
-        }
-
-        "findByLlmConfigAndApiName is provider-isolated" {
-            val service = newService()
-            val providerA = UUID.randomUUID()
-            val providerB = UUID.randomUUID()
-            service.create(modelConfig(llmConfigId = providerA, apiName = "claude-haiku-4-5"))
-
-            service.findByLlmConfigAndApiName(providerB, "claude-haiku-4-5").shouldBeNull()
         }
 
         // -------------------------------------------------------------------------
@@ -121,27 +148,17 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "findByLlmConfigAndAlias returns the matching model config" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5", alias = "SMALL"))
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5", alias = "SMALL"))
 
-            val found = service.findByLlmConfigAndAlias(providerId, "SMALL")
+            val found = service.findByLlmConfigAndAlias(llmConfigId, "SMALL")
             found.shouldNotBeNull()
             found.alias shouldBe "SMALL"
         }
 
         "findByLlmConfigAndAlias returns null when alias does not exist" {
-            val service = newService()
+            val (service, _) = newService()
             service.findByLlmConfigAndAlias(UUID.randomUUID(), "SMALL").shouldBeNull()
-        }
-
-        "findByLlmConfigAndAlias is provider-isolated" {
-            val service = newService()
-            val providerA = UUID.randomUUID()
-            val providerB = UUID.randomUUID()
-            service.create(modelConfig(llmConfigId = providerA, apiName = "claude-haiku-4-5", alias = "SMALL"))
-
-            service.findByLlmConfigAndAlias(providerB, "SMALL").shouldBeNull()
         }
 
         // -------------------------------------------------------------------------
@@ -149,57 +166,30 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "create throws 409 when (llmConfigId, apiName) already exists" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5"))
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
 
             shouldThrow<ResponseStatusException> {
-                service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5"))
+                service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
             }.statusCode.value() shouldBe 409
-        }
-
-        "create allows same apiName under different provider configs" {
-            val service = newService()
-            val providerA = UUID.randomUUID()
-            val providerB = UUID.randomUUID()
-
-            service.create(modelConfig(llmConfigId = providerA, apiName = "gpt-4o"))
-            service.create(modelConfig(llmConfigId = providerB, apiName = "gpt-4o"))
-
-            service.findByParent(providerA) shouldHaveSize 1
-            service.findByParent(providerB) shouldHaveSize 1
         }
 
         "create throws 409 when (llmConfigId, alias) already exists" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5", alias = "SMALL"))
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5", alias = "SMALL"))
 
             shouldThrow<ResponseStatusException> {
-                service.create(modelConfig(llmConfigId = providerId, apiName = "claude-sonnet-4-6", alias = "SMALL"))
+                service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-sonnet-4-6", alias = "SMALL"))
             }.statusCode.value() shouldBe 409
         }
 
-        "create allows same alias under different provider configs" {
-            val service = newService()
-            val providerA = UUID.randomUUID()
-            val providerB = UUID.randomUUID()
-
-            service.create(modelConfig(llmConfigId = providerA, apiName = "claude-haiku-4-5", alias = "SMALL"))
-            service.create(modelConfig(llmConfigId = providerB, apiName = "gpt-4o-mini", alias = "SMALL"))
-
-            service.findByParent(providerA) shouldHaveSize 1
-            service.findByParent(providerB) shouldHaveSize 1
-        }
-
         "create allows null alias even when another model has no alias" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
+            val (service, llmConfigId) = newService()
 
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5", alias = null))
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-opus-4-6", alias = null))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5", alias = null))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-opus-4-6", alias = null))
 
-            service.findByParent(providerId) shouldHaveSize 2
+            service.findByParent(llmConfigId) shouldHaveSize 2
         }
 
         // -------------------------------------------------------------------------
@@ -207,44 +197,28 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "delete soft-deletes the model config" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
-            val m = service.create(modelConfig(llmConfigId = providerId))
+            val (service, llmConfigId) = newService()
+            val m = service.create(modelConfig(llmConfigId = llmConfigId))
 
             service.delete(m.metadata.id) shouldBe true
 
             service.findById(m.metadata.id).shouldBeNull()
-            service.findByParent(providerId).shouldBeEmpty()
+            service.findByParent(llmConfigId).shouldBeEmpty()
         }
 
         "delete returns false for unknown id" {
-            val service = newService()
+            val (service, _) = newService()
             service.delete(UUID.randomUUID()) shouldBe false
         }
 
         "deleteByParent removes all model configs for a provider" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
+            val (service, llmConfigId) = newService()
 
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5"))
-            service.create(modelConfig(llmConfigId = providerId, apiName = "claude-opus-4-6"))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-opus-4-6"))
 
-            service.deleteByParent(providerId) shouldBe 2
-            service.findByParent(providerId).shouldBeEmpty()
-        }
-
-        "deleteByParent does not affect other provider configs" {
-            val service = newService()
-            val providerA = UUID.randomUUID()
-            val providerB = UUID.randomUUID()
-
-            service.create(modelConfig(llmConfigId = providerA, apiName = "claude-haiku-4-5"))
-            service.create(modelConfig(llmConfigId = providerB, apiName = "gpt-4o"))
-
-            service.deleteByParent(providerA)
-
-            service.findByParent(providerA).shouldBeEmpty()
-            service.findByParent(providerB) shouldHaveSize 1
+            service.deleteByParent(llmConfigId) shouldBe 2
+            service.findByParent(llmConfigId).shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
@@ -252,9 +226,8 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "update replaces the model config" {
-            val service = newService()
-            val providerId = UUID.randomUUID()
-            val original = service.create(modelConfig(llmConfigId = providerId, apiName = "claude-haiku-4-5"))
+            val (service, llmConfigId) = newService()
+            val original = service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
 
             val updated = service.update(original.copy(alias = "SMALL", temperature = 0.5))
 

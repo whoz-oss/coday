@@ -6,11 +6,7 @@ import java.util.UUID
 /**
  * Service for managing [LlmModelConfig] entities.
  *
- * Extends [EntityService] with point lookups by the two natural keys:
- * - (llmConfigId, apiName) — uniqueness constraint on create
- * - (llmConfigId, alias)   — future resolution path: agent asks for "SMALL",
- *   we find the matching [LlmModelConfig] and retrieve its parent [LlmConfig]
- *   to build the [io.whozoss.agentos.chat.ChatClientProvider] call
+ * Extends [EntityService] with point lookups by natural keys and namespace-scoped listing.
  */
 interface LlmModelConfigService : EntityService<LlmModelConfig, UUID> {
     /**
@@ -31,4 +27,12 @@ interface LlmModelConfigService : EntityService<LlmModelConfig, UUID> {
         llmConfigId: UUID,
         alias: String,
     ): LlmModelConfig?
+
+    /**
+     * Find all [LlmModelConfig] belonging to a namespace, across all provider configs.
+     *
+     * Uses the denormalised [LlmModelConfig.namespaceId] property so no join through
+     * [io.whozoss.agentos.llmConfig.LlmConfig] is needed.
+     */
+    fun findByNamespaceId(namespaceId: UUID): List<LlmModelConfig>
 }
