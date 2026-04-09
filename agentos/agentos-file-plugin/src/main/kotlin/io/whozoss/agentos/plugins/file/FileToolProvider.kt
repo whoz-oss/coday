@@ -18,8 +18,12 @@ import java.nio.file.Path
  * Tool provider for the FILE_ACCESS integration.
  *
  * Declares [configSchema] so the service exposes it via IntegrationTypeRegistry,
- * and instantiates the 6 file tools with the projectRoot and readOnly drawn from
- * the persisted IntegrationConfig parameters.
+ * and instantiates file tools with the rootPath drawn from the persisted
+ * IntegrationConfig parameters.
+ *
+ * When [readOnly] is true, only the read tools (list, read, search) are provided.
+ * Write tools (edit, remove, move) are not included at all, so the agent
+ * is never aware of their existence.
  */
 @Extension
 class FileToolProvider : ToolPlugin {
@@ -31,20 +35,25 @@ class FileToolProvider : ToolPlugin {
     override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
         if (config == null) return emptyList()
 
-        val projectRoot = Path.of(
-            config.get("projectRoot")?.asText()
-                ?: error("projectRoot is required in FILE_ACCESS config"),
+        val rootPath = Path.of(
+            config.get("rootPath")?.asText()
+                ?: error("rootPath is required in FILE_ACCESS config"),
         )
         val readOnly = config.get("readOnly")?.asBoolean() ?: false
 
-        return listOf(
-            ListFilesTool(projectRoot, configName),
-            ReadFileTool(projectRoot, configName),
-            SearchFilesTool(projectRoot, configName),
-            EditFilesTool(projectRoot, configName, readOnly),
-            RemoveFileTool(projectRoot, configName, readOnly),
-            MoveFileTool(projectRoot, configName, readOnly),
+        val readTools = listOf(
+            ListFilesTool(rootPath, configName),
+            ReadFileTool(rootPath, configName),
+            SearchFilesTool(rootPath, configName),
         )
+
+        val writeTools = listOf(
+            EditFilesTool(rootPath, configName),
+            RemoveFileTool(rootPath, configName),
+            MoveFileTool(rootPath, configName),
+        )
+
+        return if (readOnly) readTools else readTools + writeTools
     }
 
     companion object : KLogging() {
@@ -55,19 +64,19 @@ class FileToolProvider : ToolPlugin {
                 "title": "File Access Configuration",
                 "description": "Configuration for the File Access integration.",
                 "properties": {
-                    "projectRoot": {
+                    "rootPath": {
                         "type": "string",
-                        "title": "Project Root",
-                        "description": "Absolute path to the project root directory."
+                        "title": "Root Path",
+                        "description": "Absolute path to the root directory to expose."
                     },
                     "readOnly": {
                         "type": "boolean",
                         "title": "Read Only",
-                        "description": "If true, write operations (edit, remove, move) are disabled.",
+                        "description": "If true, only list/read/search tools are provided. Write tools are not exposed at all.",
                         "default": false
                     }
                 },
-                "required": ["projectRoot"],
+                "required": ["rootPath"],
                 "additionalProperties": false
             }
             """.trimIndent(),

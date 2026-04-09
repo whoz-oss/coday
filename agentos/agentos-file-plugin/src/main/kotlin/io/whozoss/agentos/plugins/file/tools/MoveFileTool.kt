@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.plugins.file.resolveFilePath
+import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -16,27 +16,24 @@ import java.nio.file.StandardCopyOption
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Move or rename a file within the same scope (project).
+ * Move or rename a file within the configured root directory.
  *
  * Fails if source doesn't exist or destination already exists.
- * Cross-scope moves are not allowed.
  */
 class MoveFileTool(
     private val projectRoot: Path,
     private val configName: String? = null,
-    private val readOnly: Boolean = false,
 ) : StandardTool<MoveFileTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
-    override val name: String = if (configName != null) "${configName}__FILES__moveFile" else "FILES__moveFile"
+    override val name: String = if (configName != null) "${configName}__moveFile" else "FILES__moveFile"
 
     override val description: String =
         """
-        Move or rename a file within the same scope (project). Fails if the source does not exist
-        or the destination already exists. File paths must start with "project://" prefix.
+        Move or rename a file. Fails if the source does not exist or the destination already exists.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -52,11 +49,11 @@ class MoveFileTool(
             "properties": {
                 "from": {
                     "type": "string",
-                    "description": "Source file path with prefix (e.g. \"project://old/path.ts\")"
+                    "description": "Source relative file path (e.g. \"old/path.ts\")"
                 },
                 "to": {
                     "type": "string",
-                    "description": "Destination file path with prefix (e.g. \"project://new/path.ts\")"
+                    "description": "Destination relative file path (e.g. \"new/path.ts\")"
                 }
             },
             "required": ["from", "to"],
@@ -73,11 +70,6 @@ class MoveFileTool(
         val params = input ?: Input()
 
         return try {
-            // Check read-only mode
-            if (readOnly) {
-                return createErrorResponse("Cannot modify files in read-only mode")
-            }
-
             kotlinx.coroutines.runBlocking {
                 withTimeout(IO_TIMEOUT.seconds) {
                     withContext(Dispatchers.IO) {
@@ -98,33 +90,25 @@ class MoveFileTool(
         from: String,
         to: String,
     ): String {
-        val fileRoots = mapOf("project" to projectRoot)
-        val resolvedFrom = resolveFilePath(from, fileRoots, createIntent = false)
-        val resolvedTo = resolveFilePath(to, fileRoots, createIntent = true)
+        val resolver = BoundaryPathResolver(projectRoot)
+        val resolvedFrom = resolver.resolve(from, createIntent = false)
+        val resolvedTo = resolver.resolve(to, createIntent = true)
 
-        // Verify same scope
-        if (resolvedFrom.scope != resolvedTo.scope) {
-            throw IllegalArgumentException("Cannot move files between scopes")
-        }
-
-        // Check destination doesn't exist (explicit check needed because some filesystems
-        // allow ATOMIC_MOVE to overwrite even without REPLACE_EXISTING)
-        if (Files.exists(resolvedTo.absolutePath)) {
+        // Check destination doesn't exist
+        if (Files.exists(resolvedTo)) {
             return "Destination already exists: $to"
         }
 
         // Create parent directories if needed
-        resolvedTo.absolutePath.parent?.let { parent ->
+        resolvedTo.parent?.let { parent ->
             Files.createDirectories(parent)
         }
 
         return try {
-            // Use ATOMIC_MOVE for atomicity
             try {
-                Files.move(resolvedFrom.absolutePath, resolvedTo.absolutePath, StandardCopyOption.ATOMIC_MOVE)
+                Files.move(resolvedFrom, resolvedTo, StandardCopyOption.ATOMIC_MOVE)
             } catch (e: AtomicMoveNotSupportedException) {
-                // Fallback to regular move if atomic move not supported
-                Files.move(resolvedFrom.absolutePath, resolvedTo.absolutePath)
+                Files.move(resolvedFrom, resolvedTo)
             }
             "File moved successfully"
         } catch (e: FileAlreadyExistsException) {

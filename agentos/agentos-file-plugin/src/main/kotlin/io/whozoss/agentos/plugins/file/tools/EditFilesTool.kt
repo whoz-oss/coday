@@ -3,7 +3,7 @@ package io.whozoss.agentos.plugins.file.tools
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.plugins.file.resolveFilePath
+import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -31,7 +31,6 @@ import kotlin.time.Duration.Companion.seconds
 class EditFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
-    private val readOnly: Boolean = false,
 ) : StandardTool<EditFilesTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
@@ -41,14 +40,13 @@ class EditFilesTool(
         private val PID = ProcessHandle.current().pid()
     }
 
-    override val name: String = if (configName != null) "${configName}__FILES__editFiles" else "FILES__editFiles"
+    override val name: String = if (configName != null) "${configName}__editFiles" else "FILES__editFiles"
 
     override val description: String =
         """
         Edit one or more files in a single tool call. Each edit targets a specific file and specifies an operation:
         "write" replaces the entire file content (or creates it), "patch" replaces specific chunks within an existing file.
         Edits are executed independently: a failure on one file does not prevent others from being processed.
-        File paths must start with "project://".
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -75,7 +73,7 @@ class EditFilesTool(
                             },
                             "path": {
                                 "type": "string",
-                                "description": "File path with prefix (e.g. \"project://src/main.ts\")"
+                                "description": "Relative file path (e.g. \"src/main.ts\")"
                             },
                             "content": {
                                 "type": "string",
@@ -139,11 +137,6 @@ class EditFilesTool(
         val params = input ?: Input()
 
         return try {
-            // Check read-only mode
-            if (readOnly) {
-                return createErrorResponse("Cannot modify files in read-only mode")
-            }
-
             if (params.edits.isEmpty()) {
                 return "No edits provided."
             }
@@ -197,24 +190,25 @@ class EditFilesTool(
         path: String,
         content: String,
     ): String {
-        val resolved = resolveFilePath(path, mapOf("project" to projectRoot), createIntent = true)
+        val resolver = BoundaryPathResolver(projectRoot)
+        val resolved = resolver.resolve(path, createIntent = true)
 
         // Check threshold on EXISTING files
-        if (resolved.absolutePath.exists()) {
-            val existingSize = resolved.absolutePath.fileSize()
+        if (resolved.exists()) {
+            val existingSize = resolved.fileSize()
             if (existingSize > WRITE_SIZE_THRESHOLD) {
                 return "$path: File full write not accepted: file exceeds the size threshold of ${WRITE_SIZE_THRESHOLD / 1024}kB. Use patch operation instead."
             }
         }
 
         // Atomic write with cleanup
-        val tmpPath = resolved.absolutePath.resolveSibling("${resolved.absolutePath.fileName}.${PID}.${UUID.randomUUID()}.tmp")
+        val tmpPath = resolved.resolveSibling("${resolved.fileName}.${PID}.${UUID.randomUUID()}.tmp")
         return try {
             // Create parent directories
-            resolved.absolutePath.parent?.let { Files.createDirectories(it) }
+            resolved.parent?.let { Files.createDirectories(it) }
 
             Files.writeString(tmpPath, content, StandardCharsets.UTF_8)
-            Files.move(tmpPath, resolved.absolutePath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            Files.move(tmpPath, resolved, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             "$path: File write success"
         } finally {
             try {
@@ -229,13 +223,14 @@ class EditFilesTool(
         path: String,
         replacements: List<Map<String, Any>>,
     ): String {
-        val resolved = resolveFilePath(path, mapOf("project" to projectRoot), createIntent = false)
+        val resolver = BoundaryPathResolver(projectRoot)
+        val resolved = resolver.resolve(path, createIntent = false)
 
-        if (!resolved.absolutePath.exists()) {
+        if (!resolved.exists()) {
             return "$path: No file found"
         }
 
-        var fileContent = Files.readString(resolved.absolutePath, StandardCharsets.UTF_8)
+        var fileContent = Files.readString(resolved, StandardCharsets.UTF_8)
         val chunksNotFound = mutableListOf<String>()
         val duplicateChunks = mutableListOf<String>()
         val tooShortChunks = mutableListOf<String>()
@@ -261,10 +256,10 @@ class EditFilesTool(
         }
 
         // Write file ALWAYS (non-transactional behavior)
-        val tmpPath = resolved.absolutePath.resolveSibling("${resolved.absolutePath.fileName}.${PID}.${UUID.randomUUID()}.tmp")
+        val tmpPath = resolved.resolveSibling("${resolved.fileName}.${PID}.${UUID.randomUUID()}.tmp")
         try {
             Files.writeString(tmpPath, fileContent, StandardCharsets.UTF_8)
-            Files.move(tmpPath, resolved.absolutePath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            Files.move(tmpPath, resolved, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } finally {
             try {
                 Files.deleteIfExists(tmpPath)

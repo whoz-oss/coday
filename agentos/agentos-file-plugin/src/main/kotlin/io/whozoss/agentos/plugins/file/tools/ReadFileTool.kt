@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.plugins.file.resolveFilePath
+import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -30,12 +30,12 @@ class ReadFileTool(
         private const val READ_MAX_SIZE = 10 * 1024 * 1024 // 10 MB
     }
 
-    override val name: String = if (configName != null) "${configName}__FILES__readFile" else "FILES__readFile"
+    override val name: String = if (configName != null) "${configName}__readFile" else "FILES__readFile"
 
     override val description: String =
         """
-        Read content from a text file. File path must start with "project://" prefix.
-        Use searchFiles to find files. V1: text files only (UTF-8). PDF and image support planned for V2.
+        Read content from a text file. Use searchFiles to find files.
+        V1: text files only (UTF-8). PDF and image support planned for V2.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -51,7 +51,7 @@ class ReadFileTool(
             "properties": {
                 "filePath": {
                     "type": "string",
-                    "description": "File path with prefix (e.g., \"project://src/main.ts\")"
+                    "description": "Relative file path (e.g. \"src/main.ts\", \"README.md\")"
                 }
             },
             "required": ["filePath"],
@@ -84,10 +84,11 @@ class ReadFileTool(
     }
 
     private fun readFile(filePath: String): String {
-        val resolved = resolveFilePath(filePath, mapOf("project" to projectRoot), createIntent = false)
+        val resolver = BoundaryPathResolver(projectRoot)
+        val resolved = resolver.resolve(filePath, createIntent = false)
 
         // Check file size
-        val size = resolved.absolutePath.fileSize()
+        val size = resolved.fileSize()
         if (size > READ_MAX_SIZE) {
             throw IllegalArgumentException(
                 "File exceeds maximum size of ${READ_MAX_SIZE / 1024 / 1024} MB: $filePath",
@@ -96,7 +97,7 @@ class ReadFileTool(
 
         // Try to read as UTF-8 text
         return try {
-            Files.readString(resolved.absolutePath, StandardCharsets.UTF_8)
+            Files.readString(resolved, StandardCharsets.UTF_8)
         } catch (e: MalformedInputException) {
             "[binary or unreadable file]"
         }

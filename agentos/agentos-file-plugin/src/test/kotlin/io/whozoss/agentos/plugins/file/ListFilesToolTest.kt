@@ -19,12 +19,26 @@ class ListFilesToolTest : StringSpec() {
                 tempDir.resolve("file1.txt").createFile()
                 tempDir.resolve("file2.md").createFile()
 
-                val result = tool.execute(ListFilesTool.Input("project://"))
+                val result = tool.execute(ListFilesTool.Input(""))
 
                 result shouldContain "subdir/"
                 result shouldContain "file1.txt"
                 result shouldContain "file2.md"
                 result shouldNotContain "subdir\n"  // Should have slash
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "dot should also list root directory" {
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val tool = ListFilesTool(tempDir)
+                tempDir.resolve("file.txt").createFile()
+
+                val result = tool.execute(ListFilesTool.Input("."))
+
+                result shouldContain "file.txt"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -36,22 +50,9 @@ class ListFilesToolTest : StringSpec() {
                 val tool = ListFilesTool(tempDir)
                 Files.createDirectories(tempDir.resolve("empty"))
 
-                val result = tool.execute(ListFilesTool.Input("project://empty"))
+                val result = tool.execute(ListFilesTool.Input("empty"))
 
                 result shouldBe ""
-            } finally {
-                tempDir.toFile().deleteRecursively()
-            }
-        }
-
-        "path without prefix should error" {
-            val tempDir = Files.createTempDirectory("test")
-            try {
-                val tool = ListFilesTool(tempDir)
-
-                val result = tool.execute(ListFilesTool.Input("somedir"))
-
-                result shouldContain "must start with"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -65,7 +66,7 @@ class ListFilesToolTest : StringSpec() {
                 val linkFile = tempDir.resolve("link.txt")
                 Files.createSymbolicLink(linkFile, targetFile)
 
-                val result = tool.execute(ListFilesTool.Input("project://"))
+                val result = tool.execute(ListFilesTool.Input(""))
 
                 result shouldContain "link.txt"
             } finally {
@@ -81,7 +82,7 @@ class ListFilesToolTest : StringSpec() {
                 val linkFile = tempDir.resolve("broken-link.txt")
                 Files.createSymbolicLink(linkFile, nonexistent)
 
-                val result = tool.execute(ListFilesTool.Input("project://"))
+                val result = tool.execute(ListFilesTool.Input(""))
 
                 result shouldContain "broken-link.txt"
                 result shouldContain "inaccessible"
@@ -96,26 +97,9 @@ class ListFilesToolTest : StringSpec() {
                 val tool = ListFilesTool(tempDir)
                 tempDir.resolve("file.txt").createFile()
 
-                val result = tool.execute(ListFilesTool.Input("project://file.txt"))
+                val result = tool.execute(ListFilesTool.Input("file.txt"))
 
                 result shouldContain "not a directory"
-            } finally {
-                tempDir.toFile().deleteRecursively()
-            }
-        }
-
-        "empty or root paths should error requiring explicit prefix" {
-            val tempDir = Files.createTempDirectory("test")
-            try {
-                val tool = ListFilesTool(tempDir)
-
-                val result1 = tool.execute(ListFilesTool.Input(""))
-                val result2 = tool.execute(ListFilesTool.Input("."))
-                val result3 = tool.execute(ListFilesTool.Input("/"))
-
-                result1 shouldContain "must start with"
-                result2 shouldContain "must start with"
-                result3 shouldContain "must start with"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -128,7 +112,7 @@ class ListFilesToolTest : StringSpec() {
                 Files.createDirectories(tempDir.resolve("a/b"))
                 tempDir.resolve("a/b/file.txt").createFile()
 
-                val result = tool.execute(ListFilesTool.Input("project://a/b"))
+                val result = tool.execute(ListFilesTool.Input("a/b"))
 
                 result shouldContain "file.txt"
             } finally {

@@ -21,24 +21,18 @@ class SearchFilesToolTest : StringSpec() {
         afterEach {
             tempDir.toFile().deleteRecursively()
         }
+
         "search by fileName should find matching files" {
-            val tempDir = Files.createTempDirectory("test")
-            try {
-                val tool = SearchFilesTool(tempDir)
-                tempDir.resolve("config.json").writeText("{}")
-                tempDir.resolve("user-config.yaml").writeText("key: value")
-                tempDir.resolve("other.txt").writeText("text")
+            val tool = SearchFilesTool(tempDir)
+            tempDir.resolve("config.json").writeText("{}")
+            tempDir.resolve("user-config.yaml").writeText("key: value")
+            tempDir.resolve("other.txt").writeText("text")
 
-                val result = tool.execute(
-                    SearchFilesTool.Input(fileName = "config"),
-                )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "config"))
 
-                result shouldContain "config.json"
-                result shouldContain "user-config.yaml"
-                result shouldNotContain "other.txt"
-            } finally {
-                tempDir.toFile().deleteRecursively()
-            }
+            result shouldContain "config.json"
+            result shouldContain "user-config.yaml"
+            result shouldNotContain "other.txt"
         }
 
         "search by fileContent should find matching files" {
@@ -47,9 +41,7 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("file2.txt").writeText("Goodbye world")
             tempDir.resolve("file3.txt").writeText("Nothing here")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileContent = "world"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileContent = "world"))
 
             result shouldContain "file1.txt"
             result shouldContain "file2.txt"
@@ -62,9 +54,7 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("config.yaml").writeText("disabled: false")
             tempDir.resolve("settings.json").writeText("{\"enabled\": false}")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileName = "config", fileContent = "enabled"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "config", fileContent = "enabled"))
 
             result shouldContain "config.json"
             result shouldNotContain "config.yaml"
@@ -75,9 +65,7 @@ class SearchFilesToolTest : StringSpec() {
             val tool = SearchFilesTool(tempDir)
             tempDir.resolve("file.txt").writeText("content")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileName = "nonexistent"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "nonexistent"))
 
             result shouldBe "No matching files found."
         }
@@ -87,13 +75,11 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("small1.txt").writeText("Content 1")
             tempDir.resolve("small2.txt").writeText("Content 2")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileName = "small"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "small"))
 
-            result shouldContain "=== project://small1.txt ==="
+            result shouldContain "=== small1.txt ==="
             result shouldContain "Content 1"
-            result shouldContain "=== project://small2.txt ==="
+            result shouldContain "=== small2.txt ==="
             result shouldContain "Content 2"
         }
 
@@ -103,12 +89,10 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("large1.txt").writeText(largeContent)
             tempDir.resolve("large2.txt").writeText(largeContent)
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileName = "large"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "large"))
 
-            result shouldContain "project://large1.txt"
-            result shouldContain "project://large2.txt"
+            result shouldContain "large1.txt"
+            result shouldContain "large2.txt"
             result shouldNotContain "==="
             result shouldNotContain "xxx"
         }
@@ -119,9 +103,7 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("file2.json").writeText("{\"name\": \"test\"}")
             tempDir.resolve("file3.txt").writeText("text")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileContent = "e", fileTypes = listOf("ts", "json")),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileContent = "e", fileTypes = listOf("ts", "json")))
 
             result shouldContain "file1.ts"
             result shouldContain "file2.json"
@@ -131,9 +113,7 @@ class SearchFilesToolTest : StringSpec() {
         "neither fileName nor fileContent should error" {
             val tool = SearchFilesTool(tempDir)
 
-            val result = tool.execute(
-                SearchFilesTool.Input(),
-            )
+            val result = tool.execute(SearchFilesTool.Input())
 
             result shouldContain "At least one of fileName or fileContent must be provided"
         }
@@ -144,9 +124,7 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("subdir/file1.txt").writeText("content")
             tempDir.resolve("file2.txt").writeText("content")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileName = "file", path = "project://subdir"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "file", path = "subdir"))
 
             result shouldContain "subdir/file1.txt"
             result shouldNotContain "file2.txt"
@@ -157,9 +135,7 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("text.txt").writeText("searchable")
             tempDir.resolve("binary.bin").writeBytes(byteArrayOf(0x00, 0xFF.toByte()))
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileContent = "searchable"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileContent = "searchable"))
 
             result shouldContain "text.txt"
             result shouldNotContain "binary.bin"
@@ -170,9 +146,7 @@ class SearchFilesToolTest : StringSpec() {
             Files.createDirectories(tempDir.resolve("a/b/c"))
             tempDir.resolve("a/b/c/deep.txt").writeText("nested content")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileName = "deep"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "deep"))
 
             result shouldContain "a/b/c/deep.txt"
         }
@@ -182,9 +156,7 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("CONFIG.json").writeText("{}")
             tempDir.resolve("config.yaml").writeText("key: value")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileName = "config"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileName = "config"))
 
             result shouldContain "CONFIG.json"
             result shouldContain "config.yaml"
@@ -194,9 +166,7 @@ class SearchFilesToolTest : StringSpec() {
             val tool = SearchFilesTool(tempDir)
             tempDir.resolve("file.txt").writeText("HELLO world")
 
-            val result = tool.execute(
-                SearchFilesTool.Input(fileContent = "hello"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileContent = "hello"))
 
             result shouldContain "file.txt"
         }
@@ -206,10 +176,7 @@ class SearchFilesToolTest : StringSpec() {
             tempDir.resolve("file1.txt").writeText("-flag content")
             tempDir.resolve("file2.txt").writeText("normal content")
 
-            // Should not crash, should use NIO fallback
-            val result = tool.execute(
-                SearchFilesTool.Input(fileContent = "-flag"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileContent = "-flag"))
 
             result shouldContain "file1.txt"
             result shouldNotContain "file2.txt"
@@ -219,10 +186,7 @@ class SearchFilesToolTest : StringSpec() {
             val tool = SearchFilesTool(tempDir)
             tempDir.resolve("file1.txt").writeText("normal content")
 
-            // Should not crash, should use NIO fallback (won't match anything)
-            val result = tool.execute(
-                SearchFilesTool.Input(fileContent = "test\u0000injection"),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileContent = "test\u0000injection"))
 
             result shouldBe "No matching files found."
         }
@@ -232,12 +196,20 @@ class SearchFilesToolTest : StringSpec() {
             val longPattern = "a".repeat(1001)
             tempDir.resolve("file1.txt").writeText(longPattern)
 
-            // Should not crash, should use NIO fallback
-            val result = tool.execute(
-                SearchFilesTool.Input(fileContent = longPattern),
-            )
+            val result = tool.execute(SearchFilesTool.Input(fileContent = longPattern))
 
             result shouldContain "file1.txt"
+        }
+
+        "paths in results should not expose root directory" {
+            val tool = SearchFilesTool(tempDir)
+            tempDir.resolve("secret.txt").writeText("some content")
+
+            val result = tool.execute(SearchFilesTool.Input(fileName = "secret"))
+
+            // Result should be a relative path, not an absolute path containing the temp dir
+            result shouldNotContain tempDir.toString()
+            result shouldContain "secret.txt"
         }
     }
 }

@@ -1,8 +1,7 @@
 package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.plugins.file.FilePrefixes
-import io.whozoss.agentos.plugins.file.resolveFilePath
+import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -33,13 +32,14 @@ class SearchFilesTool(
         private const val CONTENT_THRESHOLD = 200 * 1024 // 200 KB
     }
 
-    override val name: String = if (configName != null) "${configName}__FILES__searchFiles" else "FILES__searchFiles"
+    override val name: String = if (configName != null) "${configName}__searchFiles" else "FILES__searchFiles"
 
     override val description: String =
         """
         Search for files by name pattern and/or content text. At least one of fileName or fileContent must be provided.
         When both are provided, only files whose name matches fileName AND whose content matches fileContent are returned.
-        Paths are prefixed with "project://".
+        If the total size of matching files is reasonable, their content is returned directly.
+        Otherwise, only the list of matching relative paths is returned.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -63,7 +63,7 @@ class SearchFilesTool(
                 },
                 "path": {
                     "type": "string",
-                    "description": "Optional path to restrict the search scope. Use \"project://\" prefix."
+                    "description": "Optional relative path to restrict the search scope (e.g. \"src\", \"src/components\")"
                 },
                 "fileTypes": {
                     "type": "array",
@@ -107,12 +107,12 @@ class SearchFilesTool(
     }
 
     private fun searchFiles(params: Input): String {
-        val fileRoots = mapOf("project" to projectRoot)
+        val resolver = BoundaryPathResolver(projectRoot)
         val searchRoot =
             if (params.path.isNullOrBlank()) {
                 projectRoot
             } else {
-                resolveFilePath(params.path, fileRoots, createIntent = false).absolutePath
+                resolver.resolve(params.path, createIntent = false)
             }
 
         // Try ripgrep first if fileContent is provided
@@ -123,7 +123,7 @@ class SearchFilesTool(
                 searchWithNIO(searchRoot, params)
             }
 
-        return buildSearchResult(results, searchRoot, projectRoot)
+        return buildSearchResult(results)
     }
 
     private fun searchWithRipgrep(
@@ -224,11 +224,7 @@ class SearchFilesTool(
         return results
     }
 
-    private fun buildSearchResult(
-        files: List<Path>,
-        searchRoot: Path,
-        projectRoot: Path,
-    ): String {
+    private fun buildSearchResult(files: List<Path>): String {
         if (files.isEmpty()) {
             return "No matching files found."
         }
@@ -253,14 +249,13 @@ class SearchFilesTool(
         // If total size exceeds threshold, return paths only
         if (totalSize > CONTENT_THRESHOLD || contents.size < files.size) {
             return files.map { file ->
-                val relPath = projectRoot.relativize(file).pathString
-                "${FilePrefixes.PROJECT}$relPath"
+                projectRoot.relativize(file).pathString
             }.joinToString("\n")
         }
 
         // Return content with headers
         return contents.joinToString("\n\n") { (relPath, content) ->
-            val header = "=== ${FilePrefixes.PROJECT}$relPath ==="
+            val header = "=== $relPath ==="
             val body = content ?: "[binary or unreadable]"
             "$header\n$body"
         }

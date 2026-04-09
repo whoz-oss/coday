@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.plugins.file.resolveFilePath
+import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -21,18 +21,17 @@ import kotlin.time.Duration.Companion.seconds
 class RemoveFileTool(
     private val projectRoot: Path,
     private val configName: String? = null,
-    private val readOnly: Boolean = false,
 ) : StandardTool<RemoveFileTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
-    override val name: String = if (configName != null) "${configName}__FILES__remove" else "FILES__remove"
+    override val name: String = if (configName != null) "${configName}__remove" else "FILES__remove"
 
     override val description: String =
         """
-        Remove a file. File path must start with "project://" prefix.
+        Remove a file. Only removes files, not directories.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -48,7 +47,7 @@ class RemoveFileTool(
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "File path with prefix (e.g., \"project://temp/old.txt\")"
+                    "description": "Relative file path (e.g. \"temp/old.txt\")"
                 }
             },
             "required": ["path"],
@@ -64,11 +63,6 @@ class RemoveFileTool(
         val params = input ?: Input()
 
         return try {
-            // Check read-only mode
-            if (readOnly) {
-                return createErrorResponse("Cannot modify files in read-only mode")
-            }
-
             kotlinx.coroutines.runBlocking {
                 withTimeout(IO_TIMEOUT.seconds) {
                     withContext(Dispatchers.IO) {
@@ -86,15 +80,16 @@ class RemoveFileTool(
     }
 
     private fun removeFile(path: String): String {
-        val resolved = resolveFilePath(path, mapOf("project" to projectRoot), createIntent = false)
+        val resolver = BoundaryPathResolver(projectRoot)
+        val resolved = resolver.resolve(path, createIntent = false)
 
         // Don't allow removing directories
-        if (resolved.absolutePath.isDirectory()) {
+        if (resolved.isDirectory()) {
             throw IllegalArgumentException("Cannot remove directories: $path")
         }
 
         return try {
-            Files.delete(resolved.absolutePath)
+            Files.delete(resolved)
             "File deleted successfully"
         } catch (e: NoSuchFileException) {
             "File not found: $path"

@@ -18,7 +18,7 @@ class ReadFileToolTest : StringSpec() {
                 val file = tempDir.resolve("test.txt")
                 file.writeText("Hello, World!\nLine 2\nLine 3")
 
-                val result = tool.execute(ReadFileTool.Input("project://test.txt"))
+                val result = tool.execute(ReadFileTool.Input("test.txt"))
 
                 result shouldBe "Hello, World!\nLine 2\nLine 3"
             } finally {
@@ -31,7 +31,7 @@ class ReadFileToolTest : StringSpec() {
             try {
                 val tool = ReadFileTool(tempDir)
 
-                val result = tool.execute(ReadFileTool.Input("project://nonexistent.txt"))
+                val result = tool.execute(ReadFileTool.Input("nonexistent.txt"))
 
                 result shouldContain "Path does not exist"
             } finally {
@@ -43,9 +43,9 @@ class ReadFileToolTest : StringSpec() {
             val tempDir = Files.createTempDirectory("test")
             try {
                 val tool = ReadFileTool(tempDir)
-                val file = tempDir.resolve("empty.txt").createFile()
+                tempDir.resolve("empty.txt").createFile()
 
-                val result = tool.execute(ReadFileTool.Input("project://empty.txt"))
+                val result = tool.execute(ReadFileTool.Input("empty.txt"))
 
                 result shouldBe ""
             } finally {
@@ -60,7 +60,7 @@ class ReadFileToolTest : StringSpec() {
                 val file = tempDir.resolve("binary.bin")
                 file.writeBytes(byteArrayOf(0x00, 0xFF.toByte(), 0xFE.toByte(), 0x00, 0x01))
 
-                val result = tool.execute(ReadFileTool.Input("project://binary.bin"))
+                val result = tool.execute(ReadFileTool.Input("binary.bin"))
 
                 result shouldBe "[binary or unreadable file]"
             } finally {
@@ -76,7 +76,7 @@ class ReadFileToolTest : StringSpec() {
                 val largeContent = "x".repeat(11 * 1024 * 1024) // 11 MB
                 file.writeText(largeContent)
 
-                val result = tool.execute(ReadFileTool.Input("project://large.txt"))
+                val result = tool.execute(ReadFileTool.Input("large.txt"))
 
                 result shouldContain "exceeds maximum size"
                 result shouldContain "10"
@@ -92,7 +92,7 @@ class ReadFileToolTest : StringSpec() {
                 val file = tempDir.resolve("unicode.txt")
                 file.writeText("Hello 世界 🌍 émoji")
 
-                val result = tool.execute(ReadFileTool.Input("project://unicode.txt"))
+                val result = tool.execute(ReadFileTool.Input("unicode.txt"))
 
                 result shouldBe "Hello 世界 🌍 émoji"
             } finally {
@@ -109,7 +109,7 @@ class ReadFileToolTest : StringSpec() {
                 val linkFile = tempDir.resolve("link.txt")
                 Files.createSymbolicLink(linkFile, targetFile)
 
-                val result = tool.execute(ReadFileTool.Input("project://link.txt"))
+                val result = tool.execute(ReadFileTool.Input("link.txt"))
 
                 result shouldBe "target content"
             } finally {
@@ -125,7 +125,7 @@ class ReadFileToolTest : StringSpec() {
                 val content = "Line 1\nLine 2\r\nLine 3\n\nLine 5"
                 file.writeText(content)
 
-                val result = tool.execute(ReadFileTool.Input("project://multi.txt"))
+                val result = tool.execute(ReadFileTool.Input("multi.txt"))
 
                 result shouldBe content
             } finally {

@@ -10,79 +10,59 @@ import kotlin.io.path.createFile
 
 class FilePathResolverTest : StringSpec() {
     init {
-        "project:// prefix valid should resolve correctly via BoundaryPathResolver" {
+        "valid relative path should resolve to absolute path within root" {
             val tempDir = Files.createTempDirectory("test")
             try {
-                val fileRoots = mapOf("project" to tempDir)
                 val file = tempDir.resolve("file.txt").createFile()
+                val resolver = BoundaryPathResolver(tempDir)
 
-                val resolved = resolveFilePath("project://file.txt", fileRoots, createIntent = false)
+                val resolved = resolver.resolve("file.txt", createIntent = false)
 
-                resolved.absolutePath shouldBe file.toRealPath()
-                resolved.scope shouldBe FileScope.PROJECT
-                resolved.relativePath shouldBe "file.txt"
+                resolved shouldBe file.toRealPath()
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
         }
 
-        "exchange:// prefix should error with V2 PLANNED message" {
+        "nested path should resolve correctly" {
             val tempDir = Files.createTempDirectory("test")
             try {
-                val fileRoots = mapOf("project" to tempDir)
+                Files.createDirectories(tempDir.resolve("a/b/c"))
+                val file = tempDir.resolve("a/b/c/file.txt").createFile()
+                val resolver = BoundaryPathResolver(tempDir)
 
-                val exception = shouldThrow<IllegalArgumentException> {
-                    resolveFilePath("exchange://file.txt", fileRoots, createIntent = false)
-                }
+                val resolved = resolver.resolve("a/b/c/file.txt", createIntent = false)
 
-                exception.message shouldContain "exchange://"
-                exception.message shouldContain "not supported"
+                resolved shouldBe file.toRealPath()
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
         }
 
-        "no prefix should error with helpful message" {
+        "path with symlink inside root should succeed" {
             val tempDir = Files.createTempDirectory("test")
             try {
-                val fileRoots = mapOf("project" to tempDir)
-
-                val exception = shouldThrow<IllegalArgumentException> {
-                    resolveFilePath("file.txt", fileRoots, createIntent = false)
-                }
-
-                exception.message shouldContain "must start with"
-                exception.message shouldContain "project://"
-            } finally {
-                tempDir.toFile().deleteRecursively()
-            }
-        }
-
-        "path with symlink validated by BoundaryPathResolver should succeed" {
-            val tempDir = Files.createTempDirectory("test")
-            try {
-                val fileRoots = mapOf("project" to tempDir)
                 val targetFile = tempDir.resolve("target.txt").createFile()
                 val linkFile = tempDir.resolve("link.txt")
                 Files.createSymbolicLink(linkFile, targetFile)
+                val resolver = BoundaryPathResolver(tempDir)
 
-                val resolved = resolveFilePath("project://link.txt", fileRoots, createIntent = false)
+                val resolved = resolver.resolve("link.txt", createIntent = false)
 
-                resolved.absolutePath shouldBe targetFile.toRealPath()
+                resolved shouldBe targetFile.toRealPath()
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
         }
 
-        "deny-list propagated to BoundaryPathResolver should reject correctly" {
+        "deny-list should reject .env" {
             val tempDir = Files.createTempDirectory("test")
             try {
-                val fileRoots = mapOf("project" to tempDir)
                 tempDir.resolve(".env").createFile()
-                val customDenyList = listOf(".env", "*.key")
+                val resolver = BoundaryPathResolver(tempDir, listOf(".env", "*.key"))
 
                 val exception = shouldThrow<IllegalArgumentException> {
-                    resolveFilePath("project://.env", fileRoots, createIntent = false, denyPatterns = customDenyList)
+                    resolver.resolve(".env", createIntent = false)
                 }
 
                 exception.message shouldContain "Access denied"
@@ -91,32 +71,16 @@ class FilePathResolverTest : StringSpec() {
             }
         }
 
-        "missing project scope in fileRoots should error" {
+        "path traversal attempt should be rejected" {
             val tempDir = Files.createTempDirectory("test")
             try {
-                val fileRoots = emptyMap<String, Path>()
+                val resolver = BoundaryPathResolver(tempDir)
 
                 val exception = shouldThrow<IllegalArgumentException> {
-                    resolveFilePath("project://file.txt", fileRoots, createIntent = false)
+                    resolver.resolve("../outside.txt", createIntent = false)
                 }
 
-                exception.message shouldContain "No root configured for scope"
-            } finally {
-                tempDir.toFile().deleteRecursively()
-            }
-        }
-
-        "nested path with multiple segments should resolve correctly" {
-            val tempDir = Files.createTempDirectory("test")
-            try {
-                val fileRoots = mapOf("project" to tempDir)
-                Files.createDirectories(tempDir.resolve("a/b/c"))
-                val file = tempDir.resolve("a/b/c/file.txt").createFile()
-
-                val resolved = resolveFilePath("project://a/b/c/file.txt", fileRoots, createIntent = false)
-
-                resolved.absolutePath shouldBe file.toRealPath()
-                resolved.relativePath shouldBe "a/b/c/file.txt"
+                exception.message shouldContain "path traversal not allowed"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -125,27 +89,55 @@ class FilePathResolverTest : StringSpec() {
         "createIntent=true allows missing files" {
             val tempDir = Files.createTempDirectory("test")
             try {
-                val fileRoots = mapOf("project" to tempDir)
                 Files.createDirectories(tempDir.resolve("dir"))
+                val resolver = BoundaryPathResolver(tempDir)
 
-                val resolved = resolveFilePath("project://dir/newfile.txt", fileRoots, createIntent = true)
+                val resolved = resolver.resolve("dir/newfile.txt", createIntent = true)
 
-                resolved.absolutePath shouldBe tempDir.toRealPath().resolve("dir/newfile.txt")
+                resolved shouldBe tempDir.toRealPath().resolve("dir/newfile.txt")
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
         }
 
-        "path traversal attempt should be rejected by BoundaryPathResolver" {
+        "createIntent=false on non-existent file should throw" {
             val tempDir = Files.createTempDirectory("test")
             try {
-                val fileRoots = mapOf("project" to tempDir)
+                val resolver = BoundaryPathResolver(tempDir)
 
                 val exception = shouldThrow<IllegalArgumentException> {
-                    resolveFilePath("project://../outside.txt", fileRoots, createIntent = false)
+                    resolver.resolve("nonexistent.txt", createIntent = false)
                 }
 
-                exception.message shouldContain "path traversal not allowed"
+                exception.message shouldContain "Path does not exist"
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "null byte in path should be rejected" {
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val resolver = BoundaryPathResolver(tempDir)
+
+                val exception = shouldThrow<IllegalArgumentException> {
+                    resolver.resolve("file\u0000.txt", createIntent = false)
+                }
+
+                exception.message shouldContain "illegal characters"
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "empty relative path resolves to root" {
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val resolver = BoundaryPathResolver(tempDir)
+
+                val resolved = resolver.resolve("", createIntent = false)
+
+                resolved shouldBe tempDir.toRealPath()
             } finally {
                 tempDir.toFile().deleteRecursively()
             }

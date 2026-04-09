@@ -1,7 +1,7 @@
 package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.plugins.file.resolveFilePath
+import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -28,12 +28,12 @@ class ListFilesTool(
         private const val IO_TIMEOUT = 30L
     }
 
-    override val name: String = if (configName != null) "${configName}__FILES__listFiles" else "FILES__listFiles"
+    override val name: String = if (configName != null) "${configName}__listFiles" else "FILES__listFiles"
 
     override val description: String =
         """
         List directories and files in a folder (similar to ls command). Directories end with a slash.
-        Path must start with "project://" prefix.
+        Use an empty string or "." to list the root directory.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -49,7 +49,7 @@ class ListFilesTool(
             "properties": {
                 "relPath": {
                     "type": "string",
-                    "description": "Path with prefix (e.g., \"project://src\" or \"exchange://\")"
+                    "description": "Relative path to list (e.g. \"src\", \"a/b\"). Use empty string or \".\" for root."
                 }
             },
             "required": ["relPath"],
@@ -65,15 +65,6 @@ class ListFilesTool(
         val params = input ?: Input()
 
         return try {
-            // Require explicit prefix
-            if (params.relPath.isEmpty() || params.relPath == "." || params.relPath == "/") {
-                return createErrorResponse(
-                    "Path must start with \"project://\" or \"exchange://\" prefix. " +
-                        "Use \"project://\" to list project files or \"exchange://\" to list files shared with users.",
-                )
-            }
-
-            // Execute with timeout
             val entries =
                 kotlinx.coroutines.runBlocking {
                     withTimeout(IO_TIMEOUT.seconds) {
@@ -94,13 +85,21 @@ class ListFilesTool(
     }
 
     private fun listDirectory(relPath: String): List<String> {
-        val resolved = resolveFilePath(relPath, mapOf("project" to projectRoot), createIntent = false)
+        // Treat empty string or "." as root
+        val normalised = if (relPath.isBlank() || relPath == ".") "" else relPath
+        val resolver = BoundaryPathResolver(projectRoot)
+        val targetPath =
+            if (normalised.isEmpty()) {
+                projectRoot.toRealPath()
+            } else {
+                resolver.resolve(normalised, createIntent = false)
+            }
 
-        if (!resolved.absolutePath.isDirectory()) {
+        if (!targetPath.isDirectory()) {
             throw IllegalArgumentException("Path is not a directory: $relPath")
         }
 
-        return Files.list(resolved.absolutePath).use { stream ->
+        return Files.list(targetPath).use { stream ->
             stream.map { path ->
                 try {
                     // Check if the path is accessible (this will fail for broken symlinks)

@@ -12,31 +12,6 @@ import kotlin.io.path.name
 import kotlin.io.path.pathString
 
 /**
- * File scope identifiers for path resolution.
- */
-enum class FileScope {
-    PROJECT,
-    EXCHANGE,
-}
-
-/**
- * Result of path resolution with security validation.
- */
-data class ResolvedPath(
-    val absolutePath: Path,
-    val scope: FileScope,
-    val relativePath: String,
-)
-
-/**
- * File prefixes for scoped path resolution.
- */
-object FilePrefixes {
-    const val PROJECT = "project://"
-    const val EXCHANGE = "exchange://"
-}
-
-/**
  * Default deny-list of sensitive file patterns.
  * These patterns block access to common credential and secret files.
  */
@@ -62,19 +37,18 @@ object SensitiveFilePatterns {
 /**
  * Boundary-safe path resolver with segment-by-segment traversal.
  *
- * This resolver validates paths
- * by traversing each segment lexically and checking for symlinks at every step.
- * This prevents TOCTOU (Time-of-Check-Time-of-Use) symlink attacks where a symlink
- * could be created between validation and use.
+ * Accepts plain relative paths (e.g. "src/main.ts", "a/b/c.txt").
+ * The configured [rootPath] is an internal implementation detail — callers
+ * and the LLM agent never see it.
  *
  * Security features:
  * - Segment-by-segment traversal with lstat() at each step
- * - Symlink resolution with isPathInside() validation
+ * - Symlink resolution with boundary validation
  * - Deny-list for sensitive file patterns
  * - Path traversal attack prevention
  * - Null byte and URL encoding rejection
  *
- * @property rootPath The root directory for boundary enforcement (not necessarily canonical)
+ * @property rootPath The root directory for boundary enforcement
  * @property denyPatterns List of glob-style patterns to block (e.g., "*.key", ".env")
  */
 class BoundaryPathResolver(
@@ -86,10 +60,7 @@ class BoundaryPathResolver(
     /**
      * Resolve a relative path with boundary enforcement and symlink validation.
      *
-     * This method performs a lexical traversal of the path, checking each segment
-     * for symlinks and validating that the target stays within the root boundary.
-     *
-     * @param relativePath Relative path (without prefix) to resolve
+     * @param relativePath Relative path (e.g. "src/main.ts" or "dir/") to resolve
      * @param createIntent If true, allows missing path segments (for file creation)
      * @return Canonicalized absolute path that is guaranteed to be within the root
      * @throws IllegalArgumentException if path escapes boundary, contains dangerous sequences,
@@ -223,57 +194,4 @@ class BoundaryPathResolver(
             else ->
                 fileName == pattern
         }
-}
-
-/**
- * High-level file path resolver with prefix handling.
- *
- * This is the main entry point for path resolution in file tools.
- * It strips the scope prefix (project:// or exchange://), looks up the
- * root path from fileRoots, and delegates to BoundaryPathResolver for
- * security-enforced resolution.
- *
- * @param filePath Full path with prefix (e.g., "project://src/main.ts")
- * @param fileRoots Map of scope names to root paths
- * @param createIntent If true, allows missing path segments (for file creation)
- * @param denyPatterns Custom deny-list patterns (defaults to SensitiveFilePatterns.DEFAULT_PATTERNS)
- * @return ResolvedPath with absolutePath, scope, and relativePath
- * @throws IllegalArgumentException if prefix is invalid, scope not found, or path validation fails
- */
-fun resolveFilePath(
-    filePath: String,
-    fileRoots: Map<String, Path>,
-    createIntent: Boolean = false,
-    denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
-): ResolvedPath {
-    // 1. Determine scope and extract relative path
-    val (scope, scopeKey, relativePath) =
-        when {
-            filePath.startsWith(FilePrefixes.PROJECT) ->
-                Triple(FileScope.PROJECT, "project", filePath.removePrefix(FilePrefixes.PROJECT))
-            filePath.startsWith(FilePrefixes.EXCHANGE) ->
-                throw IllegalArgumentException(
-                    "exchange:// is not supported in this version. Use project:// prefix.",
-                )
-            else ->
-                throw IllegalArgumentException(
-                    "File path must start with \"${FilePrefixes.PROJECT}\" or \"${FilePrefixes.EXCHANGE}\". " +
-                        "Use searchFiles to find files.",
-                )
-        }
-
-    // 2. Lookup root path
-    val rootPath =
-        fileRoots[scopeKey]
-            ?: throw IllegalArgumentException("No root configured for scope: $scopeKey")
-
-    // 3. Use BoundaryPathResolver for secure resolution
-    val resolver = BoundaryPathResolver(rootPath, denyPatterns)
-    val resolved = resolver.resolve(relativePath, createIntent)
-
-    return ResolvedPath(
-        absolutePath = resolved,
-        scope = scope,
-        relativePath = relativePath,
-    )
 }

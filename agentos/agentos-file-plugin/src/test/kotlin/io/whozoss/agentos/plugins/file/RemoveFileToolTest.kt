@@ -21,11 +21,12 @@ class RemoveFileToolTest : StringSpec() {
         afterEach {
             tempDir.toFile().deleteRecursively()
         }
+
         "removing existing file should succeed" {
             val tool = RemoveFileTool(tempDir)
             val file = tempDir.resolve("file.txt").also { it.writeText("content") }
 
-            val result = tool.execute(RemoveFileTool.Input("project://file.txt"))
+            val result = tool.execute(RemoveFileTool.Input("file.txt"))
 
             result shouldBe "File deleted successfully"
             file.exists() shouldBe false
@@ -34,7 +35,7 @@ class RemoveFileToolTest : StringSpec() {
         "removing non-existent file should return not found message" {
             val tool = RemoveFileTool(tempDir)
 
-            val result = tool.execute(RemoveFileTool.Input("project://nonexistent.txt"))
+            val result = tool.execute(RemoveFileTool.Input("nonexistent.txt"))
 
             result shouldContain "Path does not exist"
         }
@@ -43,18 +44,9 @@ class RemoveFileToolTest : StringSpec() {
             val tool = RemoveFileTool(tempDir)
             Files.createDirectories(tempDir.resolve("dir"))
 
-            val result = tool.execute(RemoveFileTool.Input("project://dir"))
+            val result = tool.execute(RemoveFileTool.Input("dir"))
 
             result shouldContain "Cannot remove directories"
-        }
-
-        "readOnly mode should reject removal" {
-            val tool = RemoveFileTool(tempDir, readOnly = true)
-            tempDir.resolve("file.txt").createFile()
-
-            val result = tool.execute(RemoveFileTool.Input("project://file.txt"))
-
-            result shouldContain "Cannot modify files in read-only mode"
         }
 
         "removing file through valid symlink should remove the target" {
@@ -63,10 +55,9 @@ class RemoveFileToolTest : StringSpec() {
             val linkFile = tempDir.resolve("link.txt")
             Files.createSymbolicLink(linkFile, targetFile)
 
-            val result = tool.execute(RemoveFileTool.Input("project://link.txt"))
+            val result = tool.execute(RemoveFileTool.Input("link.txt"))
 
             result shouldBe "File deleted successfully"
-            // The symlink resolution means we delete the target
             linkFile.exists() shouldBe false
         }
 
@@ -75,18 +66,18 @@ class RemoveFileToolTest : StringSpec() {
             Files.createDirectories(tempDir.resolve("a/b/c"))
             val file = tempDir.resolve("a/b/c/file.txt").also { it.writeText("content") }
 
-            val result = tool.execute(RemoveFileTool.Input("project://a/b/c/file.txt"))
+            val result = tool.execute(RemoveFileTool.Input("a/b/c/file.txt"))
 
             result shouldBe "File deleted successfully"
             file.exists() shouldBe false
         }
 
-        "invalid path should error" {
+        "path traversal attempt should error" {
             val tool = RemoveFileTool(tempDir)
 
-            val result = tool.execute(RemoveFileTool.Input("invalid-path"))
+            val result = tool.execute(RemoveFileTool.Input("../outside.txt"))
 
-            result shouldContain "must start with"
+            result shouldContain "path traversal not allowed"
         }
     }
 }

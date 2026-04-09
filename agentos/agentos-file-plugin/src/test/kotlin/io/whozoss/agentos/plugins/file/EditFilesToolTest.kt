@@ -25,18 +25,15 @@ class EditFilesToolTest : StringSpec() {
         afterEach {
             tempDir.toFile().deleteRecursively()
         }
+
         "write new file should create with content" {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://newfile.txt",
-                            "content" to "New content"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "newfile.txt", "content" to "New content"),
+                    ),
                 ),
             )
 
@@ -53,12 +50,8 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://small.txt",
-                            "content" to "New content"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "small.txt", "content" to "New content"),
+                    ),
                 ),
             )
 
@@ -75,12 +68,8 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://large.txt",
-                            "content" to "New content"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "large.txt", "content" to "New content"),
+                    ),
                 ),
             )
 
@@ -96,12 +85,8 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://newlarge.txt",
-                            "content" to largeContent
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "newlarge.txt", "content" to largeContent),
+                    ),
                 ),
             )
 
@@ -115,12 +100,8 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://a/b/c/file.txt",
-                            "content" to "nested"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "a/b/c/file.txt", "content" to "nested"),
+                    ),
                 ),
             )
 
@@ -134,16 +115,11 @@ class EditFilesToolTest : StringSpec() {
             tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://file.txt",
-                            "content" to "content"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "file.txt", "content" to "content"),
+                    ),
                 ),
             )
 
-            // Check that no .tmp files exist
             val tmpFiles = Files.list(tempDir).filter { it.fileName.toString().contains(".tmp") }.toList()
             tmpFiles.size shouldBe 0
         }
@@ -158,15 +134,10 @@ class EditFilesToolTest : StringSpec() {
                     edits = listOf(
                         mapOf(
                             "operation" to "patch",
-                            "path" to "project://file.txt",
-                            "replacements" to listOf(
-                                mapOf(
-                                    "oldPart" to "Hello world, this",
-                                    "newPart" to "Goodbye universe, that"
-                                )
-                            )
-                        )
-                    )
+                            "path" to "file.txt",
+                            "replacements" to listOf(mapOf("oldPart" to "Hello world, this", "newPart" to "Goodbye universe, that")),
+                        ),
+                    ),
                 ),
             )
 
@@ -184,21 +155,16 @@ class EditFilesToolTest : StringSpec() {
                     edits = listOf(
                         mapOf(
                             "operation" to "patch",
-                            "path" to "project://file.txt",
-                            "replacements" to listOf(
-                                mapOf(
-                                    "oldPart" to "Nonexistent chunk here",
-                                    "newPart" to "replacement"
-                                )
-                            )
-                        )
-                    )
+                            "path" to "file.txt",
+                            "replacements" to listOf(mapOf("oldPart" to "Nonexistent chunk here", "newPart" to "replacement")),
+                        ),
+                    ),
                 ),
             )
 
             result shouldContain "Chunks not found"
             result shouldContain "Nonexistent chunk here"
-            file.readText() shouldBe "Hello world" // File written but unchanged
+            file.readText() shouldBe "Hello world"
         }
 
         "patch with duplicate chunk should report error" {
@@ -211,15 +177,10 @@ class EditFilesToolTest : StringSpec() {
                     edits = listOf(
                         mapOf(
                             "operation" to "patch",
-                            "path" to "project://file.txt",
-                            "replacements" to listOf(
-                                mapOf(
-                                    "oldPart" to "Hello world here",
-                                    "newPart" to "Goodbye"
-                                )
-                            )
-                        )
-                    )
+                            "path" to "file.txt",
+                            "replacements" to listOf(mapOf("oldPart" to "Hello world here", "newPart" to "Goodbye")),
+                        ),
+                    ),
                 ),
             )
 
@@ -237,15 +198,10 @@ class EditFilesToolTest : StringSpec() {
                     edits = listOf(
                         mapOf(
                             "operation" to "patch",
-                            "path" to "project://file.txt",
-                            "replacements" to listOf(
-                                mapOf(
-                                    "oldPart" to "short",
-                                    "newPart" to "replacement"
-                                )
-                            )
-                        )
-                    )
+                            "path" to "file.txt",
+                            "replacements" to listOf(mapOf("oldPart" to "short", "newPart" to "replacement")),
+                        ),
+                    ),
                 ),
             )
 
@@ -259,17 +215,9 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://file1.txt",
-                            "content" to "Content 1"
-                        ),
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://file2.txt",
-                            "content" to "Content 2"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "file1.txt", "content" to "Content 1"),
+                        mapOf("operation" to "write", "path" to "file2.txt", "content" to "Content 2"),
+                    ),
                 ),
             )
 
@@ -287,22 +235,10 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://success.txt",
-                            "content" to "Success"
-                        ),
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://large.txt",
-                            "content" to "Should fail"
-                        ),
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://success2.txt",
-                            "content" to "Success 2"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "success.txt", "content" to "Success"),
+                        mapOf("operation" to "write", "path" to "large.txt", "content" to "Should fail"),
+                        mapOf("operation" to "write", "path" to "success2.txt", "content" to "Success 2"),
+                    ),
                 ),
             )
 
@@ -314,24 +250,6 @@ class EditFilesToolTest : StringSpec() {
             tempDir.resolve("success2.txt").exists() shouldBe true
         }
 
-        "readOnly mode should reject edits" {
-            val tool = EditFilesTool(tempDir, readOnly = true)
-
-            val result = tool.execute(
-                EditFilesTool.Input(
-                    edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://file.txt",
-                            "content" to "content"
-                        )
-                    )
-                ),
-            )
-
-            result shouldContain "Cannot modify files in read-only mode"
-        }
-
         "patch on non-existent file should error" {
             val tool = EditFilesTool(tempDir)
 
@@ -340,15 +258,10 @@ class EditFilesToolTest : StringSpec() {
                     edits = listOf(
                         mapOf(
                             "operation" to "patch",
-                            "path" to "project://nonexistent.txt",
-                            "replacements" to listOf(
-                                mapOf(
-                                    "oldPart" to "old text here 123",
-                                    "newPart" to "new"
-                                )
-                            )
-                        )
-                    )
+                            "path" to "nonexistent.txt",
+                            "replacements" to listOf(mapOf("oldPart" to "old text here 123", "newPart" to "new")),
+                        ),
+                    ),
                 ),
             )
 
@@ -366,19 +279,13 @@ class EditFilesToolTest : StringSpec() {
                     edits = listOf(
                         mapOf(
                             "operation" to "patch",
-                            "path" to "project://file.txt",
+                            "path" to "file.txt",
                             "replacements" to listOf(
-                                mapOf(
-                                    "oldPart" to "First line here",
-                                    "newPart" to "1st line modified"
-                                ),
-                                mapOf(
-                                    "oldPart" to "Second line here",
-                                    "newPart" to "2nd line modified"
-                                )
-                            )
-                        )
-                    )
+                                mapOf("oldPart" to "First line here", "newPart" to "1st line modified"),
+                                mapOf("oldPart" to "Second line here", "newPart" to "2nd line modified"),
+                            ),
+                        ),
+                    ),
                 ),
             )
 
@@ -389,9 +296,7 @@ class EditFilesToolTest : StringSpec() {
         "empty edits list should return no edits provided" {
             val tool = EditFilesTool(tempDir)
 
-            val result = tool.execute(
-                EditFilesTool.Input(edits = emptyList()),
-            )
+            val result = tool.execute(EditFilesTool.Input(edits = emptyList()))
 
             result shouldContain "No edits provided"
         }
@@ -402,12 +307,8 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://unicode.txt",
-                            "content" to "Hello 世界 🌍"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to "unicode.txt", "content" to "Hello 世界 🌍"),
+                    ),
                 ),
             )
 
@@ -416,15 +317,11 @@ class EditFilesToolTest : StringSpec() {
         }
 
         "atomic write cleanup on move failure - tmp file should be cleaned up" {
-            // This test verifies that if the atomic move fails (e.g., due to filesystem issues),
-            // the .tmp file is still cleaned up
             val tool = EditFilesTool(tempDir)
 
-            // Create a subdirectory and make it read-only to cause move failure
             val readOnlyDir = tempDir.resolve("readonly")
             Files.createDirectories(readOnlyDir)
 
-            // Try to detect if we're on a POSIX system
             val isPosix = try {
                 readOnlyDir.setPosixFilePermissions(PosixFilePermissions.fromString("r-xr-xr-x"))
                 true
@@ -436,23 +333,16 @@ class EditFilesToolTest : StringSpec() {
                 val result = tool.execute(
                     EditFilesTool.Input(
                         edits = listOf(
-                            mapOf(
-                                "operation" to "write",
-                                "path" to "project://readonly/file.txt",
-                                "content" to "test content"
-                            )
-                        )
+                            mapOf("operation" to "write", "path" to "readonly/file.txt", "content" to "test content"),
+                        ),
                     ),
                 )
 
-                // Verify error occurred
                 result shouldContain "readonly/file.txt:"
                 result shouldContain "Error"
 
-                // Restore permissions to allow cleanup
                 readOnlyDir.setPosixFilePermissions(PosixFilePermissions.fromString("rwxr-xr-x"))
 
-                // Check that no .tmp files exist in the directory
                 val tmpFiles = Files.list(readOnlyDir)
                     .filter { it.fileName.toString().contains(".tmp") }
                     .toList()
@@ -466,12 +356,8 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://.env",
-                            "content" to "SECRET=value"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to ".env", "content" to "SECRET=value"),
+                    ),
                 ),
             )
 
@@ -486,12 +372,8 @@ class EditFilesToolTest : StringSpec() {
             val result = tool.execute(
                 EditFilesTool.Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "write",
-                            "path" to "project://.env.local",
-                            "content" to "SECRET=value"
-                        )
-                    )
+                        mapOf("operation" to "write", "path" to ".env.local", "content" to "SECRET=value"),
+                    ),
                 ),
             )
 
@@ -509,21 +391,16 @@ class EditFilesToolTest : StringSpec() {
                     edits = listOf(
                         mapOf(
                             "operation" to "patch",
-                            "path" to "project://.env",
-                            "replacements" to listOf(
-                                mapOf(
-                                    "oldPart" to "OLD_SECRET=value",
-                                    "newPart" to "NEW_SECRET=changed"
-                                )
-                            )
-                        )
-                    )
+                            "path" to ".env",
+                            "replacements" to listOf(mapOf("oldPart" to "OLD_SECRET=value", "newPart" to "NEW_SECRET=changed")),
+                        ),
+                    ),
                 ),
             )
 
             result shouldContain ".env:"
             result shouldContain "Access denied"
-            tempDir.resolve(".env").readText() shouldBe "OLD_SECRET=value" // Should remain unchanged
+            tempDir.resolve(".env").readText() shouldBe "OLD_SECRET=value"
         }
     }
 }
