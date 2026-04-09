@@ -75,6 +75,14 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'integrations'])
   }
 
+  protected openLlmConfigs(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'llm-configs'])
+  }
+
+  protected openLlmModels(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'llm-models'])
+  }
+
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {

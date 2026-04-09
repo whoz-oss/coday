@@ -1,0 +1,18 @@
+<ds-entity-list
+  title="LLM Providers"
+  [items]="(configItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No LLM providers configured yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="llmConfigItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="namespace-llm-configs__back" type="button" (click)="goBack()">&#8592; Namespaces</button>
+</ds-entity-list>
+
+<!-- Item template: renders LlmConfigItemComponent for each entity-list card slot -->
+<ng-template #llmConfigItemTpl let-item>
+  @if (resolveConfig(item.id); as config) {
+    <agentos-llm-config-item [config]="config" [namespaceId]="namespaceId" (deleteRequested)="deleteConfig($event)" />
+  }
+</ng-template>

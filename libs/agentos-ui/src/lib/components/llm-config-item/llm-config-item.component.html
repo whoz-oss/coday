@@ -1,0 +1,19 @@
+<div class="llm-config-item" role="listitem">
+  <div class="llm-config-item__body">
+    <span class="llm-config-item__name">{{ config.name }}</span>
+    <span class="llm-config-item__type">{{ config.apiType }}</span>
+    @if (config.baseUrl) {
+      <span class="llm-config-item__url">{{ config.baseUrl }}</span>
+    }
+  </div>
+
+  <div class="llm-config-item__actions">
+    @if (pendingDelete()) {
+      <span class="llm-config-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    }
+  </div>
+</div>

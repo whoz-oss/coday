@@ -1,0 +1,26 @@
+<div class="llm-model-config-item" role="listitem">
+  <div class="llm-model-config-item__body">
+    <span class="llm-model-config-item__name">{{ displayTitle }}</span>
+    <span class="llm-model-config-item__api-name">{{ model.apiName }}</span>
+    @if (model.temperature !== undefined || model.maxTokens !== undefined) {
+      <span class="llm-model-config-item__params">
+        @if (model.temperature !== undefined) {
+          <span>temp: {{ model.temperature }}</span>
+        }
+        @if (model.maxTokens !== undefined) {
+          <span>max tokens: {{ model.maxTokens }}</span>
+        }
+      </span>
+    }
+  </div>
+
+  <div class="llm-model-config-item__actions">
+    @if (pendingDelete()) {
+      <span class="llm-model-config-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    }
+  </div>
+</div>

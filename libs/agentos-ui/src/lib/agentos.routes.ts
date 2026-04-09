@@ -59,6 +59,72 @@ export const AGENTOS_ROUTES: Route[] = [
               ),
           },
           {
+            path: ':namespaceId/llm-configs/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-configs/namespace-llm-configs.component').then(
+                (m) => m.NamespaceLlmConfigsComponent
+              ),
+          },
+          {
+            path: ':namespaceId/llm-configs/:llmConfigId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-configs/namespace-llm-configs.component').then(
+                (m) => m.NamespaceLlmConfigsComponent
+              ),
+          },
+          {
+            path: ':namespaceId/llm-configs',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-configs/namespace-llm-configs.component').then(
+                (m) => m.NamespaceLlmConfigsComponent
+              ),
+          },
+          {
+            path: ':namespaceId/llm-models/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-models/namespace-llm-models.component').then(
+                (m) => m.NamespaceLlmModelsComponent
+              ),
+          },
+          {
+            path: ':namespaceId/llm-models/:modelId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-models/namespace-llm-models.component').then(
+                (m) => m.NamespaceLlmModelsComponent
+              ),
+          },
+          {
+            path: ':namespaceId/llm-models',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-models/namespace-llm-models.component').then(
+                (m) => m.NamespaceLlmModelsComponent
+              ),
+          },
+          // TODO: replace /new and /:id/edit routes with LlmConfigFormComponent once implemented
+          {
+            path: ':namespaceId/llm-configs',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-configs/namespace-llm-configs.component').then(
+                (m) => m.NamespaceLlmConfigsComponent
+              ),
+          },
+          // TODO: replace /new and /:id/edit routes with LlmModelConfigFormComponent once implemented
+          {
+            path: ':namespaceId/llm-models',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-llm-models/namespace-llm-models.component').then(
+                (m) => m.NamespaceLlmModelsComponent
+              ),
+          },
+          {
             path: ':namespaceId/cases/:caseId',
             canActivate: [agentosReadyGuard],
             loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
