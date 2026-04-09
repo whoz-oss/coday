@@ -25,6 +25,7 @@ export class NamespaceItemComponent {
 
   @Output() selected = new EventEmitter<Namespace>()
   @Output() editRequested = new EventEmitter<Namespace>()
+  @Output() integrationsRequested = new EventEmitter<Namespace>()
   @Output() deleteRequested = new EventEmitter<Namespace>()
 
   protected readonly pendingDelete = signal(false)
@@ -35,6 +36,10 @@ export class NamespaceItemComponent {
 
   protected onEdit(): void {
     this.editRequested.emit(this.namespace)
+  }
+
+  protected onIntegrations(): void {
+    this.integrationsRequested.emit(this.namespace)
   }
 
   protected onDeleteArmed(): void {

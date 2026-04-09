@@ -61,7 +61,7 @@ export class NamespaceFormComponent implements OnInit {
   private loadNamespace(id: string): void {
     this.isLoading.set(true)
     this.namespaceController
-      .getById1(id)
+      .getByIdNamespace(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (ns) => {
@@ -83,12 +83,12 @@ export class NamespaceFormComponent implements OnInit {
     this.isSubmitting.set(true)
 
     const call$ = this.isEditMode()
-      ? this.namespaceController.update1(this.existingNamespace!.id ?? '', {
+      ? this.namespaceController.updateNamespace(this.existingNamespace!.id ?? '', {
           ...this.existingNamespace!,
           name: this.nameControl.value.trim(),
           description: this.descriptionControl.value.trim() || undefined,
         })
-      : this.namespaceController.create1({
+      : this.namespaceController.createNamespace({
           name: this.nameControl.value.trim(),
           ...(this.descriptionControl.value.trim() ? { description: this.descriptionControl.value.trim() } : {}),
         } as Namespace)

@@ -152,6 +152,11 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Docker Engine 29.x raised its minimum API version to 1.40.
+    // Testcontainers 1.x / docker-java 3.4.x defaults to API v1.32 which is
+    // rejected with HTTP 400. Force a supported version until Testcontainers
+    // is upgraded to 2.x (which ships docker-java 3.7+ defaulting to 1.44).
+    systemProperty("api.version", "1.44")
 }
 
 // Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
@@ -234,7 +239,7 @@ tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
 listOf("forkedSpringBootRun", "forkedSpringBootStop", "generateOpenApiDocs").forEach { taskName ->
     tasks.matching { it.name == taskName }.configureEach {
         notCompatibleWithConfigurationCache(
-            "springdoc-openapi-gradle-plugin 1.9.0 holds task references incompatible with configuration cache"
+            "springdoc-openapi-gradle-plugin 1.9.0 holds task references incompatible with configuration cache",
         )
     }
 }

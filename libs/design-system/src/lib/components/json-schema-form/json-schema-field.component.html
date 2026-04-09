@@ -1,0 +1,116 @@
+<div class="ds-field">
+  <label class="ds-field__label" [for]="inputId">
+    {{ label }}
+    @if (required()) {
+      <span class="ds-field__required" aria-hidden="true">*</span>
+    }
+  </label>
+
+  @if (description) {
+    <p class="ds-field__description">{{ description }}</p>
+  }
+
+  @switch (fieldType) {
+    @case ('text') {
+      <input
+        class="ds-field__input"
+        [type]="htmlInputType"
+        [id]="inputId"
+        [formControl]="control()"
+        [attr.required]="required() || null"
+      />
+    }
+    @case ('number') {
+      <input
+        class="ds-field__input"
+        type="number"
+        [id]="inputId"
+        [formControl]="control()"
+        [attr.required]="required() || null"
+      />
+    }
+    @case ('boolean') {
+      <div class="ds-field__checkbox-row">
+        <input class="ds-field__checkbox" type="checkbox" [id]="inputId" [formControl]="control()" />
+        <span class="ds-field__checkbox-label">{{ label }}</span>
+      </div>
+    }
+    @case ('enum') {
+      <select class="ds-field__select" [id]="inputId" [formControl]="control()" [attr.required]="required() || null">
+        @if (!required()) {
+          <option value="">— none —</option>
+        }
+        @for (option of enumOptions; track option) {
+          <option [value]="option">{{ option }}</option>
+        }
+      </select>
+    }
+    @case ('array-scalar') {
+      <div class="ds-field__array">
+        @for (item of itemArray.controls; track $index) {
+          <div class="ds-field__array-row">
+            <input
+              class="ds-field__input ds-field__input--array-item"
+              [type]="itemInputType"
+              [formControl]="getScalarItemControl($index)"
+              [attr.aria-label]="label + ' item ' + ($index + 1)"
+            />
+            <button
+              class="ds-field__array-remove"
+              type="button"
+              (click)="removeScalarItem($index)"
+              [attr.aria-label]="'Remove ' + label + ' item ' + ($index + 1)"
+            >
+              &times;
+            </button>
+          </div>
+        }
+        <button class="ds-field__array-add" type="button" (click)="addScalarItem()">+ Add {{ label }}</button>
+      </div>
+    }
+    @case ('array-object') {
+      <div class="ds-field__array">
+        @for (item of objectItems(); track item.uid) {
+          <div class="ds-field__array-object-card">
+            <div class="ds-field__array-object-header">
+              <span class="ds-field__array-object-title">{{ itemObjectSchema?.title ?? label }} {{ $index + 1 }}</span>
+              <button
+                class="ds-field__array-remove"
+                type="button"
+                (click)="removeObjectItem(item.uid)"
+                [attr.aria-label]="'Remove ' + label + ' item ' + ($index + 1)"
+              >
+                &times;
+              </button>
+            </div>
+            <ds-json-schema-form
+              [schema]="itemObjectSchema"
+              [value]="item.seed"
+              (valueChange)="onObjectItemChange(item.uid, $event)"
+            />
+          </div>
+        }
+        <button class="ds-field__array-add" type="button" (click)="addObjectItem()">+ Add {{ label }}</button>
+      </div>
+    }
+    @case ('nested-object') {
+      <div class="ds-field__nested">
+        <ds-json-schema-form
+          [schema]="fieldSchema()"
+          [value]="nestedInitialValue()"
+          (valueChange)="onNestedValueChange($event)"
+        />
+      </div>
+    }
+    @case ('textarea') {
+      <textarea
+        class="ds-field__textarea"
+        [id]="inputId"
+        rows="4"
+        [formControl]="control()"
+        [attr.required]="required() || null"
+        placeholder="JSON"
+      ></textarea>
+    }
+  }
+</div>
