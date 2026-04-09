@@ -8,9 +8,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
-import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
-import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.persistence.TestCaseEventRepository
+import io.whozoss.agentos.persistence.TestCaseRepository
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -23,6 +22,8 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,11 +62,12 @@ class CaseServiceImplSpec :
         val namespaceId: UUID = UUID.randomUUID()
         val userId: UUID = UUID.randomUUID()
         val userActor = Actor(id = userId.toString(), displayName = "Test User", role = ActorRole.USER)
-        val activeUser = User(
-            metadata = EntityMetadata(id = userId),
-            externalId = "ext-1",
-            email = "test@example.com",
-        )
+        val activeUser =
+            User(
+                metadata = EntityMetadata(id = userId),
+                externalId = "ext-1",
+                email = "test@example.com",
+            )
         val agentName = "test-agent"
         val agentId: UUID = UUID.nameUUIDFromBytes(agentName.toByteArray())
 
@@ -89,7 +91,7 @@ class CaseServiceImplSpec :
                 }
             }
 
-        /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
+        /** Build a fully-wired [CaseServiceImpl] backed by test in-memory repositories. */
         fun buildService(
             agent: Agent = finishingAgent(),
             userService: UserService = mockk { every { findById(userId) } returns activeUser },
@@ -99,9 +101,8 @@ class CaseServiceImplSpec :
                     every { getDefaultAgentName() } returns agentName
                     every { findAgentByName(agentName, any()) } returns agent
                 }
-            val caseRepository = InMemoryCaseRepository()
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            return CaseServiceImpl(agentService, caseRepository, caseEventService, userService)
+            val caseEventService = CaseEventServiceImpl(TestCaseEventRepository())
+            return CaseServiceImpl(agentService, TestCaseRepository(), caseEventService, userService)
         }
 
         // -------------------------------------------------------------------------
@@ -192,7 +193,8 @@ class CaseServiceImplSpec :
 
         "case transitions to ERROR when userId does not resolve to a known user" {
             val unknownUserId = UUID.randomUUID()
-            val actorWithUnknownUser = Actor(id = unknownUserId.toString(), displayName = "Ghost", role = ActorRole.USER)
+            val actorWithUnknownUser =
+                Actor(id = unknownUserId.toString(), displayName = "Ghost", role = ActorRole.USER)
             val userService = mockk<UserService> { every { findById(any()) } returns null }
             val service = buildService(userService = userService)
             val case = service.create(Case(namespaceId = namespaceId))
@@ -218,14 +220,14 @@ class CaseServiceImplSpec :
         // -------------------------------------------------------------------------
 
         "persisted events contain the full agent lifecycle sequence" {
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val caseEventService = CaseEventServiceImpl(TestCaseEventRepository())
             val agentService =
                 mockk<AgentService> {
                     every { getDefaultAgentName() } returns agentName
                     every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService)
+            val service = CaseServiceImpl(agentService, TestCaseRepository(), caseEventService, userService)
             val case = service.create(Case(namespaceId = namespaceId))
 
             service.addMessage(

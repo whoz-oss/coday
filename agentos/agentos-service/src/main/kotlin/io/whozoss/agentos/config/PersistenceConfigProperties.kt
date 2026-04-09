@@ -7,15 +7,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *
  * Bound from the `agentos.persistence` prefix in application.yml.
  *
- * In-memory is the **default** fallback mode (no persistence between restarts).
- * Set `agentos.persistence.mode=embedded-neo4j` for durable local deployments,
- * or `neo4j` to connect to a standalone server.
+ * Set `agentos.persistence.mode=embedded-neo4j` (default) for durable local
+ * deployments, or `neo4j` to connect to a standalone server.
  *
  * Example (application.yml):
  * ```yaml
  * agentos:
  *   persistence:
- *     mode: embedded-neo4j     # or: neo4j, in-memory
+ *     mode: embedded-neo4j     # or: neo4j
  * ```
  *
  * Override with environment variables (Spring Boot relaxed binding):
@@ -31,11 +30,10 @@ data class PersistenceConfigProperties(
     val dataDir: String = "data/",
     /**
      * Persistence mode:
-     * - 'embedded-neo4j' (default for production) — in-process Neo4j engine, no Docker required
+     * - 'embedded-neo4j' (default) — in-process Neo4j engine, no Docker required
      * - 'neo4j'          — standalone Neo4j server (configure spring.neo4j.*)
-     * - 'in-memory'      — in-memory repositories, data lost on restart (default fallback)
      */
-    val mode: String = "in-memory",
+    val mode: String = "embedded-neo4j",
     /**
      * Bolt port for the embedded Neo4j engine.
      * Defaults to 7688 to avoid conflicting with a standalone Neo4j instance
