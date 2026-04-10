@@ -68,4 +68,12 @@ class LlmModelConfigServiceImpl(
         llmConfigId: UUID,
         alias: String,
     ): LlmModelConfig? = repository.findByParent(llmConfigId).firstOrNull { it.alias == alias }
+
+    override fun findModelConfig(
+        namespaceId: UUID,
+        name: String,
+    ): LlmModelConfig? =
+        repository.findByNamespaceId(namespaceId)
+            .filter { it.alias.equals(name, ignoreCase = true) }
+            .maxByOrNull { it.priority }
 }

@@ -35,4 +35,19 @@ interface LlmModelConfigService : EntityService<LlmModelConfig, UUID> {
      * [io.whozoss.agentos.llmConfig.LlmConfig] is needed.
      */
     fun findByNamespaceId(namespaceId: UUID): List<LlmModelConfig>
+
+    /**
+     * Find the [LlmModelConfig] whose [LlmModelConfig.alias] matches [name]
+     * (case-insensitive) within the given namespace, preferring the highest
+     * [LlmModelConfig.priority] when multiple entries share the same alias.
+     *
+     * The default value of [name] is `"default"`, which is the conventional alias
+     * for the primary model in a namespace.
+     *
+     * Returns `null` when no config in the namespace carries a matching alias.
+     */
+    fun findModelConfig(
+        namespaceId: UUID,
+        name: String = "default",
+    ): LlmModelConfig?
 }

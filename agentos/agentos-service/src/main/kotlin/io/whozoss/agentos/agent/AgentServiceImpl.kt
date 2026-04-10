@@ -119,16 +119,8 @@ class AgentServiceImpl(
         return modelConfig to providerConfig
     }
 
-    /**
-     * Find the [LlmModelConfig] named "default" (matched against [LlmModelConfig.alias],
-     * case-insensitive) with the highest priority among all matching entries.
-     *
-     * Returns `null` when no config in the namespace carries the "default" alias.
-     */
     private fun findDefaultModelConfig(namespaceId: UUID): LlmModelConfig? =
-        llmModelConfigService.findByNamespaceId(namespaceId)
-            .filter { it.alias.equals("default", ignoreCase = true) }
-            .maxByOrNull { it.priority }
+        llmModelConfigService.findModelConfig(namespaceId)
 
     // -------------------------------------------------------------------------
     // Agent instantiation

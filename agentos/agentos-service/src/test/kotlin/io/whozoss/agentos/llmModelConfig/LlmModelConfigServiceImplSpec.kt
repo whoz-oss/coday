@@ -52,6 +52,7 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         nsId: UUID = namespaceId,
         apiName: String = "claude-haiku-4-5",
         alias: String? = null,
+        priority: Int = 0,
         temperature: Double? = null,
         maxTokens: Int? = null,
     ): LlmModelConfig =
@@ -61,6 +62,7 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
             namespaceId = nsId,
             apiName = apiName,
             alias = alias,
+            priority = priority,
             temperature = temperature,
             maxTokens = maxTokens,
         )
@@ -209,6 +211,74 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
         "delete returns false for unknown id" {
             val (service, _) = newService()
             service.delete(UUID.randomUUID()) shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // findModelConfig
+        // -------------------------------------------------------------------------
+
+        "findModelConfig returns the config aliased 'default'" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-sonnet-4-5", alias = "default"))
+
+            val found = service.findModelConfig(namespaceId)
+            found.shouldNotBeNull()
+            found.alias shouldBe "default"
+        }
+
+        "findModelConfig returns the highest-priority config when multiple are named 'default' across different providers" {
+            // Two different llmConfigIds in the same namespace can each have a "default" alias —
+            // the uniqueness constraint is per (llmConfigId, alias), not per namespace.
+            val llmConfigService = mockk<LlmConfigService>()
+            val providerA = UUID.randomUUID()
+            val providerB = UUID.randomUUID()
+            every { llmConfigService.getById(providerA) } answers { stubLlmConfig(providerA) }
+            every { llmConfigService.getById(providerB) } answers { stubLlmConfig(providerB) }
+            val service = LlmModelConfigServiceImpl(InMemoryLlmModelConfigRepository(), llmConfigService)
+
+            service.create(modelConfig(llmConfigId = providerA, apiName = "claude-haiku-4-5", alias = "default", priority = 0))
+            service.create(modelConfig(llmConfigId = providerB, apiName = "claude-sonnet-4-5", alias = "default", priority = 10))
+
+            val found = service.findModelConfig(namespaceId)
+            found.shouldNotBeNull()
+            found.apiName shouldBe "claude-sonnet-4-5"
+        }
+
+        "findModelConfig is case-insensitive on the alias" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-sonnet-4-5", alias = "Default"))
+
+            service.findModelConfig(namespaceId).shouldNotBeNull()
+        }
+
+        "findModelConfig returns null when no config carries the requested alias" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-sonnet-4-5", alias = "sonnet", priority = 100))
+
+            service.findModelConfig(namespaceId).shouldBeNull()
+        }
+
+        "findModelConfig ignores high-priority configs with a different alias" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "gpt-4o", alias = "big", priority = 100))
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-sonnet-4-5", alias = "default", priority = 1))
+
+            val found = service.findModelConfig(namespaceId)
+            found.shouldNotBeNull()
+            found.apiName shouldBe "claude-sonnet-4-5"
+        }
+
+        "findModelConfig accepts a custom name" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5", alias = "small"))
+
+            service.findModelConfig(namespaceId, "small").shouldNotBeNull()
+            service.findModelConfig(namespaceId, "default").shouldBeNull()
+        }
+
+        "findModelConfig returns null for an empty namespace" {
+            val (service, _) = newService()
+            service.findModelConfig(namespaceId).shouldBeNull()
         }
 
         "deleteByParent removes all model configs for a provider" {
