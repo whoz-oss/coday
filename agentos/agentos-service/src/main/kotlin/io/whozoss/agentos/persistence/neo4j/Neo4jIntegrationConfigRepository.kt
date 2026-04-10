@@ -11,21 +11,22 @@ import java.util.UUID
 /**
  * Neo4j-backed implementation of [IntegrationConfigRepository].
  *
+ * Delegates to [IntegrationConfigNodeNeo4jRepository] for all storage operations.
  * Parent type is [UUID] representing the namespaceId.
- *
- * [parameters] is serialised to/from JSON string by [IntegrationConfigNode] via
- * the injected [objectMapper], keeping the Neo4j node flat.
  */
 open class Neo4jIntegrationConfigRepository(
     private val neo4jRepository: IntegrationConfigNodeNeo4jRepository,
     private val objectMapper: ObjectMapper,
 ) : IntegrationConfigRepository {
-
     override fun save(entity: IntegrationConfig): IntegrationConfig =
         neo4jRepository
             .save(IntegrationConfigNode.fromDomain(entity, objectMapper))
             .toDomain(objectMapper)
-            .also { logger.debug { "[Neo4jIntegrationConfigRepository] Saved config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
+            .also {
+                logger.debug {
+                    "[Neo4jIntegrationConfigRepository] Saved config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}"
+                }
+            }
 
     override fun findByIds(ids: Collection<UUID>): List<IntegrationConfig> =
         neo4jRepository

@@ -77,7 +77,6 @@ are inlined as individual scalar properties on the node:
 @Node("Case")
 data class CaseNode(
     @Id val id: String,
-    val namespaceId: String,
     val status: String,
     val title: String,
     val created: Instant,
@@ -85,6 +84,8 @@ data class CaseNode(
     val modified: Instant,
     val modifiedBy: String?,
     val removed: Boolean?,
+    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
+    var namespace: NamespaceNode? = null,
 )
 ```
 
@@ -120,23 +121,31 @@ On write, the child node carries a **stub** `NamespaceNode` containing only the
 existing properties, so saving a Case or IntegrationConfig cannot corrupt the
 Namespace. The stub is created via `NamespaceNode.stub(namespaceId)`.
 
-#### Denormalised namespaceId property
+The `@Relationship` field is declared as a nullable `var` with a `null` default so
+SDN can call the primary constructor before injecting the field:
 
-Each child node also stores `namespaceId` as a plain scalar property alongside
-the `@Relationship` field. This dual representation exists for a practical reason:
-SDN 7 does **not** auto-inject `@Relationship` fields when a custom `@Query` method
-returns results — it only does so for its own generated queries. Filtering by the
-scalar property keeps custom queries simple and reliable:
-
-```cypher
-MATCH (c:Case)
-WHERE c.namespaceId = $namespaceId AND (c.removed IS NULL OR c.removed = false)
-RETURN c ORDER BY c.created ASC
+```kotlin
+@Relationship(type = "BELONGS_TO", direction = OUTGOING)
+var namespace: NamespaceNode? = null
 ```
 
-The `BELONGS_TO` edge is still written to the graph on every save and is available
-for ad-hoc traversal queries, graph visualisation, and future Cypher that does
-need to hop the relationship.
+`toDomain()` reads `namespace!!.id` — a null here is a data-integrity error and
+should surface as an NPE rather than be silently ignored.
+
+#### Custom @Query: return node + relationship + related node
+
+SDN 7 only injects `@Relationship` fields when the query result contains the
+relationship instance and the related node explicitly. Returning only the owning
+node leaves the field null. The correct form is to name and return all three
+elements:
+
+```cypher
+MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false)
+RETURN c, r, ns ORDER BY c.created ASC
+```
+
+SDN maps `r` and `ns` back onto `c.namespace` automatically.
 
 `CaseEventNode` keeps `caseId` as a plain string property (not a relationship)
 because events are fetched in bulk (hundreds per case) and eagerly loading the

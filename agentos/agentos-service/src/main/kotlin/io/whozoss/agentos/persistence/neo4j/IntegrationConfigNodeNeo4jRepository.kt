@@ -10,16 +10,13 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     /**
      * Find all non-removed integration configs belonging to a namespace, ordered by name.
      *
-     * Filters by the denormalised [IntegrationConfigNode.namespaceId] property rather
-     * than traversing the BELONGS_TO relationship, keeping the query simple and
-     * compatible with SDN's custom @Query result mapping (which does not
-     * auto-inject @Relationship fields). The graph edge is still written on save
-     * via [IntegrationConfigNode.namespace] — it exists in the graph for traversal.
+     * Returning `c, r, ns` (node, relationship, node) gives SDN everything it needs
+     * to map the @Relationship field on [IntegrationConfigNode] from the query result.
      */
     @Query(
-        $$"""MATCH (c:IntegrationConfig)
-            WHERE c.namespaceId = $namespaceId AND (c.removed IS NULL OR c.removed = false)
-            RETURN c ORDER BY c.name ASC
+        $$"""MATCH (c:IntegrationConfig)-[r:BELONGS_TO]->(ns:Namespace)
+            WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false)
+            RETURN c, r, ns ORDER BY c.name ASC
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<IntegrationConfigNode>
