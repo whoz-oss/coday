@@ -281,6 +281,45 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
             service.findModelConfig(namespaceId).shouldBeNull()
         }
 
+        "findModelConfig falls back to apiName when no alias matches" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-sonnet-4-5", alias = null))
+
+            val found = service.findModelConfig(namespaceId, "claude-sonnet-4-5")
+            found.shouldNotBeNull()
+            found.apiName shouldBe "claude-sonnet-4-5"
+        }
+
+        "findModelConfig prefers alias over apiName when both could match" {
+            // alias match wins even if the apiName match has higher priority
+            val llmConfigService3 = mockk<LlmConfigService>()
+            every { llmConfigService3.getById(any()) } answers { stubLlmConfig(firstArg()) }
+            val svc = LlmModelConfigServiceImpl(InMemoryLlmModelConfigRepository(), llmConfigService3)
+            val providerA = UUID.randomUUID()
+            val providerB = UUID.randomUUID()
+            svc.create(modelConfig(llmConfigId = providerA, apiName = "claude-haiku-4-5", alias = "sonnet", priority = 0))
+            svc.create(modelConfig(llmConfigId = providerB, apiName = "sonnet", alias = null, priority = 100))
+
+            val found = svc.findModelConfig(namespaceId, "sonnet")
+            found.shouldNotBeNull()
+            found.alias shouldBe "sonnet"
+            found.apiName shouldBe "claude-haiku-4-5"
+        }
+
+        "findModelConfig apiName fallback is case-insensitive" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "Claude-Sonnet-4-5", alias = null))
+
+            service.findModelConfig(namespaceId, "claude-sonnet-4-5").shouldNotBeNull()
+        }
+
+        "findModelConfig returns null when neither alias nor apiName matches" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5", alias = "small"))
+
+            service.findModelConfig(namespaceId, "unknown").shouldBeNull()
+        }
+
         "deleteByParent removes all model configs for a provider" {
             val (service, llmConfigId) = newService()
 

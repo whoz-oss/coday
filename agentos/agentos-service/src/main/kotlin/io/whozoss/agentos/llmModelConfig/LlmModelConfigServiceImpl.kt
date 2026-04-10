@@ -72,8 +72,13 @@ class LlmModelConfigServiceImpl(
     override fun findModelConfig(
         namespaceId: UUID,
         name: String,
-    ): LlmModelConfig? =
-        repository.findByNamespaceId(namespaceId)
+    ): LlmModelConfig? {
+        val candidates = repository.findByNamespaceId(namespaceId)
+        return candidates
             .filter { it.alias.equals(name, ignoreCase = true) }
             .maxByOrNull { it.priority }
+            ?: candidates
+                .filter { it.apiName.equals(name, ignoreCase = true) }
+                .maxByOrNull { it.priority }
+    }
 }

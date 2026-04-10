@@ -37,14 +37,18 @@ interface LlmModelConfigService : EntityService<LlmModelConfig, UUID> {
     fun findByNamespaceId(namespaceId: UUID): List<LlmModelConfig>
 
     /**
-     * Find the [LlmModelConfig] whose [LlmModelConfig.alias] matches [name]
-     * (case-insensitive) within the given namespace, preferring the highest
-     * [LlmModelConfig.priority] when multiple entries share the same alias.
+     * Find the [LlmModelConfig] for [name] within the given namespace.
+     *
+     * Resolution order:
+     * 1. Match [LlmModelConfig.alias] (case-insensitive). If one or more configs match,
+     *    return the one with the highest [LlmModelConfig.priority].
+     * 2. If no alias matches, fall back to [LlmModelConfig.apiName] (case-insensitive)
+     *    and again return the highest-priority match.
      *
      * The default value of [name] is `"default"`, which is the conventional alias
      * for the primary model in a namespace.
      *
-     * Returns `null` when no config in the namespace carries a matching alias.
+     * Returns `null` when neither alias nor apiName matches anything in the namespace.
      */
     fun findModelConfig(
         namespaceId: UUID,
