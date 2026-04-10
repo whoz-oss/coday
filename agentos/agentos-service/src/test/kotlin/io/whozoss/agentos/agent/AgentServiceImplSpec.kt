@@ -93,7 +93,7 @@ class AgentServiceImplSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
@@ -108,7 +108,7 @@ class AgentServiceImplSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "claude-sonnet-4-5") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
@@ -118,35 +118,28 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         "findAgentByName resolves to higher-priority config when two configs share the same alias" {
-            // Two configs both aliased 'sonnet' but pointing at different models —
-            // priority only breaks the tie within the matching set, not across names.
-            val lowPriority = modelConfig(apiName = "claude-haiku-4-5", alias = "sonnet", priority = 0)
+            // Resolution logic (alias priority, tie-breaking) is tested exhaustively in
+            // LlmModelConfigServiceImplSpec. Here we only verify that findAgentByName
+            // delegates to findModelConfig and uses the returned config.
             val highPriority = modelConfig(apiName = "claude-sonnet-4-5", alias = "sonnet", priority = 10)
-            // A third config with a different alias and even higher priority must NOT win.
-            val unrelated = modelConfig(apiName = "gpt-4o", alias = "big", priority = 100)
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(lowPriority, highPriority, unrelated)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns highPriority
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(highPriority, provider) } returns chatClient
 
             agentService.findAgentByName("sonnet", context)
 
-            // The high-priority sonnet wins, not the unrelated high-priority config
             verify(exactly = 1) { chatClientProvider.getChatClient(highPriority, provider) }
-            verify(exactly = 0) { chatClientProvider.getChatClient(lowPriority, provider) }
-            verify(exactly = 0) { chatClientProvider.getChatClient(unrelated, provider) }
         }
 
         "findAgentByName prefers alias over apiName when both could match" {
-            // alias = "sonnet" takes precedence even if another model has apiName = "sonnet"
             val withAlias = modelConfig(apiName = "claude-sonnet-4-5", alias = "sonnet")
-            val withApiName = modelConfig(apiName = "sonnet", alias = null)
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(withAlias, withApiName)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns withAlias
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(withAlias, provider) } returns chatClient
 
@@ -154,7 +147,6 @@ class AgentServiceImplSpec : StringSpec() {
 
             agent.name shouldBe "sonnet"
             verify(exactly = 1) { chatClientProvider.getChatClient(withAlias, provider) }
-            verify(exactly = 0) { chatClientProvider.getChatClient(withApiName, provider) }
         }
 
         "findAgentByName matching is case-insensitive" {
@@ -162,7 +154,7 @@ class AgentServiceImplSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
@@ -170,7 +162,7 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         "findAgentByName throws when no LlmModelConfig matches in the namespace" {
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns emptyList()
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns null
 
             shouldThrow<IllegalArgumentException> {
                 agentService.findAgentByName("sonnet", context)
@@ -186,7 +178,7 @@ class AgentServiceImplSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
@@ -208,7 +200,7 @@ class AgentServiceImplSpec : StringSpec() {
             val model = modelConfig()
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
@@ -241,7 +233,7 @@ class AgentServiceImplSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
@@ -271,7 +263,7 @@ class AgentServiceImplSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
@@ -289,7 +281,7 @@ class AgentServiceImplSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 

@@ -1,12 +1,16 @@
 package io.whozoss.agentos.llmModelConfig
 
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
@@ -50,14 +54,22 @@ class LlmModelConfigController(
             maxTokens = entity.maxTokens,
         )
 
+    /**
+     * Convert a resource to a domain entity for **create** only.
+     *
+     * [namespaceId] and [userId] are intentionally omitted here — they are
+     * server-resolved from the parent [io.whozoss.agentos.llmConfig.LlmConfig] by
+     * [LlmModelConfigServiceImpl.create] before persisting. The nil-UUID placeholder
+     * is never stored; the service always overwrites it.
+     *
+     * For **update**, use [toDomainForUpdate] so server-owned fields are preserved
+     * from the persisted record rather than accepted from the client.
+     */
     override fun toDomain(resource: LlmModelConfigResource): LlmModelConfig =
         LlmModelConfig(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
             llmConfigId = resource.llmConfigId!!,
-            // namespaceId and userId are server-resolved at create time — a placeholder
-            // is used here; LlmModelConfigServiceImpl.create() overwrites them from the
-            // parent LlmConfig before persisting.
-            namespaceId = resource.namespaceId ?: UUID.fromString("00000000-0000-0000-0000-000000000000"),
+            namespaceId = null,
             userId = resource.userId,
             apiName = resource.apiName,
             alias = resource.alias,
@@ -65,6 +77,37 @@ class LlmModelConfigController(
             temperature = resource.temperature,
             maxTokens = resource.maxTokens,
         )
+
+    /**
+     * Merge an update resource onto an existing persisted entity.
+     *
+     * Server-owned fields ([LlmModelConfig.namespaceId], [LlmModelConfig.userId],
+     * [LlmModelConfig.llmConfigId]) are always taken from [existing] — the client
+     * cannot change them via a PUT. Client-supplied fields overwrite the rest.
+     */
+    private fun toDomainForUpdate(resource: LlmModelConfigResource, existing: LlmModelConfig): LlmModelConfig =
+        existing.copy(
+            apiName = resource.apiName,
+            alias = resource.alias,
+            priority = resource.priority,
+            temperature = resource.temperature,
+            maxTokens = resource.maxTokens,
+        )
+
+    /**
+     * PUT /{id} — update mutable fields of an existing model config.
+     *
+     * Server-owned fields (namespaceId, userId, llmConfigId) are preserved from the
+     * persisted record and cannot be changed by the client.
+     */
+    override fun update(
+        id: UUID,
+        @Valid @RequestBody resource: LlmModelConfigResource,
+    ): LlmModelConfigResource {
+        val existing = service.findById(id)
+            ?: throw ResourceNotFoundException("LlmModelConfig not found: $id")
+        return toResource(service.update(toDomainForUpdate(resource, existing)))
+    }
 
     /**
      * GET /by-namespaceId/{namespaceId} — list all model configs in a namespace.

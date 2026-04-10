@@ -137,6 +137,23 @@ class LlmModelConfigControllerSpec : StringSpec({
         result shouldBe controller.toResource(updatedDomain)
     }
 
+    "update preserves server-owned fields (namespaceId, llmConfigId) regardless of client payload" {
+        val m = model()
+        // Client sends a resource with a different (or null) namespaceId — server must ignore it
+        val clientResource = resource(id = m.id).copy(namespaceId = null)
+        val updatedDomain = m.copy(alias = "UPDATED")
+        every { service.findById(m.id) } returns m
+        every { service.update(any()) } answers {
+            val saved = firstArg<LlmModelConfig>()
+            // namespaceId must come from the persisted entity, not the client payload
+            saved.namespaceId shouldBe namespaceId
+            saved.llmConfigId shouldBe llmConfigId
+            updatedDomain
+        }
+
+        controller.update(m.id, clientResource)
+    }
+
     "update throws 404 when entity is not found" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null

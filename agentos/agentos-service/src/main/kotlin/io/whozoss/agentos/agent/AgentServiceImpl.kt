@@ -79,33 +79,25 @@ class AgentServiceImpl(
     /**
      * Resolve a [LlmModelConfig] + [LlmConfig] pair for [name] within [namespaceId].
      *
-     * Matching order: alias first, then apiName.
+     * Delegates resolution to [LlmModelConfigService.findModelConfig] (alias first,
+     * then apiName, highest priority wins within each group).
      * Throws [IllegalArgumentException] if no match is found.
      */
     private fun resolveModelPair(
         name: String,
         namespaceId: UUID,
     ): Pair<LlmModelConfig, LlmConfig> {
-        val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
+        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId" }
 
-        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId — ${candidates.size} candidate(s)" }
-
-        val aliasMatch = candidates
-            .filter { it.alias.equals(name, ignoreCase = true) }
-            .maxByOrNull { it.priority }
-        val modelConfig = aliasMatch
-            ?: candidates
-                .filter { it.apiName.equals(name, ignoreCase = true) }
-                .maxByOrNull { it.priority }
+        val modelConfig = llmModelConfigService.findModelConfig(namespaceId, name)
             ?: throw IllegalArgumentException(
                 "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
                     "Configure an LlmModelConfig with alias or apiName matching '$name'.",
             )
 
-        val matchedOn = if (aliasMatch != null) "alias" else "apiName"
         logger.info {
             "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiName}' " +
-                "(matched on $matchedOn, priority=${modelConfig.priority}, llmConfigId=${modelConfig.llmConfigId})"
+                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, llmConfigId=${modelConfig.llmConfigId})"
         }
 
         val providerConfig = llmConfigService.getById(modelConfig.llmConfigId)
