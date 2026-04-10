@@ -67,6 +67,7 @@
   }
 
   &__input,
+  &__textarea,
   &__select {
     width: 100%;
     padding: 0.625rem 0.875rem;
@@ -87,6 +88,12 @@
     &::placeholder {
       color: var(--color-text-secondary, #6e6e73);
     }
+  }
+
+  &__textarea {
+    resize: vertical;
+    min-height: 4.5rem;
+    line-height: 1.5;
   }
 
   &__select {
