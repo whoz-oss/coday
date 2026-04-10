@@ -28,6 +28,7 @@ open class Neo4jCaseEventRepository(
     override fun save(entity: CaseEvent): CaseEvent =
         caseEventNodeNeo4jRepository
             .save(mapper.fromDomain(entity))
+            .also { caseEventNodeNeo4jRepository.linkEventToCase(it.id, it.caseId) }
             .let { mapper.toDomain(it) }
             .also { logger.debug { "[Neo4jCaseEventRepository] Saved ${entity.type.value} event ${entity.id} for case ${entity.caseId}" } }
 

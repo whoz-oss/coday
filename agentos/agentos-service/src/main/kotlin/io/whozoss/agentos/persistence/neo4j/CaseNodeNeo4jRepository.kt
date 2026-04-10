@@ -10,8 +10,10 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     /**
      * Find all non-removed cases belonging to a namespace, ordered by creation time.
      *
-     * Returning `c, r, ns` (node, relationship, node) gives SDN everything it needs
-     * to map the @Relationship field on [CaseNode] from the query result.
+     * Traverses the BELONGS_TO edge and filters by the Namespace id. The edge is
+     * always present because [linkCaseToNamespace] is called after every save.
+     * Returning `c, r, ns` gives SDN everything it needs to map the
+     * [CaseNode.namespace] @Relationship field.
      */
     @Query(
         $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
@@ -20,4 +22,19 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<CaseNode>
+
+    /**
+     * Creates the `BELONGS_TO` relationship from a Case node to its Namespace node.
+     *
+     * Called after saving a Case. Using an explicit query avoids SDN writing
+     * stub [NamespaceNode] properties (empty name/description) onto the existing
+     * Namespace node when the relationship is expressed via the @Relationship field.
+     */
+    @Query(
+        $$"""MATCH (c:Case {id: $caseId})
+            MATCH (ns:Namespace {id: $namespaceId})
+            MERGE (c)-[:BELONGS_TO]->(ns)
+            """,
+    )
+    fun linkCaseToNamespace(caseId: String, namespaceId: String)
 }

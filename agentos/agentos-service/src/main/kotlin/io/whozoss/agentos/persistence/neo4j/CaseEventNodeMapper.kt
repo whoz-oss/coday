@@ -21,6 +21,11 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
+// Note: fromDomain does NOT set the `case` @Relationship field. The BELONGS_TO
+// edge is created separately via CaseEventNodeNeo4jRepository.linkEventToCase()
+// after the node is saved. This avoids SDN writing stub CaseNode properties
+// (empty status/title) onto the existing Case node.
+
 /**
  * Maps between [CaseEvent] domain objects and their [CaseEventNode] graph projections.
  *
@@ -67,8 +72,8 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             is TextChunkEvent -> fromDomain(event)
         }
 
-    fun withRemoved(node: CaseEventNode, removed: Boolean?): CaseEventNode {
-        val updated = when (node) {
+    fun withRemoved(node: CaseEventNode, removed: Boolean?): CaseEventNode =
+        when (node) {
             is CaseStatusEventNode -> CaseStatusEventNode(node.id, node.caseId, node.namespaceId, node.timestamp, node.status, node.created, node.createdBy, node.modified, node.modifiedBy, removed)
             is WarnEventNode -> WarnEventNode(node.id, node.caseId, node.namespaceId, node.timestamp, node.message, node.created, node.createdBy, node.modified, node.modifiedBy, removed)
             is AgentSelectedEventNode -> AgentSelectedEventNode(node.id, node.caseId, node.namespaceId, node.timestamp, node.agentId, node.agentName, node.created, node.createdBy, node.modified, node.modifiedBy, removed)
@@ -84,9 +89,6 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             is ToolSelectedEventNode -> ToolSelectedEventNode(node.id, node.caseId, node.namespaceId, node.timestamp, node.agentId, node.toolName, node.created, node.createdBy, node.modified, node.modifiedBy, removed)
             is TextChunkEventNode -> TextChunkEventNode(node.id, node.caseId, node.namespaceId, node.timestamp, node.chunk, node.created, node.createdBy, node.modified, node.modifiedBy, removed)
         }
-        updated.case = node.case
-        return updated
-    }
 
     // ─── toDomain ──────────────────────────────────────────────────────────────────────────
 
@@ -241,7 +243,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: WarnEvent) =
         WarnEventNode(
@@ -251,7 +253,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: AgentSelectedEvent) =
         AgentSelectedEventNode(
@@ -261,7 +263,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: AgentFinishedEvent) =
         AgentFinishedEventNode(
@@ -271,7 +273,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: AgentRunningEvent) =
         AgentRunningEventNode(
@@ -281,7 +283,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: MessageEvent) =
         MessageEventNode(
@@ -292,7 +294,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: ToolRequestEvent) =
         ToolRequestEventNode(
@@ -302,7 +304,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: ToolResponseEvent) =
         ToolResponseEventNode(
@@ -314,7 +316,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: ThinkingEvent) =
         ThinkingEventNode(
@@ -323,7 +325,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: QuestionEvent) =
         QuestionEventNode(
@@ -335,7 +337,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: AnswerEvent) =
         AnswerEventNode(
@@ -347,7 +349,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: IntentionGeneratedEvent) =
         IntentionGeneratedEventNode(
@@ -357,7 +359,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: ToolSelectedEvent) =
         ToolSelectedEventNode(
@@ -367,7 +369,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     private fun fromDomain(e: TextChunkEvent) =
         TextChunkEventNode(
@@ -377,7 +379,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             created = e.metadata.created, createdBy = e.metadata.createdBy,
             modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
-        ).also { it.case = CaseNode.stub(e.caseId) }
+        )
 
     // ─── Shared helper ─────────────────────────────────────────────────────────────────────
 

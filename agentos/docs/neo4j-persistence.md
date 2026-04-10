@@ -77,6 +77,7 @@ are inlined as individual scalar properties on the node:
 @Node("Case")
 data class CaseNode(
     @Id val id: String,
+    val namespaceId: String,   // scalar — always written, read by toDomain()
     val status: String,
     val title: String,
     val created: Instant,
@@ -85,7 +86,7 @@ data class CaseNode(
     val modifiedBy: String?,
     val removed: Boolean?,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
-    var namespace: NamespaceNode? = null,
+    var namespace: NamespaceNode? = null,  // populated on read via RETURN c, r, ns
 )
 ```
 
@@ -108,36 +109,55 @@ This avoids polluting the graph with `removed: false` on every node.
 
 ### Parent relationships as graph edges
 
-Parent links for `Case` and `IntegrationConfig` are expressed as real Neo4j
-relationships using SDN `@Relationship`:
+All parent links are stored as real Neo4j relationships:
 
 ```
 (:Case)-[:BELONGS_TO]->(:Namespace)
 (:IntegrationConfig)-[:BELONGS_TO]->(:Namespace)
+(:CaseEvent)-[:BELONGS_TO]->(:Case)
 ```
 
-On write, the child node carries a **stub** `NamespaceNode` containing only the
-`@Id`. SDN issues a `MERGE` on the Namespace node by id and never overwrites its
-existing properties, so saving a Case or IntegrationConfig cannot corrupt the
-Namespace. The stub is created via `NamespaceNode.stub(namespaceId)`.
-
-The `@Relationship` field is declared as a nullable `var` with a `null` default so
-SDN can call the primary constructor before injecting the field:
+The `@Relationship` field on each node class is declared as a nullable `var` so
+SDN can call the primary constructor before injecting the field on reads:
 
 ```kotlin
 @Relationship(type = "BELONGS_TO", direction = OUTGOING)
 var namespace: NamespaceNode? = null
 ```
 
-`toDomain()` reads `namespace!!.id` — a null here is a data-integrity error and
-should surface as an NPE rather than be silently ignored.
+#### Writing the edge: always use a dedicated link query
 
-#### Custom @Query: return node + relationship + related node
+**Never** write the relationship by setting the `@Relationship` field to a stub
+node in `fromDomain`. SDN does not MERGE the related node by `@Id` — it saves
+all properties of the stub, overwriting the real node's data with empty values
+(e.g. `name = ""`, `status = ""`).
+
+Instead, save the owning node first (with no `@Relationship` field set), then
+call a dedicated `@Query` that MATCHes both existing nodes and MERGEs only the
+edge between them:
+
+```kotlin
+// Repository interface
+@Query("""MATCH (c:Case {id: $caseId})
+          MATCH (ns:Namespace {id: $namespaceId})
+          MERGE (c)-[:BELONGS_TO]->(ns)""")
+fun linkCaseToNamespace(caseId: String, namespaceId: String)
+
+// Repository implementation
+override fun save(entity: Case): Case =
+    caseNodeNeo4jRepository
+        .save(CaseNode.fromDomain(entity))
+        .also { caseNodeNeo4jRepository.linkCaseToNamespace(it.id, entity.namespaceId.toString()) }
+        .toDomain()
+```
+
+The same pattern applies to `IntegrationConfig → Namespace` (`linkConfigToNamespace`)
+and `CaseEvent → Case` (`linkEventToCase`).
+
+#### Reading the relationship: return node + relationship + related node
 
 SDN 7 only injects `@Relationship` fields when the query result contains the
-relationship instance and the related node explicitly. Returning only the owning
-node leaves the field null. The correct form is to name and return all three
-elements:
+relationship instance and the related node explicitly. The correct form:
 
 ```cypher
 MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
@@ -145,22 +165,35 @@ WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false)
 RETURN c, r, ns ORDER BY c.created ASC
 ```
 
-SDN maps `r` and `ns` back onto `c.namespace` automatically.
+For `CaseEvent`, the `linkEventToCase` call runs after the node save, so the
+edge may not exist yet when `findActiveByCaseId` is called. Use `OPTIONAL MATCH`
+so the query still returns results when the edge is absent:
 
-`CaseEventNode` follows the same pattern, stored as a
-`(:CaseEvent)-[:BELONGS_TO]->(:Case)` edge. The `caseId` scalar is kept for
-the same reason as `namespaceId` on `CaseNode` — `findActiveByCaseId` filters
-on it, and `toDomain()` reads from it. The query returns `e, r, c` so SDN maps
-the `case` field correctly.
+```cypher
+MATCH (e:CaseEvent)
+WHERE e.caseId = $caseId AND (e.removed IS NULL OR e.removed = false)
+OPTIONAL MATCH (e)-[r:BELONGS_TO]->(c:Case)
+RETURN e, r, c ORDER BY e.timestamp ASC, e.id ASC
+```
 
-### Stub nodes on write
+#### Scalar denormalisation for toDomain()
 
-Whenever a node is written with a `@Relationship` field, the related node is
-provided as a **stub** carrying only the `@Id`. SDN MERGEs by `@Id` on save
-and never overwrites existing properties of the related node:
+The node returned by `save()` does not have its `@Relationship` field injected
+— that only happens for custom queries returning `node, rel, related`. `toDomain()`
+therefore reads the parent id from a **scalar property** on the node:
 
-- `CaseNode.fromDomain` → `NamespaceNode.stub(namespaceId)`
-- `CaseEventNodeMapper.fromDomain` → `CaseNode.stub(caseId)`
+```kotlin
+val namespaceId: String  // written by fromDomain alongside the graph edge
+
+fun toDomain() = Case(
+    namespaceId = UUID.fromString(namespaceId),  // scalar — always present
+    ...
+)
+```
+
+The scalar and the graph edge are always written together on save. The scalar is
+the reliable source for `toDomain()`; the graph edge is the reliable source for
+`findByParent` queries and graph traversal.
 
 ### `toDomain()` / `fromDomain()`
 
