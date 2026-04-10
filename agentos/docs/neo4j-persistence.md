@@ -147,9 +147,20 @@ RETURN c, r, ns ORDER BY c.created ASC
 
 SDN maps `r` and `ns` back onto `c.namespace` automatically.
 
-`CaseEventNode` keeps `caseId` as a plain string property (not a relationship)
-because events are fetched in bulk (hundreds per case) and eagerly loading the
-parent `CaseNode` for every event would introduce an N+1 penalty with no benefit.
+`CaseEventNode` follows the same pattern, stored as a
+`(:CaseEvent)-[:BELONGS_TO]->(:Case)` edge. The `caseId` scalar is kept for
+the same reason as `namespaceId` on `CaseNode` — `findActiveByCaseId` filters
+on it, and `toDomain()` reads from it. The query returns `e, r, c` so SDN maps
+the `case` field correctly.
+
+### Stub nodes on write
+
+Whenever a node is written with a `@Relationship` field, the related node is
+provided as a **stub** carrying only the `@Id`. SDN MERGEs by `@Id` on save
+and never overwrites existing properties of the related node:
+
+- `CaseNode.fromDomain` → `NamespaceNode.stub(namespaceId)`
+- `CaseEventNodeMapper.fromDomain` → `CaseNode.stub(caseId)`
 
 ### `toDomain()` / `fromDomain()`
 
@@ -157,6 +168,10 @@ Simple node classes (no complex serialisation) embed conversion directly as
 `toDomain()` and `companion object { fun fromDomain(...) }` on the node class
 itself. The `CaseEventNode` hierarchy uses a dedicated `CaseEventNodeMapper`
 because the sealed hierarchy requires a central dispatch point.
+
+`withRemoved` in `CaseEventNodeMapper` reconstructs the subtype node and
+copies the `case` relationship field so the `BELONGS_TO` edge is preserved
+through soft-delete operations.
 
 ## CaseEvent: Dual-Label Strategy
 

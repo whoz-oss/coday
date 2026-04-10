@@ -8,13 +8,15 @@ import org.springframework.data.neo4j.repository.query.Query
  */
 interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> {
     /**
-     * Find all non-removed events for a case, ordered by timestamp then id
-     * (stable sort matching [FilesystemCaseEventRepository]).
+     * Find all non-removed events for a case, ordered by timestamp then id.
+     *
+     * Filters by the [CaseEventNode.caseId] scalar property. Returns `e, r, c`
+     * so SDN can map the [CaseEventNode.case] @Relationship field.
      */
     @Query(
-        $$"""MATCH (e:CaseEvent)
+        $$"""MATCH (e:CaseEvent)-[r:BELONGS_TO]->(c:Case)
             WHERE e.caseId = $caseId AND (e.removed IS NULL OR e.removed = false)
-            RETURN e ORDER BY e.timestamp ASC, e.id ASC
+            RETURN e, r, c ORDER BY e.timestamp ASC, e.id ASC
             """,
     )
     fun findActiveByCaseId(caseId: String): List<CaseEventNode>
