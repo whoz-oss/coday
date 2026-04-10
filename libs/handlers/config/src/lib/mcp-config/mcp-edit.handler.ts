@@ -241,6 +241,39 @@ These values are fixed for new configurations. Continuing with other settings...
     // Auth token (special handling for sensitive data)
     config.authToken = await this.editAuthTokenWithContext(config.authToken, mergedConfig, targetLevel)
 
+    // OAuth fields — only relevant for remote (url-based) servers
+    const effectiveUrl = config.url || mergedConfig?.url
+    if (effectiveUrl) {
+      config.oauth2 = await this.editBooleanWithContext('OAuth 2.1', 'oauth2', config.oauth2, mergedConfig, targetLevel)
+
+      if (config.oauth2) {
+        config.oauthClientId = await this.editPropertyWithContext(
+          'OAuth Client ID',
+          'oauthClientId',
+          config.oauthClientId,
+          mergedConfig,
+          targetLevel
+        )
+        config.oauthClientSecret = await this.editOAuthClientSecretWithContext(
+          config.oauthClientSecret,
+          mergedConfig,
+          targetLevel
+        )
+        config.oauthScope = await this.editPropertyWithContext(
+          'OAuth Scope',
+          'oauthScope',
+          config.oauthScope,
+          mergedConfig,
+          targetLevel
+        )
+      } else {
+        // Clear OAuth fields when OAuth is disabled
+        config.oauthClientId = undefined
+        config.oauthClientSecret = undefined
+        config.oauthScope = undefined
+      }
+    }
+
     // Boolean properties
     config.enabled = await this.editBooleanWithContext('Enabled', 'enabled', config.enabled, mergedConfig, targetLevel)
     config.debug = await this.editBooleanWithContext('Debug', 'debug', config.debug, mergedConfig, targetLevel)
@@ -359,6 +392,37 @@ ${promptText}`
       return undefined // Remove
     } else {
       return tokenInput // New value
+    }
+  }
+
+  /**
+   * Edit OAuth client secret with context (sensitive data handling, mirrors authToken pattern)
+   */
+  private async editOAuthClientSecretWithContext(
+    currentSecret: string | undefined,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel
+  ): Promise<string | undefined> {
+    const contextDisplay = this.buildPropertyContext('oauthClientSecret', mergedConfig, targetLevel, true)
+
+    const promptText = currentSecret
+      ? 'Enter OAuth client secret (current value is masked):'
+      : 'Enter OAuth client secret (leave empty if not needed):'
+
+    const prompt = `## OAuth Client Secret
+
+${contextDisplay}
+
+${promptText}`
+
+    const secretInput = await this.interactor.promptText(prompt, currentSecret ? '*****' : '')
+
+    if (secretInput === '*****') {
+      return currentSecret // Keep existing
+    } else if (secretInput === '') {
+      return undefined // Remove
+    } else {
+      return secretInput // New value
     }
   }
 

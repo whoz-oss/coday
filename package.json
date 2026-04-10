@@ -5,7 +5,7 @@
   "author": "vincent.audibert@whoz.com",
   "type": "module",
   "scripts": {
-    "_bump": "1",
+    "_bump": "2",
     "client": "nx run client:serve",
     "coday": "pnpm dlx @whoz-oss/coday-web",
     "desktop": "nx run desktop:serve",
@@ -23,12 +23,12 @@
   "lint-staged": {
     "!(*nx|*project).json": [
       "jsonsort",
-      "prettier --write"
+      "pnpm exec prettier --write"
     ],
-    "*.html": "prettier --write",
-    "*.jss": "prettier --write",
-    "*.scss": "prettier --write",
-    "*.ts": "prettier --write"
+    "*.html": "pnpm exec prettier --write",
+    "*.jss": "pnpm exec prettier --write",
+    "*.scss": "pnpm exec prettier --write",
+    "*.ts": "pnpm exec prettier --write"
   },
   "dependencies": {
     "@angular/core": "catalog:",

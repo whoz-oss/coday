@@ -4,6 +4,8 @@ import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
@@ -20,7 +22,33 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-) : EntityController<Case, UUID>(caseService) {
+    private val userService: UserService,
+) : EntityController<Case, UUID, CaseResource>(caseService) {
+
+    // -------------------------------------------------------------------------
+    // Mapping between domain entity and HTTP resource
+    // -------------------------------------------------------------------------
+
+    override fun toResource(entity: Case): CaseResource =
+        CaseResource(
+            id = entity.metadata.id,
+            namespaceId = entity.namespaceId,
+            status = entity.status,
+            title = entity.title,
+        )
+
+    override fun toDomain(resource: CaseResource): Case =
+        Case(
+            metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
+            namespaceId = resource.namespaceId,
+            status = resource.status,
+            title = resource.title ?: "",
+        )
+
+    // -------------------------------------------------------------------------
+    // Additional endpoints
+    // -------------------------------------------------------------------------
+
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
     fun addMessage(
@@ -28,7 +56,11 @@ class CaseController(
         @RequestBody request: AddMessageRequest,
     ) {
         logger.info { "Adding message to case: $caseId" }
-        val userActor = Actor(id = request.userId, displayName = request.userId, role = ActorRole.USER)
+        val user = userService.getCurrentUser()
+        val displayName = listOfNotNull(user.firstname, user.lastname)
+            .joinToString(" ")
+            .ifBlank { user.metadata.id.toString() }
+        val userActor = Actor(id = user.metadata.id.toString(), displayName = displayName, role = ActorRole.USER)
         caseService.addMessage(
             caseId = caseId,
             actor = userActor,
@@ -69,6 +101,5 @@ class CaseController(
 
 data class AddMessageRequest(
     val content: String,
-    val userId: String = "default-user",
     val answerToEventId: UUID? = null,
 )

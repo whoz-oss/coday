@@ -1,0 +1,16 @@
+# Activates Neo4j persistence mode in tests.
+# Combined with the 'test' profile (application-test.yml sets mode=in-memory),
+# this profile overrides the mode back to neo4j.
+# The actual URI is injected at runtime via @DynamicPropertySource from the
+# Testcontainers container in each test class.
+agentos:
+  persistence:
+    mode: neo4j
+
+# Disable filesystem persistence config (mode override is sufficient,
+# but be explicit to avoid ConditionalOnProperty ambiguity).
+spring:
+  data:
+    neo4j:
+      repositories:
+        enabled: true

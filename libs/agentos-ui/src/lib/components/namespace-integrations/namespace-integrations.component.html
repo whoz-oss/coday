@@ -1,0 +1,24 @@
+<ds-entity-list
+  title="Integrations"
+  [items]="(configItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No integrations configured yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="integrationItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="namespace-integrations__back" type="button" (click)="goBack()">
+    &#8592; Namespaces
+  </button>
+</ds-entity-list>
+
+<!-- Item template: renders IntegrationConfigItemComponent for each entity-list card slot -->
+<ng-template #integrationItemTpl let-item>
+  @if (resolveConfig(item.id); as config) {
+    <agentos-integration-config-item
+      [config]="config"
+      [namespaceId]="namespaceId"
+      (deleteRequested)="deleteConfig($event)"
+    />
+  }
+</ng-template>

@@ -43,7 +43,7 @@ class CaseRuntime(
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, shouldContinue: () -> Boolean) -> Unit,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
@@ -148,7 +148,7 @@ class CaseRuntime(
         answerToEventId: UUID? = null,
     ) {
         logger.info {
-            "[CaseRuntime $id] addUserMessage - actor: ${actor.displayName}, " +
+            "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
                 "content: ${content.size} part(s), answerTo: $answerToEventId"
         }
 
@@ -282,7 +282,7 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll()) { !interruptRequested.get() }
+                    runAgent(event.agentName, eventList.getAll(), resolveUserId(events)) { !interruptRequested.get() }
                     return
                 }
 
@@ -314,6 +314,18 @@ class CaseRuntime(
         logger.warn { "[CaseRuntime $id] No agent selection found in history, stopping" }
         interruptRequested.set(true)
     }
+
+    /**
+     * Scans the event history backward and returns the UUID of the last user actor,
+     * or null if no user message is found or the actor id is not a valid UUID.
+     */
+    private fun resolveUserId(events: List<CaseEvent>): UUID? =
+        events
+            .filterIsInstance<MessageEvent>()
+            .lastOrNull { it.actor.role == ActorRole.USER }
+            ?.actor
+            ?.id
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     companion object : KLogging()
 }

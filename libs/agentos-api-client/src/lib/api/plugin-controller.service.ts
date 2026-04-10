@@ -299,22 +299,22 @@ export class PluginControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public reloadAllAgents(
+  public reloadAllAgentsPlugin(
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: '*/*'; context?: HttpContext; transferCache?: boolean }
   ): Observable<PluginActionResponse>
-  public reloadAllAgents(
+  public reloadAllAgentsPlugin(
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: '*/*'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<PluginActionResponse>>
-  public reloadAllAgents(
+  public reloadAllAgentsPlugin(
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: '*/*'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<PluginActionResponse>>
-  public reloadAllAgents(
+  public reloadAllAgentsPlugin(
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: '*/*'; context?: HttpContext; transferCache?: boolean }

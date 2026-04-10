@@ -22,7 +22,7 @@ export interface CaseStatusEvent {
 export enum CaseStatusEventStatusEnum {
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
-  STOPPING = 'STOPPING',
+  IDLE = 'IDLE',
+  KILLED = 'KILLED',
   ERROR = 'ERROR',
-  STOPPED = 'STOPPED',
 }

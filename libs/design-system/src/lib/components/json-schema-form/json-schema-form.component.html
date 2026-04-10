@@ -1,0 +1,12 @@
+@if (hasFields()) {
+  <div class="ds-json-schema-form" [formGroup]="formGroup">
+    @for (key of fieldKeys(); track key) {
+      <ds-json-schema-field
+        [fieldKey]="key"
+        [fieldSchema]="getFieldSchema(key)"
+        [control]="getControl(key)"
+        [required]="isRequired(key)"
+      />
+    }
+  </div>
+}

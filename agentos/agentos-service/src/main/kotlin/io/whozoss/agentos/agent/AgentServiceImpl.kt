@@ -6,7 +6,8 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -21,14 +22,19 @@ import java.util.UUID
  * - Resolve the namespace description and append it to the agent's system instructions,
  *   so the agent always knows which namespace it is operating in regardless of how long
  *   the conversation grows (system prompt is never compacted by the provider).
- * - (Future) scope tool resolution to the namespace and user.
+ * - Scope tool resolution to the namespace via [ToolRegistryService.resolveToolsForNamespace],
+ *   producing fresh tool instances for each agent run.
+ *
+ * Every agent-instantiating method requires a non-null [AgentExecutionContext].
+ * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) are context-free.
  */
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
-    private val toolRegistry: ToolRegistry,
+    private val toolRegistryService: ToolRegistryService,
     private val aiModelRegistry: AiModelRegistry,
     private val namespaceService: NamespaceService,
+    private val userService: UserService,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -42,8 +48,6 @@ class AgentServiceImpl(
         logger.info { "Found agent model: ${model.name}" }
         return createAgentInstance(model, context)
     }
-
-    override fun listAgents(): List<Agent> = aiModelRegistry.getAll().map { createAgentInstance(it, context = null) }
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
         val model = aiModelRegistry.getDefault() ?: return null
@@ -60,26 +64,21 @@ class AgentServiceImpl(
         )?.name
 
     /**
-     * Build a live [AgentSimple] instance from [model].
+     * Build a live [AgentSimple] instance from [model], scoped to [context].
      *
-     * When [context] is provided the namespace description is appended to the model's
-     * system instructions so the LLM always receives it in the privileged system-prompt
-     * channel (Anthropic `system`, OpenAI `system` role) rather than in the message
-     * history where it could be compacted away.
-     *
-     * When [context] is null (e.g. [listAgents] for registry inspection) the model's
-     * instructions are used as-is.
+     * - The namespace description is appended to the model's system instructions.
+     * - Fresh tool instances are resolved for the namespace via [ToolRegistryService].
      */
     private fun createAgentInstance(
         model: AiModel,
-        context: AgentExecutionContext?,
+        context: AgentExecutionContext,
     ): Agent {
         logger.info { "[AgentService] Creating agent instance for: ${model.name}, context: $context" }
 
-        val tools = toolRegistry.listTools()
+        val resolved = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
         logger.info {
-            "[AgentService] Loaded ${tools.size} tool(s) " +
-                "(sample-5 : ${tools.take(5).map { it.name }}) " +
+            "[AgentService] Loaded ${resolved.size} tool(s) " +
+                "(sample-5 : ${resolved.take(5).map { it.name }}) " +
                 "for agent: ${model.name}"
         }
 
@@ -92,35 +91,52 @@ class AgentServiceImpl(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
             model = model.copy(instructions = instructions),
             chatClient = chatClient,
-            tools = tools,
+            tools = resolved,
         )
     }
 
     /**
      * Compose the final system instructions for the agent.
      *
-     * Starts from the model's own instructions (may be null) and appends the namespace
-     * context block when a [context] is available and the namespace has a description.
-     * The namespace name is always included so the agent knows where it is operating
-     * even if no description has been written yet.
+     * Starts from the model's own instructions (may be null) and appends:
+     * 1. A namespace context block (always, when [context] is provided).
+     * 2. A user context block (when [context.userId] resolves to a known [User]).
+     *
+     * Both blocks are injected in the privileged system-prompt channel so they are
+     * never compacted away by the provider, regardless of conversation length.
      */
     private fun buildInstructions(
         model: AiModel,
-        context: AgentExecutionContext?,
-    ): String? =
-        context?.let {
-            val namespace = namespaceService.findById(it.namespaceId)
-            val namespaceBlock =
-                buildString {
-                    appendLine()
-                    appendLine("## Context: ${namespace?.name ?: it.namespaceId}")
-                    if (!namespace?.description.isNullOrBlank()) {
-                        appendLine(namespace!!.description!!)
-                    }
-                }.trimEnd()
+        context: AgentExecutionContext,
+    ): String {
+        val namespace = namespaceService.findById(context.namespaceId)
+        val namespaceBlock =
+            buildString {
+                appendLine()
+                appendLine("""## Context: ${namespace?.name ?: context.namespaceId}""")
+                if (!namespace?.description.isNullOrBlank()) {
+                    appendLine(namespace!!.description!!)
+                }
+            }.trimEnd()
 
-            if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
-        } ?: model.instructions
+        val userBlock =
+            context.userId?.let { userId ->
+                userService.findById(userId)?.let { user ->
+                    buildString {
+                        appendLine()
+                        appendLine("## User")
+                        appendLine("- id: ${user.metadata.id}")
+                        if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
+                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                        }.trimEnd()
+                    }
+                }
+
+        val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
+        return if (userBlock != null) "$base\n$userBlock" else base
+    }
 
     companion object : KLogging()
 }

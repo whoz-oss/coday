@@ -51,13 +51,28 @@ management:
 agentos:
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
+  security:
+    # Identity resolution mode: 'local' (default) or 'auth'.
+    # local: uses the OS username; auto-creates a User record on first access.
+    # auth:  decodes the Cloudflare JWT (CF_Authorization header) or falls back
+    #        to x-forwarded-email; requires the User to be pre-registered.
+    # Override with env var: AGENTOS_SECURITY_MODE
+    mode: local
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
     data-dir: data/
-    # Persistence mode: 'filesystem' (default) or 'in-memory' (no persistence across restarts).
+    # Persistence mode:
+    #   filesystem      - JSON files under data-dir, no external dependency
+    #   in-memory                - no persistence across restarts, useful for tests
+    #   embedded-neo4j           - embedded Neo4j engine, no Docker required;
+    #                              database stored under data-dir/neo4j/
+    #   neo4j                    - standalone Neo4j server (requires spring.neo4j.* config)
     # Override with env var: AGENTOS_PERSISTENCE_MODE
-    mode: filesystem
+    # Default is embedded-neo4j: filesystem and in-memory modes are deprecated
+    # and will be removed in a future neo4j is the only supported
+    # production mode going forward.
+    mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
 
 logging:
   level:

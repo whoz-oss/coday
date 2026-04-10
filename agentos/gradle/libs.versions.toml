@@ -2,7 +2,13 @@
 # This file centralizes all dependency versions for consistency across modules
 
 [versions]
-kotlin = "2.2.21"
+# JDK toolchain version: the JDK used to compile and run.
+# Must be >= 21 for org.neo4j:neo4j:2026.x (embedded engine).
+java = "25"
+# Kotlin bytecode target: the JVM class file level Kotlin emits.
+# Kotlin 2.3.x supports JVM target 25 natively.
+kotlinJvmTarget = "25"
+kotlin = "2.3.20"
 springBoot = "3.5.7"
 springDependencyManagement = "1.1.7"
 springAi = "1.1.2"
@@ -17,6 +23,13 @@ jackson = "2.17.0"
 klogger = "2.0.4"
 springdoc = "2.8.9"
 springdocPlugin = "1.9.0"
+neo4j = "5.26.5"
+# Calendar-versioned release line — keep neo4jTestcontainers in Neo4jContainerSupport.NEO4J_IMAGE in sync
+neo4jEmbedded = "2026.02.2"
+# Netty version required by neo4j-embedded 2026.x / neo4j-harness 2026.x (BoltServer).
+# Spring Boot BOM pins 4.1.x; we force 4.2.x on testRuntimeClasspath only.
+netty = "4.2.9.Final"
+testcontainers = "1.20.4"
 
 # AgentOS modules versions
 agentosSdk = "1.0.0"
@@ -60,6 +73,21 @@ jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
 jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
+
+# Neo4j
+spring-boot-starter-data-neo4j = { module = "org.springframework.boot:spring-boot-starter-data-neo4j" }
+neo4j-java-driver = { module = "org.neo4j.driver:neo4j-java-driver" }
+# Neo4j embedded engine (Community Edition) — for zero-Docker local deployment
+# Version 2026.x uses calendar versioning; keep aligned with the Bolt protocol
+# supported by neo4j-java-driver managed by Spring Boot.
+neo4j-embedded = { module = "org.neo4j:neo4j", version.ref = "neo4jEmbedded" }
+
+# Neo4j test harness — in-process embedded Neo4j without Bolt/Netty for unit/integration tests
+neo4j-harness = { module = "org.neo4j.test:neo4j-harness", version.ref = "neo4jEmbedded" }
+
+# Testcontainers
+testcontainers-neo4j = { module = "org.testcontainers:neo4j", version.ref = "testcontainers" }
+testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }

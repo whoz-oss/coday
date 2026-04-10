@@ -12,6 +12,18 @@ export const AGENTOS_ROUTES: Route[] = [
         loadComponent: () => import('./components/layout/layout.component').then((m) => m.LayoutComponent),
         children: [
           {
+            path: 'namespaces/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
+            path: 'namespaces/:namespaceId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
             path: 'namespaces',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
@@ -23,9 +35,39 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () => import('./components/case-list/case-list.component').then((m) => m.CaseListComponent),
           },
           {
+            path: ':namespaceId/integrations/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/integrations/:integrationId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/integrations',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-integrations/namespace-integrations.component').then(
+                (m) => m.NamespaceIntegrationsComponent
+              ),
+          },
+          {
             path: ':namespaceId/cases/:caseId',
             canActivate: [agentosReadyGuard],
             loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
+          },
+          {
+            path: 'me',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
           },
           {
             path: '',
