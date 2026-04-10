@@ -105,12 +105,42 @@ When marking an entity as removed, the flag is set to `true`; when writing a
 non-removed entity, `removed` is written as `null` (`removed.takeIf { it }`).
 This avoids polluting the graph with `removed: false` on every node.
 
-### Parent relationships as properties
+### Parent relationships as graph edges
 
-Parent links (e.g. a `Case` belonging to a `Namespace`) are stored as plain
-string properties on the child node (`namespaceId: String`) rather than as SDN
-`@Relationship` edges. This keeps queries simple and avoids the complexity of
-SDN's relationship mapping for what is essentially a foreign key.
+Parent links for `Case` and `IntegrationConfig` are expressed as real Neo4j
+relationships using SDN `@Relationship`:
+
+```
+(:Case)-[:BELONGS_TO]->(:Namespace)
+(:IntegrationConfig)-[:BELONGS_TO]->(:Namespace)
+```
+
+On write, the child node carries a **stub** `NamespaceNode` containing only the
+`@Id`. SDN issues a `MERGE` on the Namespace node by id and never overwrites its
+existing properties, so saving a Case or IntegrationConfig cannot corrupt the
+Namespace. The stub is created via `NamespaceNode.stub(namespaceId)`.
+
+#### Denormalised namespaceId property
+
+Each child node also stores `namespaceId` as a plain scalar property alongside
+the `@Relationship` field. This dual representation exists for a practical reason:
+SDN 7 does **not** auto-inject `@Relationship` fields when a custom `@Query` method
+returns results — it only does so for its own generated queries. Filtering by the
+scalar property keeps custom queries simple and reliable:
+
+```cypher
+MATCH (c:Case)
+WHERE c.namespaceId = $namespaceId AND (c.removed IS NULL OR c.removed = false)
+RETURN c ORDER BY c.created ASC
+```
+
+The `BELONGS_TO` edge is still written to the graph on every save and is available
+for ad-hoc traversal queries, graph visualisation, and future Cypher that does
+need to hop the relationship.
+
+`CaseEventNode` keeps `caseId` as a plain string property (not a relationship)
+because events are fetched in bulk (hundreds per case) and eagerly loading the
+parent `CaseNode` for every event would introduce an N+1 penalty with no benefit.
 
 ### `toDomain()` / `fromDomain()`
 

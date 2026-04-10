@@ -10,7 +10,11 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [Namespace].
  *
- * Stored as a (:Namespace) node. No parent relationship — namespaces are root-level.
+ * Stored as a `(:Namespace)` node. Namespaces are root-level — no parent relationship.
+ *
+ * [stub] creates a minimal instance carrying only the [id] for use as the target
+ * of a `@Relationship` reference on [CaseNode] and [IntegrationConfigNode]. SDN
+ * MERGEs the stub by `@Id` on save and never overwrites existing properties.
  *
  * Properties kept flat (no nested objects) to avoid SDN's limited support for
  * embedded value types in Community Edition.
@@ -19,7 +23,7 @@ import java.util.UUID
 data class NamespaceNode(
     @Id
     val id: String,
-    val name: String,
+    val name: String = "",
     val description: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
@@ -55,5 +59,12 @@ data class NamespaceNode(
                 modifiedBy = ns.metadata.modifiedBy,
                 removed = ns.metadata.removed.takeIf { it },
             )
+
+        /**
+         * Creates a minimal stub carrying only the [namespaceId] for use as
+         * the BELONGS_TO relationship target on [CaseNode] and [IntegrationConfigNode].
+         * SDN MERGEs by @Id and leaves all other Namespace properties untouched.
+         */
+        fun stub(namespaceId: UUID): NamespaceNode = NamespaceNode(id = namespaceId.toString())
     }
 }

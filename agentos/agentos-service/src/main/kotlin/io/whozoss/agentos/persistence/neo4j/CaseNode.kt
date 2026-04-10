@@ -5,16 +5,31 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
+import org.springframework.data.neo4j.core.schema.Relationship
+import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [Case].
  *
- * Stored as a (:Case) node with a [namespaceId] property linking it to its parent
- * namespace. The relationship is represented as a property rather than an SDN
- * @Relationship to keep queries simple — full graph traversal between Namespace and
- * Case nodes is handled via Cypher in the repository when needed.
+ * Stored as a `(:Case)-[:BELONGS_TO]->(:Namespace)` edge.
+ *
+ * [namespaceId] is kept as a plain node property alongside the [namespace]
+ * relationship field. This serves two purposes:
+ * - It allows [findActiveByNamespaceId] to use a simple property filter
+ *   (`WHERE c.namespaceId = $namespaceId`) rather than requiring a relationship
+ *   traversal in the RETURN clause for SDN to inject [namespace].
+ * - It acts as a fast index-friendly filter without a graph hop.
+ *
+ * [namespace] is nullable with a `null` default so SDN can call the primary
+ * constructor before injecting the @Relationship field via property injection.
+ * [toDomain] derives [Case.namespaceId] from the plain [namespaceId] property,
+ * which is always present regardless of whether SDN loaded the relationship.
+ *
+ * On write, [fromDomain] provides a stub [NamespaceNode] carrying only the `@Id`.
+ * SDN issues a MERGE on the Namespace node by id and never overwrites its existing
+ * properties, so saving a Case does not corrupt the Namespace.
  */
 @Node("Case")
 data class CaseNode(
@@ -28,6 +43,8 @@ data class CaseNode(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
+    var namespace: NamespaceNode? = null,
 ) {
     fun toDomain(): Case =
         Case(
@@ -57,6 +74,7 @@ data class CaseNode(
                 modified = case.metadata.modified,
                 modifiedBy = case.metadata.modifiedBy,
                 removed = case.metadata.removed.takeIf { it },
+                namespace = NamespaceNode.stub(case.namespaceId),
             )
     }
 }
