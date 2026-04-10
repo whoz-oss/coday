@@ -67,10 +67,9 @@ class AgentServiceImpl(
         namespaceId: UUID,
     ): String? {
         val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
-            .sortedByDescending { it.priority }
         val match =
-            candidates.firstOrNull { it.alias.equals(namePart, ignoreCase = true) }
-                ?: candidates.firstOrNull { it.apiName.equals(namePart, ignoreCase = true) }
+            candidates.filter { it.alias.equals(namePart, ignoreCase = true) }.maxByOrNull { it.priority }
+                ?: candidates.filter { it.apiName.equals(namePart, ignoreCase = true) }.maxByOrNull { it.priority }
         return match?.let { it.alias ?: it.apiName }
     }
 
@@ -89,13 +88,16 @@ class AgentServiceImpl(
         namespaceId: UUID,
     ): Pair<LlmModelConfig, LlmConfig> {
         val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
-            .sortedByDescending { it.priority }
 
         logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId — ${candidates.size} candidate(s)" }
 
-        val aliasMatch = candidates.firstOrNull { it.alias.equals(name, ignoreCase = true) }
+        val aliasMatch = candidates
+            .filter { it.alias.equals(name, ignoreCase = true) }
+            .maxByOrNull { it.priority }
         val modelConfig = aliasMatch
-            ?: candidates.firstOrNull { it.apiName.equals(name, ignoreCase = true) }
+            ?: candidates
+                .filter { it.apiName.equals(name, ignoreCase = true) }
+                .maxByOrNull { it.priority }
             ?: throw IllegalArgumentException(
                 "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
                     "Configure an LlmModelConfig with alias or apiName matching '$name'.",

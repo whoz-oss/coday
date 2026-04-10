@@ -118,19 +118,25 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         "findAgentByName resolves to higher-priority config when two configs share the same alias" {
+            // Two configs both aliased 'sonnet' but pointing at different models —
+            // priority only breaks the tie within the matching set, not across names.
             val lowPriority = modelConfig(apiName = "claude-haiku-4-5", alias = "sonnet", priority = 0)
             val highPriority = modelConfig(apiName = "claude-sonnet-4-5", alias = "sonnet", priority = 10)
+            // A third config with a different alias and even higher priority must NOT win.
+            val unrelated = modelConfig(apiName = "gpt-4o", alias = "big", priority = 100)
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(lowPriority, highPriority)
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(lowPriority, highPriority, unrelated)
             every { llmConfigService.getById(llmConfigId) } returns provider
             every { chatClientProvider.getChatClient(highPriority, provider) } returns chatClient
 
             agentService.findAgentByName("sonnet", context)
 
+            // The high-priority sonnet wins, not the unrelated high-priority config
             verify(exactly = 1) { chatClientProvider.getChatClient(highPriority, provider) }
             verify(exactly = 0) { chatClientProvider.getChatClient(lowPriority, provider) }
+            verify(exactly = 0) { chatClientProvider.getChatClient(unrelated, provider) }
         }
 
         "findAgentByName prefers alias over apiName when both could match" {
