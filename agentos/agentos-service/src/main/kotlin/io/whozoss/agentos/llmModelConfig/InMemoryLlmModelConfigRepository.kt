@@ -28,4 +28,10 @@ class InMemoryLlmModelConfigRepository : LlmModelConfigRepository {
 
     override fun findByNamespaceId(namespaceId: UUID): List<LlmModelConfig> =
         delegate.findAll().filter { it.namespaceId == namespaceId }
+
+    override fun findByLlmConfigAndApiName(llmConfigId: UUID, apiName: String): LlmModelConfig? =
+        findByParent(llmConfigId).firstOrNull { it.apiName == apiName }
+
+    override fun findByLlmConfigAndAlias(llmConfigId: UUID, alias: String): LlmModelConfig? =
+        findByParent(llmConfigId).firstOrNull { it.alias == alias }
 }

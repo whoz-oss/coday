@@ -19,4 +19,16 @@ interface LlmModelConfigRepository : EntityRepository<LlmModelConfig, UUID> {
      * provider configs within that namespace.
      */
     fun findByNamespaceId(namespaceId: UUID): List<LlmModelConfig>
+
+    /**
+     * Find the first non-removed model config under [llmConfigId] whose [LlmModelConfig.apiName]
+     * matches [apiName] (exact, case-sensitive). Returns null if none found.
+     */
+    fun findByLlmConfigAndApiName(llmConfigId: UUID, apiName: String): LlmModelConfig?
+
+    /**
+     * Find the first non-removed model config under [llmConfigId] whose [LlmModelConfig.alias]
+     * matches [alias] (exact, case-sensitive). Returns null if none found.
+     */
+    fun findByLlmConfigAndAlias(llmConfigId: UUID, alias: String): LlmModelConfig?
 }

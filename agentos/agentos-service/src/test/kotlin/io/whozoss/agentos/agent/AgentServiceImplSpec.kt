@@ -320,27 +320,27 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // resolveAgentName
+        // resolveAgentName — delegates to findModelConfig
         // -------------------------------------------------------------------------
 
-        "resolveAgentName returns alias on exact alias match" {
+        "resolveAgentName returns alias when findModelConfig resolves by alias" {
             val model = modelConfig(alias = "sonnet")
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "sonnet") } returns model
 
             agentService.resolveAgentName("sonnet", namespaceId) shouldBe "sonnet"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
         }
 
-        "resolveAgentName falls back to apiName when no alias matches" {
+        "resolveAgentName returns apiName when findModelConfig resolves by apiName" {
             val model = modelConfig(apiName = "claude-sonnet-4-5", alias = null)
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmModelConfigService.findModelConfig(namespaceId, "claude-sonnet-4-5") } returns model
 
             agentService.resolveAgentName("claude-sonnet-4-5", namespaceId) shouldBe "claude-sonnet-4-5"
         }
 
-        "resolveAgentName returns null when nothing matches" {
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns emptyList()
+        "resolveAgentName returns null when findModelConfig returns null" {
+            every { llmModelConfigService.findModelConfig(namespaceId, "unknown") } returns null
 
             agentService.resolveAgentName("unknown", namespaceId).shouldBeNull()
         }

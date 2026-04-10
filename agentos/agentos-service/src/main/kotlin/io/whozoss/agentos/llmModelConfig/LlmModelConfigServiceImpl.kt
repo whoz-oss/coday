@@ -46,7 +46,27 @@ class LlmModelConfigServiceImpl(
         )
     }
 
-    override fun update(entity: LlmModelConfig): LlmModelConfig = repository.save(entity)
+    override fun update(entity: LlmModelConfig): LlmModelConfig {
+        findByLlmConfigAndApiName(entity.llmConfigId, entity.apiName)
+            ?.takeIf { it.id != entity.id }
+            ?.let {
+                throw ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "A model config for apiName '${entity.apiName}' already exists in LlmConfig ${entity.llmConfigId}",
+                )
+            }
+        entity.alias?.let { alias ->
+            findByLlmConfigAndAlias(entity.llmConfigId, alias)
+                ?.takeIf { it.id != entity.id }
+                ?.let {
+                    throw ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "A model config with alias '$alias' already exists in LlmConfig ${entity.llmConfigId}",
+                    )
+                }
+        }
+        return repository.save(entity)
+    }
 
     override fun findByIds(ids: Collection<UUID>): List<LlmModelConfig> = repository.findByIds(ids)
 
@@ -62,12 +82,12 @@ class LlmModelConfigServiceImpl(
     override fun findByLlmConfigAndApiName(
         llmConfigId: UUID,
         apiName: String,
-    ): LlmModelConfig? = repository.findByParent(llmConfigId).firstOrNull { it.apiName == apiName }
+    ): LlmModelConfig? = repository.findByLlmConfigAndApiName(llmConfigId, apiName)
 
     override fun findByLlmConfigAndAlias(
         llmConfigId: UUID,
         alias: String,
-    ): LlmModelConfig? = repository.findByParent(llmConfigId).firstOrNull { it.alias == alias }
+    ): LlmModelConfig? = repository.findByLlmConfigAndAlias(llmConfigId, alias)
 
     override fun findModelConfig(
         namespaceId: UUID,

@@ -70,13 +70,7 @@ class AgentServiceImpl(
     override fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
-    ): String? {
-        val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
-        val match =
-            candidates.filter { it.alias.equals(namePart, ignoreCase = true) }.maxByOrNull { it.priority }
-                ?: candidates.filter { it.apiName.equals(namePart, ignoreCase = true) }.maxByOrNull { it.priority }
-        return match?.let { it.alias ?: it.apiName }
-    }
+    ): String? = llmModelConfigService.findModelConfig(namespaceId, namePart)?.let { it.alias ?: it.apiName }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
@@ -210,8 +204,12 @@ class AgentServiceImpl(
                 }
             }
 
-        val base = if (baseInstructions.isNullOrBlank()) namespaceBlock else "$baseInstructions\n$namespaceBlock"
-        return if (userBlock != null) "$base\n$userBlock" else base
+        return when {
+            baseInstructions.isNullOrBlank() && userBlock == null -> namespaceBlock
+            baseInstructions.isNullOrBlank() -> "$namespaceBlock\n$userBlock"
+            userBlock == null -> "$baseInstructions\n$namespaceBlock"
+            else -> "$baseInstructions\n$namespaceBlock\n$userBlock"
+        }
     }
 
     companion object : KLogging()

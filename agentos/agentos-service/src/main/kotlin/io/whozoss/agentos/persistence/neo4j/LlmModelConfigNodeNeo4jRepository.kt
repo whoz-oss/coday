@@ -27,4 +27,26 @@ interface LlmModelConfigNodeNeo4jRepository : Neo4jRepository<LlmModelConfigNode
             "RETURN m ORDER BY m.apiName ASC",
     )
     fun findActiveByNamespaceId(namespaceId: String): List<LlmModelConfigNode>
+
+    /**
+     * Find the first non-removed model config under [llmConfigId] whose apiName matches exactly.
+     */
+    @Query(
+        "MATCH (m:LlmModelConfig) " +
+            "WHERE m.llmConfigId = \$llmConfigId AND m.apiName = \$apiName " +
+            "AND (m.removed IS NULL OR m.removed = false) " +
+            "RETURN m LIMIT 1",
+    )
+    fun findActiveByLlmConfigIdAndApiName(llmConfigId: String, apiName: String): LlmModelConfigNode?
+
+    /**
+     * Find the first non-removed model config under [llmConfigId] whose alias matches exactly.
+     */
+    @Query(
+        "MATCH (m:LlmModelConfig) " +
+            "WHERE m.llmConfigId = \$llmConfigId AND m.alias = \$alias " +
+            "AND (m.removed IS NULL OR m.removed = false) " +
+            "RETURN m LIMIT 1",
+    )
+    fun findActiveByLlmConfigIdAndAlias(llmConfigId: String, alias: String): LlmModelConfigNode?
 }

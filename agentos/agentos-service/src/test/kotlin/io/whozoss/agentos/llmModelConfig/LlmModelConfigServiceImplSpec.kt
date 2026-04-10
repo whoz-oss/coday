@@ -344,5 +344,42 @@ class LlmModelConfigServiceImplSpec : StringSpec() {
             updated.temperature shouldBe 0.5
             service.findById(original.metadata.id)?.alias shouldBe "SMALL"
         }
+
+        "update does not conflict with itself on apiName" {
+            val (service, llmConfigId) = newService()
+            val original = service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
+
+            // updating temperature on same entity must not trigger a self-conflict
+            val updated = service.update(original.copy(temperature = 0.7))
+            updated.temperature shouldBe 0.7
+        }
+
+        "update does not conflict with itself on alias" {
+            val (service, llmConfigId) = newService()
+            val original = service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5", alias = "small"))
+
+            val updated = service.update(original.copy(temperature = 0.7))
+            updated.alias shouldBe "small"
+        }
+
+        "update throws 409 when new apiName conflicts with a sibling" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-opus-4-6"))
+            val toUpdate = service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5"))
+
+            shouldThrow<ResponseStatusException> {
+                service.update(toUpdate.copy(apiName = "claude-opus-4-6"))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "update throws 409 when new alias conflicts with a sibling" {
+            val (service, llmConfigId) = newService()
+            service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-opus-4-6", alias = "big"))
+            val toUpdate = service.create(modelConfig(llmConfigId = llmConfigId, apiName = "claude-haiku-4-5", alias = "small"))
+
+            shouldThrow<ResponseStatusException> {
+                service.update(toUpdate.copy(alias = "big"))
+            }.statusCode.value() shouldBe 409
+        }
     }
 }

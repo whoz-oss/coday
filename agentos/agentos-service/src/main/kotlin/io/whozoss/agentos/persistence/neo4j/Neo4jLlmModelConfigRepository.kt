@@ -38,6 +38,16 @@ open class Neo4jLlmModelConfigRepository(
             .findActiveByNamespaceId(namespaceId.toString())
             .map { it.toDomain() }
 
+    override fun findByLlmConfigAndApiName(llmConfigId: UUID, apiName: String): LlmModelConfig? =
+        neo4jRepository
+            .findActiveByLlmConfigIdAndApiName(llmConfigId.toString(), apiName)
+            ?.toDomain()
+
+    override fun findByLlmConfigAndAlias(llmConfigId: UUID, alias: String): LlmModelConfig? =
+        neo4jRepository
+            .findActiveByLlmConfigIdAndAlias(llmConfigId.toString(), alias)
+            ?.toDomain()
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())

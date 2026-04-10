@@ -200,5 +200,26 @@ class LlmConfigServiceImplSpec : StringSpec() {
             updated.apiKey shouldBe "new-key"
             service.findById(original.metadata.id)?.apiKey shouldBe "new-key"
         }
+
+        "update allows renaming to the same name (no false conflict with self)" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val original = service.create(config(namespaceId = nsId, name = "anthropic"))
+
+            // updating with same name should not throw
+            val updated = service.update(original.copy(apiKey = "new-key"))
+            updated.name shouldBe "anthropic"
+        }
+
+        "update throws 409 when renaming conflicts with another config in the same scope" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, name = "openai"))
+            val toUpdate = service.create(config(namespaceId = nsId, name = "anthropic"))
+
+            shouldThrow<ResponseStatusException> {
+                service.update(toUpdate.copy(name = "openai"))
+            }.statusCode.value() shouldBe 409
+        }
     }
 }

@@ -35,7 +35,17 @@ class LlmConfigServiceImpl(
         return repository.save(entity)
     }
 
-    override fun update(entity: LlmConfig): LlmConfig = repository.save(entity)
+    override fun update(entity: LlmConfig): LlmConfig {
+        findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)
+            ?.takeIf { it.id != entity.id }
+            ?.let {
+                throw ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "An LLM config named '${entity.name}' already exists for this scope",
+                )
+            }
+        return repository.save(entity)
+    }
 
     override fun findByIds(ids: Collection<UUID>): List<LlmConfig> = repository.findByIds(ids)
 
