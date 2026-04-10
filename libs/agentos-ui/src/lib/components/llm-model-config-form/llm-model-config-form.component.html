@@ -61,6 +61,19 @@
         />
       </div>
 
+      <div class="llm-model-config-form__field">
+        <label class="llm-model-config-form__label" for="model-priority">Priority</label>
+        <input
+          id="model-priority"
+          class="llm-model-config-form__input"
+          type="number"
+          placeholder="0 — higher wins when multiple configs share the same alias"
+          min="0"
+          step="1"
+          [formControl]="priorityControl"
+        />
+      </div>
+
       <div class="llm-model-config-form__row">
         <div class="llm-model-config-form__field">
           <label class="llm-model-config-form__label" for="model-temperature">Temperature</label>
