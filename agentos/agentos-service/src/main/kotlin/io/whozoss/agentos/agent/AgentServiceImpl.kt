@@ -19,14 +19,19 @@ import java.util.UUID
  * Implementation of [AgentService] that resolves agents from namespace-scoped
  * [LlmModelConfig] + [LlmConfig] entity pairs.
  *
- * Resolution strategy for a logical model name (e.g. "sonnet"):
+ * Resolution strategy for a logical model name (e.g. "default"):
  * 1. Load all [LlmModelConfig] entries for the namespace.
  * 2. Match by [LlmModelConfig.alias] first, then [LlmModelConfig.apiName] as fallback.
+ *    Within each group, the config with the highest [LlmModelConfig.priority] wins.
  * 3. Load the parent [LlmConfig] to get provider connectivity (apiType, baseUrl, apiKey).
  * 4. Build a [ChatClient] directly from the two entities via [ChatClientProvider].
  *
  * There is no fallback to a plugin-based registry — if no matching [LlmModelConfig]
  * exists for the namespace the call fails fast with a clear error.
+ *
+ * The recommended alias for the primary model in a namespace is "default". This keeps
+ * agent definitions provider-agnostic: switching providers only requires updating the
+ * [LlmModelConfig], not any agent definition.
  *
  * Agent definitions are currently hardcoded and reference a logical model name.
  * Once an Agent entity is introduced this service will resolve against that instead.
