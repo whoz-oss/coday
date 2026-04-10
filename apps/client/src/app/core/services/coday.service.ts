@@ -577,7 +577,8 @@ export class CodayService implements OnDestroy {
       const isAlreadyAnswered = currentMessages.some(
         (m) =>
           m.parentKey === event.timestamp || // new threads: explicit link
-          (m.role === 'user' && m.timestamp > event.date) // legacy: any user reply after the invite
+          (m.role === 'user' && m.timestamp > event.date) || // legacy: any user reply after the invite
+          (m.role === 'assistant' && m.timestamp > event.date) // conversation continued past this invite
       )
 
       if (!isAlreadyAnswered) {

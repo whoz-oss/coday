@@ -73,7 +73,13 @@ export function registerThreadRoutes(
       debugLog('THREAD', `GET threads for project: ${projectName}, user: ${username}`)
       const threads = await threadService.listThreads(projectName, username)
 
-      res.status(200).json(threads)
+      // Enrich with in-memory pendingInvite status (source of truth is the registry, not YAML)
+      const enriched = threads.map((t) => ({
+        ...t,
+        pendingInvite: threadCodayManager.hasPendingInvite(t.id) || undefined,
+      }))
+
+      res.status(200).json(enriched)
     } catch (error) {
       console.error('Error listing threads:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'

@@ -4,7 +4,7 @@ import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatTooltipModule } from '@angular/material/tooltip'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
-import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent } from '@coday/model'
+import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent, ThreadUpdateEvent } from '@coday/model'
 import { MissionCardComponent } from '../mission-control/mission-card/mission-card.component'
 import { NewMissionDialogComponent } from '../new-mission-dialog/new-mission-dialog.component'
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component'
@@ -230,6 +230,10 @@ export class GlobalMissionControlComponent implements OnInit {
           this.globalMissionService.applyStatusEvent(threadId, 'invite')
         } else if (event instanceof ThinkingEvent) {
           this.globalMissionService.applyStatusEvent(threadId, 'thinking')
+        } else if (event instanceof ThreadUpdateEvent) {
+          // A ThreadUpdateEvent means something changed (e.g. invite answered, name updated).
+          // Refresh from backend to get the authoritative pendingInvite status.
+          this.globalMissionService.refresh()
         }
       } catch {
         // ignore parse errors

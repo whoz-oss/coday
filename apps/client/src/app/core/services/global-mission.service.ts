@@ -44,15 +44,6 @@ export class GlobalMissionService {
       .pipe(timeout(15_000))
       .subscribe({
         next: (threads) => {
-          // Preserve live statuses already known from SSE events.
-          // A refresh must not downgrade 'waiting-you' or 'in-progress' back to heuristic.
-          const liveStatuses = new Map<string, MissionStatus>()
-          for (const m of this.missions()) {
-            if (m.status === 'waiting-you' || m.status === 'in-progress') {
-              liveStatuses.set(m.id, m.status)
-            }
-          }
-
           const allMissions: GlobalMissionThread[] = threads
             .filter((t) => !t.parentThreadId)
             .map((thread) => ({
@@ -63,7 +54,8 @@ export class GlobalMissionService {
               starring: thread.starring ?? [],
               users: thread.users ?? [],
               isActive: false,
-              status: liveStatuses.get(thread.id) ?? this.deriveStatus(thread),
+              // Backend pendingInvite is the single source of truth — no live status caching
+              status: this.deriveStatus(thread),
               projectId: thread.projectId,
               worktreeProject: thread.worktreeProject,
             }))
@@ -149,13 +141,18 @@ export class GlobalMissionService {
   // Private helpers
 
   /**
-   * Derive a heuristic mission status for a non-active thread.
+   * Derive mission status for a thread.
+   * The backend in-memory registry (exposed via thread.pendingInvite) is the
+   * single source of truth for waiting-you. All other statuses are heuristic.
    */
   private deriveStatus(thread: ThreadSummary): MissionStatus {
-    // A thread with a summary is always done — never in-progress or waiting
+    // Backend registry is authoritative for pending invite
+    if (thread.pendingInvite) return 'waiting-you'
     if (thread.summary) return 'done'
+    const hasRun = (thread.price ?? 0) > 0
     const ageMs = Date.now() - new Date(thread.modifiedDate).getTime()
     if (ageMs < IN_PROGRESS_THRESHOLD_MS) return 'in-progress'
+    if (hasRun) return 'done'
     return 'paused'
   }
 

@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
-import { AnswerEvent, OAuthCallbackEvent, buildCodayEvent, hasAccess } from '@coday/model'
+import { AnswerEvent, OAuthCallbackEvent, ThreadUpdateEvent, buildCodayEvent, hasAccess } from '@coday/model'
 
 /**
  * Message Management REST API Routes
@@ -158,7 +158,17 @@ export function registerMessageRoutes(
 
         // Handle legacy AnswerEvent flow (has type === 'answer')
         if (payload.type === 'answer') {
-          instance.coday.interactor.sendEvent(new AnswerEvent({ ...payload, name: username }))
+          const answerEvent = new AnswerEvent({ ...payload, name: username })
+          // Persist the answer in the thread so it survives reconnection.
+          // Without this, loadHistoryFromRest sees the InviteEvent without a matching
+          // AnswerEvent and treats the invite as still pending.
+          aiThread.addAnswerEvent(answerEvent)
+          instance.coday.interactor.sendEvent(answerEvent)
+          // Clear pendingInvite flag now that the user has answered (synchronous, in-memory)
+          const tid = <string>threadId
+          const pname = <string>projectName
+          threadCodayManager.clearPendingInvite(tid)
+          threadCodayManager.projectEventManager.broadcast(pname, new ThreadUpdateEvent({ threadId: tid }))
           res.status(200).send('Message received successfully!')
           return
         }

@@ -1,7 +1,7 @@
 import { inject, Injectable, OnDestroy } from '@angular/core'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
-import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent, ThreadUpdateEvent } from '@coday/model'
+import { buildCodayEvent, ThreadUpdateEvent } from '@coday/model'
 import { ProjectStateService } from './project-state.service'
 import { ThreadStateService } from './thread-state.service'
 
@@ -49,9 +49,9 @@ export class ProjectEventStreamService implements OnDestroy {
         if (event instanceof ThreadUpdateEvent) {
           console.log(`[PROJECT_SSE] ThreadUpdateEvent — refreshing thread list`)
           this.threadState.refreshThreadList()
-        } else if (event instanceof InviteEvent || event instanceof ChoiceEvent || event instanceof ThinkingEvent) {
-          // Status events handled by MissionStatusService via CodayService
         }
+        // InviteEvent, ChoiceEvent, ThinkingEvent from project SSE are informational only.
+        // Status is derived from thread.pendingInvite (persisted) for non-active threads.
       } catch (e) {
         console.warn('[PROJECT_SSE] Failed to parse event:', e)
       }

@@ -83,6 +83,8 @@ export interface ThreadSummary {
   delegatedTask?: string
   /** Name of the worktree project created for this mission (worktree mode only) */
   worktreeProject?: string
+  /** True when a non-default InviteEvent is pending a user response */
+  pendingInvite?: boolean
 }
 
 /**

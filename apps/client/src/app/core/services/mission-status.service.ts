@@ -4,7 +4,7 @@ import { map } from 'rxjs/operators'
 import { ThreadStateService } from './thread-state.service'
 import { CodayService } from './coday.service'
 import { InviteEventDefault, ThreadSummary } from '@coday/model'
-import { IN_PROGRESS_THRESHOLD_MS, MISSION_STATUS_PRIORITY } from './mission.constants'
+import { DONE_THRESHOLD_MS, IN_PROGRESS_THRESHOLD_MS, MISSION_STATUS_PRIORITY } from './mission.constants'
 
 /**
  * Derived status of a thread viewed as a mission.
@@ -81,32 +81,39 @@ export class MissionStatusService {
   /**
    * Derive the status of a single thread.
    *
+   * The backend in-memory registry (exposed via thread.pendingInvite in GET /threads)
+   * is the single source of truth for "waiting-you". The frontend CodayService invite
+   * state is NOT used here — it is global, can be stale after navigation, and caused
+   * false waiting-you statuses.
+   *
    * Rules (in priority order):
-   * 1. Active thread + invite pending → waiting-you
-   * 2. Active thread + thinking → in-progress
-   * 3. Active thread (SSE connected, idle) → in-progress (assume agent still running)
-   * 4. Recently modified (< 5 min) non-active thread → in-progress (heuristic)
-   * 5. Thread has a non-empty summary → done
-   * 6. Default → paused
+   * 1. pendingInvite from backend registry -> waiting-you
+   * 2. Active thread + thinking -> in-progress
+   * 3. Active thread, idle -> done if has run, else paused
+   * 4. Non-active, modified recently (< IN_PROGRESS_THRESHOLD_MS) -> in-progress
+   * 5. Non-active, has run or old enough (> DONE_THRESHOLD_MS) -> done
+   * 6. Default -> paused
    */
   private deriveStatus(
     thread: ThreadSummary,
     isActive: boolean,
     isThinking: boolean,
-    hasInvite: boolean
+    _hasInvite: boolean
   ): MissionStatus {
+    const hasRun = (thread.price ?? 0) > 0 || !!thread.summary
+    const ageMs = Date.now() - new Date(thread.modifiedDate).getTime()
+
+    // Backend registry is the single source of truth for pending invite status.
+    if (thread.pendingInvite) return 'waiting-you'
+
     if (isActive) {
-      if (hasInvite) return 'waiting-you'
       if (isThinking) return 'in-progress'
-      // Active SSE but idle — agent finished or waiting silently
-      return thread.summary ? 'done' : 'paused'
+      return hasRun ? 'done' : 'paused'
     }
 
-    // A thread with a summary is always done
-    if (thread.summary) return 'done'
     // Non-active thread: heuristic from recency
-    const ageMs = Date.now() - new Date(thread.modifiedDate).getTime()
     if (ageMs < IN_PROGRESS_THRESHOLD_MS) return 'in-progress'
+    if (hasRun || ageMs > DONE_THRESHOLD_MS) return 'done'
     return 'paused'
   }
 }

@@ -218,7 +218,12 @@ export function registerProjectRoutes(
             // Override projectId with the actual project name used to fetch the threads.
             // The stored projectId in the YAML may differ (e.g. volatile project IDs)
             // and would cause 404s on subsequent operations (delete, stop, star).
-            return threads.map((t) => ({ ...t, projectId: project.name }))
+            // Enrich with pendingInvite from the in-memory registry (same as per-project endpoint).
+            return threads.map((t) => ({
+              ...t,
+              projectId: project.name,
+              pendingInvite: threadCodayManager?.hasPendingInvite(t.id) || undefined,
+            }))
           } catch {
             return []
           }
