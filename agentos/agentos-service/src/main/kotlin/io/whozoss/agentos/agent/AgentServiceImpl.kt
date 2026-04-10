@@ -91,15 +91,24 @@ class AgentServiceImpl(
         val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
             .sortedByDescending { it.priority }
 
-        val modelConfig =
-            candidates.firstOrNull { it.alias.equals(name, ignoreCase = true) }
-                ?: candidates.firstOrNull { it.apiName.equals(name, ignoreCase = true) }
-                ?: throw IllegalArgumentException(
-                    "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
-                        "Configure an LlmModelConfig with alias or apiName matching '$name'.",
-                )
+        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId — ${candidates.size} candidate(s)" }
+
+        val aliasMatch = candidates.firstOrNull { it.alias.equals(name, ignoreCase = true) }
+        val modelConfig = aliasMatch
+            ?: candidates.firstOrNull { it.apiName.equals(name, ignoreCase = true) }
+            ?: throw IllegalArgumentException(
+                "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
+                    "Configure an LlmModelConfig with alias or apiName matching '$name'.",
+            )
+
+        val matchedOn = if (aliasMatch != null) "alias" else "apiName"
+        logger.info {
+            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiName}' " +
+                "(matched on $matchedOn, priority=${modelConfig.priority}, llmConfigId=${modelConfig.llmConfigId})"
+        }
 
         val providerConfig = llmConfigService.getById(modelConfig.llmConfigId)
+        logger.debug { "[AgentService] Provider resolved: name='${providerConfig.name}' apiType=${providerConfig.apiType}" }
         return modelConfig to providerConfig
     }
 
