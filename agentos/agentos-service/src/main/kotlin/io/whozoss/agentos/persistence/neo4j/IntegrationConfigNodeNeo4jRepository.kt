@@ -10,8 +10,10 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     /**
      * Find all non-removed integration configs belonging to a namespace, ordered by name.
      *
-     * Returning `c, r, ns` (node, relationship, node) gives SDN everything it needs
-     * to map the @Relationship field on [IntegrationConfigNode] from the query result.
+     * Traverses the BELONGS_TO edge and filters by the Namespace id. The edge is
+     * always present because [linkConfigToNamespace] is called after every save.
+     * Returning `c, r, ns` gives SDN everything it needs to map the
+     * [IntegrationConfigNode.namespace] @Relationship field.
      */
     @Query(
         $$"""MATCH (c:IntegrationConfig)-[r:BELONGS_TO]->(ns:Namespace)
@@ -20,4 +22,19 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<IntegrationConfigNode>
+
+    /**
+     * Creates the `BELONGS_TO` relationship from an IntegrationConfig node to its Namespace node.
+     *
+     * Called after saving a config. Using an explicit query avoids SDN writing
+     * stub [NamespaceNode] properties (empty name/description) onto the existing
+     * Namespace node when the relationship is expressed via the @Relationship field.
+     */
+    @Query(
+        $$"""MATCH (c:IntegrationConfig {id: $configId})
+            MATCH (ns:Namespace {id: $namespaceId})
+            MERGE (c)-[:BELONGS_TO]->(ns)
+            """,
+    )
+    fun linkConfigToNamespace(configId: String, namespaceId: String)
 }

@@ -21,6 +21,7 @@ open class Neo4jCaseRepository(
     override fun save(entity: Case): Case =
         caseNodeNeo4jRepository
             .save(CaseNode.fromDomain(entity))
+            .also { caseNodeNeo4jRepository.linkCaseToNamespace(it.id, entity.namespaceId.toString()) }
             .toDomain()
             .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }
 

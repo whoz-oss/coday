@@ -16,16 +16,13 @@ import java.util.UUID
  * Stored as a `(:IntegrationConfig)-[:BELONGS_TO]->(:Namespace)` edge.
  *
  * [namespace] is a nullable `var` so SDN can call the primary constructor before
- * injecting the @Relationship field. For SDN-generated queries the field is
- * populated automatically. For custom queries (via [Neo4jClient]) the caller
- * assembles the node directly with the correct [NamespaceNode] stub.
+ * injecting the @Relationship field via property injection.
  *
  * [toDomain] reads [namespace]!!.id — a null here is a data-integrity error and
  * should surface as an NPE rather than be silently ignored.
  *
  * On write, [fromDomain] provides a stub [NamespaceNode] carrying only the `@Id`.
- * SDN issues a MERGE on the Namespace node by id and never overwrites its existing
- * properties, so saving an IntegrationConfig does not corrupt the Namespace.
+ * SDN MERGEs by `@Id` on save and never overwrites existing Namespace properties.
  *
  * [parameters] is a [JsonNode] in the domain model but Neo4j has no native JSON
  * type, so it is stored as a raw JSON string ([parametersJson]) and round-tripped
@@ -35,6 +32,7 @@ import java.util.UUID
 data class IntegrationConfigNode(
     @Id
     val id: String,
+    val namespaceId: String,
     val name: String,
     val integrationType: String,
     val parametersJson: String? = null,
@@ -58,7 +56,7 @@ data class IntegrationConfigNode(
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
                 ),
-            namespaceId = UUID.fromString(namespace!!.id),
+            namespaceId = UUID.fromString(namespaceId),
             name = name,
             integrationType = integrationType,
             parameters = parametersJson?.let { objectMapper.readTree(it) },
@@ -71,6 +69,7 @@ data class IntegrationConfigNode(
         ): IntegrationConfigNode =
             IntegrationConfigNode(
                 id = config.id.toString(),
+                namespaceId = config.namespaceId.toString(),
                 name = config.name,
                 integrationType = config.integrationType,
                 parametersJson = config.parameters?.let { objectMapper.writeValueAsString(it) },
@@ -79,7 +78,6 @@ data class IntegrationConfigNode(
                 modified = config.metadata.modified,
                 modifiedBy = config.metadata.modifiedBy,
                 removed = config.metadata.removed.takeIf { it },
-                namespace = NamespaceNode.stub(config.namespaceId),
             )
     }
 }

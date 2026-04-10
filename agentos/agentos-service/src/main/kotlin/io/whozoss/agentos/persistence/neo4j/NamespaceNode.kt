@@ -12,10 +12,6 @@ import java.util.UUID
  *
  * Stored as a `(:Namespace)` node. Namespaces are root-level — no parent relationship.
  *
- * [stub] creates a minimal instance carrying only the [id] for use as the target
- * of a `@Relationship` reference on [CaseNode] and [IntegrationConfigNode]. SDN
- * MERGEs the stub by `@Id` on save and never overwrites existing properties.
- *
  * Properties kept flat (no nested objects) to avoid SDN's limited support for
  * embedded value types in Community Edition.
  */
@@ -59,12 +55,5 @@ data class NamespaceNode(
                 modifiedBy = ns.metadata.modifiedBy,
                 removed = ns.metadata.removed.takeIf { it },
             )
-
-        /**
-         * Creates a minimal stub carrying only the [namespaceId] for use as
-         * the BELONGS_TO relationship target on [CaseNode] and [IntegrationConfigNode].
-         * SDN MERGEs by @Id and leaves all other Namespace properties untouched.
-         */
-        fun stub(namespaceId: UUID): NamespaceNode = NamespaceNode(id = namespaceId.toString())
     }
 }

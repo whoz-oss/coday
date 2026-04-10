@@ -21,12 +21,9 @@ open class Neo4jIntegrationConfigRepository(
     override fun save(entity: IntegrationConfig): IntegrationConfig =
         neo4jRepository
             .save(IntegrationConfigNode.fromDomain(entity, objectMapper))
+            .also { neo4jRepository.linkConfigToNamespace(it.id, entity.namespaceId.toString()) }
             .toDomain(objectMapper)
-            .also {
-                logger.debug {
-                    "[Neo4jIntegrationConfigRepository] Saved config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}"
-                }
-            }
+            .also { logger.debug { "[Neo4jIntegrationConfigRepository] Saved config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
 
     override fun findByIds(ids: Collection<UUID>): List<IntegrationConfig> =
         neo4jRepository
