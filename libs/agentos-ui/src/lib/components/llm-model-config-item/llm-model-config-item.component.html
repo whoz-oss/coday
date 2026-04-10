@@ -2,16 +2,9 @@
   <div class="llm-model-config-item__body">
     <span class="llm-model-config-item__name">{{ displayTitle }}</span>
     <span class="llm-model-config-item__api-name">{{ model.apiName }}</span>
-    @if (model.temperature !== undefined || model.maxTokens !== undefined) {
-      <span class="llm-model-config-item__params">
-        @if (model.temperature !== undefined) {
-          <span>temp: {{ model.temperature }}</span>
-        }
-        @if (model.maxTokens !== undefined) {
-          <span>max tokens: {{ model.maxTokens }}</span>
-        }
-      </span>
-    }
+    <span class="llm-model-config-item__params">
+      <span>priority: {{ model.priority }}</span>
+    </span>
   </div>
 
   <div class="llm-model-config-item__actions">
