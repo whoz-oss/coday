@@ -303,21 +303,54 @@ class AgentServiceImplSpec : StringSpec() {
         // getDefaultAgentName
         // -------------------------------------------------------------------------
 
-        "getDefaultAgentName returns alias of first model in namespace" {
-            val model = modelConfig(alias = "sonnet")
-            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+        "getDefaultAgentName returns alias of the config named 'default'" {
+            val defaultModel = modelConfig(apiName = "claude-sonnet-4-5", alias = "default")
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(defaultModel)
 
-            agentService.getDefaultAgentName(namespaceId) shouldBe "sonnet"
+            agentService.getDefaultAgentName(namespaceId) shouldBe "default"
 
             verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
             verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
-        "getDefaultAgentName returns apiName when alias is null" {
-            val model = modelConfig(apiName = "claude-sonnet-4-5", alias = null)
+        "getDefaultAgentName returns the highest-priority config when multiple configs are named 'default'" {
+            val lowPriority = modelConfig(apiName = "claude-haiku-4-5", alias = "default", priority = 0)
+            val highPriority = modelConfig(apiName = "claude-sonnet-4-5", alias = "default", priority = 10)
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(lowPriority, highPriority)
+
+            // The canonical name is the alias ("default") for both, so we verify via getDefaultAgent
+            // by checking which modelConfig is used to build the chat client.
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(highPriority, provider) } returns chatClient
+
+            agentService.getDefaultAgent(context)
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(highPriority, provider) }
+            verify(exactly = 0) { chatClientProvider.getChatClient(lowPriority, provider) }
+        }
+
+        "getDefaultAgentName returns null when no config is named 'default'" {
+            val model = modelConfig(apiName = "claude-sonnet-4-5", alias = "sonnet", priority = 100)
             every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
 
-            agentService.getDefaultAgentName(namespaceId) shouldBe "claude-sonnet-4-5"
+            agentService.getDefaultAgentName(namespaceId).shouldBeNull()
+        }
+
+        "getDefaultAgentName matching of 'default' is case-insensitive" {
+            val model = modelConfig(apiName = "claude-sonnet-4-5", alias = "Default", priority = 5)
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+
+            agentService.getDefaultAgentName(namespaceId) shouldBe "Default"
+        }
+
+        "getDefaultAgentName ignores high-priority configs that are not named 'default'" {
+            val highPriorityOther = modelConfig(apiName = "gpt-4o", alias = "big", priority = 100)
+            val defaultModel = modelConfig(apiName = "claude-sonnet-4-5", alias = "default", priority = 1)
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(highPriorityOther, defaultModel)
+
+            agentService.getDefaultAgentName(namespaceId) shouldBe "default"
         }
 
         "getDefaultAgentName returns null when no models configured for namespace" {

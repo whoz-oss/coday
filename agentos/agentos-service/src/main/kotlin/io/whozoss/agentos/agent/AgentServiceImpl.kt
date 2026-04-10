@@ -120,11 +120,14 @@ class AgentServiceImpl(
     }
 
     /**
-     * Pick the highest-priority [LlmModelConfig] for the namespace as the default.
-     * Falls back to insertion order among configs with equal priority.
+     * Find the [LlmModelConfig] named "default" (matched against [LlmModelConfig.alias],
+     * case-insensitive) with the highest priority among all matching entries.
+     *
+     * Returns `null` when no config in the namespace carries the "default" alias.
      */
     private fun findDefaultModelConfig(namespaceId: UUID): LlmModelConfig? =
         llmModelConfigService.findByNamespaceId(namespaceId)
+            .filter { it.alias.equals("default", ignoreCase = true) }
             .maxByOrNull { it.priority }
 
     // -------------------------------------------------------------------------
