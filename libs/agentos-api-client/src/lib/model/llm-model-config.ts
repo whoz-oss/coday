@@ -15,7 +15,7 @@ export interface LlmModelConfig {
   userId?: string
   apiName: string
   alias?: string
-  displayName?: string
+  priority: number
   temperature?: number
   maxTokens?: number
 }

@@ -1258,8 +1258,9 @@ components:
           minLength: 1
         alias:
           type: string
-        displayName:
-          type: string
+        priority:
+          type: integer
+          format: int32
         temperature:
           type: number
           format: double
@@ -1269,6 +1270,7 @@ components:
       required:
       - apiName
       - llmConfigId
+      - priority
     LlmConfig:
       type: object
       properties:
