@@ -25,6 +25,7 @@ class LlmModelConfigControllerSpec : StringSpec({
         id: UUID = UUID.randomUUID(),
         apiName: String = "claude-haiku-4-5",
         alias: String? = "SMALL",
+        priority: Int = 0,
         temperature: Double? = 0.3,
         maxTokens: Int? = 1024,
     ) = LlmModelConfig(
@@ -33,6 +34,7 @@ class LlmModelConfigControllerSpec : StringSpec({
         namespaceId = namespaceId,
         apiName = apiName,
         alias = alias,
+        priority = priority,
         temperature = temperature,
         maxTokens = maxTokens,
     )
@@ -41,12 +43,14 @@ class LlmModelConfigControllerSpec : StringSpec({
         id: UUID? = UUID.randomUUID(),
         apiName: String = "claude-haiku-4-5",
         alias: String? = "SMALL",
+        priority: Int = 0,
     ) = LlmModelConfigResource(
         id = id,
         llmConfigId = llmConfigId,
         namespaceId = namespaceId,
         apiName = apiName,
         alias = alias,
+        priority = priority,
     )
 
     // -------------------------------------------------------------------------
@@ -55,7 +59,7 @@ class LlmModelConfigControllerSpec : StringSpec({
 
     "toResource maps all fields correctly" {
         val id = UUID.randomUUID()
-        val m = model(id = id, apiName = "claude-opus-4-6", alias = "BIG", temperature = 0.7, maxTokens = 4096)
+        val m = model(id = id, apiName = "claude-opus-4-6", alias = "BIG", priority = 5, temperature = 0.7, maxTokens = 4096)
 
         val result = controller.toResource(m)
 
@@ -64,6 +68,7 @@ class LlmModelConfigControllerSpec : StringSpec({
         result.namespaceId shouldBe namespaceId
         result.apiName shouldBe "claude-opus-4-6"
         result.alias shouldBe "BIG"
+        result.priority shouldBe 5
         result.temperature shouldBe 0.7
         result.maxTokens shouldBe 4096
     }

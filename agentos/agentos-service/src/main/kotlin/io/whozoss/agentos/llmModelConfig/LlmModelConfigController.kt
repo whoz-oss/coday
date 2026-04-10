@@ -45,7 +45,7 @@ class LlmModelConfigController(
             userId = entity.userId,
             apiName = entity.apiName,
             alias = entity.alias,
-            displayName = entity.displayName,
+            priority = entity.priority,
             temperature = entity.temperature,
             maxTokens = entity.maxTokens,
         )
@@ -61,7 +61,7 @@ class LlmModelConfigController(
             userId = resource.userId,
             apiName = resource.apiName,
             alias = resource.alias,
-            displayName = resource.displayName,
+            priority = resource.priority,
             temperature = resource.temperature,
             maxTokens = resource.maxTokens,
         )

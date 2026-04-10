@@ -67,6 +67,7 @@ class AgentServiceImpl(
         namespaceId: UUID,
     ): String? {
         val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
+            .sortedByDescending { it.priority }
         val match =
             candidates.firstOrNull { it.alias.equals(namePart, ignoreCase = true) }
                 ?: candidates.firstOrNull { it.apiName.equals(namePart, ignoreCase = true) }
@@ -88,6 +89,7 @@ class AgentServiceImpl(
         namespaceId: UUID,
     ): Pair<LlmModelConfig, LlmConfig> {
         val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
+            .sortedByDescending { it.priority }
 
         val modelConfig =
             candidates.firstOrNull { it.alias.equals(name, ignoreCase = true) }
@@ -102,11 +104,12 @@ class AgentServiceImpl(
     }
 
     /**
-     * Pick the first available [LlmModelConfig] for the namespace as the default,
-     * with no particular ordering guarantee beyond insertion order.
+     * Pick the highest-priority [LlmModelConfig] for the namespace as the default.
+     * Falls back to insertion order among configs with equal priority.
      */
     private fun findDefaultModelConfig(namespaceId: UUID): LlmModelConfig? =
-        llmModelConfigService.findByNamespaceId(namespaceId).firstOrNull()
+        llmModelConfigService.findByNamespaceId(namespaceId)
+            .maxByOrNull { it.priority }
 
     // -------------------------------------------------------------------------
     // Agent instantiation
@@ -141,7 +144,7 @@ class AgentServiceImpl(
             AiModel(
                 metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
                 name = agentName,
-                description = modelConfig.displayName ?: agentName,
+                description = agentName,
                 modelName = modelConfig.apiName,
                 providerName = providerConfig.name,
                 temperature = modelConfig.temperature,

@@ -22,6 +22,10 @@ import java.util.UUID
  * [alias] is an optional stable contract name (e.g. "SMALL", "BIG") that agent definitions
  * can reference without knowing the underlying model.
  *
+ * [priority] controls resolution order when multiple configs share the same alias or apiName
+ * within a namespace. Higher value wins. Defaults to 0 — all configs are equal unless
+ * explicitly prioritised. Ties are broken by insertion order (first created wins).
+ *
  * Uniqueness constraints enforced by [LlmModelConfigServiceImpl]:
  * - (llmConfigId, apiName) must be unique
  * - (llmConfigId, alias) must be unique when alias is non-null
@@ -36,7 +40,7 @@ data class LlmModelConfig(
     val userId: UUID? = null,
     val apiName: String,
     val alias: String? = null,
-    val displayName: String? = null,
+    val priority: Int = 0,
     val temperature: Double? = null,
     val maxTokens: Int? = null,
 ) : Entity

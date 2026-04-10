@@ -66,6 +66,7 @@ class AgentServiceImplSpec : StringSpec() {
     private fun modelConfig(
         apiName: String = "claude-sonnet-4-5",
         alias: String? = "sonnet",
+        priority: Int = 0,
         temperature: Double? = null,
         maxTokens: Int? = null,
     ) = LlmModelConfig(
@@ -74,6 +75,7 @@ class AgentServiceImplSpec : StringSpec() {
         namespaceId = namespaceId,
         apiName = apiName,
         alias = alias,
+        priority = priority,
         temperature = temperature,
         maxTokens = maxTokens,
     )
@@ -113,6 +115,22 @@ class AgentServiceImplSpec : StringSpec() {
             val agent = agentService.findAgentByName("claude-sonnet-4-5", context)
 
             agent.name shouldBe "claude-sonnet-4-5"
+        }
+
+        "findAgentByName resolves to higher-priority config when two configs share the same alias" {
+            val lowPriority = modelConfig(apiName = "claude-haiku-4-5", alias = "sonnet", priority = 0)
+            val highPriority = modelConfig(apiName = "claude-sonnet-4-5", alias = "sonnet", priority = 10)
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(lowPriority, highPriority)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(highPriority, provider) } returns chatClient
+
+            agentService.findAgentByName("sonnet", context)
+
+            verify(exactly = 1) { chatClientProvider.getChatClient(highPriority, provider) }
+            verify(exactly = 0) { chatClientProvider.getChatClient(lowPriority, provider) }
         }
 
         "findAgentByName prefers alias over apiName when both could match" {

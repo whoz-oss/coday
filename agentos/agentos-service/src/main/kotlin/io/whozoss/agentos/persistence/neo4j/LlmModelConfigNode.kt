@@ -27,7 +27,7 @@ data class LlmModelConfigNode(
     val userId: String? = null,
     val apiName: String,
     val alias: String? = null,
-    val displayName: String? = null,
+    val priority: Int = 0,
     val temperature: Double? = null,
     val maxTokens: Int? = null,
     // EntityMetadata fields
@@ -53,7 +53,7 @@ data class LlmModelConfigNode(
             userId = userId?.let { UUID.fromString(it) },
             apiName = apiName,
             alias = alias,
-            displayName = displayName,
+            priority = priority,
             temperature = temperature,
             maxTokens = maxTokens,
         )
@@ -67,7 +67,7 @@ data class LlmModelConfigNode(
                 userId = model.userId?.toString(),
                 apiName = model.apiName,
                 alias = model.alias,
-                displayName = model.displayName,
+                priority = model.priority,
                 temperature = model.temperature,
                 maxTokens = model.maxTokens,
                 created = model.metadata.created,

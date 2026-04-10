@@ -25,7 +25,7 @@ data class LlmModelConfigResource(
     @field:NotBlank
     val apiName: String,
     val alias: String? = null,
-    val displayName: String? = null,
+    val priority: Int = 0,
     val temperature: Double? = null,
     val maxTokens: Int? = null,
 )
