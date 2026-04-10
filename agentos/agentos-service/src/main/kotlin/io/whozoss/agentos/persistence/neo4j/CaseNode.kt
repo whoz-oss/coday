@@ -70,5 +70,12 @@ data class CaseNode(
                 removed = case.metadata.removed.takeIf { it },
                 namespace = NamespaceNode.stub(case.namespaceId),
             )
+
+        /**
+         * Creates a minimal stub carrying only the [caseId] for use as the
+         * BELONGS_TO relationship target on [CaseEventNode]. SDN MERGEs by @Id
+         * and leaves all other Case properties untouched.
+         */
+        fun stub(caseId: UUID): CaseNode = CaseNode(id = caseId.toString(), status = "", title = "")
     }
 }
