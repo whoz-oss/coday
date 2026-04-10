@@ -65,4 +65,5 @@ interface EntityRepository<T : Entity, P> {
      * @return Number of entities actually marked as removed
      */
     fun deleteByParent(parentId: P): Int
+
 }

@@ -2,6 +2,7 @@
 
 package io.whozoss.agentos.caseEvent
 
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
@@ -10,8 +11,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
-import org.springframework.http.HttpStatus
 import java.util.UUID
 
 /**
@@ -32,7 +31,7 @@ class CaseEventRestController(
         @PathVariable id: UUID,
     ): CaseEvent =
         caseEventService.findById(id)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "CaseEvent not found: $id")
+            ?: throw ResourceNotFoundException("CaseEvent not found: $id")
 
     /** POST /api/case-events/by-ids — get multiple events by IDs. */
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])

@@ -1,4 +1,6 @@
 export * from './lib/components/icon-button/icon-button.component'
+export * from './lib/components/json-schema-form/json-schema-form.component'
+export * from './lib/components/json-schema-form/json-schema.model'
 export * from './lib/components/autocomplete-input/autocomplete-data-source'
 export * from './lib/components/autocomplete-input/autocomplete-input.component'
 export * from './lib/components/entity-card/card-actions.directive'

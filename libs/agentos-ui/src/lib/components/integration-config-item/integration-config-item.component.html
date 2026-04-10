@@ -1,0 +1,17 @@
+<div class="integration-config-item" role="listitem">
+  <div class="integration-config-item__body">
+    <span class="integration-config-item__name">{{ config.name }}</span>
+    <span class="integration-config-item__type">{{ config.integrationType }}</span>
+  </div>
+
+  <div class="integration-config-item__actions">
+    @if (pendingDelete()) {
+      <span class="integration-config-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-icon-button icon="edit" title="Edit integration" (action)="onEdit()" />
+      <ds-icon-button icon="delete" variant="danger" title="Delete integration" (action)="onDeleteArmed()" />
+    }
+  </div>
+</div>

@@ -1,16 +1,19 @@
 package io.whozoss.agentos.config
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.persistence.neo4j.CaseEventNodeMapper
 import io.whozoss.agentos.persistence.neo4j.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.CaseNodeNeo4jRepository
-import io.whozoss.agentos.persistence.neo4j.NamespaceNodeNeo4jRepository
-import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.persistence.neo4j.CaseEventNodeMapper
+import io.whozoss.agentos.persistence.neo4j.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.MessageContentSerializer
+import io.whozoss.agentos.persistence.neo4j.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseEventRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseRepository
+import io.whozoss.agentos.persistence.neo4j.Neo4jIntegrationConfigRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jNamespaceRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jUserRepository
 import io.whozoss.agentos.persistence.neo4j.UserNodeNeo4jRepository
@@ -71,6 +74,15 @@ class Neo4jPersistenceConfiguration {
     fun neo4jUserRepository(userNodeNeo4jRepository: UserNodeNeo4jRepository): UserRepository {
         logger.info { "[Persistence] Neo4jUserRepository active" }
         return Neo4jUserRepository(userNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jIntegrationConfigRepository(
+        integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
+        objectMapper: ObjectMapper,
+    ): IntegrationConfigRepository {
+        logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
+        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper)
     }
 
     companion object : KLogging()

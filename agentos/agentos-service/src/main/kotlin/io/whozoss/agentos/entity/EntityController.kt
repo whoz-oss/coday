@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.entity.Entity
 import jakarta.validation.Valid
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.ResponseStatus
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -26,9 +26,6 @@ import java.util.UUID
  * The [ResourceType] parameter separates the HTTP contract from the domain model.
  * Each concrete controller declares its own resource/DTO class and implements
  * [toResource] and [toDomain] to convert between the two.
- *
- * For entities where no DTO separation is needed yet, extend [SimpleEntityController]
- * instead — it provides identity implementations of [toResource] and [toDomain].
  *
  * Standard endpoints provided:
  * - GET    /{id}                    — get by ID
@@ -67,7 +64,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     ): ResourceType =
         service.findById(id)
             ?.let { toResource(it) }
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found: $id")
+            ?: throw ResourceNotFoundException("Entity not found: $id")
 
     /**
      * POST /by-ids — get multiple entities by their IDs.
@@ -119,7 +116,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
         @Valid @RequestBody resource: ResourceType,
     ): ResourceType {
         service.findById(id)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found: $id")
+            ?: throw ResourceNotFoundException("Entity not found: $id")
         return toResource(service.update(toDomain(resource)))
     }
 
@@ -133,7 +130,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     ) {
         val deleted = service.delete(id)
         if (!deleted) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found: $id")
+            throw ResourceNotFoundException("Entity not found: $id")
         }
     }
 }

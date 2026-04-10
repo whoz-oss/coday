@@ -12,6 +12,7 @@
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
       <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
     } @else {
+      <ds-icon-button icon="settings" title="Manage integrations" (action)="onIntegrations()" />
       <ds-icon-button icon="edit" title="Edit namespace" (action)="onEdit()" />
       <ds-icon-button icon="delete" variant="danger" title="Delete namespace" (action)="onDeleteArmed()" />
     }

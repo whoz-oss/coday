@@ -3,6 +3,7 @@
   [items]="(namespaceItems$ | async) ?? []"
   [showCreate]="true"
   emptyMessage="No namespaces yet. Create one to get started."
+  cardMinWidth="400px"
   [itemTemplate]="namespaceItemTpl"
   (itemSelected)="navigateToCases($event)"
   (createRequested)="navigateToCreate()"
@@ -16,6 +17,7 @@
       (selected)="navigateToCases($event.id ?? '')"
       (editRequested)="navigateToEdit($event)"
       (deleteRequested)="deleteNamespace($event)"
+      (integrationsRequested)="openIntegrations($event)"
     />
   }
 </ng-template>

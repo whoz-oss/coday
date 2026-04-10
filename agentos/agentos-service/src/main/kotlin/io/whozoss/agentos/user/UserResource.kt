@@ -2,7 +2,6 @@ package io.whozoss.agentos.user
 
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Email
-import jakarta.validation.constraints.NotBlank
 import java.util.UUID
 
 /**
@@ -13,8 +12,12 @@ import java.util.UUID
  *
  * Validation annotations live here, not on [User], keeping the domain model clean.
  *
- * [externalId] is write-once on creation and is not exposed in responses —
- * it is an internal identity-provider key that HTTP clients have no need to see.
+ * [email] is an optional profile field — nullable so that users created in local mode
+ * (where no email is known at creation time) are not forced to provide one.
+ * The @Email constraint only fires when the value is non-null.
+ *
+ * [externalId] is a read-only server-managed field (IdP key). HTTP clients may receive
+ * it in responses but it is never written from the request body.
  *
  * Annotated with @Schema(name = "User") so that the generated OpenAPI spec
  * keeps the schema name "User" instead of "UserResource".
@@ -22,9 +25,8 @@ import java.util.UUID
 @Schema(name = "User")
 data class UserResource(
     val id: UUID? = null,
-    @field:NotBlank(message = "email must not be blank")
     @field:Email(message = "email must be a valid address")
-    val email: String,
+    val email: String? = null,
     val externalId: String? = null,
     val firstname: String? = null,
     val lastname: String? = null,

@@ -2,6 +2,7 @@ package io.whozoss.agentos.user
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.http.HttpStatus
@@ -46,7 +47,7 @@ class UserController(
     override fun toResource(entity: User): UserResource =
         UserResource(
             id = entity.metadata.id,
-            email = entity.email,
+            email = entity.email.ifBlank { null },  // blank = no email known (local mode)
             externalId = entity.externalId,
             firstname = entity.firstname,
             lastname = entity.lastname,
@@ -56,12 +57,34 @@ class UserController(
     override fun toDomain(resource: UserResource): User =
         User(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-            externalId = resource.email,
-            email = resource.email,
+            externalId = "",           // server-managed — never sourced from the request body
+            email = resource.email ?: "",
             firstname = resource.firstname,
             lastname = resource.lastname,
             bio = resource.bio,
         )
+
+    /**
+     * PUT /{id} — update an existing user.
+     *
+     * Overrides [EntityController.update] to preserve [User.externalId] from the
+     * persisted entity. The externalId is an IdP key that is set once at creation
+     * and must never be overwritten by a client-supplied value.
+     */
+    override fun update(
+        id: UUID,
+        resource: UserResource,
+    ): UserResource {
+        val existing =
+            userService.findById(id)
+                ?: throw ResourceNotFoundException("Entity not found: $id")
+        val updated =
+            toDomain(resource).copy(
+                metadata = existing.metadata,
+                externalId = existing.externalId,
+            )
+        return toResource(userService.update(updated))
+    }
 
     // -------------------------------------------------------------------------
     // Additional endpoints

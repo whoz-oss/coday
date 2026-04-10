@@ -35,6 +35,30 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () => import('./components/case-list/case-list.component').then((m) => m.CaseListComponent),
           },
           {
+            path: ':namespaceId/integrations/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/integrations/:integrationId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/integrations',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-integrations/namespace-integrations.component').then(
+                (m) => m.NamespaceIntegrationsComponent
+              ),
+          },
+          {
             path: ':namespaceId/cases/:caseId',
             canActivate: [agentosReadyGuard],
             loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
