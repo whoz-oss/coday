@@ -15,17 +15,13 @@ import java.util.UUID
  *
  * Stored as a `(:Case)-[:BELONGS_TO]->(:Namespace)` edge.
  *
- * [namespaceId] is kept as a plain node property alongside the [namespace]
- * relationship field. This serves two purposes:
- * - It allows [findActiveByNamespaceId] to use a simple property filter
- *   (`WHERE c.namespaceId = $namespaceId`) rather than requiring a relationship
- *   traversal in the RETURN clause for SDN to inject [namespace].
- * - It acts as a fast index-friendly filter without a graph hop.
+ * [namespace] is a nullable `var` so SDN can call the primary constructor before
+ * injecting the @Relationship field. For SDN-generated queries the field is
+ * populated automatically. For custom queries (via [Neo4jClient]) the caller
+ * assembles the node directly with the correct [NamespaceNode] stub.
  *
- * [namespace] is nullable with a `null` default so SDN can call the primary
- * constructor before injecting the @Relationship field via property injection.
- * [toDomain] derives [Case.namespaceId] from the plain [namespaceId] property,
- * which is always present regardless of whether SDN loaded the relationship.
+ * [toDomain] reads [namespace]!!.id — a null here is a data-integrity error and
+ * should surface as an NPE rather than be silently ignored.
  *
  * On write, [fromDomain] provides a stub [NamespaceNode] carrying only the `@Id`.
  * SDN issues a MERGE on the Namespace node by id and never overwrites its existing
@@ -35,7 +31,6 @@ import java.util.UUID
 data class CaseNode(
     @Id
     val id: String,
-    val namespaceId: String,
     val status: String,
     val title: String,
     val created: Instant = Instant.now(),
@@ -57,7 +52,7 @@ data class CaseNode(
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
                 ),
-            namespaceId = UUID.fromString(namespaceId),
+            namespaceId = UUID.fromString(namespace!!.id),
             status = CaseStatus.valueOf(status),
             title = title,
         )
@@ -66,7 +61,6 @@ data class CaseNode(
         fun fromDomain(case: Case): CaseNode =
             CaseNode(
                 id = case.id.toString(),
-                namespaceId = case.namespaceId.toString(),
                 status = case.status.name,
                 title = case.title,
                 created = case.metadata.created,
