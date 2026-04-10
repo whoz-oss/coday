@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { LlmConfig, LlmConfigControllerService } from '@whoz-oss/agentos-api-client'
@@ -24,6 +24,7 @@ import { LlmConfigItemComponent } from '../llm-config-item/llm-config-item.compo
   imports: [AsyncPipe, EntityListComponent, LlmConfigItemComponent],
   templateUrl: './namespace-llm-configs.component.html',
   styleUrl: './namespace-llm-configs.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceLlmConfigsComponent {
   private readonly route = inject(ActivatedRoute)

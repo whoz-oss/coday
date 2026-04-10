@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import { catchError, of } from 'rxjs'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
@@ -40,9 +41,10 @@ export class LlmModelConfigFormComponent implements OnInit {
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   /** All providers for this namespace — used to populate the provider select. */
-  protected readonly providers = toSignal(this.llmConfigController.listByParentLlmConfig(this.namespaceId), {
-    initialValue: [] as LlmConfig[],
-  })
+  protected readonly providers = toSignal(
+    this.llmConfigController.listByParentLlmConfig(this.namespaceId).pipe(catchError(() => of([] as LlmConfig[]))),
+    { initialValue: [] as LlmConfig[] }
+  )
 
   protected readonly form = new FormGroup({
     llmConfigId: new FormControl<string>('', {

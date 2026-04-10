@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
@@ -31,6 +31,7 @@ import { LlmModelConfigItemComponent } from '../llm-model-config-item/llm-model-
   imports: [AsyncPipe, EntityListComponent, LlmModelConfigItemComponent],
   templateUrl: './namespace-llm-models.component.html',
   styleUrl: './namespace-llm-models.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceLlmModelsComponent {
   private readonly route = inject(ActivatedRoute)
