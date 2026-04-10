@@ -2,17 +2,21 @@ package io.whozoss.agentos.agent
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.llmConfig.LlmConfig
+import io.whozoss.agentos.llmConfig.LlmConfigService
+import io.whozoss.agentos.llmModelConfig.LlmModelConfig
+import io.whozoss.agentos.llmModelConfig.LlmModelConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
@@ -23,13 +27,22 @@ import java.util.UUID
 class AgentServiceImplSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
     private val toolRegistryService: ToolRegistryService = mockk()
-    private val aiModelRegistry: AiModelRegistry = mockk()
+    private val llmModelConfigService: LlmModelConfigService = mockk()
+    private val llmConfigService: LlmConfigService = mockk()
     private val namespaceService: NamespaceService = mockk()
     private val userService: UserService = mockk(relaxed = true)
-    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistryService, aiModelRegistry, namespaceService, userService)
+    private val agentService =
+        AgentServiceImpl(
+            chatClientProvider,
+            toolRegistryService,
+            llmModelConfigService,
+            llmConfigService,
+            namespaceService,
+            userService,
+        )
 
-    // A context and matching namespace used across most tests
     private val namespaceId: UUID = UUID.randomUUID()
+    private val llmConfigId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
     private val context = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId)
     private val namespace =
@@ -39,61 +52,104 @@ class AgentServiceImplSpec : StringSpec() {
             description = "Engineering namespace for backend services",
         )
 
+    private fun providerConfig(
+        apiKey: String? = "sk-ant-test",
+    ) = LlmConfig(
+        metadata = EntityMetadata(id = llmConfigId),
+        namespaceId = namespaceId,
+        name = "anthropic-prod",
+        apiType = AiApiType.Anthropic,
+        baseUrl = "https://api.anthropic.com",
+        apiKey = apiKey,
+    )
+
+    private fun modelConfig(
+        apiName: String = "claude-sonnet-4-5",
+        alias: String? = "sonnet",
+        temperature: Double? = null,
+        maxTokens: Int? = null,
+    ) = LlmModelConfig(
+        metadata = EntityMetadata(id = UUID.randomUUID()),
+        llmConfigId = llmConfigId,
+        namespaceId = namespaceId,
+        apiName = apiName,
+        alias = alias,
+        temperature = temperature,
+        maxTokens = maxTokens,
+    )
+
     init {
         every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
 
-        // The key scenario: name and modelName are intentionally different.
-        // "my-agent" is the logical name used to look up the ChatClient,
-        // while "gpt-4o-2024-08-06" is the underlying provider model identifier.
-        // The bug was using model.modelName ("gpt-4o-2024-08-06") instead of
-        // model.name ("my-agent"), causing a lookup failure in ChatClientProvider.
-        fun modelWithDistinctNameAndModelName() =
-            AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "An agent whose name differs from its provider model identifier",
-                modelName = "gpt-4o-2024-08-06",
-                providerName = "openai",
-            )
-
         // -------------------------------------------------------------------------
-        // findAgentByName
+        // findAgentByName — alias resolution
         // -------------------------------------------------------------------------
 
-        "findAgentByName calls getChatClient with model.name, not model.modelName" {
-            val model = modelWithDistinctNameAndModelName()
+        "findAgentByName resolves by alias and creates an agent" {
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            agentService.findAgentByName("my-agent", context)
+            val agent = agentService.findAgentByName("sonnet", context)
 
-            verify(exactly = 1) { chatClientProvider.getChatClient("my-agent") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-2024-08-06") }
+            agent.name shouldBe "sonnet"
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider) }
         }
 
-        "findAgentByName falls back to contains-match and still uses model.name for getChatClient" {
-            val model = modelWithDistinctNameAndModelName()
+        "findAgentByName falls back to apiName when alias does not match" {
+            val model = modelConfig(apiName = "claude-sonnet-4-5", alias = null)
+            val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { aiModelRegistry.findByName("agent") } returns null
-            every { aiModelRegistry.getAll() } returns listOf(model)
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            agentService.findAgentByName("agent", context)
+            val agent = agentService.findAgentByName("claude-sonnet-4-5", context)
 
-            verify(exactly = 1) { chatClientProvider.getChatClient("my-agent") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-2024-08-06") }
+            agent.name shouldBe "claude-sonnet-4-5"
         }
 
-        "findAgentByName throws when no model matches the given name" {
-            every { aiModelRegistry.findByName("unknown") } returns null
-            every { aiModelRegistry.getAll() } returns emptyList()
+        "findAgentByName prefers alias over apiName when both could match" {
+            // alias = "sonnet" takes precedence even if another model has apiName = "sonnet"
+            val withAlias = modelConfig(apiName = "claude-sonnet-4-5", alias = "sonnet")
+            val withApiName = modelConfig(apiName = "sonnet", alias = null)
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(withAlias, withApiName)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(withAlias, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("sonnet", context)
+
+            agent.name shouldBe "sonnet"
+            verify(exactly = 1) { chatClientProvider.getChatClient(withAlias, provider) }
+            verify(exactly = 0) { chatClientProvider.getChatClient(withApiName, provider) }
+        }
+
+        "findAgentByName matching is case-insensitive" {
+            val model = modelConfig(alias = "Sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            agentService.findAgentByName("sonnet", context).name shouldBe "Sonnet"
+        }
+
+        "findAgentByName throws when no LlmModelConfig matches in the namespace" {
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns emptyList()
 
             shouldThrow<IllegalArgumentException> {
-                agentService.findAgentByName("unknown", context)
+                agentService.findAgentByName("sonnet", context)
             }
         }
 
@@ -101,48 +157,22 @@ class AgentServiceImplSpec : StringSpec() {
         // Namespace context injection into instructions
         // -------------------------------------------------------------------------
 
-        "findAgentByName appends namespace name and description to existing model instructions" {
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "my-agent",
-                    description = "desc",
-                    modelName = "gpt-4o",
-                    providerName = "openai",
-                    instructions = "You are a helpful assistant.",
-                )
+        "findAgentByName appends namespace name and description to instructions" {
+            val model = modelConfig()
+            val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
 
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            agent.instructions!! shouldContain "You are a helpful assistant."
-            agent.instructions!! shouldContain namespace.name
-            agent.instructions!! shouldContain namespace.description!!
-        }
-
-        "findAgentByName uses namespace context as sole instructions when model has none" {
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "my-agent",
-                    description = "desc",
-                    modelName = "gpt-4o",
-                    providerName = "openai",
-                    instructions = null,
-                )
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
-
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
 
             agent.instructions!! shouldContain namespace.name
             agent.instructions!! shouldContain namespace.description!!
         }
 
-        "findAgentByName includes namespace name but not a blank description when namespace has no description" {
+        "findAgentByName includes namespace name but not null when namespace has no description" {
             val namespaceWithoutDescription =
                 Namespace(
                     metadata = EntityMetadata(id = namespaceId),
@@ -150,36 +180,21 @@ class AgentServiceImplSpec : StringSpec() {
                     description = null,
                 )
             every { namespaceService.findById(namespaceId) } returns namespaceWithoutDescription
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    name = "my-agent",
-                    description = "desc",
-                    modelName = "gpt-4o",
-                    providerName = "openai",
-                    instructions = "Base instructions.",
-                )
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
 
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+            val model = modelConfig()
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
 
             agent.instructions!! shouldContain "engineering"
             agent.instructions!! shouldNotContain "null"
-            // Restore the default stub for subsequent tests
+
+            // restore default stub
             every { namespaceService.findById(namespaceId) } returns namespace
-        }
-
-        "findAgentByName resolves namespace by namespaceId from context" {
-            val model = modelWithDistinctNameAndModelName()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
-
-            agentService.findAgentByName("my-agent", context)
-
-            verify(exactly = 1) { namespaceService.findById(namespaceId) }
         }
 
         // -------------------------------------------------------------------------
@@ -188,29 +203,26 @@ class AgentServiceImplSpec : StringSpec() {
 
         "findAgentByName appends user fields to instructions when userId resolves a known user" {
             val userId = UUID.randomUUID()
-            val user = User(
-                metadata = EntityMetadata(id = userId),
-                externalId = "ext-123",
-                email = "alice@example.com",
-                firstname = "Alice",
-                lastname = "Smith",
-                bio = "Backend engineer passionate about distributed systems.",
-            )
+            val user =
+                User(
+                    metadata = EntityMetadata(id = userId),
+                    externalId = "ext-123",
+                    email = "alice@example.com",
+                    firstname = "Alice",
+                    lastname = "Smith",
+                    bio = "Backend engineer passionate about distributed systems.",
+                )
             val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "desc",
-                modelName = "gpt-4o",
-                providerName = "openai",
-                instructions = "You are a helpful assistant.",
-            )
+            val model = modelConfig()
+            val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 
-            val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
+            val agent = agentService.findAgentByName("sonnet", contextWithUser) as AgentSimple
 
             agent.instructions!! shouldContain user.email
             agent.instructions!! shouldContain user.firstname!!
@@ -221,29 +233,26 @@ class AgentServiceImplSpec : StringSpec() {
 
         "findAgentByName omits optional user fields that are blank" {
             val userId = UUID.randomUUID()
-            val user = User(
-                metadata = EntityMetadata(id = userId),
-                externalId = "ext-456",
-                email = "bob@example.com",
-                firstname = null,
-                lastname = null,
-                bio = null,
-            )
+            val user =
+                User(
+                    metadata = EntityMetadata(id = userId),
+                    externalId = "ext-456",
+                    email = "bob@example.com",
+                    firstname = null,
+                    lastname = null,
+                    bio = null,
+                )
             val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "desc",
-                modelName = "gpt-4o",
-                providerName = "openai",
-                instructions = null,
-            )
+            val model = modelConfig()
+            val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 
-            val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
+            val agent = agentService.findAgentByName("sonnet", contextWithUser) as AgentSimple
 
             agent.instructions!! shouldContain user.email
             agent.instructions!! shouldNotContain "firstname"
@@ -252,120 +261,71 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         "findAgentByName skips user block when userId is null" {
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "desc",
-                modelName = "gpt-4o",
-                providerName = "openai",
-                instructions = "Base instructions.",
-            )
+            val model = modelConfig()
+            val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
-            // context has no userId (default null)
 
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
+            every { llmConfigService.getById(llmConfigId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
 
             agent.instructions!! shouldNotContain "## User"
             verify(exactly = 0) { userService.findById(any()) }
-        }
-
-        "findAgentByName skips user block when userId does not resolve to a known user" {
-            val unknownUserId = UUID.randomUUID()
-            val contextWithUnknownUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = unknownUserId)
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "desc",
-                modelName = "gpt-4o",
-                providerName = "openai",
-                instructions = "Base instructions.",
-            )
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
-            every { userService.findById(unknownUserId) } returns null
-
-            val agent = agentService.findAgentByName("my-agent", contextWithUnknownUser) as AgentSimple
-
-            agent.instructions!! shouldNotContain "## User"
-            agent.instructions!! shouldContain "Base instructions."
-        }
-
-        // -------------------------------------------------------------------------
-        // getDefaultAgent
-        // -------------------------------------------------------------------------
-
-        "getDefaultAgent returns null when no default model is registered" {
-            every { aiModelRegistry.getDefault() } returns null
-
-            agentService.getDefaultAgent(context) shouldBe null
-        }
-
-        "getDefaultAgent calls getChatClient with model.name for the default model" {
-            val model = modelWithDistinctNameAndModelName()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { aiModelRegistry.getDefault() } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
-
-            agentService.getDefaultAgent(context)
-
-            verify(exactly = 1) { chatClientProvider.getChatClient("my-agent") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-2024-08-06") }
         }
 
         // -------------------------------------------------------------------------
         // getDefaultAgentName
         // -------------------------------------------------------------------------
 
-        "getDefaultAgentName returns null when no default model is registered" {
-            every { aiModelRegistry.getDefault() } returns null
+        "getDefaultAgentName returns alias of first model in namespace" {
+            val model = modelConfig(alias = "sonnet")
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
 
-            agentService.getDefaultAgentName() shouldBe null
+            agentService.getDefaultAgentName(namespaceId) shouldBe "sonnet"
+
+            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
+            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
         }
 
-        "getDefaultAgentName returns the model name without instantiating any agent" {
-            val model = modelWithDistinctNameAndModelName()
-            every { aiModelRegistry.getDefault() } returns model
+        "getDefaultAgentName returns apiName when alias is null" {
+            val model = modelConfig(apiName = "claude-sonnet-4-5", alias = null)
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
 
-            agentService.getDefaultAgentName() shouldBe "my-agent"
+            agentService.getDefaultAgentName(namespaceId) shouldBe "claude-sonnet-4-5"
+        }
 
-            verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
+        "getDefaultAgentName returns null when no models configured for namespace" {
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns emptyList()
+
+            agentService.getDefaultAgentName(namespaceId).shouldBeNull()
         }
 
         // -------------------------------------------------------------------------
         // resolveAgentName
         // -------------------------------------------------------------------------
 
-        "resolveAgentName returns the canonical name on exact match without instantiating any agent" {
-            val model = modelWithDistinctNameAndModelName()
-            every { aiModelRegistry.findByName("my-agent") } returns model
+        "resolveAgentName returns alias on exact alias match" {
+            val model = modelConfig(alias = "sonnet")
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
 
-            agentService.resolveAgentName("my-agent") shouldBe "my-agent"
+            agentService.resolveAgentName("sonnet", namespaceId) shouldBe "sonnet"
 
-            verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
+            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
         }
 
-        "resolveAgentName falls back to contains-match and returns canonical name without instantiating any agent" {
-            val model = modelWithDistinctNameAndModelName()
-            every { aiModelRegistry.findByName("agent") } returns null
-            every { aiModelRegistry.getAll() } returns listOf(model)
+        "resolveAgentName falls back to apiName when no alias matches" {
+            val model = modelConfig(apiName = "claude-sonnet-4-5", alias = null)
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns listOf(model)
 
-            agentService.resolveAgentName("agent") shouldBe "my-agent"
-
-            verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
-            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
+            agentService.resolveAgentName("claude-sonnet-4-5", namespaceId) shouldBe "claude-sonnet-4-5"
         }
 
-        "resolveAgentName returns null when no model matches" {
-            every { aiModelRegistry.findByName("unknown") } returns null
-            every { aiModelRegistry.getAll() } returns emptyList()
+        "resolveAgentName returns null when nothing matches" {
+            every { llmModelConfigService.findByNamespaceId(namespaceId) } returns emptyList()
 
-            agentService.resolveAgentName("unknown") shouldBe null
+            agentService.resolveAgentName("unknown", namespaceId).shouldBeNull()
         }
     }
 }

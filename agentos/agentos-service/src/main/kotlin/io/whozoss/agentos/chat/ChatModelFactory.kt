@@ -3,7 +3,6 @@ package io.whozoss.agentos.chat
 import com.google.genai.Client
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
-import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.anthropic.api.AnthropicApi
@@ -21,47 +20,43 @@ import org.springframework.stereotype.Component
 @Component
 class ChatModelFactory {
     fun createChatModel(
-        provider: AiProvider,
-        runtimeModel: String?,
-        runtimeApiKey: String? = null,
-        runtimeTemperature: Double? = null,
-        runtimeMaxTokens: Int? = null,
+        apiType: AiApiType,
+        baseUrl: String?,
+        apiKey: String?,
+        modelName: String,
+        temperature: Double? = null,
+        maxTokens: Int? = null,
     ): ChatModel {
-        val apiKey =
-            runtimeApiKey.takeIf { !it.isNullOrBlank() }
-                ?: provider.defaultApiKey
-                ?: throw IllegalArgumentException("No API key provided for provider '${provider.id}' and no default key configured.")
+        val resolvedApiKey =
+            apiKey?.takeIf { it.isNotBlank() }
+                ?: throw IllegalArgumentException("No API key configured for provider (apiType=$apiType).")
 
-        val modelName =
-            runtimeModel.takeIf { !it.isNullOrBlank() } ?: provider.baseModel
-                ?: throw IllegalArgumentException("No model name provided for provider '${provider.id}'.")
-
-        // Model-level overrides take precedence over provider defaults
-        val temperature = runtimeTemperature ?: provider.temperature
-        val maxTokens = runtimeMaxTokens ?: provider.maxTokens
-
-        return when (provider.apiType) {
+        return when (apiType) {
             AiApiType.OpenAI -> {
                 createOpenAiModel(
-                    baseUrl = provider.baseUrl,
-                    apiKey = apiKey,
+                    baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
+                    apiKey = resolvedApiKey,
                     model = modelName,
-                    temp = temperature,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
                 )
             }
 
             AiApiType.Anthropic -> {
                 createAnthropicModel(
-                    baseUrl = provider.baseUrl,
-                    apiKey = apiKey,
+                    baseUrl = baseUrl ?: ANTHROPIC_DEFAULT_BASE_URL,
+                    apiKey = resolvedApiKey,
                     model = modelName,
-                    temp = temperature,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
                     maxTokens = maxTokens,
                 )
             }
 
             AiApiType.Gemini -> {
-                createGeminiModel(apiKey = apiKey, model = modelName, temp = temperature)
+                createGeminiModel(
+                    apiKey = resolvedApiKey,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                )
             }
         }
     }
@@ -150,5 +145,11 @@ class ChatModelFactory {
             RetryUtils.DEFAULT_RETRY_TEMPLATE,
             ObservationRegistry.NOOP,
         )
+    }
+
+    companion object {
+        private const val DEFAULT_TEMPERATURE = 1.0
+        private const val OPENAI_DEFAULT_BASE_URL = "https://api.openai.com"
+        private const val ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
     }
 }

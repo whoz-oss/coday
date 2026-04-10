@@ -1,7 +1,10 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.llmConfig.LlmConfig
+import io.whozoss.agentos.llmConfig.LlmConfigService
+import io.whozoss.agentos.llmModelConfig.LlmModelConfig
+import io.whozoss.agentos.llmModelConfig.LlmModelConfigService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -13,26 +16,27 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Implementation of [AgentService] that builds runtime agents from registered [AiModel]s.
+ * Implementation of [AgentService] that resolves agents from namespace-scoped
+ * [LlmModelConfig] + [LlmConfig] entity pairs.
  *
- * AiModels are discovered from plugins via [AiModelRegistry].
- * Each model references an AiProvider by name for API connectivity.
+ * Resolution strategy for a logical model name (e.g. "sonnet"):
+ * 1. Load all [LlmModelConfig] entries for the namespace.
+ * 2. Match by [LlmModelConfig.alias] first, then [LlmModelConfig.apiName] as fallback.
+ * 3. Load the parent [LlmConfig] to get provider connectivity (apiType, baseUrl, apiKey).
+ * 4. Build a [ChatClient] directly from the two entities via [ChatClientProvider].
  *
- * At instantiation time, the [AgentExecutionContext] is used to:
- * - Resolve the namespace description and append it to the agent's system instructions,
- *   so the agent always knows which namespace it is operating in regardless of how long
- *   the conversation grows (system prompt is never compacted by the provider).
- * - Scope tool resolution to the namespace via [ToolRegistryService.resolveToolsForNamespace],
- *   producing fresh tool instances for each agent run.
+ * There is no fallback to a plugin-based registry — if no matching [LlmModelConfig]
+ * exists for the namespace the call fails fast with a clear error.
  *
- * Every agent-instantiating method requires a non-null [AgentExecutionContext].
- * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) are context-free.
+ * Agent definitions are currently hardcoded and reference a logical model name.
+ * Once an Agent entity is introduced this service will resolve against that instead.
  */
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
     private val toolRegistryService: ToolRegistryService,
-    private val aiModelRegistry: AiModelRegistry,
+    private val llmModelConfigService: LlmModelConfigService,
+    private val llmConfigService: LlmConfigService,
     private val namespaceService: NamespaceService,
     private val userService: UserService,
 ) : AgentService {
@@ -40,82 +44,140 @@ class AgentServiceImpl(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
-        val model =
-            aiModelRegistry.findByName(namePart)
-                ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) }
-                ?: throw IllegalArgumentException("Agent not found: $namePart")
-
-        logger.info { "Found agent model: ${model.name}" }
-        return createAgentInstance(model, context)
+        val (modelConfig, providerConfig) = resolveModelPair(namePart, context.namespaceId)
+        // Use the canonical name from the config (alias if set, otherwise apiName)
+        // rather than the raw input so the agent's identity is always stable.
+        val canonicalName = modelConfig.alias ?: modelConfig.apiName
+        return createAgentInstance(canonicalName, modelConfig, providerConfig, context)
     }
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
-        val model = aiModelRegistry.getDefault() ?: return null
-        logger.info { "Using default agent: ${model.name}" }
-        return createAgentInstance(model, context)
+        val modelConfig = findDefaultModelConfig(context.namespaceId) ?: return null
+        val providerConfig = llmConfigService.getById(modelConfig.llmConfigId)
+        return createAgentInstance(modelConfig.alias ?: modelConfig.apiName, modelConfig, providerConfig, context)
     }
 
-    override fun getDefaultAgentName(): String? = aiModelRegistry.getDefault()?.name
+    override fun getDefaultAgentName(namespaceId: UUID): String? {
+        val modelConfig = findDefaultModelConfig(namespaceId) ?: return null
+        return modelConfig.alias ?: modelConfig.apiName
+    }
 
-    override fun resolveAgentName(namePart: String): String? =
-        (
-            aiModelRegistry.findByName(namePart)
-                ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) }
-        )?.name
+    override fun resolveAgentName(
+        namePart: String,
+        namespaceId: UUID,
+    ): String? {
+        val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
+        val match =
+            candidates.firstOrNull { it.alias.equals(namePart, ignoreCase = true) }
+                ?: candidates.firstOrNull { it.apiName.equals(namePart, ignoreCase = true) }
+        return match?.let { it.alias ?: it.apiName }
+    }
+
+    // -------------------------------------------------------------------------
+    // Resolution helpers
+    // -------------------------------------------------------------------------
 
     /**
-     * Build a live [AgentSimple] instance from [model], scoped to [context].
+     * Resolve a [LlmModelConfig] + [LlmConfig] pair for [name] within [namespaceId].
      *
-     * - The namespace description is appended to the model's system instructions.
-     * - Fresh tool instances are resolved for the namespace via [ToolRegistryService].
+     * Matching order: alias first, then apiName.
+     * Throws [IllegalArgumentException] if no match is found.
+     */
+    private fun resolveModelPair(
+        name: String,
+        namespaceId: UUID,
+    ): Pair<LlmModelConfig, LlmConfig> {
+        val candidates = llmModelConfigService.findByNamespaceId(namespaceId)
+
+        val modelConfig =
+            candidates.firstOrNull { it.alias.equals(name, ignoreCase = true) }
+                ?: candidates.firstOrNull { it.apiName.equals(name, ignoreCase = true) }
+                ?: throw IllegalArgumentException(
+                    "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
+                        "Configure an LlmModelConfig with alias or apiName matching '$name'.",
+                )
+
+        val providerConfig = llmConfigService.getById(modelConfig.llmConfigId)
+        return modelConfig to providerConfig
+    }
+
+    /**
+     * Pick the first available [LlmModelConfig] for the namespace as the default,
+     * with no particular ordering guarantee beyond insertion order.
+     */
+    private fun findDefaultModelConfig(namespaceId: UUID): LlmModelConfig? =
+        llmModelConfigService.findByNamespaceId(namespaceId).firstOrNull()
+
+    // -------------------------------------------------------------------------
+    // Agent instantiation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build a live [AgentSimple] instance from the resolved entity pair, scoped to [context].
+     *
+     * [agentName] is the logical name used to identify this agent (alias if set, otherwise apiName).
+     * The namespace description and user context are appended to the system instructions.
      */
     private fun createAgentInstance(
-        model: AiModel,
+        agentName: String,
+        modelConfig: LlmModelConfig,
+        providerConfig: LlmConfig,
         context: AgentExecutionContext,
     ): Agent {
-        logger.info { "[AgentService] Creating agent instance for: ${model.name}, context: $context" }
+        logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId}" }
 
-        val resolved = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+        val tools = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
         logger.info {
-            "[AgentService] Loaded ${resolved.size} tool(s) " +
-                "(sample-5 : ${resolved.take(5).map { it.name }}) " +
-                "for agent: ${model.name}"
+            "[AgentService] Loaded ${tools.size} tool(s) " +
+                "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
         }
 
-        val chatClient = chatClientProvider.getChatClient(model.name)
-        logger.debug { "[AgentService] ChatClient created for model: ${model.name} via provider: ${model.providerName}" }
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
 
-        val instructions = buildInstructions(model, context)
+        // Build a minimal AiModel so AgentSimple keeps its current constructor unchanged.
+        // This will be replaced once the Agent entity is introduced.
+        val instructions = buildInstructions(baseInstructions = null, context = context)
+        val model =
+            AiModel(
+                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                name = agentName,
+                description = modelConfig.displayName ?: agentName,
+                modelName = modelConfig.apiName,
+                providerName = providerConfig.name,
+                temperature = modelConfig.temperature,
+                maxTokens = modelConfig.maxTokens,
+                instructions = instructions,
+            )
 
         return AgentSimple(
-            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
-            model = model.copy(instructions = instructions),
+            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+            model = model,
             chatClient = chatClient,
-            tools = resolved,
+            tools = tools,
         )
     }
 
     /**
      * Compose the final system instructions for the agent.
      *
-     * Starts from the model's own instructions (may be null) and appends:
-     * 1. A namespace context block (always, when [context] is provided).
-     * 2. A user context block (when [context.userId] resolves to a known [User]).
+     * Appends a namespace context block (always) and an optional user context block
+     * into the privileged system-prompt channel so they are never compacted away
+     * by the provider, regardless of conversation length.
      *
-     * Both blocks are injected in the privileged system-prompt channel so they are
-     * never compacted away by the provider, regardless of conversation length.
+     * [baseInstructions] will be populated from the Agent entity once it exists.
      */
     private fun buildInstructions(
-        model: AiModel,
+        baseInstructions: String?,
         context: AgentExecutionContext,
     ): String {
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceBlock =
             buildString {
                 appendLine()
-                appendLine("""## Context: ${namespace?.name ?: context.namespaceId}""")
-                if (!namespace?.description.isNullOrBlank()) {
-                    appendLine(namespace!!.description!!)
+                appendLine("## Context: ${namespace?.name ?: context.namespaceId}")
+                val description = namespace?.description
+                if (!description.isNullOrBlank()) {
+                    appendLine(description)
                 }
             }.trimEnd()
 
@@ -127,14 +189,14 @@ class AgentServiceImpl(
                         appendLine("## User")
                         appendLine("- id: ${user.metadata.id}")
                         if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
-                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
-                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
-                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
-                        }.trimEnd()
-                    }
+                        if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                        if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                        if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                    }.trimEnd()
                 }
+            }
 
-        val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
+        val base = if (baseInstructions.isNullOrBlank()) namespaceBlock else "$baseInstructions\n$namespaceBlock"
         return if (userBlock != null) "$base\n$userBlock" else base
     }
 

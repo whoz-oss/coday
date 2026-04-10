@@ -96,7 +96,8 @@ class CaseServiceImplSpec :
         ): CaseServiceImpl {
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName() } returns agentName
+                    every { getDefaultAgentName(any()) } returns agentName
+                    every { resolveAgentName(any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
@@ -221,7 +222,8 @@ class CaseServiceImplSpec :
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName() } returns agentName
+                    every { getDefaultAgentName(any()) } returns agentName
+                    every { resolveAgentName(any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }

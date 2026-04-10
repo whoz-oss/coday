@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.agent.Agent
+import java.util.UUID
 
 /**
  * Service for managing agent runtime instances.
@@ -11,7 +12,8 @@ import io.whozoss.agentos.sdk.agent.Agent
  * it will also be used to scope tool resolution per namespace and user.
  *
  * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) do not
- * instantiate agents and therefore do not need a context.
+ * instantiate agents but do require a [namespaceId] to scope the lookup against
+ * the namespace's [io.whozoss.agentos.llmModelConfig.LlmModelConfig] entities.
  */
 interface AgentService {
     /**
@@ -20,25 +22,30 @@ interface AgentService {
      * are scoped to the given namespace and case.
      * Throws if no model matches [namePart].
      */
-    fun findAgentByName(namePart: String, context: AgentExecutionContext): Agent
+    fun findAgentByName(
+        namePart: String,
+        context: AgentExecutionContext,
+    ): Agent
 
     /**
      * Get the default agent for cases where no agent is explicitly selected.
-     * Returns null if no default is configured.
+     * Returns null if no default is configured for the namespace.
      */
     fun getDefaultAgent(context: AgentExecutionContext): Agent?
 
     /**
-     * Get the name of the default agent without instantiating a full Agent.
-     * Use this when only the agent's identity is needed (e.g. to emit an AgentSelectedEvent).
-     * Returns null if no default is configured.
+     * Get the logical name of the default agent for [namespaceId] without
+     * instantiating a full Agent. Returns null if no model is configured.
      */
-    fun getDefaultAgentName(): String?
+    fun getDefaultAgentName(namespaceId: UUID): String?
 
     /**
-     * Resolve an agent's canonical name by partial name match, without instantiating a full Agent.
-     * Use this when only the agent's identity is needed (e.g. to emit an AgentSelectedEvent).
+     * Resolve the canonical name for [namePart] within [namespaceId] by
+     * alias-first then apiName matching, without instantiating a full Agent.
      * Returns null if no match is found.
      */
-    fun resolveAgentName(namePart: String): String?
+    fun resolveAgentName(
+        namePart: String,
+        namespaceId: UUID,
+    ): String?
 }

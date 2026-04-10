@@ -1,146 +1,111 @@
 package io.whozoss.agentos.aiProvider
 
 import io.kotest.assertions.throwables.shouldThrow
-import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
-import io.mockk.every
-import io.mockk.mockk
 import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
-import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.google.genai.GoogleGenAiChatModel
 import org.springframework.ai.openai.OpenAiChatModel
-import java.util.UUID
 
-class ChatModelFactoryTest :
-    DescribeSpec({
+class ChatModelFactoryTest : StringSpec({
 
-        val factory = ChatModelFactory()
+    val factory = ChatModelFactory()
 
-        describe("ChatModelFactory") {
+    // -------------------------------------------------------------------------
+    // Provider type dispatch
+    // -------------------------------------------------------------------------
 
-            describe("createChatModel") {
+    "createChatModel creates an OpenAiChatModel for AiApiType.OpenAI" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.OpenAI,
+            baseUrl = "https://api.openai.com",
+            apiKey = "sk-test",
+            modelName = "gpt-4o",
+            temperature = 0.7,
+        )
+        model.shouldNotBeNull()
+        model.shouldBeInstanceOf<OpenAiChatModel>()
+    }
 
-                it("should create OpenAI chat model") {
-                    val provider = mockk<AiProvider>()
-                    every { provider.id } returns UUID.randomUUID()
-                    every { provider.apiType } returns AiApiType.OpenAI
-                    every { provider.baseUrl } returns "https://api.openai.com"
-                    every { provider.defaultApiKey } returns "sk-test"
-                    every { provider.baseModel } returns "gpt-4"
-                    every { provider.temperature } returns 0.7
-                    every { provider.maxTokens } returns null
+    "createChatModel creates an AnthropicChatModel for AiApiType.Anthropic" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.Anthropic,
+            baseUrl = "https://api.anthropic.com",
+            apiKey = "sk-ant-test",
+            modelName = "claude-sonnet-4-5",
+            temperature = 0.5,
+            maxTokens = 4000,
+        )
+        model.shouldNotBeNull()
+        model.shouldBeInstanceOf<AnthropicChatModel>()
+    }
 
-                    val model = factory.createChatModel(provider, runtimeModel = null)
+    "createChatModel creates a GoogleGenAiChatModel for AiApiType.Gemini" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.Gemini,
+            baseUrl = null,
+            apiKey = "google-key",
+            modelName = "gemini-pro",
+            temperature = 0.5,
+        )
+        model.shouldNotBeNull()
+        model.shouldBeInstanceOf<GoogleGenAiChatModel>()
+    }
 
-                    model.shouldNotBeNull()
-                    model.shouldBeInstanceOf<OpenAiChatModel>()
-                }
+    // -------------------------------------------------------------------------
+    // Defaults
+    // -------------------------------------------------------------------------
 
-                it("should create Anthropic chat model") {
-                    val provider = mockk<AiProvider>()
-                    every { provider.id } returns UUID.randomUUID()
-                    every { provider.apiType } returns AiApiType.Anthropic
-                    every { provider.baseUrl } returns "https://api.anthropic.com"
-                    every { provider.defaultApiKey } returns "sk-ant-test"
-                    every { provider.baseModel } returns "claude-3"
-                    every { provider.temperature } returns 0.5
-                    every { provider.maxTokens } returns 4000
+    "createChatModel uses default baseUrl when baseUrl is null for OpenAI" {
+        // Should not throw even with a null baseUrl—falls back to the hardcoded default.
+        val model = factory.createChatModel(
+            apiType = AiApiType.OpenAI,
+            baseUrl = null,
+            apiKey = "sk-test",
+            modelName = "gpt-4o",
+        )
+        model.shouldBeInstanceOf<OpenAiChatModel>()
+    }
 
-                    val model = factory.createChatModel(provider, runtimeModel = null)
+    "createChatModel uses default baseUrl when baseUrl is null for Anthropic" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.Anthropic,
+            baseUrl = null,
+            apiKey = "sk-ant-test",
+            modelName = "claude-sonnet-4-5",
+        )
+        model.shouldBeInstanceOf<AnthropicChatModel>()
+    }
 
-                    model.shouldNotBeNull()
-                    model.shouldBeInstanceOf<AnthropicChatModel>()
-                }
+    // -------------------------------------------------------------------------
+    // Validation
+    // -------------------------------------------------------------------------
 
-                it("should create Gemini chat model") {
-                    val provider = mockk<AiProvider>()
-                    every { provider.id } returns UUID.randomUUID()
-                    every { provider.apiType } returns AiApiType.Gemini
-                    every { provider.defaultApiKey } returns "google-key"
-                    every { provider.baseModel } returns "gemini-pro"
-                    every { provider.temperature } returns 0.5
-                    every { provider.maxTokens } returns null
-
-                    val model = factory.createChatModel(provider, runtimeModel = null)
-
-                    model.shouldNotBeNull()
-                    model.shouldBeInstanceOf<GoogleGenAiChatModel>()
-                }
-
-                it("should prefer runtime model over provider baseModel") {
-                    val provider = mockk<AiProvider>()
-                    every { provider.id } returns UUID.randomUUID()
-                    every { provider.apiType } returns AiApiType.OpenAI
-                    every { provider.baseUrl } returns "https://api.openai.com"
-                    every { provider.defaultApiKey } returns "default-key"
-                    every { provider.baseModel } returns "gpt-3.5"
-                    every { provider.temperature } returns 0.7
-                    every { provider.maxTokens } returns null
-
-                    val model = factory.createChatModel(
-                        provider,
-                        runtimeModel = "gpt-4-runtime",
-                        runtimeApiKey = "runtime-key",
-                    )
-
-                    model.shouldNotBeNull()
-                    model.shouldBeInstanceOf<OpenAiChatModel>()
-                }
-
-                it("should use runtimeTemperature over provider default") {
-                    val provider = mockk<AiProvider>()
-                    every { provider.id } returns UUID.randomUUID()
-                    every { provider.apiType } returns AiApiType.OpenAI
-                    every { provider.baseUrl } returns "https://api.openai.com"
-                    every { provider.defaultApiKey } returns "key"
-                    every { provider.baseModel } returns "gpt-4o"
-                    every { provider.temperature } returns 1.0
-                    every { provider.maxTokens } returns null
-
-                    // Should not throw - runtime temperature takes precedence
-                    val model = factory.createChatModel(
-                        provider,
-                        runtimeModel = null,
-                        runtimeTemperature = 0.2,
-                    )
-
-                    model.shouldNotBeNull()
-                    model.shouldBeInstanceOf<OpenAiChatModel>()
-                }
-            }
-
-            describe("validation") {
-
-                it("should throw exception when API key is missing") {
-                    val provider = mockk<AiProvider>()
-                    every { provider.id } returns UUID.randomUUID()
-                    every { provider.defaultApiKey } returns null
-                    every { provider.maxTokens } returns null
-
-                    val exception =
-                        shouldThrow<IllegalArgumentException> {
-                            factory.createChatModel(provider, runtimeModel = "gpt-4")
-                        }
-                    exception.message shouldContain "No API key provided"
-                }
-
-                it("should throw exception when model name is missing") {
-                    val provider = mockk<AiProvider>()
-                    every { provider.id } returns UUID.randomUUID()
-                    every { provider.defaultApiKey } returns "key"
-                    every { provider.baseModel } returns null
-                    every { provider.maxTokens } returns null
-
-                    val exception =
-                        shouldThrow<IllegalArgumentException> {
-                            factory.createChatModel(provider, runtimeModel = null)
-                        }
-                    exception.message shouldContain "No model name provided"
-                }
-            }
+    "createChatModel throws when apiKey is null" {
+        val ex = shouldThrow<IllegalArgumentException> {
+            factory.createChatModel(
+                apiType = AiApiType.OpenAI,
+                baseUrl = "https://api.openai.com",
+                apiKey = null,
+                modelName = "gpt-4o",
+            )
         }
-    })
+        ex.message shouldContain "No API key"
+    }
+
+    "createChatModel throws when apiKey is blank" {
+        val ex = shouldThrow<IllegalArgumentException> {
+            factory.createChatModel(
+                apiType = AiApiType.OpenAI,
+                baseUrl = "https://api.openai.com",
+                apiKey = "   ",
+                modelName = "gpt-4o",
+            )
+        }
+        ex.message shouldContain "No API key"
+    }
+})
