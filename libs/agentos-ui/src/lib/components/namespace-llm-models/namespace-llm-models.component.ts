@@ -63,7 +63,7 @@ export class NamespaceLlmModelsComponent {
       return models.map(
         (m): EntityListItem => ({
           id: m.id ?? '',
-          name: m.displayName ?? m.alias ?? m.apiName,
+          name: m.alias ?? m.apiName,
           description: m.apiName,
           groupKey: m.llmConfigId,
           groupLabel: providerNames.get(m.llmConfigId) ?? m.llmConfigId,

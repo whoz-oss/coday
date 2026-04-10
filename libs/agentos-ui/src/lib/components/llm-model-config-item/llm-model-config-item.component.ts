@@ -34,7 +34,7 @@ export class LlmModelConfigItemComponent {
   ]
 
   protected get displayTitle(): string {
-    return this.model.displayName ?? this.model.alias ?? this.model.apiName
+    return this.model.alias ?? this.model.apiName
   }
 
   protected onMenuAction(key: string): void {

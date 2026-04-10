@@ -54,7 +54,6 @@ export class LlmModelConfigFormComponent implements OnInit {
       validators: [Validators.required, Validators.minLength(1)],
     }),
     alias: new FormControl<string>('', { nonNullable: true }),
-    displayName: new FormControl<string>('', { nonNullable: true }),
     temperature: new FormControl<number | null>(null),
     maxTokens: new FormControl<number | null>(null),
   })
@@ -67,9 +66,6 @@ export class LlmModelConfigFormComponent implements OnInit {
   }
   protected get aliasControl() {
     return this.form.controls.alias
-  }
-  protected get displayNameControl() {
-    return this.form.controls.displayName
   }
   protected get temperatureControl() {
     return this.form.controls.temperature
@@ -117,7 +113,6 @@ export class LlmModelConfigFormComponent implements OnInit {
           this.llmConfigIdControl.disable()
           this.apiNameControl.setValue(model.apiName)
           this.aliasControl.setValue(model.alias ?? '')
-          this.displayNameControl.setValue(model.displayName ?? '')
           this.temperatureControl.setValue(model.temperature ?? null)
           this.maxTokensControl.setValue(model.maxTokens ?? null)
           this.isLoading.set(false)
@@ -138,11 +133,11 @@ export class LlmModelConfigFormComponent implements OnInit {
     const raw = this.form.getRawValue()
 
     const payload: LlmModelConfig = {
+      priority: 0,
       ...(this.existingModel ?? {}),
       llmConfigId: raw.llmConfigId,
       apiName: raw.apiName.trim(),
       alias: raw.alias.trim() || undefined,
-      displayName: raw.displayName.trim() || undefined,
       temperature: raw.temperature ?? undefined,
       maxTokens: raw.maxTokens ?? undefined,
     }
