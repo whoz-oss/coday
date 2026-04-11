@@ -1,3 +1,13 @@
+## 0.115.2 (2026-04-11)
+
+### 🩹 Fixes
+
+- desktop-twin package ([735040da](https://github.com/whoz-oss/coday/commit/735040da))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.115.1 (2026-04-09)
 
 ### 🩹 Fixes
