@@ -352,6 +352,7 @@ function createWindow(): void {
 
   const iconPath = join(__dirname, 'icon.png')
   const preloadPath = join(__dirname, 'preload.js')
+  const desktopCss = fs.readFileSync(join(__dirname, 'desktop.css'), 'utf8')
 
   mainWindow = createMainWindow(
     {
@@ -361,6 +362,12 @@ function createWindow(): void {
       iconPath,
       preloadPath,
       title: 'Coday',
+      onWindowCreated: (win) => {
+        win.webContents.on('did-finish-load', () => {
+          void win.webContents.executeJavaScript(`document.body.classList.add('desktop');`)
+          void win.webContents.insertCSS(desktopCss)
+        })
+      },
     },
     () => {
       if (pendingDeepLink) {
