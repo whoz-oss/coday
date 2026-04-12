@@ -266,11 +266,19 @@ These values are fixed for new configurations. Continuing with other settings...
           mergedConfig,
           targetLevel
         )
+        config.oauthRedirectUri = await this.editPropertyWithContext(
+          'OAuth Redirect URI',
+          'oauthRedirectUri',
+          config.oauthRedirectUri,
+          mergedConfig,
+          targetLevel
+        )
       } else {
         // Clear OAuth fields when OAuth is disabled
         config.oauthClientId = undefined
         config.oauthClientSecret = undefined
         config.oauthScope = undefined
+        config.oauthRedirectUri = undefined
       }
     }
 
