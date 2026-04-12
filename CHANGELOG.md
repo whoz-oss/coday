@@ -1,3 +1,13 @@
+## 0.115.3 (2026-04-12)
+
+### 🩹 Fixes
+
+- oauthRedirectUri for MCP Oauth ([728cb64e](https://github.com/whoz-oss/coday/commit/728cb64e))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.115.2 (2026-04-11)
 
 ### 🩹 Fixes
