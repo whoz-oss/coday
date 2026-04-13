@@ -1,15 +1,14 @@
 package io.whozoss.agentos.sdk.caseEvent
 
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import org.junit.jupiter.api.Assertions
-import org.junit.jupiter.api.Test
 import java.util.UUID
 
-class CaseEventUnitSpec {
-    @Test
-    fun `QuestionEvent should create AnswerEvent with correct references`() {
-        // Given
+class CaseEventUnitSpec : StringSpec({
+
+    "QuestionEvent should create AnswerEvent with correct references" {
         val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
@@ -24,31 +23,20 @@ class CaseEventUnitSpec {
                 options = listOf("Yes", "No"),
             )
 
-        // Assert question event type
-        Assertions.assertEquals(CaseEventType.QUESTION, questionEvent.type)
+        questionEvent.type shouldBe CaseEventType.QUESTION
 
-        val actor =
-            Actor(
-                id = "user-1",
-                displayName = "Test User",
-                role = ActorRole.USER,
-            )
-
-        // When
+        val actor = Actor(id = "user-1", displayName = "Test User", role = ActorRole.USER)
         val answerEvent = questionEvent.createAnswer(actor, "Yes")
 
-        // Then Assert answer event properties
-        Assertions.assertEquals(questionEvent.id, answerEvent.questionId)
-        Assertions.assertEquals(namespaceId, answerEvent.namespaceId)
-        Assertions.assertEquals(caseId, answerEvent.caseId)
-        Assertions.assertEquals(actor, answerEvent.actor)
-        Assertions.assertEquals("Yes", answerEvent.answer)
-        Assertions.assertEquals(CaseEventType.ANSWER, answerEvent.type)
+        answerEvent.questionId shouldBe questionEvent.id
+        answerEvent.namespaceId shouldBe namespaceId
+        answerEvent.caseId shouldBe caseId
+        answerEvent.actor shouldBe actor
+        answerEvent.answer shouldBe "Yes"
+        answerEvent.type shouldBe CaseEventType.ANSWER
     }
 
-    @Test
-    fun `QuestionEvent without options should work for free text responses`() {
-        // Arrange
+    "QuestionEvent without options should work for free text responses" {
         val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
@@ -60,25 +48,16 @@ class CaseEventUnitSpec {
                 agentId = agentId,
                 agentName = "TestAgent",
                 question = "What is your name?",
-                options = null, // Free text response
+                options = null,
             )
 
-        // Assert question event type
-        Assertions.assertEquals(CaseEventType.QUESTION, questionEvent.type)
+        questionEvent.type shouldBe CaseEventType.QUESTION
 
-        val actor =
-            Actor(
-                id = "user-1",
-                displayName = "Test User",
-                role = ActorRole.USER,
-            )
-
-        // Act
+        val actor = Actor(id = "user-1", displayName = "Test User", role = ActorRole.USER)
         val answerEvent = questionEvent.createAnswer(actor, "John Doe")
 
-        // Assert
-        Assertions.assertEquals(questionEvent.id, answerEvent.questionId)
-        Assertions.assertEquals("John Doe", answerEvent.answer)
-        Assertions.assertEquals(CaseEventType.ANSWER, answerEvent.type)
+        answerEvent.questionId shouldBe questionEvent.id
+        answerEvent.answer shouldBe "John Doe"
+        answerEvent.type shouldBe CaseEventType.ANSWER
     }
-}
+})
