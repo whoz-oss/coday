@@ -1,0 +1,19 @@
+<h2 mat-dialog-title>
+  <mat-icon [class.destructive]="data.isDestructive !== false">warning</mat-icon>
+  {{ data.title }}
+</h2>
+
+<mat-dialog-content>
+  <p>{{ data.message }}</p>
+
+  @if (data.checkboxLabel) {
+    <mat-checkbox [(ngModel)]="checkboxChecked">{{ data.checkboxLabel }}</mat-checkbox>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()">{{ data.cancelLabel ?? 'Cancel' }}</button>
+  <button mat-flat-button [color]="data.isDestructive ? 'warn' : 'primary'" (click)="confirm()">
+    {{ data.confirmLabel ?? 'Confirm' }}
+  </button>
+</mat-dialog-actions>
