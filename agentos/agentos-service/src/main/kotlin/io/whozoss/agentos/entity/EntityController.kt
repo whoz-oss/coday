@@ -1,6 +1,5 @@
 package io.whozoss.agentos.entity
 
-import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.entity.Entity
@@ -59,7 +58,6 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     /**
      * GET /{id} — get a single entity by its ID.
      */
-    @Operation(operationId = "getEntityById")
     @GetMapping("/{id}", produces = [MediaType.APPLICATION_JSON_VALUE])
     open fun getById(
         @PathVariable id: UUID,
@@ -71,7 +69,6 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     /**
      * POST /by-ids — get multiple entities by their IDs.
      */
-    @Operation(operationId = "getEntitiesByIds")
     @PostMapping(
         "/by-ids",
         consumes = [MediaType.APPLICATION_JSON_VALUE],
@@ -88,7 +85,6 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
      * The ParentIdentifier is passed as a UUID — subclasses with non-UUID parent types
      * must override this method entirely.
      */
-    @Operation(operationId = "listEntitiesByParent")
     @GetMapping("/by-parentId/{parentId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     open fun listByParent(
         @Parameter(description = "Parent entity ID", schema = Schema(type = "string", format = "uuid"))
@@ -98,7 +94,6 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     /**
      * POST — create a new entity.
      */
-    @Operation(operationId = "createEntity")
     @PostMapping(
         consumes = [MediaType.APPLICATION_JSON_VALUE],
         produces = [MediaType.APPLICATION_JSON_VALUE],
@@ -111,7 +106,6 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     /**
      * PUT /{id} — update an existing entity.
      */
-    @Operation(operationId = "updateEntity")
     @PutMapping(
         "/{id}",
         consumes = [MediaType.APPLICATION_JSON_VALUE],
@@ -129,7 +123,6 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     /**
      * DELETE /{id} — soft-delete a single entity.
      */
-    @Operation(operationId = "deleteEntity")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     open fun delete(
