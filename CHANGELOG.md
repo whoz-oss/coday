@@ -1,3 +1,13 @@
+## 0.116.0 (2026-04-13)
+
+### 🚀 Features
+
+- #748 project deletion from the Projects view ([#749](https://github.com/whoz-oss/coday/pull/749), [#748](https://github.com/whoz-oss/coday/issues/748))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+
 ## 0.115.3 (2026-04-12)
 
 ### 🩹 Fixes
