@@ -110,5 +110,7 @@ optionalDocs:
     description: For collaboration boundaries and curation responsibilities
 
 integrations:
-  - DELEGATE:
-  - FILES:
+  CORE:
+  DELEGATE:
+  FILES:
+  GIT:

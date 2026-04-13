@@ -4,7 +4,12 @@ import * as crypto from 'crypto'
 import * as fsp from 'node:fs/promises'
 import * as fs from 'node:fs'
 import * as path from 'path'
+import { exec } from 'child_process'
 import { ProjectRepository } from '@coday/repository'
+
+export interface DeleteProjectOptions {
+  removeGitWorktree?: boolean
+}
 
 /**
  * Server-side project management service.
@@ -129,12 +134,83 @@ export class ProjectService {
     this.repository.saveConfig(name, config)
   }
 
-  deleteProject(name: string): void {
+  /**
+   * Delete a project
+   * Worktree projects (detected by the '__' naming convention) are unregistered via
+   * `unregisterWorktreeProject`, which migrates threads to the parent and removes the
+   * config directory. Regular projects are soft-deleted (moved to .deleted/).
+   * @param name Project name
+   * @param options Optional flags (e.g. removeGitWorktree)
+   * @throws Error if project doesn't exist
+   */
+  async deleteProject(name: string, options?: DeleteProjectOptions): Promise<void> {
     this.checkAgainstForced(name)
-    const deleted = this.repository.deleteProject(name)
-    if (!deleted) {
-      throw new Error(`Project '${name}' does not exist`)
+
+    // Detect worktree projects by the '__' naming convention (e.g. 'parent__feature-branch')
+    const isWorktree = name.includes('__')
+
+    if (isWorktree) {
+      // If requested, remove the git worktree from disk before unregistering
+      if (options?.removeGitWorktree) {
+        await this.removeGitWorktree(name)
+      }
+      // Worktree: migrate threads to parent project, then soft-delete config
+      await this.unregisterWorktreeProject(name)
+    } else {
+      // Regular project: soft-delete (move to .deleted/)
+      const deleted = this.repository.deleteProject(name)
+      if (!deleted) {
+        throw new Error(`Project '${name}' does not exist`)
+      }
     }
+  }
+
+  /**
+   * Removes the git worktree directory from disk.
+   * Derives the parent project root and worktree path from the naming convention,
+   * then runs `git worktree remove` + `git worktree prune` in the background.
+   * This is fire-and-forget: the HTTP response is not blocked by git operations.
+   * Failures are logged but do not prevent the Coday config cleanup.
+   */
+  private async removeGitWorktree(projectName: string): Promise<void> {
+    const separatorIndex = projectName.lastIndexOf('__')
+    if (separatorIndex === -1) return
+
+    const parentProjectName = projectName.substring(0, separatorIndex)
+    const parentConfig = this.repository.getConfig(parentProjectName)
+    if (!parentConfig?.path) {
+      console.warn(
+        `[PROJECT_SERVICE] Cannot remove git worktree: parent project '${parentProjectName}' config not found`
+      )
+      return
+    }
+
+    const parentRoot = parentConfig.path
+    const worktreesRoot = path.dirname(parentRoot)
+    const worktreePath = path.join(worktreesRoot, projectName)
+
+    try {
+      // Check if worktree directory exists
+      await fsp.access(worktreePath)
+    } catch {
+      console.warn(`[PROJECT_SERVICE] Worktree path does not exist, skipping git removal: ${worktreePath}`)
+      return
+    }
+
+    // Fire-and-forget: run git commands in the background without blocking the caller.
+    // No timeout — large repos can take minutes to clean up.
+    exec(`git worktree remove "${worktreePath}" --force`, { cwd: parentRoot }, (error) => {
+      if (error) {
+        console.error(`[PROJECT_SERVICE] Failed to remove git worktree: ${error.message}`)
+        return
+      }
+      console.log(`[PROJECT_SERVICE] Removed git worktree: ${worktreePath}`)
+      exec('git worktree prune', { cwd: parentRoot }, (pruneError) => {
+        if (pruneError) {
+          console.warn(`[PROJECT_SERVICE] git worktree prune failed: ${pruneError.message}`)
+        }
+      })
+    })
   }
 
   getProjectConfigForClient(name: string): ProjectLocalConfig | null {
@@ -216,7 +292,7 @@ export class ProjectService {
 
   /**
    * Unregister a worktree project: migrates its threads to the parent project,
-   * then removes the worktree config directory.
+   * then soft removes the worktree config directory.
    */
   async unregisterWorktreeProject(projectName: string): Promise<void> {
     const projectInfo = this.repository.getProjectInfo(projectName)
@@ -232,6 +308,8 @@ export class ProjectService {
     }
 
     await fsp.rm(projectInfo.configPath, { recursive: true, force: true })
+    // Soft-delete the worktree config directory (moved to .deleted/)
+    this.repository.deleteProject(projectName)
   }
 
   private async migrateThreadsToParent(worktreeConfigPath: string, parentConfigPath: string): Promise<void> {

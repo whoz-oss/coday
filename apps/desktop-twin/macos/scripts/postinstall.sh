@@ -178,6 +178,92 @@ else
     echo "uvx already installed: $(run_as_user 'uvx --version' | head -1)"
 fi
 
+# Step 7: Install tmux if not present
+if ! run_as_user "command -v tmux" &>/dev/null; then
+    echo "Installing tmux..."
+    run_as_user "$BREW_PATH install tmux"
+    echo "tmux installed successfully"
+else
+    echo "tmux already installed: $(run_as_user 'tmux -V' | head -1)"
+fi
+
+# Step 8: Repair agent YAML files in existing vault (fix integrations syntax)
+echo "Checking for agent YAML files to repair..."
+echo "  ACTUAL_HOME: $ACTUAL_HOME"
+
+# Determine vault path from preferences
+# Electron uses the package.json "name" field for userData, not "productName".
+# name = @whoz-oss/coday-desktop-twin → ~/Library/Application Support/@whoz-oss/coday-desktop-twin/
+TWIN_PREFS="$ACTUAL_HOME/Library/Application Support/@whoz-oss/coday-desktop-twin/preferences.json"
+VAULT_PATH="$ACTUAL_HOME/CodayTwin"
+echo "  Looking for preferences at: $TWIN_PREFS"
+if [ -f "$TWIN_PREFS" ]; then
+    echo "  Preferences file found, reading twinProjectPath..."
+    # Log raw file content for debugging (first 5 lines)
+    head -5 "$TWIN_PREFS" 2>/dev/null | while read -r line; do echo "    prefs> $line"; done
+    STORED_PATH=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('twinProjectPath',''))" "$TWIN_PREFS" 2>/dev/null || true)
+    echo "  Extracted twinProjectPath: '$STORED_PATH'"
+    if [ -n "$STORED_PATH" ] && [ -d "$STORED_PATH" ]; then
+        VAULT_PATH="$STORED_PATH"
+        echo "  Using stored vault path: $VAULT_PATH"
+    else
+        echo "  Stored path empty or directory not found, using default: $VAULT_PATH"
+    fi
+else
+    echo "  Preferences file not found, using default vault path: $VAULT_PATH"
+fi
+
+AGENTS_DIR="$VAULT_PATH/coday/agents"
+echo "  Agents directory: $AGENTS_DIR"
+echo "  Agents directory exists: $([ -d "$AGENTS_DIR" ] && echo 'yes' || echo 'no')"
+if [ -d "$AGENTS_DIR" ]; then
+    echo "  Contents of agents directory:"
+    ls -la "$AGENTS_DIR" 2>/dev/null | while read -r line; do echo "    $line"; done
+    for AGENT_FILE in "$AGENTS_DIR"/*.yaml "$AGENTS_DIR"/*.yml; do
+        [ -f "$AGENT_FILE" ] || continue
+        AGENT_NAME=$(basename "$AGENT_FILE")
+        echo "  Processing: $AGENT_NAME"
+
+        # Check for broken list-style integrations (lines like '  - DELEGATE:')
+        if grep -qE '^  - [A-Z_]+:' "$AGENT_FILE"; then
+            echo "    Repairing integrations syntax in $AGENT_NAME..."
+            sed -i '' 's/^  - \([A-Z_]*:\)/  \1/' "$AGENT_FILE"
+            echo "    Fixed list-to-map syntax"
+        else
+            echo "    No list-style integrations found (already correct or no integrations)"
+        fi
+
+        # Check if file has an integrations section
+        if grep -q '^integrations:' "$AGENT_FILE"; then
+            echo "    Has integrations section"
+            # Add CORE: if missing from integrations block
+            if ! grep -qE '^  CORE:' "$AGENT_FILE"; then
+                echo "    Adding CORE: integration to $AGENT_NAME"
+                sed -i '' '/^integrations:/a\
+  CORE:' "$AGENT_FILE"
+            else
+                echo "    CORE: already present"
+            fi
+
+            # For task-master specifically, add GIT: if missing
+            if [ "$AGENT_NAME" = "task-master.yaml" ] || [ "$AGENT_NAME" = "task-master.yml" ]; then
+                if ! grep -qE '^  GIT:' "$AGENT_FILE"; then
+                    echo "    Adding GIT: integration to $AGENT_NAME"
+                    sed -i '' '/^integrations:/a\
+  GIT:' "$AGENT_FILE"
+                else
+                    echo "    GIT: already present"
+                fi
+            fi
+        else
+            echo "    No integrations section found (agent uses all tools by default)"
+        fi
+    done
+    echo "Agent YAML repair complete"
+else
+    echo "  No agents directory found at $AGENTS_DIR (first install or custom path), skipping repair"
+fi
+
 # Vault directory creation is handled by the CodayTwin app on first launch,
 # after the user chooses their preferred location (default or custom path).
 

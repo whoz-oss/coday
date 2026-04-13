@@ -2,6 +2,7 @@
   <ds-entity-list
     title="Projects"
     [items]="projectItems()"
+    [itemTemplate]="projectCard"
     contentMaxWidth="1400px"
     searchPlaceholder="Filter projects…"
     emptyMessage="No projects found."
@@ -12,6 +13,25 @@
   >
     <img toolbar-start class="project-list__logo" src="CODAY-Logo.png" alt="Coday" />
   </ds-entity-list>
-
   <app-global-mission-control />
 </div>
+
+<ng-template #projectCard let-item>
+  <div class="project-card-wrapper">
+    <ds-entity-card
+      [id]="item.id"
+      [name]="item.name"
+      [description]="item.description"
+      [badges]="item.badges ?? []"
+      (selected)="onItemSelected($event)"
+    />
+    <button
+      class="project-card-wrapper__delete"
+      mat-icon-button
+      (click)="$event.stopPropagation(); onDeleteRequested(item.id)"
+      title="Delete project"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+</ng-template>

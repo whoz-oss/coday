@@ -514,7 +514,7 @@ export function registerProjectRoutes(
    * DELETE /api/projects/:name
    * Delete a project
    */
-  app.delete('/api/projects/:name', (req: express.Request, res: express.Response) => {
+  app.delete('/api/projects/:name', async (req: express.Request, res: express.Response) => {
     try {
       const name = getParamAsString(req.params.name)
       if (!name) {
@@ -522,8 +522,9 @@ export function registerProjectRoutes(
         return
       }
 
-      debugLog('PROJECT', `DELETE project: ${name}`)
-      projectService.deleteProject(name)
+      const removeGitWorktree = req.query['removeGitWorktree'] === 'true'
+      debugLog('PROJECT', `DELETE project: ${name}${removeGitWorktree ? ' (with git worktree removal)' : ''}`)
+      await projectService.deleteProject(name, { removeGitWorktree })
 
       res.status(200).json({
         success: true,
