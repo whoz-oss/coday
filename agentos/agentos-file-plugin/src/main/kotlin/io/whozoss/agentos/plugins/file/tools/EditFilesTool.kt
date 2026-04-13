@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.file.tools
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
+import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
@@ -27,6 +28,7 @@ import kotlin.io.path.fileSize
 class EditFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
+    private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<EditFilesTool.Input> {
     companion object : KLogging() {
         private const val IO_TIMEOUT = 30L
@@ -164,7 +166,7 @@ class EditFilesTool(
         path: String,
         content: String,
     ): String {
-        val resolver = BoundaryPathResolver(projectRoot)
+        val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val resolved = resolver.resolve(path, createIntent = true)
 
         // Check threshold on EXISTING files
@@ -197,7 +199,7 @@ class EditFilesTool(
         path: String,
         replacements: List<Replacement>,
     ): String {
-        val resolver = BoundaryPathResolver(projectRoot)
+        val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val resolved = resolver.resolve(path, createIntent = false)
 
         if (!resolved.exists()) {

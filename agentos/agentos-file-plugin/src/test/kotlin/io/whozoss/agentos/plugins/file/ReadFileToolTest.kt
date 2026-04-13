@@ -132,5 +132,40 @@ class ReadFileToolTest : StringSpec() {
                 tempDir.toFile().deleteRecursively()
             }
         }
+
+        "should reject file exceeding custom readMaxSizeBytes" {
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                // Create ReadFileTool with custom 1 KB limit
+                val tool = ReadFileTool(tempDir, readMaxSizeBytes = 1024)
+                val file = tempDir.resolve("twoKb.txt")
+                val content = "x".repeat(2 * 1024) // 2 KB
+                file.writeText(content)
+
+                val result = tool.execute(ReadFileTool.Input("twoKb.txt"))
+
+                result shouldContain "exceeds maximum size"
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "should use default readMaxSizeBytes when not specified" {
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                // Default is 10 MB, so a 5 MB file should work
+                val tool = ReadFileTool(tempDir)
+                val file = tempDir.resolve("fiveMb.txt")
+                val content = "x".repeat(5 * 1024 * 1024) // 5 MB
+                file.writeText(content)
+
+                val result = tool.execute(ReadFileTool.Input("fiveMb.txt"))
+
+                // Should succeed and return the content (we'll just check it's not an error)
+                result shouldBe content
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
     }
 }

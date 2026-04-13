@@ -24,6 +24,7 @@ import kotlin.io.path.pathString
 class SearchFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
+    private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<SearchFilesTool.Input> {
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
@@ -102,7 +103,7 @@ class SearchFilesTool(
     }
 
     private fun searchFiles(params: Input): String {
-        val resolver = BoundaryPathResolver(projectRoot)
+        val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val searchRoot =
             if (params.path.isNullOrBlank()) {
                 projectRoot
@@ -227,8 +228,6 @@ class SearchFilesTool(
         if (files.isEmpty()) {
             return "No matching files found."
         }
-
-        val denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS
 
         // Filter out denied files first
         val allowedFiles = files.mapNotNull { file ->

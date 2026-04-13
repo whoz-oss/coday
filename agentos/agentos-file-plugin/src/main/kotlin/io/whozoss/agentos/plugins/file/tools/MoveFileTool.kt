@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
+import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.AtomicMoveNotSupportedException
@@ -19,6 +20,7 @@ import java.nio.file.StandardCopyOption
 class MoveFileTool(
     private val projectRoot: Path,
     private val configName: String? = null,
+    private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<MoveFileTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
@@ -82,7 +84,7 @@ class MoveFileTool(
         from: String,
         to: String,
     ): String {
-        val resolver = BoundaryPathResolver(projectRoot)
+        val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val resolvedFrom = resolver.resolve(from, createIntent = false)
         val resolvedTo = resolver.resolve(to, createIntent = true)
 

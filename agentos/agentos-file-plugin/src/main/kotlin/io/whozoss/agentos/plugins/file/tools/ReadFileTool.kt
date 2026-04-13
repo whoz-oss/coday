@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
+import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.charset.MalformedInputException
@@ -19,11 +20,13 @@ import kotlin.io.path.fileSize
 class ReadFileTool(
     private val projectRoot: Path,
     private val configName: String? = null,
+    private val readMaxSizeBytes: Long = DEFAULT_READ_MAX_SIZE,
+    private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<ReadFileTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
-        private const val READ_MAX_SIZE = 10 * 1024 * 1024 // 10 MB
+        private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
     }
 
     override val name: String = if (configName != null) "${configName}__readFile" else "FILES__readFile"
@@ -76,14 +79,14 @@ class ReadFileTool(
     }
 
     private fun readFile(filePath: String): String {
-        val resolver = BoundaryPathResolver(projectRoot)
+        val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val resolved = resolver.resolve(filePath, createIntent = false)
 
         // Check file size
         val size = resolved.fileSize()
-        if (size > READ_MAX_SIZE) {
+        if (size > readMaxSizeBytes) {
             throw IllegalArgumentException(
-                "File exceeds maximum size of ${READ_MAX_SIZE / 1024 / 1024} MB: $filePath",
+                "File exceeds maximum size of ${readMaxSizeBytes / 1024 / 1024} MB: $filePath",
             )
         }
 

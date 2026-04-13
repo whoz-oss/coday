@@ -245,5 +245,21 @@ class SearchFilesToolTest : StringSpec() {
             // config.env should be allowed
             result shouldContain "config.env"
         }
+
+        "should deny extra patterns passed via constructor" {
+            // Construct SearchFilesTool with custom denyPatterns
+            val customDenyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + listOf("*.custom")
+            val tool = SearchFilesTool(tempDir, denyPatterns = customDenyPatterns)
+
+            tempDir.resolve("allowed.txt").writeText("public data")
+            tempDir.resolve("secret.custom").writeText("secret data")
+
+            val result = tool.execute(SearchFilesTool.Input(fileContent = "data"))
+
+            // *.custom file should be filtered out
+            result shouldNotContain "secret.custom"
+            // allowed.txt should appear
+            result shouldContain "allowed.txt"
+        }
     }
 }

@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
+import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.Files
@@ -18,6 +19,7 @@ import kotlin.io.path.name
 class ListFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
+    private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<ListFilesTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
@@ -79,7 +81,7 @@ class ListFilesTool(
     private fun listDirectory(relPath: String): List<String> {
         // Treat empty string or "." as root
         val normalised = if (relPath.isBlank() || relPath == ".") "" else relPath
-        val resolver = BoundaryPathResolver(projectRoot)
+        val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val targetPath =
             if (normalised.isEmpty()) {
                 projectRoot.toRealPath()
