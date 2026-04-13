@@ -1,3 +1,14 @@
+## 0.117.0 (2026-04-13)
+
+### 🚀 Features
+
+- #31353 add description field to IntegrationConfig and inject into agent prompt ([#747](https://github.com/whoz-oss/coday/pull/747), [#31353](https://github.com/whoz-oss/coday/issues/31353))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.116.0 (2026-04-13)
 
 ### 🚀 Features
