@@ -14,7 +14,7 @@ import com.fasterxml.jackson.annotation.Nulls
  * @property rootPath      Absolute path to the root directory to expose (required).
  * @property readOnly      If true, only read tools are provided (list/read/search).
  * @property readMaxSizeMb Maximum file size in megabytes for ReadFileTool. Default 10.
- *                         Clamped to [1, 50].
+ *                         Default is 10.
  * @property extraDenyPatterns Additional glob patterns to deny on top of the
  *           built-in [SensitiveFilePatterns.DEFAULT_PATTERNS]. Additive-only by design.
  *           null JSON values are coerced to emptyList() via @JsonSetter.
@@ -36,8 +36,8 @@ data class FileAccessConfig(
 
     /**
      * Maximum read size in bytes, derived from [readMaxSizeMb].
-     * Clamped to [1, 50] MB. 50 MB is already massive for LLM context windows.
+     * Default is 10.MB. 50 MB is already massive for LLM context windows.
      */
     val readMaxSizeBytes: Long
-        get() = readMaxSizeMb.coerceIn(1, 50) * 1024 * 1024
+        get() = readMaxSizeMb * 1024 * 1024
 }

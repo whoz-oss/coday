@@ -39,13 +39,6 @@ class FileToolProvider : ToolPlugin {
         val rootPath = Path.of(fileConfig.rootPath)
         val denyPatterns = fileConfig.effectiveDenyPatterns
 
-        // Warn when readMaxSizeMb is clamped
-        if (fileConfig.readMaxSizeMb !in 1..50) {
-            logger.warn {
-                "readMaxSizeMb=${fileConfig.readMaxSizeMb} is outside [1, 50]; " +
-                    "clamped to ${fileConfig.readMaxSizeMb.coerceIn(1, 50)} MB"
-            }
-        }
 
         val readTools = listOf(
             ListFilesTool(rootPath, configName, denyPatterns),
@@ -87,10 +80,8 @@ class FileToolProvider : ToolPlugin {
                     "readMaxSizeMb": {
                         "type": "integer",
                         "title": "Read Max Size (MB)",
-                        "description": "Maximum file size in megabytes that ReadFileTool will read. Clamped to [1, 50]. Values outside this range are clamped and a warning is logged.",
-                        "default": 10,
-                        "minimum": 1,
-                        "maximum": 50
+                        "description": "Maximum file size in megabytes that ReadFileTool will read. Default is 10 MB.",
+                        "default": 10
                     },
                     "extraDenyPatterns": {
                         "type": "array",

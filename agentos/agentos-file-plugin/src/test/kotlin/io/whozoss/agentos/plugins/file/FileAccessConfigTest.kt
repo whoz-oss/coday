@@ -62,14 +62,14 @@ class FileAccessConfigTest : StringSpec({
         config.effectiveDenyPatterns shouldBe SensitiveFilePatterns.DEFAULT_PATTERNS
     }
 
-    "readMaxSizeBytes should clamp below 1 MB" {
+    "readMaxSizeBytes should allow 0 MB (no min)" {
         val config = FileAccessConfig(rootPath = "/tmp", readMaxSizeMb = 0)
-        config.readMaxSizeBytes shouldBe 1L * 1024 * 1024
+        config.readMaxSizeBytes shouldBe 0L
     }
 
-    "readMaxSizeBytes should clamp above 50 MB" {
+    "readMaxSizeBytes should accept large values without clamping" {
         val config = FileAccessConfig(rootPath = "/tmp", readMaxSizeMb = 999)
-        config.readMaxSizeBytes shouldBe 50L * 1024 * 1024
+        config.readMaxSizeBytes shouldBe 999L * 1024 * 1024
     }
 
     "readMaxSizeBytes should convert MB to bytes" {
