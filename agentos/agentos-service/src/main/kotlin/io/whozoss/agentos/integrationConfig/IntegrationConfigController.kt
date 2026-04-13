@@ -36,6 +36,7 @@ class IntegrationConfigController(
             namespaceId = entity.namespaceId,
             name = entity.name,
             integrationType = entity.integrationType,
+            description = entity.description,
             parameters = entity.parameters,
         )
 
@@ -47,6 +48,7 @@ class IntegrationConfigController(
             namespaceId = resource.namespaceId!!,
             name = resource.name,
             integrationType = resource.integrationType,
+            description = resource.description,
             parameters = resource.parameters,
         )
 

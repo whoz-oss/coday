@@ -33,6 +33,17 @@
         />
       </div>
 
+      <div class="integration-form__field">
+        <label class="integration-form__label" for="integration-description">Description</label>
+        <textarea
+          id="integration-description"
+          class="integration-form__textarea"
+          placeholder="Optional description"
+          rows="3"
+          [formControl]="descriptionControl"
+        ></textarea>
+      </div>
+
       @if (schema(); as s) {
         <div class="integration-form__schema-form">
           <ds-json-schema-form [schema]="s" [value]="initialParams()" (valueChange)="onParamsChange($event)" />
