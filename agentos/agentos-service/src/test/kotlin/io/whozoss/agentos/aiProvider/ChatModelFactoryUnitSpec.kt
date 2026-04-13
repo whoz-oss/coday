@@ -15,7 +15,7 @@ import org.springframework.ai.google.genai.GoogleGenAiChatModel
 import org.springframework.ai.openai.OpenAiChatModel
 import java.util.UUID
 
-class ChatModelFactoryTest :
+class ChatModelFactoryUnitSpec :
     DescribeSpec({
 
         val factory = ChatModelFactory()

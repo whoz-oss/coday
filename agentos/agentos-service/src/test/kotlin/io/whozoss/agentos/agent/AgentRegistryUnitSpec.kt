@@ -12,7 +12,7 @@ import io.mockk.mockk
 import io.whozoss.agentos.sdk.agent.AgentDefinition
 import io.whozoss.agentos.sdk.agent.AgentStatus
 
-class AgentRegistryTest :
+class AgentRegistryUnitSpec :
     DescribeSpec({
 
         describe("AgentRegistry") {

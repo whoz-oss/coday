@@ -11,7 +11,7 @@ import io.mockk.mockk
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import java.util.UUID
 
-class AiProviderRegistryTest :
+class AiProviderRegistryUnitSpec :
     DescribeSpec({
 
         describe("AiProviderRegistry") {

@@ -16,7 +16,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.model.ChatModel
 import java.util.UUID
 
-class ChatClientProviderTest :
+class ChatClientProviderUnitSpec :
     DescribeSpec({
 
         describe("ChatClientProvider") {

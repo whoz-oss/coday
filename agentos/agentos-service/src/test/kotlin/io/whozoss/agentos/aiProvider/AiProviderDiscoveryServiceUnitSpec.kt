@@ -15,7 +15,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.pf4j.PluginManager
 import java.util.UUID
 
-class AiProviderDiscoveryServiceTest :
+class AiProviderDiscoveryServiceUnitSpec :
     DescribeSpec({
 
         describe("AiProviderDiscoveryService") {

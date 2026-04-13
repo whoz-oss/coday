@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import java.util.UUID
 
-class CaseEventTest {
+class CaseEventUnitSpec {
     @Test
     fun `QuestionEvent should create AnswerEvent with correct references`() {
         // Given

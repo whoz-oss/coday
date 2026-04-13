@@ -5,7 +5,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import org.pf4j.DefaultPluginManager
 
-class PluginServiceTest :
+class PluginServiceUnitSpec :
     DescribeSpec({
 
         describe("PluginService") {
