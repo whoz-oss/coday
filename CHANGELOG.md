@@ -1,3 +1,13 @@
+## 0.117.1 (2026-04-13)
+
+### 🩹 Fixes
+
+- #715 deduplicate tools by name in Toolbox to prevent AI provider… ([#731](https://github.com/whoz-oss/coday/pull/731), [#715](https://github.com/whoz-oss/coday/issues/715), [#730](https://github.com/whoz-oss/coday/issues/730))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+
 ## 0.117.0 (2026-04-13)
 
 ### 🚀 Features
