@@ -3,6 +3,7 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { MatCheckbox } from '@angular/material/checkbox'
+import { FormsModule } from '@angular/forms'
 
 export interface ConfirmDialogData {
   title: string
@@ -21,7 +22,7 @@ export interface ConfirmDialogResult {
 
 @Component({
   selector: 'app-confirm-dialog',
-  imports: [MatDialogModule, MatButtonModule, MatIconModule, MatCheckbox],
+  imports: [MatDialogModule, MatButtonModule, MatIconModule, MatCheckbox, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h2 mat-dialog-title>
