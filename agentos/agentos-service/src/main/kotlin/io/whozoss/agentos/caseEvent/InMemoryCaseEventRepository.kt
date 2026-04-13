@@ -3,18 +3,22 @@ package io.whozoss.agentos.caseEvent
 import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.stereotype.Repository
 import java.util.UUID
 
 /**
  * In-memory implementation of [CaseEventRepository].
  *
- * Active only when `agentos.persistence.mode=in-memory`.
- * The default mode is file-system persistence via [FilesystemCaseEventRepository].
+ * Active when `agentos.persistence.mode` is absent, `in-memory`, or any value
+ * other than `neo4j` or `embedded-neo4j`. This is the default fallback used by
+ * the openapi spec generation task and lightweight local runs.
  */
 @Repository
-@ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory")
+@ConditionalOnExpression(
+    "'\${agentos.persistence.mode:in-memory}' != 'neo4j' " +
+        "and '\${agentos.persistence.mode:in-memory}' != 'embedded-neo4j'",
+)
 class InMemoryCaseEventRepository :
     CaseEventRepository,
     EntityRepository<CaseEvent, UUID> by InMemoryEntityRepository(

@@ -15,6 +15,9 @@ export function sanitizeMcpServerConfig(config: McpServerConfig): McpServerConfi
   if (copy.authToken) {
     copy.authToken = '*****'
   }
+  if (copy.oauthClientSecret) {
+    copy.oauthClientSecret = '*****'
+  }
   return copy
 }
 

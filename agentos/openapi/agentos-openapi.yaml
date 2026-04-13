@@ -14,7 +14,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: getById
+      operationId: getByIdUser
       parameters:
       - name: id
         in: path
@@ -32,7 +32,7 @@ paths:
     put:
       tags:
       - user-controller
-      operationId: update
+      operationId: updateUser
       parameters:
       - name: id
         in: path
@@ -56,7 +56,7 @@ paths:
     delete:
       tags:
       - user-controller
-      operationId: delete
+      operationId: deleteUser
       parameters:
       - name: id
         in: path
@@ -71,7 +71,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: getById_1
+      operationId: getByIdNamespace
       parameters:
       - name: id
         in: path
@@ -89,7 +89,7 @@ paths:
     put:
       tags:
       - namespace-controller
-      operationId: update_1
+      operationId: updateNamespace
       parameters:
       - name: id
         in: path
@@ -113,7 +113,64 @@ paths:
     delete:
       tags:
       - namespace-controller
-      operationId: delete_1
+      operationId: deleteNamespace
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/integration-configs/{id}:
+    get:
+      tags:
+      - integration-config-controller
+      operationId: getByIdIntegrationConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+    put:
+      tags:
+      - integration-config-controller
+      operationId: updateIntegrationConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConfig"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+    delete:
+      tags:
+      - integration-config-controller
+      operationId: deleteIntegrationConfig
       parameters:
       - name: id
         in: path
@@ -128,7 +185,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: getById_2
+      operationId: getByIdCase
       parameters:
       - name: id
         in: path
@@ -146,7 +203,7 @@ paths:
     put:
       tags:
       - case-controller
-      operationId: update_2
+      operationId: updateCase
       parameters:
       - name: id
         in: path
@@ -170,7 +227,7 @@ paths:
     delete:
       tags:
       - case-controller
-      operationId: delete_2
+      operationId: deleteCase
       parameters:
       - name: id
         in: path
@@ -185,7 +242,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: listAll
+      operationId: listAllUser
       responses:
         "200":
           description: OK
@@ -198,7 +255,7 @@ paths:
     post:
       tags:
       - user-controller
-      operationId: create
+      operationId: createUser
       requestBody:
         content:
           application/json:
@@ -216,7 +273,7 @@ paths:
     post:
       tags:
       - user-controller
-      operationId: getByIds
+      operationId: getByIdsUser
       requestBody:
         content:
           application/json:
@@ -235,31 +292,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-  /api/tools/{toolName}/execute:
-    post:
-      tags:
-      - tool-controller
-      operationId: executeTool
-      parameters:
-      - name: toolName
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ToolExecutionResult"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -337,7 +369,7 @@ paths:
     post:
       tags:
       - plugin-controller
-      operationId: reloadAllAgents
+      operationId: reloadAllAgentsPlugin
       responses:
         "200":
           description: OK
@@ -349,7 +381,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listAll_1
+      operationId: listAllNamespace
       responses:
         "200":
           description: OK
@@ -362,7 +394,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: create_1
+      operationId: createNamespace
       requestBody:
         content:
           application/json:
@@ -380,7 +412,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: getByIds_1
+      operationId: getByIdsNamespace
       requestBody:
         content:
           application/json:
@@ -399,11 +431,52 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Namespace"
+  /api/integration-configs:
+    post:
+      tags:
+      - integration-config-controller
+      operationId: createIntegrationConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConfig"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+  /api/integration-configs/by-ids:
+    post:
+      tags:
+      - integration-config-controller
+      operationId: getByIdsIntegrationConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
   /api/cases:
     post:
       tags:
       - case-controller
-      operationId: create_2
+      operationId: createCase
       requestBody:
         content:
           application/json:
@@ -421,7 +494,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: addMessage
+      operationId: addMessageCase
       parameters:
       - name: caseId
         in: path
@@ -472,7 +545,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: getByIds_2
+      operationId: getByIdsCase
       requestBody:
         content:
           application/json:
@@ -495,7 +568,7 @@ paths:
     post:
       tags:
       - case-event-rest-controller
-      operationId: getByIds_3
+      operationId: getByIdsCaseEventRest
       requestBody:
         content:
           application/json:
@@ -533,7 +606,7 @@ paths:
       tags:
       - user-controller
       summary: Get the current user's profile
-      operationId: getMe
+      operationId: getMeUser
       responses:
         "200":
           description: OK
@@ -545,7 +618,7 @@ paths:
     get:
       tags:
       - user-controller
-      operationId: listByParent
+      operationId: listByParentUser
       parameters:
       - name: parentId
         in: path
@@ -563,38 +636,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-  /api/tools:
-    get:
-      tags:
-      - tool-controller
-      operationId: listTools
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ToolOutput"
-  /api/tools/{toolName}:
-    get:
-      tags:
-      - tool-controller
-      operationId: getTool
-      parameters:
-      - name: toolName
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ToolOutput"
   /api/plugins:
     get:
       tags:
@@ -678,7 +719,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listByParent_1
+      operationId: listByParentNamespace
       parameters:
       - name: parentId
         in: path
@@ -696,6 +737,60 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Namespace"
+  /api/integration-types:
+    get:
+      tags:
+      - integration-type-controller
+      operationId: listTypesIntegrationType
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/integration-types/{type}:
+    get:
+      tags:
+      - integration-type-controller
+      operationId: getTypeIntegrationType
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/integration-configs/by-parentId/{parentId}:
+    get:
+      tags:
+      - integration-config-controller
+      operationId: listByParentIntegrationConfig
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -704,7 +799,7 @@ paths:
       description: "Server-Sent Events stream emitting all events generated during\
         \ case execution. Use the browser EventSource API to consume this endpoint,\
         \ not a regular HTTP client."
-      operationId: streamEvents
+      operationId: streamEventsCaseEventSse
       parameters:
       - name: caseId
         in: path
@@ -723,7 +818,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: listByParent_2
+      operationId: listByParentCase
       parameters:
       - name: parentId
         in: path
@@ -745,7 +840,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: getById_3
+      operationId: getByIdCaseEventRest
       parameters:
       - name: id
         in: path
@@ -778,7 +873,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: listByCase
+      operationId: listByCaseCaseEventRest
       parameters:
       - name: caseId
         in: path
@@ -819,7 +914,6 @@ components:
           format: uuid
         email:
           type: string
-          minLength: 1
         externalId:
           type: string
         firstname:
@@ -828,8 +922,6 @@ components:
           type: string
         bio:
           type: string
-      required:
-      - email
     Namespace:
       type: object
       properties:
@@ -843,6 +935,28 @@ components:
           type: string
       required:
       - name
+    IntegrationConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        integrationType:
+          type: string
+          minLength: 1
+        parameters:
+          $ref: "#/components/schemas/JsonNode"
+      required:
+      - integrationType
+      - name
+      - namespaceId
+    JsonNode: {}
     Case:
       type: object
       properties:
@@ -865,27 +979,6 @@ components:
       required:
       - namespaceId
       - status
-    ToolExecutionResult:
-      type: object
-      properties:
-        toolName:
-          type: string
-        success:
-          type: boolean
-        output:
-          type: string
-        executionDurationMs:
-          type: integer
-          format: int64
-        errorType:
-          type: string
-        errorMessage:
-          type: string
-      required:
-      - executionDurationMs
-      - output
-      - success
-      - toolName
     PluginActionResponse:
       type: object
       properties:
@@ -1308,22 +1401,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    ToolOutput:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        version:
-          type: string
-        inputSchema:
-          type: string
-      required:
-      - description
-      - inputSchema
-      - name
-      - version
     PluginInfo:
       type: object
       properties:
@@ -1358,3 +1435,19 @@ components:
       - provider
       - state
       - version
+    IntegrationTypeDescriptor:
+      type: object
+      properties:
+        type:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        configSchema:
+          $ref: "#/components/schemas/JsonNode"
+      required:
+      - configSchema
+      - description
+      - displayName
+      - type

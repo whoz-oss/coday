@@ -148,7 +148,7 @@ class CaseRuntime(
         answerToEventId: UUID? = null,
     ) {
         logger.info {
-            "[CaseRuntime $id] addUserMessage - actor: ${actor.displayName}, " +
+            "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
                 "content: ${content.size} part(s), answerTo: $answerToEventId"
         }
 

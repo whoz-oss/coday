@@ -221,7 +221,42 @@ describe('computeMcpConfigHash', () => {
   })
 
   describe('noShare flag', () => {
-    it('should produce unique hash when noShare is true', () => {
+    it('should produce deterministic hash when noShare is true and threadId is provided', () => {
+      const config: McpServerConfig = {
+        id: 'test',
+        name: 'Test',
+        command: 'node',
+        noShare: true,
+        enabled: true,
+      }
+
+      const hash1 = computeMcpConfigHash(config, 'thread-abc')
+      const hash2 = computeMcpConfigHash(config, 'thread-abc')
+
+      // Same threadId should produce same hash
+      expect(hash1).toBe(hash2)
+      expect(hash1).toMatch(/^no-share-test-thread-abc$/)
+    })
+
+    it('should produce different hashes for different threadIds when noShare is true', () => {
+      const config: McpServerConfig = {
+        id: 'test',
+        name: 'Test',
+        command: 'node',
+        noShare: true,
+        enabled: true,
+      }
+
+      const hash1 = computeMcpConfigHash(config, 'thread-1')
+      const hash2 = computeMcpConfigHash(config, 'thread-2')
+
+      // Different threads should get different keys
+      expect(hash1).not.toBe(hash2)
+      expect(hash1).toMatch(/^no-share-/)
+      expect(hash2).toMatch(/^no-share-/)
+    })
+
+    it('should produce unique hash when noShare is true and no threadId provided (fallback)', () => {
       const config: McpServerConfig = {
         id: 'test',
         name: 'Test',
@@ -233,7 +268,7 @@ describe('computeMcpConfigHash', () => {
       const hash1 = computeMcpConfigHash(config)
       const hash2 = computeMcpConfigHash(config)
 
-      // Each call should produce a different hash
+      // Without threadId, fallback is random (no-thread-...) to preserve isolation
       expect(hash1).not.toBe(hash2)
       expect(hash1).toMatch(/^no-share-/)
       expect(hash2).toMatch(/^no-share-/)
@@ -267,6 +302,39 @@ describe('computeMcpConfigHash', () => {
 
       // Should be a normal SHA-256 hash (64 hex chars)
       expect(hash).toMatch(/^[0-9a-f]{64}$/)
+    })
+  })
+
+  describe('oauth2 flag', () => {
+    it('should produce deterministic hash scoped to threadId when oauth2 is true', () => {
+      const config: McpServerConfig = {
+        id: 'jira-remote',
+        name: 'Jira',
+        url: 'https://mcp.atlassian.com/v1/sse',
+        oauth2: true,
+        enabled: true,
+      }
+
+      const hash1 = computeMcpConfigHash(config, 'thread-xyz')
+      const hash2 = computeMcpConfigHash(config, 'thread-xyz')
+
+      expect(hash1).toBe(hash2)
+      expect(hash1).toBe('no-share-jira-remote-thread-xyz')
+    })
+
+    it('should produce different hashes for different threads when oauth2 is true', () => {
+      const config: McpServerConfig = {
+        id: 'jira-remote',
+        name: 'Jira',
+        url: 'https://mcp.atlassian.com/v1/sse',
+        oauth2: true,
+        enabled: true,
+      }
+
+      const hash1 = computeMcpConfigHash(config, 'thread-1')
+      const hash2 = computeMcpConfigHash(config, 'thread-2')
+
+      expect(hash1).not.toBe(hash2)
     })
   })
 

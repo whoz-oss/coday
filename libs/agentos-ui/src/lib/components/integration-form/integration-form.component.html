@@ -1,0 +1,54 @@
+<div class="integration-form">
+  <header class="integration-form__header">
+    <button class="integration-form__back" type="button" (click)="cancel()" title="Back to integrations">
+      <span class="integration-form__back-icon">&#8592;</span>
+      Integrations
+    </button>
+    <h1 class="integration-form__title">{{ isEditMode() ? 'Edit integration' : 'New integration' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="integration-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="integration-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="integration-form__field">
+        <label class="integration-form__label" for="integration-type">Type <span aria-hidden="true">*</span></label>
+        <select id="integration-type" class="integration-form__select" [formControl]="typeControl">
+          <option value="" disabled>Select type</option>
+          @for (descriptor of integrationTypes(); track trackByType($index, descriptor)) {
+            <option [value]="descriptor.type">{{ descriptor.displayName }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="integration-form__field">
+        <label class="integration-form__label" for="integration-name">Name <span aria-hidden="true">*</span></label>
+        <input
+          id="integration-name"
+          class="integration-form__input"
+          type="text"
+          placeholder="Integration name"
+          [formControl]="nameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      @if (schema(); as s) {
+        <div class="integration-form__schema-form">
+          <ds-json-schema-form [schema]="s" [value]="initialParams()" (valueChange)="onParamsChange($event)" />
+        </div>
+      }
+
+      <div class="integration-form__actions">
+        <button
+          class="integration-form__btn integration-form__btn--primary"
+          type="submit"
+          [disabled]="nameControl.invalid || typeControl.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="integration-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

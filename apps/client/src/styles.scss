@@ -293,6 +293,13 @@ app-main {
   }
 }
 
+/* Compact dialog — used for confirmation dialogs and other small modals */
+.cdk-overlay-pane.confirm-dialog-panel {
+  .mat-mdc-dialog-container {
+    height: auto;
+  }
+}
+
 /* Dark mode snackbar styles */
 [data-theme='dark'] {
   .mat-mdc-snack-bar-container {

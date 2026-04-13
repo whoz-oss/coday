@@ -45,11 +45,29 @@ class GetCurrentDateTimeToolTest :
             tool.inputSchema shouldContain "timezone"
         }
 
-        "description should instruct LLM to always pass timezone" {
+        "name should be prefixed with configName when provided" {
+            val tool = GetCurrentDateTimeTool(configName = "PARIS")
+
+            tool.name shouldBe "PARIS__GetCurrentDateTime"
+        }
+
+        "name should have no suffix when configName is null" {
+            val tool = GetCurrentDateTimeTool(configName = null)
+
+            tool.name shouldBe "GetCurrentDateTime"
+        }
+
+        "description should indicate timezone is optional with a default" {
             val tool = GetCurrentDateTimeTool()
 
-            tool.description shouldContain "Always pass"
+            tool.description shouldContain "optional"
             tool.description shouldContain "IANA"
-            tool.description shouldContain "do NOT call this tool with an"
+            tool.description shouldContain "UTC"
+        }
+
+        "description should reflect the configured default timezone" {
+            val tool = GetCurrentDateTimeTool(defaultTimezone = "Europe/Paris")
+
+            tool.description shouldContain "Europe/Paris"
         }
     })

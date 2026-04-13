@@ -48,7 +48,44 @@ export interface McpServerConfig {
    */
   noShare?: boolean
 
-  // Note: OAuth authentication support might be added in the future
+  /**
+   * Enable OAuth 2.1 authentication for remote MCP servers.
+   * When true, the MCP client will use the full OAuth 2.1 flow with
+   * dynamic authorization server discovery (RFC9728 Protected Resource Metadata).
+   * Tokens are stored per-user in user config.
+   * Only relevant when `url` is set.
+   */
+  oauth2?: boolean
+
+  /**
+   * OAuth 2.1 client ID for pre-registered OAuth apps.
+   * When set alongside `oauth2: true`, skips dynamic client registration
+   * and uses these static credentials instead.
+   * Intended for project-level setup shared across users.
+   */
+  oauthClientId?: string
+
+  /**
+   * OAuth 2.1 client secret for pre-registered OAuth apps.
+   * Used together with `oauthClientId`.
+   */
+  oauthClientSecret?: string
+
+  /**
+   * Override the OAuth scope requested during authorization.
+   * When set, replaces the scope auto-detected from the server's metadata (scopes_supported).
+   * Set to empty string `""` to request no scope at all.
+   * Only relevant when `oauth2: true`.
+   */
+  oauthScope?: string
+
+  /**
+   * Override the OAuth redirect URI used during authorization.
+   * When set, replaces the auto-computed default (`<coday-base-url>/oauth/callback`).
+   * Must match one of the redirect URIs registered with your OAuth provider.
+   * Only relevant when `oauth2: true`.
+   */
+  oauthRedirectUri?: string
 }
 
 export const McpServerConfigArgs = [
@@ -64,6 +101,11 @@ export const McpServerConfigArgs = [
   'allowedTools',
   'debug',
   'noShare',
+  'oauth2',
+  'oauthClientId',
+  'oauthClientSecret',
+  'oauthScope',
+  'oauthRedirectUri',
 ]
 
 /**

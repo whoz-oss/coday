@@ -23,12 +23,6 @@ interface AgentService {
     fun findAgentByName(namePart: String, context: AgentExecutionContext): Agent
 
     /**
-     * Instantiate all registered agents without any execution context.
-     * Intended for registry inspection only — not for running agents.
-     */
-    fun listAgents(): List<Agent>
-
-    /**
      * Get the default agent for cases where no agent is explicitly selected.
      * Returns null if no default is configured.
      */

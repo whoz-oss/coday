@@ -7,25 +7,29 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Simple tool that returns the current date and time in a specified timezone.
- * This is a test/example tool to demonstrate the plugin system.
+ * Tool that returns the current date and time in a specified timezone.
+ *
+ * [defaultTimezone] is injected at construction time from the plugin's
+ * IntegrationConfig parameters. The LLM can still override it per-call
+ * by supplying an explicit [Input.timezone] value.
  */
-class GetCurrentDateTimeTool : StandardTool<GetCurrentDateTimeTool.Input> {
+class GetCurrentDateTimeTool(
+    private val defaultTimezone: String = "UTC",
+    configName: String? = null,
+) : StandardTool<GetCurrentDateTimeTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
     }
 
-    override val name: String = "GetCurrentDateTime"
+    override val name: String = if (configName != null) "${configName}__GetCurrentDateTime" else "GetCurrentDateTime"
 
     override val description: String =
         """
         Get the current date and time in a specified timezone.
         Returns ISO-8601 formatted datetime string with timezone information.
-        IMPORTANT: Always pass the 'timezone' parameter using a valid IANA timezone ID
+        The 'timezone' parameter is optional: if omitted, the configured default ($defaultTimezone) is used.
+        When the user mentions a specific city or region, pass the matching IANA timezone ID
         (e.g. 'America/New_York', 'Europe/Paris', 'Asia/Tokyo', 'UTC').
-        When the user asks for the time in a specific city or region, derive the
-        correct IANA timezone and pass it directly — do NOT call this tool with an
-        empty argument and then convert the UTC result manually.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -36,13 +40,13 @@ class GetCurrentDateTimeTool : StandardTool<GetCurrentDateTimeTool.Input> {
     override val inputSchema: String =
         """
         {
-            "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
+            "${"\$"}schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
             "properties": {
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone identifier for the desired local time. Examples: 'America/New_York', 'America/Los_Angeles', 'Europe/Paris', 'Europe/London', 'Asia/Tokyo', 'Asia/Shanghai', 'Australia/Sydney', 'UTC'. Always provide this when the user mentions a city, country, or timezone — never leave it empty and convert manually.",
-                    "default": "UTC"
+                    "description": "Optional IANA timezone identifier (e.g. 'America/New_York', 'Europe/Paris', 'UTC'). Defaults to $defaultTimezone if omitted.",
+                    "default": "$defaultTimezone"
                 }
             },
             "additionalProperties": false
@@ -50,35 +54,30 @@ class GetCurrentDateTimeTool : StandardTool<GetCurrentDateTimeTool.Input> {
         """.trimIndent()
 
     data class Input(
-        val timezone: String = "UTC",
+        val timezone: String? = null,
     )
 
     override fun execute(input: Input?): String {
-        val params = input ?: Input()
+        val timezone = input?.timezone?.takeIf { it.isNotBlank() } ?: defaultTimezone
 
         return try {
-            // Parse timezone
             val zoneId =
                 try {
-                    ZoneId.of(params.timezone)
+                    ZoneId.of(timezone)
                 } catch (e: Exception) {
                     return createErrorResponse(
-                        "Invalid timezone: ${params.timezone}. Use standard timezone IDs like 'America/New_York' or 'UTC'",
+                        "Invalid timezone: $timezone. Use standard timezone IDs like 'America/New_York' or 'UTC'",
                     )
                 }
 
-            // Get current time in timezone
             val now = ZonedDateTime.now(zoneId)
-
-            // Format as ISO-8601
             val formatted = now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-            // Return structured result
             objectMapper.writeValueAsString(
                 mapOf(
                     "success" to true,
                     "datetime" to formatted,
-                    "timezone" to params.timezone,
+                    "timezone" to timezone,
                     "offset" to now.offset.toString(),
                     "epochSecond" to now.toEpochSecond(),
                 ),

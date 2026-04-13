@@ -44,7 +44,7 @@ export class NamespaceStateService {
     console.log('init 2')
     // shareReplay(1) ensures the HTTP request fires only once
     // even though both NamespaceState and the initialized$ listener subscribe to it.
-    const source$ = this.namespaceApi.listAll(undefined).pipe(shareReplay(1))
+    const source$ = this.namespaceApi.listAllNamespace().pipe(shareReplay(1))
 
     this.state = new NamespaceState(source$)
 

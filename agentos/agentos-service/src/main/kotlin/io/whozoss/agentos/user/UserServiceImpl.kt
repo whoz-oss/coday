@@ -37,8 +37,6 @@ class UserServiceImpl(
                 User(
                     metadata = EntityMetadata(),
                     externalId = externalId,
-                    email = externalId,
-                    firstname = externalId,
                 )
             )
         }

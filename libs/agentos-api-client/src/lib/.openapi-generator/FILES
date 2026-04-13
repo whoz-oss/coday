@@ -4,10 +4,11 @@ api.base.service.ts
 api.module.ts
 api/api.ts
 api/case-controller.service.ts
+api/integration-config-controller.service.ts
+api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
 api/plugin-controller.service.ts
 api/sse.service.ts
-api/tool-controller.service.ts
 api/user-controller.service.ts
 configuration.ts
 encoder.ts
@@ -22,8 +23,10 @@ model/answer-event.ts
 model/case-status-event.ts
 model/case.ts
 model/entity-metadata.ts
-model/get-by-ids3200-response-inner.ts
+model/get-by-ids-case-event-rest200-response-inner.ts
 model/image.ts
+model/integration-config.ts
+model/integration-type-descriptor.ts
 model/intention-generated-event.ts
 model/message-content.ts
 model/message-event.ts
@@ -36,8 +39,6 @@ model/question-event.ts
 model/text-chunk-event.ts
 model/text.ts
 model/thinking-event.ts
-model/tool-execution-result.ts
-model/tool-output.ts
 model/tool-request-event.ts
 model/tool-response-event.ts
 model/tool-selected-event.ts

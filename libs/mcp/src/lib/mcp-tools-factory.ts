@@ -1,15 +1,20 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
-import { ServerInteractor } from '@coday/model'
+import { Interactor, OAuthCallbackEvent, ServerInteractor } from '@coday/model'
 import { AssistantToolFactory } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { McpServerConfig } from '@coday/model'
 import { CommandContext } from '@coday/model'
+import { UserService } from '@coday/service'
+import { McpOAuthProvider } from './mcp-oauth-provider'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
+const MCP_OAUTH_CONNECT_TIMEOUT = 5 * 60 * 1000 // 5 minutes for OAuth flows requiring user interaction
 
 export class McpToolsFactory extends AssistantToolFactory {
   /**
@@ -54,12 +59,59 @@ export class McpToolsFactory extends AssistantToolFactory {
    */
   lastUsed: number = Date.now()
 
-  constructor(private readonly serverConfig: McpServerConfig) {
+  /** OAuth provider instance for remote MCP servers with oauth2: true */
+  private oauthProvider: McpOAuthProvider | undefined
+
+  /**
+   * Whether kill() has been explicitly called.
+   * Prevents reconnection attempts after intentional shutdown.
+   */
+  private _killed: boolean = false
+
+  /**
+   * Whether the current transport is legacy SSE (fallback from StreamableHTTP).
+   * Used for diagnostics.
+   */
+  private _usingLegacySSE: boolean = false
+
+  /** Current reconnection attempt count (reset on successful connect) */
+  private _reconnectAttempts: number = 0
+
+  /** Delay in ms for the next reconnection attempt (doubles each time, capped at 30 s) */
+  private _reconnectDelay: number = 2000
+
+  private readonly mcpInteractor?: Interactor
+  private readonly mcpUserService?: UserService
+  private readonly mcpProjectName?: string
+  private readonly mcpBaseUrl?: string
+
+  constructor(
+    private readonly serverConfig: McpServerConfig,
+    mcpInteractor?: Interactor,
+    mcpUserService?: UserService,
+    mcpProjectName?: string,
+    mcpBaseUrl?: string
+  ) {
     super(new ServerInteractor('not used'), serverConfig.name)
     this.name = serverConfig.name
+    this.mcpInteractor = mcpInteractor
+    this.mcpUserService = mcpUserService
+    this.mcpProjectName = mcpProjectName
+    this.mcpBaseUrl = mcpBaseUrl
+  }
+
+  /**
+   * Route an OAuth callback to the embedded McpOAuthProvider.
+   * Called by Toolbox when an OAuthCallbackEvent arrives for this MCP server id.
+   */
+  async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
+    await this.oauthProvider?.handleCallback(event)
   }
 
   async kill(): Promise<void> {
+    this._killed = true
+    this._reconnectAttempts = 0
+    this._reconnectDelay = 2000
     this.tools = []
     console.log(`Closing mcp client ${this.serverConfig.name}`)
 
@@ -154,7 +206,7 @@ export class McpToolsFactory extends AssistantToolFactory {
       }
 
       const tools = await this.toolsPromise
-      console.log(`MCP server ${this.serverConfig.name} loaded ${tools.length} tools successfully`)
+      console.log(`[MCP] Server ${this.serverConfig.name} loaded ${tools.length} tools successfully`)
       return tools
     } catch (error) {
       // Log the error but don't crash the entire agent initialization
@@ -185,10 +237,9 @@ export class McpToolsFactory extends AssistantToolFactory {
     )
 
     // Create the appropriate transport based on the server configuration
-
-    // For now, only support command-based stdio transport
     if (this.serverConfig.url) {
-      throw new Error(`Remote HTTP/HTTPS MCP servers are not supported yet. Use local command-based servers instead.`)
+      console.log(`[MCP] ${this.serverConfig.name}: building remote transport for ${this.serverConfig.url}`)
+      this.transport = this.buildRemoteTransport()
     } else if (this.serverConfig.command) {
       // Stdio transport - launch the command as a child process
       const transportOptions: any = {}
@@ -248,26 +299,15 @@ export class McpToolsFactory extends AssistantToolFactory {
         this.serverProcessPid = null
       }
     } else {
-      throw new Error(
-        `MCP server ${this.serverConfig.name} has no command configured. Only local command-based servers are supported.`
-      )
+      throw new Error(`MCP server ${this.serverConfig.name} has neither url nor command configured.`)
     }
     // Connect to the server with timeout and better error handling
     try {
-      // Set a shorter timeout for MCP connections (default is 60s, we use MCP_CONNECT_TIMEOUT)
-      const connectPromise = instance.connect(this.transport)
-      let timeoutHandle: NodeJS.Timeout
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(
-          () => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)),
-          MCP_CONNECT_TIMEOUT
-        )
-      })
+      await this.connectWithTimeout(instance)
 
-      try {
-        await Promise.race([connectPromise, timeoutPromise])
-      } finally {
-        clearTimeout(timeoutHandle!)
+      // For remote transports, wire up reconnection on unexpected close
+      if (this.serverConfig.url) {
+        this.wireRemoteReconnect(instance)
       }
 
       // Store the process PID for manual cleanup if needed
@@ -275,8 +315,16 @@ export class McpToolsFactory extends AssistantToolFactory {
         this.serverProcessPid = (this.transport as any).pid
         console.log(`Successfully connected to MCP server ${this.serverConfig.name} (PID: ${this.serverProcessPid})`)
       } else {
-        console.log(`Successfully connected to MCP server ${this.serverConfig.name}`)
+        console.log(
+          `Successfully connected to MCP server ${this.serverConfig.name}${
+            this._usingLegacySSE ? ' (legacy SSE transport)' : ''
+          }`
+        )
       }
+
+      // Reset reconnect counters on successful connection
+      this._reconnectAttempts = 0
+      this._reconnectDelay = 2000
 
       return instance
     } catch (error) {
@@ -315,6 +363,243 @@ export class McpToolsFactory extends AssistantToolFactory {
 
       throw new Error(`MCP server ${this.serverConfig.name} connection failed: ${errorMessage}`)
     }
+  }
+
+  /**
+   * Attempt to connect the client to this.transport within MCP_CONNECT_TIMEOUT ms.
+   *
+   * For remote transports (URL-based), if the initial StreamableHTTP connection fails with
+   * a signal that the server doesn't support the modern protocol (HTTP 4xx, or specific
+   * error messages), transparently falls back to legacy SSEClientTransport and retries.
+   */
+  private async connectWithTimeout(instance: Client): Promise<void> {
+    const isRemote = !!this.serverConfig.url
+    const timeout = this.serverConfig.oauth2 ? MCP_OAUTH_CONNECT_TIMEOUT : MCP_CONNECT_TIMEOUT
+
+    const doConnect = async (): Promise<void> => {
+      console.log(`[MCP] ${this.serverConfig.name}: connecting (timeout=${timeout}ms)...`)
+      const connectPromise = instance.connect(this.transport!)
+      let timeoutHandle: NodeJS.Timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error(`Connection timeout after ${timeout}ms`)), timeout)
+      })
+      try {
+        await Promise.race([connectPromise, timeoutPromise])
+      } finally {
+        clearTimeout(timeoutHandle!)
+      }
+    }
+
+    if (!isRemote) {
+      // Stdio transport — no fallback needed
+      await doConnect()
+      return
+    }
+
+    // Remote transport: try StreamableHTTP first, fall back to legacy SSE on 4xx / unsupported
+    try {
+      await doConnect()
+      this._usingLegacySSE = false
+    } catch (streamableError) {
+      const msg = streamableError instanceof Error ? streamableError.message : String(streamableError)
+
+      // Check if the initial failure triggered an OAuth flow
+      const authPending = this.oauthProvider?.waitForAuth()
+      if (authPending) {
+        console.log(`[MCP] ${this.serverConfig.name}: waiting for OAuth authorization to complete...`)
+        await authPending // blocks until user completes the popup and handleCallback() resolves
+
+        // Close the old transport — finishAuth() ran on it but the SDK needs a fresh connection
+        try {
+          await this.transport!.close()
+        } catch {
+          // Ignore close errors
+        }
+
+        // Rebuild transport with the freshly obtained tokens
+        this.transport = this.buildRemoteTransport()
+        this._usingLegacySSE = false
+        console.log(`[MCP] ${this.serverConfig.name}: OAuth complete, retrying connection`)
+        await doConnect()
+        return
+      }
+
+      if (!this.shouldFallbackToSSE(msg)) {
+        throw streamableError
+      }
+
+      console.warn(
+        `[MCP] ${this.serverConfig.name}: StreamableHTTP connection failed (${msg}), ` +
+          `falling back to legacy SSEClientTransport`
+      )
+
+      // Close the failed StreamableHTTP transport before switching
+      try {
+        await this.transport!.close()
+      } catch {
+        // Ignore close errors during fallback
+      }
+
+      // Build the legacy SSE transport, preserving auth if needed
+      const url = new URL(this.serverConfig.url!)
+      if (this.oauthProvider) {
+        this.transport = new SSEClientTransport(url, { authProvider: this.oauthProvider })
+      } else if (this.serverConfig.authToken) {
+        this.transport = new SSEClientTransport(url, {
+          requestInit: { headers: { Authorization: `Bearer ${this.serverConfig.authToken}` } },
+        })
+      } else {
+        this.transport = new SSEClientTransport(url)
+      }
+
+      this._usingLegacySSE = true
+      console.log(`[MCP] ${this.serverConfig.name}: retrying with legacy SSE transport`)
+      await doConnect()
+    }
+  }
+
+  /**
+   * Decide whether a StreamableHTTP connection error warrants a fallback to legacy SSE.
+   * We fall back on HTTP 4xx responses and specific "not supported" messages.
+   */
+  private shouldFallbackToSSE(errorMessage: string): boolean {
+    // HTTP 4xx status codes (the SDK includes the status code in the error message)
+    if (/\b4\d{2}\b/.test(errorMessage)) return true
+    // Explicit "not supported" or "method not allowed" wording
+    if (/not supported|method not allowed|unsupported/i.test(errorMessage)) return true
+    return false
+  }
+
+  /**
+   * Wire the transport's onclose handler so that unexpected disconnects trigger a
+   * reconnection attempt with exponential backoff.
+   *
+   * Only active for remote (URL-based) transports and only when kill() has not been called.
+   */
+  private wireRemoteReconnect(instance: Client): void {
+    if (!this.transport) return
+
+    const MAX_ATTEMPTS = 5
+    const MAX_DELAY = 30000 // 30 s
+
+    this.transport.onclose = () => {
+      if (this._killed) {
+        console.log(`[MCP] ${this.serverConfig.name}: transport closed (killed, no reconnect)`)
+        return
+      }
+
+      if (this._reconnectAttempts >= MAX_ATTEMPTS) {
+        console.error(
+          `[MCP] ${this.serverConfig.name}: transport closed after ${MAX_ATTEMPTS} reconnect attempts — giving up`
+        )
+        return
+      }
+
+      const attempt = ++this._reconnectAttempts
+      const delay = this._reconnectDelay
+      this._reconnectDelay = Math.min(this._reconnectDelay * 2, MAX_DELAY)
+
+      console.warn(
+        `[MCP] ${this.serverConfig.name}: transport closed unexpectedly — reconnecting in ${delay}ms ` +
+          `(attempt ${attempt}/${MAX_ATTEMPTS})`
+      )
+
+      setTimeout(async () => {
+        if (this._killed) {
+          console.log(`[MCP] ${this.serverConfig.name}: reconnect cancelled (killed)`)
+          return
+        }
+
+        console.log(`[MCP] ${this.serverConfig.name}: attempting reconnect #${attempt}...`)
+
+        // Reset promises so buildTools() will reinitialise on the next call
+        this.clientPromise = undefined
+        this.toolsPromise = undefined
+        this.tools = []
+        this.errorLogged = false
+
+        // Rebuild the transport for a fresh connection
+        this._usingLegacySSE = false
+        this.transport = this.buildRemoteTransport()
+
+        try {
+          await this.connectWithTimeout(instance)
+          this.wireRemoteReconnect(instance)
+          // Restore the client promise so subsequent buildTools() calls reuse this instance
+          this.clientPromise = Promise.resolve(instance)
+          console.log(`[MCP] ${this.serverConfig.name}: reconnected successfully (attempt ${attempt})`)
+          // Reset backoff on success
+          this._reconnectAttempts = 0
+          this._reconnectDelay = 2000
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(`[MCP] ${this.serverConfig.name}: reconnect #${attempt} failed: ${msg}`)
+          // The next onclose (or this close path) will schedule the following attempt
+          // only if the transport fired onclose again; otherwise we stop here.
+        }
+      }, delay)
+    }
+  }
+
+  /**
+   * Build the transport for a remote (HTTP/SSE) MCP server.
+   *
+   * Priority:
+   * 1. oauth2: true  -> StreamableHTTPClientTransport + McpOAuthProvider (full OAuth 2.1)
+   * 2. authToken set -> StreamableHTTPClientTransport with static Bearer header
+   * 3. otherwise     -> unauthenticated StreamableHTTPClientTransport
+   *
+   * Each case falls back to SSEClientTransport if the Streamable HTTP constructor throws
+   * (e.g. server only supports legacy SSE transport).
+   */
+  private buildRemoteTransport(): Transport {
+    const url = new URL(this.serverConfig.url!)
+
+    if (this.serverConfig.oauth2) {
+      if (!this.mcpInteractor || !this.mcpUserService || !this.mcpProjectName) {
+        throw new Error(
+          `MCP server ${this.serverConfig.name}: oauth2 requires interactor, userService and projectName — ` +
+            `pass them to McpToolsFactory constructor`
+        )
+      }
+      const redirectUri =
+        this.serverConfig.oauthRedirectUri ?? (this.mcpBaseUrl ? `${this.mcpBaseUrl}/oauth/callback` : undefined)
+      if (!redirectUri) {
+        throw new Error(
+          `MCP server ${this.serverConfig.name}: oauth2 requires a redirect URI — set oauthRedirectUri in the server config or ensure mcpBaseUrl is provided`
+        )
+      }
+      console.log(`[MCP] ${this.serverConfig.name}: using OAuth 2.1 transport (redirectUri=${redirectUri})`)
+      this.oauthProvider = new McpOAuthProvider(
+        this.mcpInteractor,
+        this.mcpUserService,
+        this.mcpProjectName,
+        this.serverConfig.id,
+        redirectUri,
+        this.serverConfig.oauthClientId,
+        this.serverConfig.oauthClientSecret,
+        this.serverConfig.oauthScope
+      )
+      console.log(
+        `[MCP] ${this.serverConfig.name}: McpOAuthProvider created for mcpId=${this.serverConfig.id}${this.serverConfig.oauthClientId ? ` (static client_id=${this.serverConfig.oauthClientId})` : ' (dynamic registration)'}`
+      )
+      const transport = new StreamableHTTPClientTransport(url, { authProvider: this.oauthProvider })
+      // Wire finishAuth so handleCallback() can complete the code exchange
+      this.oauthProvider.setFinishAuth((code) => transport.finishAuth(code))
+      console.log(`[MCP] ${this.serverConfig.name}: OAuth transport ready`)
+      return transport
+    }
+
+    if (this.serverConfig.authToken) {
+      const requestInit: RequestInit = {
+        headers: { Authorization: `Bearer ${this.serverConfig.authToken}` },
+      }
+      console.log(`[MCP] ${this.serverConfig.name}: using static Bearer token`)
+      return new StreamableHTTPClientTransport(url, { requestInit })
+    }
+
+    console.log(`[MCP] ${this.serverConfig.name}: connecting without authentication`)
+    return new StreamableHTTPClientTransport(url)
   }
 
   /**
@@ -380,9 +665,11 @@ export class McpToolsFactory extends AssistantToolFactory {
     const results: CodayTool[] = []
 
     // Get all resource templates from the server
+    console.log(`[MCP] ${this.serverConfig.name}: listing resource templates...`)
     try {
       const result = await client.listResourceTemplates()
       if (result && result.templates && Array.isArray(result.templates)) {
+        console.log(`[MCP] ${this.serverConfig.name}: found ${result.templates.length} resource template(s)`)
         for (const template of result.templates) {
           results.push(this.createResourceTool(this.serverConfig, client, template))
         }
@@ -400,9 +687,13 @@ export class McpToolsFactory extends AssistantToolFactory {
     }
 
     // Get all tools from the server
+    console.log(`[MCP] ${this.serverConfig.name}: listing tools...`)
     try {
       const result = await client.listTools()
       if (result && result.tools && Array.isArray(result.tools)) {
+        console.log(
+          `[MCP] ${this.serverConfig.name}: found ${result.tools.length} tool(s): ${result.tools.map((t: any) => t.name).join(', ')}`
+        )
         for (const tool of result.tools) {
           results.push(this.createFunctionTool(this.serverConfig, client, tool as ToolInfo))
         }

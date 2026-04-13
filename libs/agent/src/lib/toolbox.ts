@@ -34,6 +34,8 @@ export class Toolbox implements Killable {
 
   private readonly mcpConfigs: McpServerConfig[]
   private tools: CodayTool[] = []
+  /** Thread ID used when acquiring MCP factories — stored so OAuth callbacks can find the right factory */
+  private currentThreadId: string | undefined
 
   constructor(
     private readonly interactor: Interactor,
@@ -124,12 +126,16 @@ export class Toolbox implements Killable {
       this.interactor.warn('No thread ID in context, MCP tools will not be available')
     }
 
+    // Build a set of MCP server names to avoid trying to create classic factories for them
+    const mcpNames = new Set(this.mcpConfigs.map((c) => c.name))
+
     // Collect all requested factories
     const allFactories: AssistantToolFactory[] = []
 
     if (integrations) {
       // Specific integrations requested: instantiate on-demand
       for (const [instanceName] of integrations) {
+        if (mcpNames.has(instanceName)) continue // handled below via mcpPool
         const factory = this.factoryInstances.get(instanceName) ?? this.createFactory(instanceName)
         if (factory) {
           allFactories.push(factory)
@@ -163,6 +169,7 @@ export class Toolbox implements Killable {
     // Only include MCPs that are explicitly listed in the agent's integrations (or all if integrations is undefined)
     const mcpFactories: AssistantToolFactory[] = []
     if (threadId) {
+      this.currentThreadId = threadId
       for (const mcpConfig of this.mcpConfigs) {
         if (integrations && !integrations.has(mcpConfig.name)) {
           continue
@@ -171,7 +178,14 @@ export class Toolbox implements Killable {
           const factory = await this.services.mcpPool.getOrCreateFactory(
             mcpConfig,
             threadId,
-            () => new McpToolsFactory(mcpConfig)
+            () =>
+              new McpToolsFactory(
+                mcpConfig,
+                this.interactor,
+                this.services.user,
+                context.project.name,
+                this.services.options?.baseUrl
+              )
           )
           mcpFactories.push(factory)
         } catch (error) {
@@ -297,27 +311,41 @@ export class Toolbox implements Killable {
   }
 
   /**
-   * Route OAuth callback events to the appropriate integration.
-   * If the factory is not yet instantiated, it will be created on-demand.
+   * Route OAuth callback events to the appropriate integration or MCP factory.
+   * Checks both regular integration factories and pooled MCP factories.
    */
   async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
-    // Get or create factory for this integration
+    // Check regular integration factories first
     const factory = this.factoryInstances.get(event.integrationName) ?? this.createFactory(event.integrationName)
-
-    if (!factory) {
-      this.interactor.warn(`No integration found for OAuth callback: ${event.integrationName}`)
+    if (factory) {
+      if ('handleOAuthCallback' in factory && typeof factory.handleOAuthCallback === 'function') {
+        try {
+          await factory.handleOAuthCallback(event)
+        } catch (error) {
+          this.interactor.error(`Error handling OAuth callback for ${event.integrationName}: ${error}`)
+        }
+      } else {
+        this.interactor.warn(`Integration ${event.integrationName} does not support OAuth callbacks`)
+      }
       return
     }
 
-    // Check if the factory has a handleOAuthCallback method
-    if ('handleOAuthCallback' in factory && typeof factory.handleOAuthCallback === 'function') {
-      try {
-        await factory.handleOAuthCallback(event)
-      } catch (error) {
-        this.interactor.error(`Error handling OAuth callback for ${event.integrationName}: ${error}`)
+    // Check MCP factories via pool (matched by MCP server id)
+    // Use currentThreadId (stored when tools were acquired) so OAuth/noShare factories
+    // are found by their per-thread key, regardless of whether event.threadId is set.
+    const mcpConfig = this.mcpConfigs.find((c) => c.id === event.integrationName)
+    if (mcpConfig) {
+      const mcpFactory = await this.services.mcpPool.getMcpFactory(mcpConfig, this.currentThreadId)
+      if (mcpFactory && 'handleOAuthCallback' in mcpFactory && typeof mcpFactory.handleOAuthCallback === 'function') {
+        try {
+          await mcpFactory.handleOAuthCallback(event)
+        } catch (error) {
+          this.interactor.error(`Error handling OAuth callback for MCP ${event.integrationName}: ${error}`)
+        }
+        return
       }
-    } else {
-      this.interactor.warn(`Integration ${event.integrationName} does not support OAuth callbacks`)
     }
+
+    this.interactor.warn(`No integration or MCP found for OAuth callback: ${event.integrationName}`)
   }
 }

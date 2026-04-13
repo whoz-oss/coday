@@ -55,14 +55,29 @@ export class McpAddHandler extends CommandHandler {
       return context
     }
 
-    // Create minimal default config
-    const defaultConfig: McpServerConfig = {
-      id: serverId,
-      name: serverName,
-      enabled: true,
-      command: '', // Will be filled in edit handler
-      args: [],
-    }
+    // Ask upfront for transport type so the default config is appropriate
+    const transportType = await this.interactor.chooseOption(
+      ['command', 'url'],
+      'Select transport type (command = stdio, url = remote HTTP):',
+      'command'
+    )
+
+    // Create minimal default config with the right transport field
+    const defaultConfig: McpServerConfig =
+      transportType === 'url'
+        ? {
+            id: serverId,
+            name: serverName,
+            enabled: true,
+            url: '', // Will be filled in edit handler
+          }
+        : {
+            id: serverId,
+            name: serverName,
+            enabled: true,
+            command: '', // Will be filled in edit handler
+            args: [],
+          }
 
     // Save the default config at the specified level
     await this.service.saveMcpServer(defaultConfig, level)

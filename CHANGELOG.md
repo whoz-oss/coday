@@ -1,3 +1,65 @@
+## 0.116.0 (2026-04-13)
+
+### 🚀 Features
+
+- #748 project deletion from the Projects view ([#749](https://github.com/whoz-oss/coday/pull/749), [#748](https://github.com/whoz-oss/coday/issues/748))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+
+## 0.115.3 (2026-04-12)
+
+### 🩹 Fixes
+
+- oauthRedirectUri for MCP Oauth ([728cb64e](https://github.com/whoz-oss/coday/commit/728cb64e))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.115.2 (2026-04-11)
+
+### 🩹 Fixes
+
+- desktop-twin package ([735040da](https://github.com/whoz-oss/coday/commit/735040da))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.115.1 (2026-04-09)
+
+### 🩹 Fixes
+
+- #WZ-31310 and #WZ-31311 user fixes in logs and local mode ([#738](https://github.com/whoz-oss/coday/pull/738))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent.audibert
+
+## 0.115.0 (2026-04-09)
+
+### 🚀 Features
+
+- WZ-28819: neoj repositories ([#718](https://github.com/whoz-oss/coday/pull/718))
+- wz-28819: remove file system repositories ([#739](https://github.com/whoz-oss/coday/pull/739))
+- #WZ-30532 tool configuration at namespace level ([#729](https://github.com/whoz-oss/coday/pull/729))
+
+### 🩹 Fixes
+
+- force release ([4bda3aba](https://github.com/whoz-oss/coday/commit/4bda3aba))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Thomas MARTIN @thomasmartin-whoz
+- Vincent Palita @vincent-palita-whoz
+- vincent.audibert
+
 ## 0.114.2 (2026-04-03)
 
 ### 🩹 Fixes
