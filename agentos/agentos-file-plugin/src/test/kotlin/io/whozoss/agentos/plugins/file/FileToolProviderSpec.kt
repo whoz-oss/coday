@@ -11,7 +11,7 @@ import java.nio.file.Path
 import kotlin.io.path.pathString
 import kotlin.io.path.writeText
 
-class FileToolProviderTest : StringSpec() {
+class FileToolProviderSpec : StringSpec() {
     private lateinit var tempDir: Path
 
     init {

@@ -8,7 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createFile
 
-class FilePathResolverTest : StringSpec() {
+class FilePathResolverSpec : StringSpec() {
     init {
         "valid relative path should resolve to absolute path within root" {
             val tempDir = Files.createTempDirectory("test")

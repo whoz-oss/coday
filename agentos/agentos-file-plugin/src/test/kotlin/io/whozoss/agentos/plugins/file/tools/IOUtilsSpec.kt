@@ -10,7 +10,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.atomic.AtomicInteger
 
-class IOUtilsTest : StringSpec({
+class IOUtilsSpec : StringSpec({
 
     "should execute block and return result" {
         val result = runIOWithTimeout(5) { "hello" }

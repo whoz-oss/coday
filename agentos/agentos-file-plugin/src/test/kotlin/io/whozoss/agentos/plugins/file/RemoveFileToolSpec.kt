@@ -10,7 +10,7 @@ import kotlin.io.path.createFile
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
-class RemoveFileToolTest : StringSpec() {
+class RemoveFileToolSpec : StringSpec() {
     private lateinit var tempDir: Path
 
     init {

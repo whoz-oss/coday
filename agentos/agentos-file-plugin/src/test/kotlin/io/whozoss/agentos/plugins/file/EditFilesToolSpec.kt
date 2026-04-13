@@ -15,7 +15,7 @@ import kotlin.io.path.readText
 import kotlin.io.path.setPosixFilePermissions
 import kotlin.io.path.writeText
 
-class EditFilesToolTest : StringSpec() {
+class EditFilesToolSpec : StringSpec() {
     private lateinit var tempDir: Path
 
     init {

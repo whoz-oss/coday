@@ -10,7 +10,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
-class MoveFileToolTest : StringSpec() {
+class MoveFileToolSpec : StringSpec() {
     private lateinit var tempDir: Path
 
     init {

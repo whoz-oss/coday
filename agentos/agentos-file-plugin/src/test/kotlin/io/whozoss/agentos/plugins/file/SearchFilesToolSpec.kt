@@ -10,7 +10,7 @@ import java.nio.file.Path
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 
-class SearchFilesToolTest : StringSpec() {
+class SearchFilesToolSpec : StringSpec() {
     private lateinit var tempDir: Path
 
     init {

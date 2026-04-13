@@ -9,7 +9,7 @@ import java.nio.file.Path
 import kotlin.io.path.createFile
 import kotlin.io.path.writeText
 
-class BoundaryPathResolverTest : StringSpec() {
+class BoundaryPathResolverSpec : StringSpec() {
     init {
         "traversal lexical normal - segment by segment without symlink should succeed" {
             val tempDir = Files.createTempDirectory("test")

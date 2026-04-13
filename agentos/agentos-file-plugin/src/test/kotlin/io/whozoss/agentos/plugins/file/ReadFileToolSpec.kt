@@ -9,7 +9,7 @@ import kotlin.io.path.createFile
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 
-class ReadFileToolTest : StringSpec() {
+class ReadFileToolSpec : StringSpec() {
     init {
         "reading UTF-8 text file should return content correctly" {
             val tempDir = Files.createTempDirectory("test")

@@ -9,7 +9,7 @@ import java.nio.file.Files
 import kotlin.io.path.createFile
 import kotlin.io.path.writeText
 
-class ListFilesToolTest : StringSpec() {
+class ListFilesToolSpec : StringSpec() {
     init {
         "listing normal directory should show files and dirs with / suffix" {
             val tempDir = Files.createTempDirectory("test")
