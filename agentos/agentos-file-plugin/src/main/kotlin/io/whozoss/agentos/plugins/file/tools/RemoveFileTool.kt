@@ -3,15 +3,11 @@ package io.whozoss.agentos.plugins.file.tools
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Remove a file.
@@ -63,12 +59,8 @@ class RemoveFileTool(
         val params = input ?: Input()
 
         return try {
-            kotlinx.coroutines.runBlocking {
-                withTimeout(IO_TIMEOUT.seconds) {
-                    withContext(Dispatchers.IO) {
-                        removeFile(params.path)
-                    }
-                }
+            runIOWithTimeout(IO_TIMEOUT) {
+                removeFile(params.path)
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")

@@ -211,5 +211,39 @@ class SearchFilesToolTest : StringSpec() {
             result shouldNotContain tempDir.toString()
             result shouldContain "secret.txt"
         }
+
+        "ripgrep --iglob should match fileName case-insensitively with fileContent" {
+            val tool = SearchFilesTool(tempDir)
+            tempDir.resolve("TestFile.txt").writeText("searchable content")
+            tempDir.resolve("testfile.md").writeText("searchable content")
+            tempDir.resolve("TESTFILE.json").writeText("searchable content")
+
+            val result = tool.execute(SearchFilesTool.Input(fileName = "testfile", fileContent = "searchable"))
+
+            // All three files should match regardless of case
+            result shouldContain "TestFile.txt"
+            result shouldContain "testfile.md"
+            result shouldContain "TESTFILE.json"
+        }
+
+        "search should not expose denied files like .env" {
+            val tool = SearchFilesTool(tempDir)
+            tempDir.resolve(".env").writeText("SECRET_KEY=supersecret")
+            tempDir.resolve("config.env").writeText("PUBLIC_CONFIG=ok")
+
+            // Search for .ENV (uppercase) should not return .env contents
+            val result = tool.execute(SearchFilesTool.Input(fileName = ".ENV"))
+
+            // .env file should be filtered out due to deny pattern
+            result shouldNotContain "SECRET_KEY"
+            result shouldNotContain "supersecret"
+            // Note: Can't use "shouldNotContain .env" because result contains "config.env"
+            // Instead, verify that the .env file name doesn't appear as a standalone match
+            val lines = result.split("\n")
+            lines.none { it.trim() == ".env" || it.contains("=== .env ===") } shouldBe true
+
+            // config.env should be allowed
+            result shouldContain "config.env"
+        }
     }
 }

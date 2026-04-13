@@ -2,11 +2,11 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
+import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
+import io.whozoss.agentos.plugins.file.matchesPattern
 import io.whozoss.agentos.sdk.tool.StandardTool
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import mu.KLogging
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
@@ -14,7 +14,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.io.path.name
 import kotlin.io.path.pathString
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Search for files by name and/or content.
@@ -26,7 +25,7 @@ class SearchFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
 ) : StandardTool<SearchFilesTool.Input> {
-    companion object {
+    companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
         private const val CONTENT_THRESHOLD = 200 * 1024 // 200 KB
@@ -90,12 +89,8 @@ class SearchFilesTool(
                 return createErrorResponse("At least one of fileName or fileContent must be provided")
             }
 
-            kotlinx.coroutines.runBlocking {
-                withTimeout(IO_TIMEOUT.seconds) {
-                    withContext(Dispatchers.IO) {
-                        searchFiles(params)
-                    }
-                }
+            runIOWithTimeout(IO_TIMEOUT) {
+                searchFiles(params)
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Search timed out after ${IO_TIMEOUT} seconds")
@@ -135,6 +130,7 @@ class SearchFilesTool(
             // Sanitize pattern
             val pattern = params.fileContent ?: return null
             if (pattern.contains('\u0000') || pattern.startsWith("-") || pattern.length > 1000) {
+                logger.debug { "Ripgrep skipped: pattern sanitization failed" }
                 return null // Fallback to NIO
             }
 
@@ -145,7 +141,7 @@ class SearchFilesTool(
                 add("--ignore-case")
                 add("--color=never")
                 params.fileName?.let {
-                    add("--glob")
+                    add("--iglob")
                     add("*$it*")
                 }
                 params.fileTypes?.forEach { ext ->
@@ -175,9 +171,11 @@ class SearchFilesTool(
             if (process.exitValue() == 0 || process.exitValue() == 1) {
                 lines.map { Path.of(it) }
             } else {
+                logger.warn { "Ripgrep exit code ${process.exitValue()}, falling back to NIO" }
                 null // Error, fallback to NIO
             }
         } catch (e: Exception) {
+            logger.info { "Ripgrep not available (${e.message}), falling back to NIO" }
             null // Ripgrep not available or failed, fallback to NIO
         } finally {
             process?.destroyForcibly()
@@ -213,6 +211,7 @@ class SearchFilesTool(
                             return@forEach
                         }
                     } catch (e: Exception) {
+                        logger.debug { "Skipping unreadable file ${projectRoot.relativize(path)}: ${e.message}" }
                         return@forEach // Skip unreadable files
                     }
                 }
@@ -229,12 +228,31 @@ class SearchFilesTool(
             return "No matching files found."
         }
 
+        val denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS
+
+        // Filter out denied files first
+        val allowedFiles = files.mapNotNull { file ->
+            val relPath = projectRoot.relativize(file).pathString
+            val fileName = file.name
+
+            // Check if filename matches any deny pattern
+            val isDenied = denyPatterns.any { pattern -> matchesPattern(fileName, pattern) }
+            if (isDenied) {
+                null // Skip denied files (e.g., .env, credentials.json)
+            } else {
+                file to relPath
+            }
+        }
+
+        if (allowedFiles.isEmpty()) {
+            return "No matching files found."
+        }
+
         // Calculate total size
         var totalSize = 0L
         val contents = mutableListOf<Pair<String, String?>>()
 
-        for (file in files) {
-            val relPath = projectRoot.relativize(file).pathString
+        for ((file, relPath) in allowedFiles) {
             try {
                 val content = Files.readString(file)
                 totalSize += content.length
@@ -247,10 +265,8 @@ class SearchFilesTool(
         }
 
         // If total size exceeds threshold, return paths only
-        if (totalSize > CONTENT_THRESHOLD || contents.size < files.size) {
-            return files.map { file ->
-                projectRoot.relativize(file).pathString
-            }.joinToString("\n")
+        if (totalSize > CONTENT_THRESHOLD || contents.size < allowedFiles.size) {
+            return allowedFiles.map { (_, relPath) -> relPath }.joinToString("\n")
         }
 
         // Return content with headers

@@ -3,12 +3,13 @@ package io.whozoss.agentos.plugins.file.tools
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import io.kotest.matchers.string.shouldNotContain
-import io.whozoss.agentos.plugins.file.tools.EditFilesTool
+import io.whozoss.agentos.plugins.file.tools.EditFilesTool.Input
+import io.whozoss.agentos.plugins.file.tools.EditFilesTool.PatchEdit
+import io.whozoss.agentos.plugins.file.tools.EditFilesTool.Replacement
+import io.whozoss.agentos.plugins.file.tools.EditFilesTool.WriteEdit
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
-import kotlin.io.path.createFile
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.setPosixFilePermissions
@@ -30,9 +31,9 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "newfile.txt", "content" to "New content"),
+                        WriteEdit(path = "newfile.txt", content = "New content"),
                     ),
                 ),
             )
@@ -48,9 +49,9 @@ class EditFilesToolTest : StringSpec() {
             file.writeText("Old content")
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "small.txt", "content" to "New content"),
+                        WriteEdit(path = "small.txt", content = "New content"),
                     ),
                 ),
             )
@@ -66,9 +67,9 @@ class EditFilesToolTest : StringSpec() {
             file.writeText(largeContent)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "large.txt", "content" to "New content"),
+                        WriteEdit(path = "large.txt", content = "New content"),
                     ),
                 ),
             )
@@ -83,9 +84,9 @@ class EditFilesToolTest : StringSpec() {
             val largeContent = "y".repeat(200 * 1024) // 200 KB
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "newlarge.txt", "content" to largeContent),
+                        WriteEdit(path = "newlarge.txt", content = largeContent),
                     ),
                 ),
             )
@@ -98,9 +99,9 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "a/b/c/file.txt", "content" to "nested"),
+                        WriteEdit(path = "a/b/c/file.txt", content = "nested"),
                     ),
                 ),
             )
@@ -113,9 +114,9 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "file.txt", "content" to "content"),
+                        WriteEdit(path = "file.txt", content = "content"),
                     ),
                 ),
             )
@@ -130,12 +131,11 @@ class EditFilesToolTest : StringSpec() {
             file.writeText("Hello world, this is a test")
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "patch",
-                            "path" to "file.txt",
-                            "replacements" to listOf(mapOf("oldPart" to "Hello world, this", "newPart" to "Goodbye universe, that")),
+                        PatchEdit(
+                            path = "file.txt",
+                            replacements = listOf(Replacement(oldPart = "Hello world, this", newPart = "Goodbye universe, that")),
                         ),
                     ),
                 ),
@@ -151,12 +151,11 @@ class EditFilesToolTest : StringSpec() {
             file.writeText("Hello world")
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "patch",
-                            "path" to "file.txt",
-                            "replacements" to listOf(mapOf("oldPart" to "Nonexistent chunk here", "newPart" to "replacement")),
+                        PatchEdit(
+                            path = "file.txt",
+                            replacements = listOf(Replacement(oldPart = "Nonexistent chunk here", newPart = "replacement")),
                         ),
                     ),
                 ),
@@ -173,12 +172,11 @@ class EditFilesToolTest : StringSpec() {
             file.writeText("Hello world here, Hello world here")
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "patch",
-                            "path" to "file.txt",
-                            "replacements" to listOf(mapOf("oldPart" to "Hello world here", "newPart" to "Goodbye")),
+                        PatchEdit(
+                            path = "file.txt",
+                            replacements = listOf(Replacement(oldPart = "Hello world here", newPart = "Goodbye")),
                         ),
                     ),
                 ),
@@ -194,12 +192,11 @@ class EditFilesToolTest : StringSpec() {
             file.writeText("Hello world")
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "patch",
-                            "path" to "file.txt",
-                            "replacements" to listOf(mapOf("oldPart" to "short", "newPart" to "replacement")),
+                        PatchEdit(
+                            path = "file.txt",
+                            replacements = listOf(Replacement(oldPart = "short", newPart = "replacement")),
                         ),
                     ),
                 ),
@@ -213,10 +210,10 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "file1.txt", "content" to "Content 1"),
-                        mapOf("operation" to "write", "path" to "file2.txt", "content" to "Content 2"),
+                        WriteEdit(path = "file1.txt", content = "Content 1"),
+                        WriteEdit(path = "file2.txt", content = "Content 2"),
                     ),
                 ),
             )
@@ -233,11 +230,11 @@ class EditFilesToolTest : StringSpec() {
             largeFile.writeText("x".repeat(65 * 1024))
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "success.txt", "content" to "Success"),
-                        mapOf("operation" to "write", "path" to "large.txt", "content" to "Should fail"),
-                        mapOf("operation" to "write", "path" to "success2.txt", "content" to "Success 2"),
+                        WriteEdit(path = "success.txt", content = "Success"),
+                        WriteEdit(path = "large.txt", content = "Should fail"),
+                        WriteEdit(path = "success2.txt", content = "Success 2"),
                     ),
                 ),
             )
@@ -254,12 +251,11 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "patch",
-                            "path" to "nonexistent.txt",
-                            "replacements" to listOf(mapOf("oldPart" to "old text here 123", "newPart" to "new")),
+                        PatchEdit(
+                            path = "nonexistent.txt",
+                            replacements = listOf(Replacement(oldPart = "old text here 123", newPart = "new")),
                         ),
                     ),
                 ),
@@ -275,14 +271,13 @@ class EditFilesToolTest : StringSpec() {
             file.writeText("First line here\nSecond line here\nThird line here")
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "patch",
-                            "path" to "file.txt",
-                            "replacements" to listOf(
-                                mapOf("oldPart" to "First line here", "newPart" to "1st line modified"),
-                                mapOf("oldPart" to "Second line here", "newPart" to "2nd line modified"),
+                        PatchEdit(
+                            path = "file.txt",
+                            replacements = listOf(
+                                Replacement(oldPart = "First line here", newPart = "1st line modified"),
+                                Replacement(oldPart = "Second line here", newPart = "2nd line modified"),
                             ),
                         ),
                     ),
@@ -296,7 +291,7 @@ class EditFilesToolTest : StringSpec() {
         "empty edits list should return no edits provided" {
             val tool = EditFilesTool(tempDir)
 
-            val result = tool.execute(EditFilesTool.Input(edits = emptyList()))
+            val result = tool.execute(Input(edits = emptyList()))
 
             result shouldContain "No edits provided"
         }
@@ -305,9 +300,9 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to "unicode.txt", "content" to "Hello 世界 🌍"),
+                        WriteEdit(path = "unicode.txt", content = "Hello 世界 🌍"),
                     ),
                 ),
             )
@@ -331,9 +326,9 @@ class EditFilesToolTest : StringSpec() {
 
             if (isPosix) {
                 val result = tool.execute(
-                    EditFilesTool.Input(
+                    Input(
                         edits = listOf(
-                            mapOf("operation" to "write", "path" to "readonly/file.txt", "content" to "test content"),
+                            WriteEdit(path = "readonly/file.txt", content = "test content"),
                         ),
                     ),
                 )
@@ -354,9 +349,9 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to ".env", "content" to "SECRET=value"),
+                        WriteEdit(path = ".env", content = "SECRET=value"),
                     ),
                 ),
             )
@@ -370,9 +365,9 @@ class EditFilesToolTest : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf("operation" to "write", "path" to ".env.local", "content" to "SECRET=value"),
+                        WriteEdit(path = ".env.local", content = "SECRET=value"),
                     ),
                 ),
             )
@@ -387,12 +382,11 @@ class EditFilesToolTest : StringSpec() {
             tempDir.resolve(".env").writeText("OLD_SECRET=value")
 
             val result = tool.execute(
-                EditFilesTool.Input(
+                Input(
                     edits = listOf(
-                        mapOf(
-                            "operation" to "patch",
-                            "path" to ".env",
-                            "replacements" to listOf(mapOf("oldPart" to "OLD_SECRET=value", "newPart" to "NEW_SECRET=changed")),
+                        PatchEdit(
+                            path = ".env",
+                            replacements = listOf(Replacement(oldPart = "OLD_SECRET=value", newPart = "NEW_SECRET=changed")),
                         ),
                     ),
                 ),
@@ -401,6 +395,158 @@ class EditFilesToolTest : StringSpec() {
             result shouldContain ".env:"
             result shouldContain "Access denied"
             tempDir.resolve(".env").readText() shouldBe "OLD_SECRET=value"
+        }
+
+        // --- executeWithJson integration tests ---
+
+        "executeWithJson should deserialize WriteEdit" {
+            val tool = EditFilesTool(tempDir)
+
+            val result = tool.executeWithJson(
+                """
+                {
+                    "edits": [
+                        {
+                            "operation": "write",
+                            "path": "hello.txt",
+                            "content": "Hello from JSON"
+                        }
+                    ]
+                }
+                """,
+            )
+
+            result shouldContain "File write success"
+            tempDir.resolve("hello.txt").readText() shouldBe "Hello from JSON"
+        }
+
+        "executeWithJson should deserialize PatchEdit" {
+            val tool = EditFilesTool(tempDir)
+            val file = tempDir.resolve("patch-me.txt")
+            file.writeText("The quick brown fox jumps")
+
+            val result = tool.executeWithJson(
+                """
+                {
+                    "edits": [
+                        {
+                            "operation": "patch",
+                            "path": "patch-me.txt",
+                            "replacements": [
+                                {
+                                    "oldPart": "The quick brown fox",
+                                    "newPart": "A slow grey cat"
+                                }
+                            ]
+                        }
+                    ]
+                }
+                """,
+            )
+
+            result shouldContain "successfully edited by chunks"
+            file.readText() shouldBe "A slow grey cat jumps"
+        }
+
+        "executeWithJson should handle mixed write and patch" {
+            val tool = EditFilesTool(tempDir)
+            val existing = tempDir.resolve("existing.txt")
+            existing.writeText("Replace this old content here")
+
+            val result = tool.executeWithJson(
+                """
+                {
+                    "edits": [
+                        {
+                            "operation": "write",
+                            "path": "new.txt",
+                            "content": "brand new file"
+                        },
+                        {
+                            "operation": "patch",
+                            "path": "existing.txt",
+                            "replacements": [
+                                {
+                                    "oldPart": "Replace this old content",
+                                    "newPart": "Keep this new content"
+                                }
+                            ]
+                        }
+                    ]
+                }
+                """,
+            )
+
+            result shouldContain "new.txt: File write success"
+            result shouldContain "existing.txt: File successfully edited by chunks"
+            tempDir.resolve("new.txt").readText() shouldBe "brand new file"
+            existing.readText() shouldBe "Keep this new content here"
+        }
+
+        "executeWithJson with empty edits array should return no edits provided" {
+            val tool = EditFilesTool(tempDir)
+
+            val result = tool.executeWithJson(
+                """
+                {
+                    "edits": []
+                }
+                """,
+            )
+
+            result shouldContain "No edits provided"
+        }
+
+        "executeWithJson should handle multiple replacements in PatchEdit" {
+            val tool = EditFilesTool(tempDir)
+            val file = tempDir.resolve("multi.txt")
+            file.writeText("First chunk to replace\nSecond chunk to replace\nThird line stays")
+
+            val result = tool.executeWithJson(
+                """
+                {
+                    "edits": [
+                        {
+                            "operation": "patch",
+                            "path": "multi.txt",
+                            "replacements": [
+                                {
+                                    "oldPart": "First chunk to replace",
+                                    "newPart": "First chunk replaced"
+                                },
+                                {
+                                    "oldPart": "Second chunk to replace",
+                                    "newPart": "Second chunk replaced"
+                                }
+                            ]
+                        }
+                    ]
+                }
+                """,
+            )
+
+            result shouldContain "successfully edited by chunks"
+            file.readText() shouldBe "First chunk replaced\nSecond chunk replaced\nThird line stays"
+        }
+
+        "executeWithJson with missing optional fields should use defaults" {
+            val tool = EditFilesTool(tempDir)
+
+            val result = tool.executeWithJson(
+                """
+                {
+                    "edits": [
+                        {
+                            "operation": "write",
+                            "path": "defaults.txt"
+                        }
+                    ]
+                }
+                """,
+            )
+
+            result shouldContain "File write success"
+            tempDir.resolve("defaults.txt").readText() shouldBe ""
         }
     }
 }

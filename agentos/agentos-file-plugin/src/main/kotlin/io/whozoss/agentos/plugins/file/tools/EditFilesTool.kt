@@ -2,13 +2,10 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.sdk.tool.StandardTool
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import mu.KLogging
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,7 +13,6 @@ import java.nio.file.StandardCopyOption
 import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.fileSize
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Edit one or more files in a single tool call.
@@ -32,8 +28,7 @@ class EditFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
 ) : StandardTool<EditFilesTool.Input> {
-    companion object {
-        private val objectMapper = jacksonObjectMapper()
+    companion object : KLogging() {
         private const val IO_TIMEOUT = 30L
         private const val WRITE_SIZE_THRESHOLD = 64 * 1024 // 64 KB
         private const val PATCH_MIN_CHUNK = 15
@@ -116,12 +111,12 @@ class EditFilesTool(
 
     data class WriteEdit(
         override val path: String,
-        val content: String,
+        val content: String = "",
     ) : Edit
 
     data class PatchEdit(
         override val path: String,
-        val replacements: List<Replacement>,
+        val replacements: List<Replacement> = emptyList(),
     ) : Edit
 
     data class Replacement(
@@ -130,7 +125,7 @@ class EditFilesTool(
     )
 
     data class Input(
-        val edits: List<Map<String, Any>> = emptyList(),
+        val edits: List<Edit> = emptyList(),
     )
 
     override fun execute(input: Input?): String {
@@ -141,12 +136,8 @@ class EditFilesTool(
                 return "No edits provided."
             }
 
-            kotlinx.coroutines.runBlocking {
-                withTimeout(IO_TIMEOUT.seconds) {
-                    withContext(Dispatchers.IO) {
-                        processEdits(params.edits)
-                    }
-                }
+            runIOWithTimeout(IO_TIMEOUT) {
+                processEdits(params.edits)
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
@@ -155,34 +146,17 @@ class EditFilesTool(
         }
     }
 
-    private fun processEdits(edits: List<Map<String, Any>>): String {
-        val results = mutableListOf<String>()
-
-        for (editMap in edits) {
-            val path = editMap["path"] as? String ?: continue
-            val operation = editMap["operation"] as? String
-
-            val result =
-                try {
-                    when (operation) {
-                        "write" -> {
-                            val content = editMap["content"] as? String ?: ""
-                            processWrite(path, content)
-                        }
-                        "patch" -> {
-                            @Suppress("UNCHECKED_CAST")
-                            val replacements = editMap["replacements"] as? List<Map<String, Any>> ?: emptyList()
-                            processPatch(path, replacements)
-                        }
-                        else -> "$path: Unknown operation"
-                    }
-                } catch (e: Exception) {
-                    "$path: Error — ${e.message}"
+    private fun processEdits(edits: List<Edit>): String {
+        val results = edits.map { edit ->
+            try {
+                when (edit) {
+                    is WriteEdit -> processWrite(edit.path, edit.content)
+                    is PatchEdit -> processPatch(edit.path, edit.replacements)
                 }
-
-            results.add(result)
+            } catch (e: Exception) {
+                "${edit.path}: Error — ${e.message}"
+            }
         }
-
         return results.joinToString("\n")
     }
 
@@ -213,15 +187,15 @@ class EditFilesTool(
         } finally {
             try {
                 Files.deleteIfExists(tmpPath)
-            } catch (_: Exception) {
-                // Ignore cleanup errors
+            } catch (e: Exception) {
+                logger.warn(e) { "Failed to clean up temp file: ${projectRoot.relativize(tmpPath)}" }
             }
         }
     }
 
     private fun processPatch(
         path: String,
-        replacements: List<Map<String, Any>>,
+        replacements: List<Replacement>,
     ): String {
         val resolver = BoundaryPathResolver(projectRoot)
         val resolved = resolver.resolve(path, createIntent = false)
@@ -236,8 +210,8 @@ class EditFilesTool(
         val tooShortChunks = mutableListOf<String>()
 
         for (repl in replacements) {
-            val oldPart = repl["oldPart"] as? String ?: continue
-            val newPart = repl["newPart"] as? String ?: continue
+            val oldPart = repl.oldPart
+            val newPart = repl.newPart
 
             when {
                 oldPart.length < PATCH_MIN_CHUNK -> {
@@ -263,8 +237,8 @@ class EditFilesTool(
         } finally {
             try {
                 Files.deleteIfExists(tmpPath)
-            } catch (_: Exception) {
-                // Ignore cleanup errors
+            } catch (e: Exception) {
+                logger.warn(e) { "Failed to clean up temp file: ${projectRoot.relativize(tmpPath)}" }
             }
         }
 
