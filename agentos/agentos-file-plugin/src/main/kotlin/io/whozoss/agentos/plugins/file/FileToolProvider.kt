@@ -35,14 +35,20 @@ class FileToolProvider : ToolPlugin {
     override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
         if (config == null) return emptyList()
 
-        val fileConfig = objectMapper.treeToValue(config, FileAccessConfig::class.java)
-        val rootPath = Path.of(fileConfig.rootPath)
-        val denyPatterns = fileConfig.effectiveDenyPatterns
+        val rootPath = Path.of(config.get("rootPath")?.asText() ?: error("rootPath is required"))
+        val readOnly = config.get("readOnly")?.asBoolean() ?: false
+        val readMaxSizeMb = config.get("readMaxSizeMb")?.asLong() ?: 10
+        val extraDenyPatterns = config.get("extraDenyPatterns")
+            ?.takeIf { it.isArray }
+            ?.map { it.asText() }
+            ?: emptyList()
 
+        val readMaxSizeBytes = readMaxSizeMb * 1024 * 1024
+        val denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + extraDenyPatterns
 
         val readTools = listOf(
             ListFilesTool(rootPath, configName, denyPatterns),
-            ReadFileTool(rootPath, configName, fileConfig.readMaxSizeBytes, denyPatterns),
+            ReadFileTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
             SearchFilesTool(rootPath, configName, denyPatterns),
         )
 
@@ -52,14 +58,11 @@ class FileToolProvider : ToolPlugin {
             MoveFileTool(rootPath, configName, denyPatterns),
         )
 
-        return if (fileConfig.readOnly) readTools else readTools + writeTools
+        return if (readOnly) readTools else readTools + writeTools
     }
 
     companion object : KLogging() {
-        private val objectMapper = jacksonObjectMapper()
-
-        // TODO: Auto-generate CONFIG_SCHEMA from FileAccessConfig (tracked separately)
-        private val CONFIG_SCHEMA: JsonNode = objectMapper.readTree(
+        private val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
             """
             {
                 "type": "object",
