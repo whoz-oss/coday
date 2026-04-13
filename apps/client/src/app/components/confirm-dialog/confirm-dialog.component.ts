@@ -1,11 +1,8 @@
-import { Component, inject } from '@angular/core'
-import { FormsModule } from '@angular/forms'
-import { MAT_DIALOG_DATA, MatDialogActions, MatDialogRef, MatDialogTitle } from '@angular/material/dialog'
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core'
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog'
 import { MatButtonModule } from '@angular/material/button'
-import { MatCheckboxModule } from '@angular/material/checkbox'
 import { MatIconModule } from '@angular/material/icon'
+import { MatCheckbox } from '@angular/material/checkbox'
 
 export interface ConfirmDialogData {
   title: string
@@ -24,13 +21,13 @@ export interface ConfirmDialogResult {
 
 @Component({
   selector: 'app-confirm-dialog',
-  standalone: true,
-  imports: [MatDialogTitle, MatDialogActions, MatButtonModule, MatCheckboxModule, FormsModule],
+  imports: [MatDialogModule, MatButtonModule, MatIconModule, MatCheckbox],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatDialogModule, MatButtonModule, MatIconModule],
   template: `
-    <h2 mat-dialog-title>{{ data.title }}</h2>
-
+    <h2 mat-dialog-title>
+      <mat-icon [class.destructive]="data.isDestructive !== false">warning</mat-icon>
+      {{ data.title }}
+    </h2>
     <p class="confirm-dialog__message">{{ data.message }}</p>
 
     @if (data.checkboxLabel) {
@@ -38,18 +35,12 @@ export interface ConfirmDialogResult {
         data.checkboxLabel
       }}</mat-checkbox>
     }
-
-    <h2 mat-dialog-title>
-      <mat-icon [class.destructive]="data.destructive !== false">warning</mat-icon>
-      {{ data.title }}
-    </h2>
     <mat-dialog-content>
       <p>{{ data.message }}</p>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button (click)="cancel()">{{ data.cancelLabel ?? 'Cancel' }}</button>
       <button mat-flat-button [color]="data.isDestructive ? 'warn' : 'primary'" (click)="confirm()">
-      <button mat-flat-button [class.confirm-destructive]="data.destructive !== false" (click)="confirm()">
         {{ data.confirmLabel ?? 'Confirm' }}
       </button>
     </mat-dialog-actions>
@@ -60,26 +51,28 @@ export interface ConfirmDialogResult {
         margin: 0 24px 8px;
         color: var(--color-text-secondary, #6e6e73);
         font-size: 0.875rem;
-      h2[mat-dialog-title] {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-      mat-icon.destructive {
-        color: var(--color-error, #f44336);
-      }
-      p {
-        color: var(--color-text-secondary);
-        line-height: 1.5;
-      }
+        h2[mat-dialog-title] {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        mat-icon.destructive {
+          color: var(--color-error, #f44336);
+        }
+        p {
+          color: var(--color-text-secondary);
+          line-height: 1.5;
+        }
 
-      .confirm-dialog__checkbox {
-        display: block;
-        margin: 0 24px 8px;
-        font-size: 0.875rem;
-      .confirm-destructive {
-        background: var(--color-error, #f44336);
-        color: #fff;
+        .confirm-dialog__checkbox {
+          display: block;
+          margin: 0 24px 8px;
+          font-size: 0.875rem;
+        }
+        .confirm-destructive {
+          background: var(--color-error, #f44336);
+          color: #fff;
+        }
       }
     `,
   ],
@@ -90,15 +83,10 @@ export class ConfirmDialogComponent {
 
   protected checkboxChecked = false
   confirm(): void {
-    this.dialogRef.close(true)
+    this.dialogRef.close({ confirmed: true, checkboxChecked: this.checkboxChecked })
   }
 
   cancel(): void {
     this.dialogRef.close({ confirmed: false })
-  }
-
-  confirm(): void {
-    this.dialogRef.close({ confirmed: true, checkboxChecked: this.checkboxChecked })
-    this.dialogRef.close(false)
   }
 }
