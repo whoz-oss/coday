@@ -40,7 +40,7 @@ export class AiModelItemComponent {
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.router.navigate(['/agentos', this.namespaceId, 'llm-models', this.model.id, 'edit'])
+        this.router.navigate(['/agentos', this.namespaceId, 'ai-models', this.model.id, 'edit'])
         break
       case 'delete':
         this.pendingDelete.set(true)

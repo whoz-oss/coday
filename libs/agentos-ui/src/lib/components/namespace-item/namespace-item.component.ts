@@ -26,14 +26,14 @@ export class NamespaceItemComponent {
   @Output() editRequested = new EventEmitter<Namespace>()
   @Output() integrationsRequested = new EventEmitter<Namespace>()
   @Output() aiProvidersRequested = new EventEmitter<Namespace>()
-  @Output() llmModelsRequested = new EventEmitter<Namespace>()
+  @Output() aiModelsRequested = new EventEmitter<Namespace>()
   @Output() deleteRequested = new EventEmitter<Namespace>()
 
   protected readonly menuItems: KebabMenuItem[] = [
     { key: 'edit', label: 'Edit namespace', icon: 'edit' },
     { key: 'integrations', label: 'Manage integrations', icon: 'settings' },
     { key: 'ai-providers', label: 'AI Providers', icon: 'smart_toy' },
-    { key: 'llm-models', label: 'AI models', icon: 'model_training' },
+    { key: 'ai-models', label: 'AI models', icon: 'model_training' },
     { key: 'delete', label: 'Delete namespace', icon: 'delete', variant: 'danger' },
   ]
 
@@ -52,8 +52,8 @@ export class NamespaceItemComponent {
       case 'ai-providers':
         this.aiProvidersRequested.emit(this.namespace)
         break
-      case 'llm-models':
-        this.llmModelsRequested.emit(this.namespace)
+      case 'ai-models':
+        this.aiModelsRequested.emit(this.namespace)
         break
       case 'delete':
         if (confirm(`Delete namespace "${this.namespace.name}"?`)) {

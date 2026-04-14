@@ -79,8 +79,8 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'ai-providers'])
   }
 
-  protected openLlmModels(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'llm-models'])
+  protected openAiModels(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'ai-models'])
   }
 
   // --- Delete ---

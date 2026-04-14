@@ -14,14 +14,14 @@ import {
  * AiModelFormComponent — full-page create / edit form for an AI model.
  *
  * Mode is determined by the presence of `:modelId` in the route params:
- * - `/:namespaceId/llm-models/new`               → create mode
- * - `/:namespaceId/llm-models/:modelId/edit`      → edit mode
+ * - `/:namespaceId/ai-models/new`               → create mode
+ * - `/:namespaceId/ai-models/:modelId/edit`      → edit mode
  *
  * The namespaceId is fixed at creation time and never shown as an editable field.
  * The aiProviderId (provider) is chosen from a select in create mode and becomes
  * read-only in edit mode — it cannot be reassigned after creation.
  *
- * On success or cancel, navigates back to /:namespaceId/llm-models.
+ * On success or cancel, navigates back to /:namespaceId/ai-models.
  */
 @Component({
   selector: 'agentos-ai-model-form',
@@ -169,7 +169,7 @@ export class AiModelFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'llm-models'])
+    this.router.navigate(['/agentos', this.namespaceId, 'ai-models'])
   }
 
   protected trackByProvider(_index: number, provider: AiProvider): string {

@@ -10,19 +10,19 @@ import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 /**
  * NamespaceLlmModelsComponent — list view for AI models of a namespace.
  *
- * Loaded at /:namespaceId/llm-models. Responsibilities:
+ * Loaded at /:namespaceId/ai-models. Responsibilities:
  * - Load all AiModel for the namespace in a single call
  * - Load AiProvider providers in parallel to resolve group labels
  * - Display models grouped by provider name via ds-entity-list grouping
  * - Navigate back to the namespace list
- * - Navigate to the create form (/:namespaceId/llm-models/new)
+ * - Navigate to the create form (/:namespaceId/ai-models/new)
  * - Deletion with inline confirmation (delegated to AiModelItemComponent)
  *
  * Create and edit are handled by AiModelFormComponent on dedicated routes.
  * The namespaceId is fixed at creation time and cannot be changed afterwards.
  */
 @Component({
-  selector: 'agentos-namespace-llm-models',
+  selector: 'agentos-namespace-ai-models',
   standalone: true,
   imports: [AsyncPipe, EntityListComponent, AiModelItemComponent],
   templateUrl: './namespace-ai-models.component.html',
@@ -83,7 +83,7 @@ export class NamespaceAiModelsComponent {
   }
 
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'llm-models', 'new'])
+    this.router.navigate(['/agentos', this.namespaceId, 'ai-models', 'new'])
   }
 
   protected deleteModel(model: AiModel): void {
