@@ -1,4 +1,5 @@
 .gitignore
+.openapi-generator-ignore
 README.md
 api.base.service.ts
 api.module.ts
@@ -6,6 +7,7 @@ api/ai-model-controller.service.ts
 api/ai-provider-controller.service.ts
 api/api.ts
 api/case-controller.service.ts
+api/case-event-rest-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
@@ -23,6 +25,7 @@ model/agent-running-event.ts
 model/agent-selected-event.ts
 model/ai-model.ts
 model/answer-event.ts
+model/case-event.ts
 model/case-status-event.ts
 model/case.ts
 model/entity-metadata.ts
@@ -33,6 +36,7 @@ model/integration-type-descriptor.ts
 model/intention-generated-event.ts
 model/llm-config.ts
 model/message-content.ts
+model/message-event-all-of-content.ts
 model/message-event.ts
 model/models.ts
 model/namespace.ts
@@ -44,6 +48,7 @@ model/text-chunk-event.ts
 model/text.ts
 model/thinking-event.ts
 model/tool-request-event.ts
+model/tool-response-event-all-of-output.ts
 model/tool-response-event.ts
 model/tool-selected-event.ts
 model/user.ts

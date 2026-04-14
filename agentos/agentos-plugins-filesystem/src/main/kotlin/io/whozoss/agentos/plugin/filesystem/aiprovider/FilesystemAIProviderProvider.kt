@@ -6,11 +6,13 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.AiProviderPlugin
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.pf4j.Extension
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.util.UUID
 
 @Extension
 class FilesystemAIProviderProvider : AiProviderPlugin {
@@ -50,7 +52,7 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
                         logger.debug { "Processing aiProvider file: $yamlFile" }
                         val aiProvider = loadAiProviderFromYaml(yamlFile.toFile())
                         aiProviders.add(aiProvider)
-                        logger.info { "Loaded AI Provider '${aiProvider.id}' from ${yamlFile.fileName}" }
+                        logger.info { "Loaded AI Provider '${aiProvider.name}' from ${yamlFile.fileName}" }
                     } catch (e: Exception) {
                         logger.error(e) { "Failed to load AI Provider from $yamlFile: ${e.message}" }
                     }
@@ -68,16 +70,21 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
         val yamlModel = yamlMapper.readValue(file, AiProviderYamlModel::class.java)
 
         return AiProvider(
+            metadata = EntityMetadata(id = deterministicId(yamlModel.name)),
             name = yamlModel.name,
-            description = yamlModel.description,
             apiType = AiApiType.valueOf(yamlModel.apiType),
-            defaultApiKey = yamlModel.defaultApiKey,
             baseUrl = yamlModel.baseUrl,
-            baseModel = yamlModel.baseModel,
-            temperature = yamlModel.temperature ?: 1.0,
-            maxTokens = yamlModel.maxTokens,
+            apiKey = yamlModel.apiKey,
         )
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Derives a stable UUID from a provider name so that AiModel entries loaded
+         * by [FilesystemAiModelProvider] can reference the same provider across restarts
+         * without a persistent store.
+         */
+        fun deterministicId(providerName: String): UUID =
+            UUID.nameUUIDFromBytes("filesystem-aiprovider:$providerName".toByteArray(Charsets.UTF_8))
+    }
 }

@@ -3,8 +3,10 @@ package io.whozoss.agentos.plugin.filesystem.aimodel
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import io.whozoss.agentos.plugin.filesystem.aiprovider.FilesystemAIProviderProvider
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiModelPlugin
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.pf4j.Extension
 import java.io.File
@@ -15,7 +17,11 @@ import java.nio.file.Paths
  * Loads AiModel configurations from YAML files in the filesystem.
  *
  * Reads all `.yaml` / `.yml` files from the configured directory and registers
- * each as an AiModel in the AiModelRegistry.
+ * each as an [AiModel] in the AiModelRegistry.
+ *
+ * The [AiModelYamlModel.providerName] field is resolved to a stable UUID via
+ * [FilesystemAIProviderProvider.deterministicId], ensuring that model→provider
+ * references survive restarts without a persistent store.
  *
  * Directory is resolved from (in priority order):
  * 1. System property `agentos.aimodel.directory`
@@ -62,7 +68,7 @@ class FilesystemAiModelProvider : AiModelPlugin {
                         logger.debug { "Processing AI model file: $yamlFile" }
                         val model = loadAiModelFromYaml(yamlFile.toFile())
                         models.add(model)
-                        logger.info { "Loaded AI model '${model.name}' from ${yamlFile.fileName}" }
+                        logger.info { "Loaded AI model '${model.apiName}' from ${yamlFile.fileName}" }
                     } catch (e: Exception) {
                         logger.error(e) { "Failed to load AI model from $yamlFile: ${e.message}" }
                     }
@@ -78,13 +84,13 @@ class FilesystemAiModelProvider : AiModelPlugin {
         val yaml = yamlMapper.readValue(file, AiModelYamlModel::class.java)
 
         return AiModel(
-            name = yaml.name,
-            description = yaml.description,
-            modelName = yaml.modelName,
-            providerName = yaml.providerName,
+            metadata = EntityMetadata(),
+            aiProviderId = FilesystemAIProviderProvider.deterministicId(yaml.providerName),
+            apiName = yaml.apiName,
+            alias = yaml.alias,
+            priority = yaml.priority,
             temperature = yaml.temperature,
             maxTokens = yaml.maxTokens,
-            instructions = yaml.instructions,
         )
     }
 
