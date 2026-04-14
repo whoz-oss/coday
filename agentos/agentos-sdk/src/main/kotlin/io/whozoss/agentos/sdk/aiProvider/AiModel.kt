@@ -6,7 +6,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * Persistent configuration for accessing a specific LLM model under a provider.
+ * Persistent configuration for accessing a specific AI model under a provider.
  *
  * Each [AiModelConfig] belongs to one [io.whozoss.agentos.aiProvider.AiProviderConfig] (via [])
  * and describes how to invoke a particular model: its real API name, optional stable

@@ -8,7 +8,7 @@ import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
 
 /**
- * NamespaceAiProvidersComponent — list view for LLM providers of a namespace.
+ * NamespaceAiProvidersComponent — list view for AI providers of a namespace.
  *
  * Loaded at /:namespaceId/ai-providers. Responsibilities:
  * - Load and display the list of AiProvider via ds-entity-list

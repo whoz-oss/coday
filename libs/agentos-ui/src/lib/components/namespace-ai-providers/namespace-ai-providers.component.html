@@ -1,8 +1,8 @@
 <ds-entity-list
-  title="LLM Providers"
+  title="AI Providers"
   [items]="(configItems$ | async) ?? []"
   [showCreate]="true"
-  emptyMessage="No LLM providers configured yet. Add one above."
+  emptyMessage="No AI providers configured yet. Add one above."
   cardMinWidth="400px"
   [itemTemplate]="aiProviderItemTpl"
   (createRequested)="openCreateForm()"

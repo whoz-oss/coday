@@ -4,7 +4,7 @@ import { AiProvider } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
- * AiProviderItemComponent — presentational component for a single LLM provider card.
+ * AiProviderItemComponent — presentational component for a single AI provider card.
  *
  * Displays the provider name and API type. Edit navigates to the dedicated edit route;
  * delete uses a two-step inline confirmation before emitting upward.

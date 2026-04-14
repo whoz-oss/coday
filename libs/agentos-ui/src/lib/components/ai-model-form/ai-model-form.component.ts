@@ -11,7 +11,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 
 /**
- * AiModelFormComponent — full-page create / edit form for an LLM model.
+ * AiModelFormComponent — full-page create / edit form for an AI model.
  *
  * Mode is determined by the presence of `:modelId` in the route params:
  * - `/:namespaceId/llm-models/new`               → create mode

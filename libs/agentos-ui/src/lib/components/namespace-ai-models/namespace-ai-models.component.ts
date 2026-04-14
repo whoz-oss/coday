@@ -8,7 +8,7 @@ import { BehaviorSubject, combineLatest, map, switchMap } from 'rxjs'
 import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 
 /**
- * NamespaceLlmModelsComponent — list view for LLM model configs of a namespace.
+ * NamespaceLlmModelsComponent — list view for AI models of a namespace.
  *
  * Loaded at /:namespaceId/llm-models. Responsibilities:
  * - Load all AiModel for the namespace in a single call

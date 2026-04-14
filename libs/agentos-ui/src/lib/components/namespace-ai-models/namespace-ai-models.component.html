@@ -1,8 +1,8 @@
 <ds-entity-list
-  title="LLM Models"
+  title="AI models"
   [items]="(modelItems$ | async) ?? []"
   [showCreate]="true"
-  emptyMessage="No LLM models configured yet. Add one above."
+  emptyMessage="No AI models configured yet. Add one above."
   cardMinWidth="400px"
   [itemTemplate]="llmModelItemTpl"
   (createRequested)="openCreateForm()"

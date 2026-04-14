@@ -29,38 +29,42 @@ class DateTimePlugin : Plugin() {
  */
 @Extension
 class DateTimeToolProvider : ToolPlugin {
-
     override val integrationType: String = "DATETIME"
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
-    override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
-        val defaultTimezone = config
-            ?.get("defaultTimezone")
-            ?.asText()
-            ?.takeIf { it.isNotBlank() }
-            ?: "UTC"
+    override fun provideTools(
+        config: JsonNode?,
+        configName: String?,
+    ): List<StandardTool<*>> {
+        val defaultTimezone =
+            config
+                ?.get("defaultTimezone")
+                ?.asText()
+                ?.takeIf { it.isNotBlank() }
+                ?: "UTC"
         return listOf(GetCurrentDateTimeTool(defaultTimezone = defaultTimezone, configName = configName))
     }
 
     companion object : KLogging() {
-        private val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
-            """
-            {
-                "type": "object",
-                "title": "DateTime Configuration",
-                "description": "Configuration for the DateTime integration.",
-                "properties": {
-                    "defaultTimezone": {
-                        "type": "string",
-                        "title": "Default Timezone",
-                        "description": "IANA timezone used when the LLM does not specify one explicitly. Examples: 'Europe/Paris', 'America/New_York', 'UTC'.",
-                        "default": "UTC"
-                    }
-                },
-                "additionalProperties": false
-            }
-            """.trimIndent(),
-        )
+        private val CONFIG_SCHEMA: JsonNode =
+            jacksonObjectMapper().readTree(
+                """
+                {
+                    "type": "object",
+                    "title": "DateTime Configuration",
+                    "description": "Configuration for the DateTime integration.",
+                    "properties": {
+                        "defaultTimezone": {
+                            "type": "string",
+                            "title": "Default Timezone",
+                            "description": "IANA timezone used when the AI does not specify one explicitly. Examples: 'Europe/Paris', 'America/New_York', 'UTC'.",
+                            "default": "UTC"
+                        }
+                    },
+                    "additionalProperties": false
+                }
+                """.trimIndent(),
+            )
     }
 }

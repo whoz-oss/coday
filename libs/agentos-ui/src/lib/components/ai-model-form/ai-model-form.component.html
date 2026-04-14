@@ -1,10 +1,10 @@
 <div class="ai-model-form">
   <header class="ai-model-form__header">
-    <button class="ai-model-form__back" type="button" (click)="cancel()" title="Back to LLM models">
+    <button class="ai-model-form__back" type="button" (click)="cancel()" title="Back to AI models">
       <span class="ai-model-form__back-icon">&#8592;</span>
-      LLM Models
+      AI models
     </button>
-    <h1 class="ai-model-form__title">{{ isEditMode() ? 'Edit LLM model' : 'New LLM model' }}</h1>
+    <h1 class="ai-model-form__title">{{ isEditMode() ? 'Edit AI model' : 'New AI model' }}</h1>
   </header>
 
   @if (isLoading()) {

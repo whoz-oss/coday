@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider, AiProviderApiTypeEnum, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
 
 /**
- * AiProviderFormComponent — full-page create / edit form for an LLM provider.
+ * AiProviderFormComponent — full-page create / edit form for an AI provider.
  *
  * Mode is determined by the presence of `:aiProviderId` in the route params:
  * - `/:namespaceId/ai-providers/new`                  → create mode

@@ -32,8 +32,8 @@ export class NamespaceItemComponent {
   protected readonly menuItems: KebabMenuItem[] = [
     { key: 'edit', label: 'Edit namespace', icon: 'edit' },
     { key: 'integrations', label: 'Manage integrations', icon: 'settings' },
-    { key: 'ai-providers', label: 'LLM Providers', icon: 'smart_toy' },
-    { key: 'llm-models', label: 'LLM Models', icon: 'model_training' },
+    { key: 'ai-providers', label: 'AI Providers', icon: 'smart_toy' },
+    { key: 'llm-models', label: 'AI models', icon: 'model_training' },
     { key: 'delete', label: 'Delete namespace', icon: 'delete', variant: 'danger' },
   ]
 

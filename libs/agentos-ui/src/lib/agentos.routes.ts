@@ -66,7 +66,7 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceIntegrationsComponent
               ),
           },
-          // --- LLM Providers ---
+          // --- AI Providers ---
           {
             path: ':namespaceId/ai-providers/new',
             canActivate: [agentosReadyGuard],
@@ -87,7 +87,7 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAiProvidersComponent
               ),
           },
-          // --- LLM Models ---
+          // --- AI models ---
           {
             path: ':namespaceId/ai-models/new',
             canActivate: [agentosReadyGuard],

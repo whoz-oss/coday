@@ -180,13 +180,13 @@ class CaseServiceImpl(
         val defaultName =
             agentService.getDefaultAgentName(namespaceId)
                 ?: run {
-                    logger.warn { "[CaseService] No LLM model configured for namespace $namespaceId" }
+                    logger.warn { "[CaseService] No AI model configured for namespace $namespaceId" }
                     return listOf(
                         WarnEvent(
                             namespaceId = namespaceId,
                             caseId = caseId,
                             message =
-                                "No LLM model is configured for this namespace. " +
+                                "No AI model is configured for this namespace. " +
                                     "Create an AiProvider and AiModel for namespace $namespaceId.",
                         ),
                     )

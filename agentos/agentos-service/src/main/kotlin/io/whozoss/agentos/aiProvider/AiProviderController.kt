@@ -65,7 +65,7 @@ class AiProviderController(
         )
 
     /**
-     * PUT /{id} — update an existing LLM config.
+     * PUT /{id} — update an existing AI provider.
      *
      * Preserves the persisted [apiKey] when the incoming value is masked.
      */

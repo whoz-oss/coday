@@ -44,7 +44,7 @@ By decreasing order of priority:
 - Never version-controlled or shared.
 
 **What to configure here:**  
-- **API keys and secrets** for LLM providers (OpenAI, Anthropic, etc.).
+- **API keys and secrets** for AI providers (OpenAI, Anthropic, etc.).
 - **Personal agent customizations** (e.g., your own default agent, aliases, user-specific agent files).
 - **Project list and recently accessed projects**.
 - **Default user preferences**.

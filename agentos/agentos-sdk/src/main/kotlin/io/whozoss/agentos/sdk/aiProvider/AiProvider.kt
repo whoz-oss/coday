@@ -6,7 +6,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * Persistent LLM provider configuration.
+ * Persistent AI provider configuration.
  *
  * Scoped to a namespace, a user, or both — at least one of [namespaceId] / [userId]
  * must be non-null. This constraint is enforced by [AiProviderServiceImpl.create].

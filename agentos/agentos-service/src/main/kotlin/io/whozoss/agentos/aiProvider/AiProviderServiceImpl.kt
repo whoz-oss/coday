@@ -30,7 +30,7 @@ class AiProviderServiceImpl(
         findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "An LLM config named '${entity.name}' already exists for this scope",
+                "An AI provider named '${entity.name}' already exists for this scope",
             )
         }
         return repository.save(entity)
@@ -42,7 +42,7 @@ class AiProviderServiceImpl(
             ?.let {
                 throw ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "An LLM config named '${entity.name}' already exists for this scope",
+                    "An AI provider named '${entity.name}' already exists for this scope",
                 )
             }
         return repository.save(entity)

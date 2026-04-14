@@ -4,7 +4,7 @@ import { AiModel } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
- * AiModelItemComponent — presentational component for a single LLM model card.
+ * AiModelItemComponent — presentational component for a single AI model card.
  *
  * Displays the model display name, api name, and optional parameters (temperature,
  * maxTokens). Edit navigates to the dedicated edit route; delete uses a two-step
