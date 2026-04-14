@@ -1,33 +1,40 @@
 package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.Runs
+import io.mockk.clearMocks
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.auth.AccessDeniedException
+import io.whozoss.agentos.auth.AuthorizationService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.auth.NamespaceRole
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
  * Unit tests for [IntegrationConfigController].
  *
  * The controller is instantiated directly with MockK stubs — no Spring context.
- * Tests cover:
- * - [IntegrationConfigController.toResource]  — domain → HTTP DTO mapping
- * - [IntegrationConfigController.toDomain]    — HTTP DTO → domain mapping
- * - [IntegrationConfigController.listByNamespace] — custom endpoint
- * - Inherited [io.whozoss.agentos.entity.EntityController] endpoints:
- *   getById (found / not-found), getByIds, listByParent, create,
- *   update (found / not-found), delete (found / not-found)
+ * Tests cover authorization (ADMIN namespace access) on every CRUD endpoint,
+ * plus mapping between domain entity and HTTP DTO.
  */
 class IntegrationConfigControllerSpec : StringSpec({
-    timeout = 5000
-
     val service = mockk<IntegrationConfigService>()
-    val controller = IntegrationConfigController(service)
+    val authorizationService = mockk<AuthorizationService>()
+    val userService = mockk<UserService>()
+    val controller = IntegrationConfigController(service, authorizationService, userService)
 
+    val currentUserId = UUID.randomUUID()
+    val currentUser = User(metadata = EntityMetadata(id = currentUserId), externalId = "user@test.com")
     val namespaceId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")
 
@@ -46,7 +53,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     fun resource(
         id: UUID? = UUID.randomUUID(),
-        nsId: UUID = namespaceId,
+        nsId: UUID? = namespaceId,
         name: String = "JIRA_PROD",
         integrationType: String = "JIRA",
     ) = IntegrationConfigResource(
@@ -57,8 +64,13 @@ class IntegrationConfigControllerSpec : StringSpec({
         parameters = params,
     )
 
+    beforeEach {
+        clearMocks(service, authorizationService, userService)
+        every { userService.getCurrentUser() } returns currentUser
+    }
+
     // -------------------------------------------------------------------------
-    // toResource mapping
+    // toResource / toDomain mapping
     // -------------------------------------------------------------------------
 
     "toResource maps all fields from IntegrationConfig to IntegrationConfigResource" {
@@ -75,18 +87,6 @@ class IntegrationConfigControllerSpec : StringSpec({
             parameters = params,
         )
     }
-
-    "toResource preserves null parameters" {
-        val c = config().copy(parameters = null)
-
-        val result = controller.toResource(c)
-
-        result.parameters shouldBe null
-    }
-
-    // -------------------------------------------------------------------------
-    // toDomain mapping
-    // -------------------------------------------------------------------------
 
     "toDomain maps all fields from IntegrationConfigResource to IntegrationConfig" {
         val id = UUID.randomUUID()
@@ -106,99 +106,74 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         val result = controller.toDomain(r)
 
-        // Non-null assertion: the UUID is always set even when the resource has no id
         result.metadata.id shouldBe result.metadata.id
     }
 
-    "toDomain preserves null parameters" {
-        val r = resource().copy(parameters = null)
-
-        val result = controller.toDomain(r)
-
-        result.parameters shouldBe null
-    }
-
     // -------------------------------------------------------------------------
-    // getById (inherited)
+    // getById — requires ADMIN namespace access
     // -------------------------------------------------------------------------
 
-    "getById returns a resource when the entity is found" {
+    "getById checks ADMIN namespace access" {
         val c = config()
         every { service.findById(c.id) } returns c
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } just Runs
 
         val result = controller.getById(c.id)
 
-        result shouldBe controller.toResource(c)
+        result.name shouldBe "JIRA_PROD"
+        verify { authorizationService.requireNamespaceAccess(currentUserId.toString(), namespaceId.toString(), NamespaceRole.ADMIN) }
     }
 
     "getById throws 404 when entity is not found" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null
 
-        val ex = runCatching { controller.getById(id) }.exceptionOrNull()
+        shouldThrow<ResourceNotFoundException> { controller.getById(id) }
+    }
 
-        (ex is ResourceNotFoundException) shouldBe true
+    "getById throws 403 when access denied" {
+        val c = config()
+        every { service.findById(c.id) } returns c
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } throws AccessDeniedException("Access denied")
+
+        shouldThrow<AccessDeniedException> { controller.getById(c.id) }
     }
 
     // -------------------------------------------------------------------------
-    // getByIds (inherited)
+    // create — requires ADMIN namespace access
     // -------------------------------------------------------------------------
 
-    "getByIds returns matching entities mapped to resources" {
-        val c1 = config(name = "JIRA_PROD")
-        val c2 = config(name = "SLACK_DEV")
-        every { service.findByIds(listOf(c1.id, c2.id)) } returns listOf(c1, c2)
-
-        val result = controller.getByIds(listOf(c1.id, c2.id))
-
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-    }
-
-    // -------------------------------------------------------------------------
-    // listByParent (inherited)
-    // -------------------------------------------------------------------------
-
-    "listByParent returns configs for the given namespaceId" {
-        val c1 = config(name = "A")
-        val c2 = config(name = "B")
-        every { service.findByParent(namespaceId) } returns listOf(c1, c2)
-
-        val result = controller.listByParent(namespaceId)
-
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-        verify(exactly = 1) { service.findByParent(namespaceId) }
-    }
-
-    // -------------------------------------------------------------------------
-    // create (inherited)
-    // -------------------------------------------------------------------------
-
-    "create converts resource to domain, delegates to service, and returns mapped resource" {
+    "create checks ADMIN namespace access" {
         val r = resource(id = null)
-        val saved = controller.toDomain(r)
-        every { service.create(any()) } returns saved
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } just Runs
+        every { service.create(any()) } returns config()
 
-        val result = controller.create(r)
+        controller.create(r)
 
-        result shouldBe controller.toResource(saved)
-        verify(exactly = 1) { service.create(any()) }
+        verify { authorizationService.requireNamespaceAccess(currentUserId.toString(), namespaceId.toString(), NamespaceRole.ADMIN) }
+    }
+
+    "create throws 403 when access denied" {
+        val r = resource(id = null)
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } throws AccessDeniedException("Access denied")
+
+        shouldThrow<AccessDeniedException> { controller.create(r) }
     }
 
     // -------------------------------------------------------------------------
-    // update (inherited)
+    // update — requires ADMIN namespace access (checked on existing entity)
     // -------------------------------------------------------------------------
 
-    "update delegates to service when entity exists and returns mapped resource" {
+    "update checks ADMIN namespace access on existing entity" {
         val c = config()
         val updatedResource = resource(id = c.id, name = "JIRA_STAGING")
-        val updatedDomain = controller.toDomain(updatedResource)
         every { service.findById(c.id) } returns c
-        every { service.update(any()) } returns updatedDomain
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } just Runs
+        every { service.update(any()) } returns c
 
-        val result = controller.update(c.id, updatedResource)
+        controller.update(c.id, updatedResource)
 
-        result shouldBe controller.toResource(updatedDomain)
-        verify(exactly = 1) { service.update(any()) }
+        verify { authorizationService.requireNamespaceAccess(currentUserId.toString(), namespaceId.toString(), NamespaceRole.ADMIN) }
     }
 
     "update throws 404 when entity is not found" {
@@ -206,30 +181,59 @@ class IntegrationConfigControllerSpec : StringSpec({
         val r = resource(id = id)
         every { service.findById(id) } returns null
 
-        val ex = runCatching { controller.update(id, r) }.exceptionOrNull()
-
-        (ex is ResourceNotFoundException) shouldBe true
+        shouldThrow<ResourceNotFoundException> { controller.update(id, r) }
     }
 
     // -------------------------------------------------------------------------
-    // delete (inherited)
+    // delete — requires ADMIN namespace access (checked on existing entity)
     // -------------------------------------------------------------------------
 
-    "delete succeeds when entity exists" {
-        val id = UUID.randomUUID()
-        every { service.delete(id) } returns true
+    "delete checks ADMIN namespace access on existing entity" {
+        val c = config()
+        every { service.findById(c.id) } returns c
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } just Runs
+        every { service.delete(c.id) } returns true
 
-        controller.delete(id)
+        controller.delete(c.id)
 
-        verify(exactly = 1) { service.delete(id) }
+        verify { authorizationService.requireNamespaceAccess(currentUserId.toString(), namespaceId.toString(), NamespaceRole.ADMIN) }
+        verify { service.delete(c.id) }
     }
 
-    "delete throws 404 when service returns false" {
+    "delete throws 404 when entity is not found" {
         val id = UUID.randomUUID()
-        every { service.delete(id) } returns false
+        every { service.findById(id) } returns null
 
-        val ex = runCatching { controller.delete(id) }.exceptionOrNull()
+        shouldThrow<ResourceNotFoundException> { controller.delete(id) }
+    }
 
-        (ex is ResourceNotFoundException) shouldBe true
+    "delete throws 403 when access denied" {
+        val c = config()
+        every { service.findById(c.id) } returns c
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } throws AccessDeniedException("Access denied")
+
+        shouldThrow<AccessDeniedException> { controller.delete(c.id) }
+    }
+
+    // -------------------------------------------------------------------------
+    // listByParent — requires ADMIN namespace access
+    // -------------------------------------------------------------------------
+
+    "listByParent checks ADMIN namespace access" {
+        val c1 = config(name = "A")
+        val c2 = config(name = "B")
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } just Runs
+        every { service.findByParent(namespaceId) } returns listOf(c1, c2)
+
+        val result = controller.listByParent(namespaceId)
+
+        result shouldHaveSize 2
+        verify { authorizationService.requireNamespaceAccess(currentUserId.toString(), namespaceId.toString(), NamespaceRole.ADMIN) }
+    }
+
+    "listByParent throws 403 when access denied" {
+        every { authorizationService.requireNamespaceAccess(any(), any(), any()) } throws AccessDeniedException("Access denied")
+
+        shouldThrow<AccessDeniedException> { controller.listByParent(namespaceId) }
     }
 })

@@ -15,9 +15,12 @@ import io.whozoss.agentos.persistence.neo4j.Neo4jCaseEventRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jIntegrationConfigRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jNamespaceRepository
+import io.whozoss.agentos.persistence.neo4j.Neo4jRoleRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jUserRepository
 import io.whozoss.agentos.persistence.neo4j.UserNodeNeo4jRepository
+import io.whozoss.agentos.auth.RoleRepository
 import io.whozoss.agentos.user.UserRepository
+import org.neo4j.driver.Driver
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -83,6 +86,12 @@ class Neo4jPersistenceConfiguration {
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper)
+    }
+
+    @Bean
+    fun neo4jRoleRepository(driver: Driver): RoleRepository {
+        logger.info { "[Persistence] Neo4jRoleRepository active" }
+        return Neo4jRoleRepository(driver)
     }
 
     companion object : KLogging()

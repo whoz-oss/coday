@@ -110,6 +110,24 @@ class UserPersistenceLifecycleSpec : StringSpec({
     }
 
     // =========================================================================
+    // isRoot property
+    // =========================================================================
+
+    "user isRoot defaults to false" {
+        val user = User(externalId = "default@example.com", email = "default@example.com")
+        user.isRoot shouldBe false
+    }
+
+    "user isRoot is preserved through save and retrieval" {
+        val repo = InMemoryUserRepository()
+        val user = repo.save(User(externalId = "root@example.com", email = "root@example.com", isRoot = true))
+        user.isRoot shouldBe true
+
+        val found = repo.findByIds(listOf(user.metadata.id)).first()
+        found.isRoot shouldBe true
+    }
+
+    // =========================================================================
     // Stable identity
     // =========================================================================
 

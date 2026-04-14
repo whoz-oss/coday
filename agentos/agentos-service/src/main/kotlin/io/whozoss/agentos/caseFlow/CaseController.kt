@@ -1,11 +1,17 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.auth.AuthorizationService
+import io.whozoss.agentos.auth.RoleRepository
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.auth.CaseRole
+import io.whozoss.agentos.sdk.auth.NamespaceRole
+import io.whozoss.agentos.sdk.auth.Operation
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
+import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
@@ -15,6 +21,12 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
+/**
+ * REST API for managing Cases.
+ *
+ * Extends [EntityController] with [CaseResource] as the HTTP DTO.
+ * All endpoints enforce authorization via [AuthorizationService].
+ */
 @RestController
 @RequestMapping(
     "/api/cases",
@@ -23,6 +35,8 @@ import java.util.UUID
 class CaseController(
     private val caseService: CaseService,
     private val userService: UserService,
+    private val authorizationService: AuthorizationService,
+    private val roleRepository: RoleRepository,
 ) : EntityController<Case, UUID, CaseResource>(caseService) {
 
     // -------------------------------------------------------------------------
@@ -46,6 +60,71 @@ class CaseController(
         )
 
     // -------------------------------------------------------------------------
+    // Overridden CRUD with authorization
+    // -------------------------------------------------------------------------
+
+    override fun getById(@PathVariable id: UUID): CaseResource {
+        authorizationService.requireCaseAccess(currentUserId(), id.toString(), Operation.READ)
+        return super.getById(id)
+    }
+
+    override fun getByIds(@RequestBody ids: List<UUID>): List<CaseResource> {
+        val userId = currentUserId()
+        return service.findByIds(ids)
+            .filter {
+                try {
+                    authorizationService.requireCaseAccess(userId, it.id.toString(), Operation.READ)
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            .map { toResource(it) }
+    }
+
+    /**
+     * POST /api/cases — create a new case.
+     *
+     * Requires MEMBER access on the parent namespace.
+     * After creation, the creator is auto-assigned OWNER on the case.
+     */
+    override fun create(@Valid @RequestBody resource: CaseResource): CaseResource {
+        val userId = currentUserId()
+        authorizationService.requireNamespaceAccess(userId, resource.namespaceId.toString(), NamespaceRole.MEMBER)
+
+        val created = service.create(toDomain(resource))
+        val createdCaseId = created.id.toString()
+
+        roleRepository.assignCaseRole(userId, createdCaseId, CaseRole.OWNER, userId)
+        logger.info { "Auto-assigned case OWNER to user $userId on case $createdCaseId" }
+
+        return toResource(created)
+    }
+
+    override fun update(@PathVariable id: UUID, @Valid @RequestBody resource: CaseResource): CaseResource {
+        authorizationService.requireCaseAccess(currentUserId(), id.toString(), Operation.WRITE)
+        return super.update(id, resource)
+    }
+
+    override fun delete(@PathVariable id: UUID) {
+        authorizationService.requireCaseAccess(currentUserId(), id.toString(), Operation.DELETE)
+        super.delete(id)
+    }
+
+    /**
+     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
+     *
+     * Filtered by [AuthorizationService.filterAccessibleCaseIds].
+     */
+    override fun listByParent(@PathVariable parentId: UUID): List<CaseResource> {
+        val userId = currentUserId()
+        val accessibleCaseIds = authorizationService.filterAccessibleCaseIds(userId, parentId.toString())
+        return service.findByParent(parentId)
+            .filter { it.id.toString() in accessibleCaseIds }
+            .map { toResource(it) }
+    }
+
+    // -------------------------------------------------------------------------
     // Additional endpoints
     // -------------------------------------------------------------------------
 
@@ -55,8 +134,10 @@ class CaseController(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
     ) {
-        logger.info { "Adding message to case: $caseId" }
         val user = userService.getCurrentUser()
+        authorizationService.requireCaseAccess(user.id.toString(), caseId.toString(), Operation.EXECUTE)
+
+        logger.info { "Adding message to case: $caseId" }
         val displayName = listOfNotNull(user.firstname, user.lastname)
             .joinToString(" ")
             .ifBlank { user.metadata.id.toString() }
@@ -74,13 +155,13 @@ class CaseController(
      * POST /api/cases/{caseId}/interrupt
      *
      * Interrupt the current agent turn and return the case to IDLE.
-     * The runtime and SSE connection stay open — the user can send a corrective
-     * message immediately. Use this when the agent is going in the wrong direction.
+     * Requires MANAGE permission (OWNER role).
      */
     @PostMapping("/{caseId}/interrupt")
     fun interruptCase(
         @PathVariable caseId: UUID,
     ) {
+        authorizationService.requireCaseAccess(currentUserId(), caseId.toString(), Operation.MANAGE)
         logger.info { "Interrupting case: $caseId" }
         caseService.interruptCase(caseId)
         logger.info { "Case interrupted: $caseId" }
@@ -91,10 +172,17 @@ class CaseController(
     fun killCase(
         @PathVariable caseId: UUID,
     ) {
+        authorizationService.requireCaseAccess(currentUserId(), caseId.toString(), Operation.MANAGE)
         logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }
     }
+
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    private fun currentUserId(): String = userService.getCurrentUser().id.toString()
 
     companion object : KLogging()
 }

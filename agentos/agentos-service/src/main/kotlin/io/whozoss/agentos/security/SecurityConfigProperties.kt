@@ -26,6 +26,13 @@ data class SecurityConfigProperties(
      * populates the CF_Authorization or x-forwarded-email header on every request.
      */
     val mode: SecurityMode = SecurityMode.LOCAL,
+    /**
+     * Permissive mode (FR30).
+     * When `true`, users without an assigned role are granted access by default.
+     * This ensures backward compatibility for namespaces without configured permissions.
+     * Default: `true`.
+     */
+    val permissive: Boolean = true,
 )
 
 enum class SecurityMode {
