@@ -25,14 +25,14 @@ export class NamespaceItemComponent {
   @Output() selected = new EventEmitter<Namespace>()
   @Output() editRequested = new EventEmitter<Namespace>()
   @Output() integrationsRequested = new EventEmitter<Namespace>()
-  @Output() llmConfigsRequested = new EventEmitter<Namespace>()
+  @Output() aiProvidersRequested = new EventEmitter<Namespace>()
   @Output() llmModelsRequested = new EventEmitter<Namespace>()
   @Output() deleteRequested = new EventEmitter<Namespace>()
 
   protected readonly menuItems: KebabMenuItem[] = [
     { key: 'edit', label: 'Edit namespace', icon: 'edit' },
     { key: 'integrations', label: 'Manage integrations', icon: 'settings' },
-    { key: 'llm-configs', label: 'LLM Providers', icon: 'smart_toy' },
+    { key: 'ai-providers', label: 'LLM Providers', icon: 'smart_toy' },
     { key: 'llm-models', label: 'LLM Models', icon: 'model_training' },
     { key: 'delete', label: 'Delete namespace', icon: 'delete', variant: 'danger' },
   ]
@@ -49,8 +49,8 @@ export class NamespaceItemComponent {
       case 'integrations':
         this.integrationsRequested.emit(this.namespace)
         break
-      case 'llm-configs':
-        this.llmConfigsRequested.emit(this.namespace)
+      case 'ai-providers':
+        this.aiProvidersRequested.emit(this.namespace)
         break
       case 'llm-models':
         this.llmModelsRequested.emit(this.namespace)

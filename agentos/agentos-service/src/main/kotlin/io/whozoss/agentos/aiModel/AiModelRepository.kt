@@ -7,7 +7,7 @@ import java.util.UUID
 /**
  * Repository for [AiModel] persistence.
  *
- * Primary parent is [llmConfigId]: [findByParent] returns all non-removed model
+ * Primary parent is [aiProviderId]: [findByParent] returns all non-removed model
  * configs belonging to a given provider config.
  *
  * [findByNamespaceId] enables namespace-scoped listing without joining through
@@ -22,20 +22,20 @@ interface AiModelRepository : EntityRepository<AiModel, UUID> {
     fun findByNamespaceId(namespaceId: UUID): List<AiModel>
 
     /**
-     * Find the first non-removed model config under [llmConfigId] whose [AiModel.apiName]
+     * Find the first non-removed model config under [aiProviderId] whose [AiModel.apiName]
      * matches [apiName] (exact, case-sensitive). Returns null if none found.
      */
-    fun findByLlmConfigAndApiName(
-        llmConfigId: UUID,
+    fun findByAiProviderAndApiName(
+        aiProviderId: UUID,
         apiName: String,
     ): AiModel?
 
     /**
-     * Find the first non-removed model config under [llmConfigId] whose [AiModel.alias]
+     * Find the first non-removed model config under [aiProviderId] whose [AiModel.alias]
      * matches [alias] (exact, case-sensitive). Returns null if none found.
      */
-    fun findByLlmConfigAndAlias(
-        llmConfigId: UUID,
+    fun findByAiProviderAndAlias(
+        aiProviderId: UUID,
         alias: String,
     ): AiModel?
 }

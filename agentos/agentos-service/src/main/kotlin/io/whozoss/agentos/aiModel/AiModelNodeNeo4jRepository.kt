@@ -12,10 +12,10 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
      */
     @Query(
         "MATCH (m:AiModel) " +
-            "WHERE m.llmConfigId = \$llmConfigId AND (m.removed IS NULL OR m.removed = false) " +
+            "WHERE m.aiProviderId = \$aiProviderId AND (m.removed IS NULL OR m.removed = false) " +
             "RETURN m ORDER BY m.apiName ASC",
     )
-    fun findActiveByLlmConfigId(llmConfigId: String): List<AiModelNode>
+    fun findActiveByAiProviderId(aiProviderId: String): List<AiModelNode>
 
     /**
      * Find all non-removed model configs belonging to a namespace, across all provider
@@ -29,30 +29,30 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
     fun findActiveByNamespaceId(namespaceId: String): List<AiModelNode>
 
     /**
-     * Find the first non-removed model config under [llmConfigId] whose apiName matches exactly.
+     * Find the first non-removed model config under [aiProviderId] whose apiName matches exactly.
      */
     @Query(
         "MATCH (m:AiModel) " +
-            "WHERE m.llmConfigId = \$llmConfigId AND m.apiName = \$apiName " +
+            "WHERE m.aiProviderId = \$aiProviderId AND m.apiName = \$apiName " +
             "AND (m.removed IS NULL OR m.removed = false) " +
             "RETURN m LIMIT 1",
     )
-    fun findActiveByLlmConfigIdAndApiName(
-        llmConfigId: String,
+    fun findActiveByAiProviderIdAndApiName(
+        aiProviderId: String,
         apiName: String,
     ): AiModelNode?
 
     /**
-     * Find the first non-removed model config under [llmConfigId] whose alias matches exactly.
+     * Find the first non-removed model config under [aiProviderId] whose alias matches exactly.
      */
     @Query(
         "MATCH (m:AiModel) " +
-            "WHERE m.llmConfigId = \$llmConfigId AND m.alias = \$alias " +
+            "WHERE m.aiProviderId = \$aiProviderId AND m.alias = \$alias " +
             "AND (m.removed IS NULL OR m.removed = false) " +
             "RETURN m LIMIT 1",
     )
-    fun findActiveByLlmConfigIdAndAlias(
-        llmConfigId: String,
+    fun findActiveByAiProviderIdAndAlias(
+        aiProviderId: String,
         alias: String,
     ): AiModelNode?
 }

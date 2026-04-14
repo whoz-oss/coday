@@ -98,14 +98,14 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jLlmConfigRepository(aiProviderNodeNeo4JRepository: AiProviderNodeNeo4jRepository): AiProviderRepository {
-        logger.info { "[Persistence] Neo4jLlmConfigRepository active" }
+    fun neo4jAiProviderRepository(aiProviderNodeNeo4JRepository: AiProviderNodeNeo4jRepository): AiProviderRepository {
+        logger.info { "[Persistence] Neo4jAiProviderRepository active" }
         return Neo4JAiProviderRepository(aiProviderNodeNeo4JRepository)
     }
 
     @Bean
-    fun neo4jLlmModelConfigRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelRepository {
-        logger.info { "[Persistence] Neo4jLlmModelConfigRepository active" }
+    fun neo4jAiModelRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelRepository {
+        logger.info { "[Persistence] Neo4jAiModelRepository active" }
         return Neo4JAiModelRepository(aiModelNodeNeo4JRepository)
     }
 

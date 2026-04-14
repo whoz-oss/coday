@@ -33,7 +33,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
 
     private val namespaceId = UUID.randomUUID()
 
-    private fun createParentLlmConfig(): AiProvider =
+    private fun createParentAiProvider(): AiProvider =
         aiProviderService.create(
             AiProvider(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -55,7 +55,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "POST /api/ai-models with blank apiName returns 400" {
-            val parent = createParentLlmConfig()
+            val parent = createParentAiProvider()
             mockMvc
                 .perform(
                     post("/api/ai-models")
@@ -65,7 +65,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "POST /api/ai-models with valid payload returns 201" {
-            val parent = createParentLlmConfig()
+            val parent = createParentAiProvider()
             mockMvc
                 .perform(
                     post("/api/ai-models")
@@ -76,7 +76,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
 
         "PUT /api/ai-models/{id} with blank apiName returns 400" {
             val id = UUID.randomUUID()
-            val parent = createParentLlmConfig()
+            val parent = createParentAiProvider()
             mockMvc
                 .perform(
                     put("/api/ai-models/$id")
@@ -86,7 +86,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "PUT /api/ai-models/{id} with valid payload returns 200" {
-            val parent = createParentLlmConfig()
+            val parent = createParentAiProvider()
             val created =
                 aiModelService.create(
                     AiModel(

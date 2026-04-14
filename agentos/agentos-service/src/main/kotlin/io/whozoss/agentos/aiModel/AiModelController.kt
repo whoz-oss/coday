@@ -81,7 +81,7 @@ class AiModelController(
      * Merge an update resource onto an existing persisted entity.
      *
      * Server-owned fields ([AiModel.namespaceId], [AiModel.userId],
-     * [AiModel.llmConfigId]) are always taken from [existing] — the client
+     * [AiModel.aiProviderId]) are always taken from [existing] — the client
      * cannot change them via a PUT. Client-supplied fields overwrite the rest.
      */
     private fun toDomainForUpdate(
@@ -99,7 +99,7 @@ class AiModelController(
     /**
      * PUT /{id} — update mutable fields of an existing model config.
      *
-     * Server-owned fields (namespaceId, userId, llmConfigId) are preserved from the
+     * Server-owned fields (namespaceId, userId, aiProviderId) are preserved from the
      * persisted record and cannot be changed by the client.
      */
     override fun update(
@@ -108,7 +108,7 @@ class AiModelController(
     ): AiModelResource {
         val existing =
             service.findById(id)
-                ?: throw ResourceNotFoundException("LlmModelConfig not found: $id")
+                ?: throw ResourceNotFoundException("AiModel not found: $id")
         return toResource(service.update(toDomainForUpdate(resource, existing)))
     }
 

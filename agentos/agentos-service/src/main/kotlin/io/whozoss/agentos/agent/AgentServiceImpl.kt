@@ -21,7 +21,7 @@ import java.util.UUID
  * Resolution strategy for a logical model name (e.g. "default"):
  * 1. Load all [AiModel] entries for the namespace.
  * 2. Match by [AiModel.alias] first, then [AiModel.apiName] as fallback.
- *    Within each group, the config with the highest [LlmModelConfig.priority] wins.
+ *    Within each group, the config with the highest [AiModel.priority] wins.
  * 3. Load the parent [AiProvider] to get provider connectivity (apiType, baseUrl, apiKey).
  * 4. Build a [ChatClient] directly from the two entities via [ChatClientProvider].
  *
@@ -91,13 +91,13 @@ class AgentServiceImpl(
         val modelConfig =
             aiModelService.findAiModel(namespaceId, name)
                 ?: throw IllegalArgumentException(
-                    "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
-                        "Configure an LlmModelConfig with alias or apiName matching '$name'.",
+                    "No AiModel found for name '$name' in namespace $namespaceId. " +
+                        "Configure an AiModel with alias or apiName matching '$name'.",
                 )
 
         logger.info {
             "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiName}' " +
-                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, llmConfigId=${modelConfig.aiProviderId})"
+                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, aiProviderId=${modelConfig.aiProviderId})"
         }
 
         val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)

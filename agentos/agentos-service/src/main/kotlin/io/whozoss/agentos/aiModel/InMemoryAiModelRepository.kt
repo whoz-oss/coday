@@ -30,13 +30,13 @@ class InMemoryAiModelRepository : AiModelRepository {
 
     override fun findByNamespaceId(namespaceId: UUID): List<AiModel> = delegate.findAll().filter { it.namespaceId == namespaceId }
 
-    override fun findByLlmConfigAndApiName(
-        llmConfigId: UUID,
+    override fun findByAiProviderAndApiName(
+        aiProviderId: UUID,
         apiName: String,
-    ): AiModel? = findByParent(llmConfigId).firstOrNull { it.apiName == apiName }
+    ): AiModel? = findByParent(aiProviderId).firstOrNull { it.apiName == apiName }
 
-    override fun findByLlmConfigAndAlias(
-        llmConfigId: UUID,
+    override fun findByAiProviderAndAlias(
+        aiProviderId: UUID,
         alias: String,
-    ): AiModel? = findByParent(llmConfigId).firstOrNull { it.alias == alias }
+    ): AiModel? = findByParent(aiProviderId).firstOrNull { it.alias == alias }
 }

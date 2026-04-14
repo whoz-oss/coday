@@ -1,15 +1,15 @@
-<div class="llm-model-config-item" role="listitem">
-  <div class="llm-model-config-item__body">
-    <span class="llm-model-config-item__name">{{ displayTitle }}</span>
-    <span class="llm-model-config-item__api-name">{{ model.apiName }}</span>
-    <span class="llm-model-config-item__params">
+<div class="ai-model-item" role="listitem">
+  <div class="ai-model-item__body">
+    <span class="ai-model-item__name">{{ displayTitle }}</span>
+    <span class="ai-model-item__api-name">{{ model.apiName }}</span>
+    <span class="ai-model-item__params">
       <span>priority: {{ model.priority }}</span>
     </span>
   </div>
 
-  <div class="llm-model-config-item__actions">
+  <div class="ai-model-item__actions">
     @if (pendingDelete()) {
-      <span class="llm-model-config-item__confirm-label">Delete?</span>
+      <span class="ai-model-item__confirm-label">Delete?</span>
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
       <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
     } @else {

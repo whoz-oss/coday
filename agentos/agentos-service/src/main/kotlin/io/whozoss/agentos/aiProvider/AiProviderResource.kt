@@ -20,7 +20,7 @@ import java.util.UUID
  * Models are managed as independent [AiModel]
  * entities via their own endpoints — they are not embedded in this resource.
  */
-@Schema(name = "LlmConfig")
+@Schema(name = "AiProvider")
 data class AiProviderResource(
     val id: UUID? = null,
     val namespaceId: UUID? = null,

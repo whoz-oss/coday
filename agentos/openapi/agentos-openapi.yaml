@@ -256,7 +256,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LlmConfig"
+                $ref: "#/components/schemas/AiProvider"
     put:
       tags:
       - ai-provider-controller
@@ -272,7 +272,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LlmConfig"
+              $ref: "#/components/schemas/AiProvider"
         required: true
       responses:
         "200":
@@ -280,7 +280,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LlmConfig"
+                $ref: "#/components/schemas/AiProvider"
     delete:
       tags:
       - ai-provider-controller
@@ -724,7 +724,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LlmConfig"
+              $ref: "#/components/schemas/AiProvider"
         required: true
       responses:
         "201":
@@ -732,7 +732,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LlmConfig"
+                $ref: "#/components/schemas/AiProvider"
   /api/ai-providers/by-ids:
     post:
       tags:
@@ -755,7 +755,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/LlmConfig"
+                  $ref: "#/components/schemas/AiProvider"
   /api/ai-models:
     post:
       tags:
@@ -1120,7 +1120,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/LlmConfig"
+                  $ref: "#/components/schemas/AiProvider"
   /api/ai-providers/by-parentId/{parentId}:
     get:
       tags:
@@ -1142,7 +1142,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/LlmConfig"
+                  $ref: "#/components/schemas/AiProvider"
   /api/ai-providers/by-namespaceId/{namespaceId}:
     get:
       tags:
@@ -1163,7 +1163,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/LlmConfig"
+                  $ref: "#/components/schemas/AiProvider"
   /api/ai-models/by-parentId/{parentId}:
     get:
       tags:
@@ -1282,7 +1282,7 @@ components:
       required:
       - namespaceId
       - status
-    LlmConfig:
+    AiProvider:
       type: object
       properties:
         id:

@@ -1,4 +1,4 @@
-.llm-model-config-item {
+.ai-provider-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -33,7 +33,7 @@
     text-overflow: ellipsis;
   }
 
-  &__api-name {
+  &__type {
     font-size: 0.78rem;
     color: var(--color-text-secondary, #6e6e73);
     font-family: monospace;
@@ -42,11 +42,12 @@
     text-overflow: ellipsis;
   }
 
-  &__params {
-    display: flex;
-    gap: 0.75rem;
+  &__url {
     font-size: 0.75rem;
     color: var(--color-text-secondary, #6e6e73);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   &__actions {

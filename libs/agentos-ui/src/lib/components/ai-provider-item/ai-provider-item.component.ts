@@ -1,29 +1,29 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { LlmConfig } from '@whoz-oss/agentos-api-client'
+import { AiProvider } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
- * LlmConfigItemComponent — presentational component for a single LLM provider card.
+ * AiProviderItemComponent — presentational component for a single LLM provider card.
  *
  * Displays the provider name and API type. Edit navigates to the dedicated edit route;
  * delete uses a two-step inline confirmation before emitting upward.
  */
 @Component({
-  selector: 'agentos-llm-config-item',
+  selector: 'agentos-ai-provider-item',
   standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
-  templateUrl: './llm-config-item.component.html',
-  styleUrl: './llm-config-item.component.scss',
+  templateUrl: './ai-provider-item.component.html',
+  styleUrl: './ai-provider-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LlmConfigItemComponent {
+export class AiProviderItemComponent {
   private readonly router = inject(Router)
 
-  @Input({ required: true }) config!: LlmConfig
+  @Input({ required: true }) config!: AiProvider
   @Input({ required: true }) namespaceId!: string
 
-  @Output() deleteRequested = new EventEmitter<LlmConfig>()
+  @Output() deleteRequested = new EventEmitter<AiProvider>()
 
   protected readonly pendingDelete = signal(false)
 
@@ -35,7 +35,7 @@ export class LlmConfigItemComponent {
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.router.navigate(['/agentos', this.namespaceId, 'llm-configs', this.config.id, 'edit'])
+        this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', this.config.id, 'edit'])
         break
       case 'delete':
         this.pendingDelete.set(true)

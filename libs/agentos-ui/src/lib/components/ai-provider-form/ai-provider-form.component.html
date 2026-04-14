@@ -1,0 +1,71 @@
+<div class="ai-provider-form">
+  <header class="ai-provider-form__header">
+    <button class="ai-provider-form__back" type="button" (click)="cancel()" title="Back to LLM providers">
+      <span class="ai-provider-form__back-icon">&#8592;</span>
+      LLM Providers
+    </button>
+    <h1 class="ai-provider-form__title">{{ isEditMode() ? 'Edit LLM provider' : 'New LLM provider' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="ai-provider-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="ai-provider-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="ai-provider-form__field">
+        <label class="ai-provider-form__label" for="llm-api-type">API type <span aria-hidden="true">*</span></label>
+        <select id="llm-api-type" class="ai-provider-form__select" [formControl]="apiTypeControl">
+          @for (type of apiTypeOptions; track type) {
+            <option [value]="type">{{ type }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="ai-provider-form__field">
+        <label class="ai-provider-form__label" for="llm-name">Name <span aria-hidden="true">*</span></label>
+        <input
+          id="llm-name"
+          class="ai-provider-form__input"
+          type="text"
+          placeholder="e.g. OpenAI prod"
+          [formControl]="nameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="ai-provider-form__field">
+        <label class="ai-provider-form__label" for="llm-base-url">Base URL</label>
+        <input
+          id="llm-base-url"
+          class="ai-provider-form__input"
+          type="url"
+          placeholder="Optional — leave empty for default endpoint"
+          [formControl]="baseUrlControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="ai-provider-form__field">
+        <label class="ai-provider-form__label" for="llm-api-key">API key</label>
+        <input
+          id="llm-api-key"
+          class="ai-provider-form__input ai-provider-form__input--secret"
+          type="password"
+          placeholder="sk-…"
+          [formControl]="apiKeyControl"
+          autocomplete="new-password"
+        />
+      </div>
+
+      <div class="ai-provider-form__actions">
+        <button
+          class="ai-provider-form__btn ai-provider-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="ai-provider-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

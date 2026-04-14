@@ -9,7 +9,7 @@ import java.util.UUID
 /**
  * Neo4j-backed implementation of [AiModelRepository].
  *
- * Parent type is [java.util.UUID] representing the llmConfigId.
+ * Parent type is [java.util.UUID] representing the aiProviderId.
  */
 open class Neo4JAiModelRepository(
     private val neo4jRepository: AiModelNodeNeo4jRepository,
@@ -20,7 +20,7 @@ open class Neo4JAiModelRepository(
             .toDomain()
             .also {
                 logger.debug {
-                    "[Neo4jAiModelRepository] Saved AiModel ${it.id} ('${entity.apiName}') under LlmConfig ${entity.aiProviderId}"
+                    "[Neo4jAiModelRepository] Saved AiModel ${it.id} ('${entity.apiName}') under AiProvider ${entity.aiProviderId}"
                 }
             }
 
@@ -32,7 +32,7 @@ open class Neo4JAiModelRepository(
 
     override fun findByParent(parentId: UUID): List<AiModel> =
         neo4jRepository
-            .findActiveByLlmConfigId(parentId.toString())
+            .findActiveByAiProviderId(parentId.toString())
             .map { it.toDomain() }
 
     override fun findByNamespaceId(namespaceId: UUID): List<AiModel> =
@@ -40,20 +40,20 @@ open class Neo4JAiModelRepository(
             .findActiveByNamespaceId(namespaceId.toString())
             .map { it.toDomain() }
 
-    override fun findByLlmConfigAndApiName(
-        llmConfigId: UUID,
+    override fun findByAiProviderAndApiName(
+        aiProviderId: UUID,
         apiName: String,
     ): AiModel? =
         neo4jRepository
-            .findActiveByLlmConfigIdAndApiName(llmConfigId.toString(), apiName)
+            .findActiveByAiProviderIdAndApiName(aiProviderId.toString(), apiName)
             ?.toDomain()
 
-    override fun findByLlmConfigAndAlias(
-        llmConfigId: UUID,
+    override fun findByAiProviderAndAlias(
+        aiProviderId: UUID,
         alias: String,
     ): AiModel? =
         neo4jRepository
-            .findActiveByLlmConfigIdAndAlias(llmConfigId.toString(), alias)
+            .findActiveByAiProviderIdAndAlias(aiProviderId.toString(), alias)
             ?.toDomain()
 
     override fun delete(id: UUID): Boolean =
@@ -68,9 +68,9 @@ open class Neo4JAiModelRepository(
 
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
-        val active = neo4jRepository.findActiveByLlmConfigId(parentId.toString())
+        val active = neo4jRepository.findActiveByAiProviderId(parentId.toString())
         neo4jRepository.saveAll(active.map { it.copy(removed = true) })
-        logger.debug { "[Neo4jAiModelRepository] Soft-deleted ${active.size} AiModels under LlmConfig $parentId" }
+        logger.debug { "[Neo4jAiModelRepository] Soft-deleted ${active.size} AiModels under AiProvider $parentId" }
         return active.size
     }
 

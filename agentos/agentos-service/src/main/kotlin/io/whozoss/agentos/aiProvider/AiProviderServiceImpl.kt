@@ -24,7 +24,7 @@ class AiProviderServiceImpl(
         if (entity.namespaceId == null && entity.userId == null) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "LlmConfig must be scoped to at least a namespace or a user",
+                "AiProvider must be scoped to at least a namespace or a user",
             )
         }
         findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)?.let {

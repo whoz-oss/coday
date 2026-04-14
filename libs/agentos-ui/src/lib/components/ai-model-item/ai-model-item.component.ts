@@ -4,21 +4,21 @@ import { AiModel } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
- * LlmModelConfigItemComponent — presentational component for a single LLM model card.
+ * AiModelItemComponent — presentational component for a single LLM model card.
  *
  * Displays the model display name, api name, and optional parameters (temperature,
  * maxTokens). Edit navigates to the dedicated edit route; delete uses a two-step
  * inline confirmation before emitting upward.
  */
 @Component({
-  selector: 'agentos-llm-model-config-item',
+  selector: 'agentos-ai-model-item',
   standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
-  templateUrl: './llm-model-config-item.component.html',
-  styleUrl: './llm-model-config-item.component.scss',
+  templateUrl: './ai-model-item.component.html',
+  styleUrl: './ai-model-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LlmModelConfigItemComponent {
+export class AiModelItemComponent {
   private readonly router = inject(Router)
 
   @Input({ required: true }) model!: AiModel

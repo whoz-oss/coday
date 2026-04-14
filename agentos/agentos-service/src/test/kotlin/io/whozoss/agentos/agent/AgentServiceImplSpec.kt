@@ -118,7 +118,7 @@ class AgentServiceImplSpec : StringSpec() {
 
         "findAgentByName resolves to higher-priority config when two configs share the same alias" {
             // Resolution logic (alias priority, tie-breaking) is tested exhaustively in
-            // LlmModelConfigServiceImplSpec. Here we only verify that findAgentByName
+            // AiModelServiceImplSpec. Here we only verify that findAgentByName
             // delegates to findModelConfig and uses the returned config.
             val highPriority = modelConfig(apiName = "claude-sonnet-4-5", alias = "sonnet", priority = 10)
             val provider = providerConfig()
@@ -160,7 +160,7 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.findAgentByName("sonnet", context).name shouldBe "Sonnet"
         }
 
-        "findAgentByName throws when no LlmModelConfig matches in the namespace" {
+        "findAgentByName throws when no AiModel matches in the namespace" {
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns null
 
             shouldThrow<IllegalArgumentException> {
@@ -294,7 +294,7 @@ class AgentServiceImplSpec : StringSpec() {
         // getDefaultAgentName
         // -------------------------------------------------------------------------
 
-        "getDefaultAgentName delegates to llmModelConfigService.findModelConfig and returns alias" {
+        "getDefaultAgentName delegates to aiModelService.findModelConfig and returns alias" {
             val defaultModel = modelConfig(apiName = "claude-sonnet-4-5", alias = "default")
             every { aiModelService.findAiModel(namespaceId) } returns defaultModel
 

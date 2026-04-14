@@ -10,13 +10,13 @@ import java.util.UUID
 /**
  * Default implementation of [AiModelService].
  *
- * [create] resolves [namespaceId] and [userId] from the parent [LlmConfig] via
+ * [create] resolves [namespaceId] and [userId] from the parent [AiProvider] via
  * [AiProviderService] and denormalises them onto the entity before saving, so that
- * namespace-scoped queries can be served without joining through [LlmConfig].
+ * namespace-scoped queries can be served without joining through [AiProvider].
  *
  * [create] also enforces two uniqueness constraints:
- * - (llmConfigId, apiName): a model can only be registered once per provider config
- * - (llmConfigId, alias): aliases must be unambiguous within a provider config
+ * - (aiProviderId, apiName): a model can only be registered once per provider config
+ * - (aiProviderId, alias): aliases must be unambiguous within a provider config
  */
 @Service
 class AiModelServiceImpl(
@@ -27,14 +27,14 @@ class AiModelServiceImpl(
         findByAiProviderAndApiName(entity.aiProviderId, entity.apiName)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "A model config for apiName '${entity.apiName}' already exists in LlmConfig ${entity.aiProviderId}",
+                "A model config for apiName '${entity.apiName}' already exists in AiProvider ${entity.aiProviderId}",
             )
         }
         entity.alias?.let { alias ->
             findByAiProviderAndAlias(entity.aiProviderId, alias)?.let {
                 throw ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "A model config with alias '$alias' already exists in LlmConfig ${entity.aiProviderId}",
+                    "A model config with alias '$alias' already exists in AiProvider ${entity.aiProviderId}",
                 )
             }
         }
@@ -53,7 +53,7 @@ class AiModelServiceImpl(
             ?.let {
                 throw ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "A model config for apiName '${entity.apiName}' already exists in LlmConfig ${entity.aiProviderId}",
+                    "A model config for apiName '${entity.apiName}' already exists in AiProvider ${entity.aiProviderId}",
                 )
             }
         entity.alias?.let { alias ->
@@ -62,7 +62,7 @@ class AiModelServiceImpl(
                 ?.let {
                     throw ResponseStatusException(
                         HttpStatus.CONFLICT,
-                        "A model config with alias '$alias' already exists in LlmConfig ${entity.aiProviderId}",
+                        "A model config with alias '$alias' already exists in AiProvider ${entity.aiProviderId}",
                     )
                 }
         }
@@ -82,12 +82,12 @@ class AiModelServiceImpl(
     override fun findByAiProviderAndApiName(
         aiProviderId: UUID,
         apiName: String,
-    ): AiModel? = repository.findByLlmConfigAndApiName(aiProviderId, apiName)
+    ): AiModel? = repository.findByAiProviderAndApiName(aiProviderId, apiName)
 
     override fun findByAiProviderAndAlias(
         aiProviderId: UUID,
         alias: String,
-    ): AiModel? = repository.findByLlmConfigAndAlias(aiProviderId, alias)
+    ): AiModel? = repository.findByAiProviderAndAlias(aiProviderId, alias)
 
     override fun findAiModel(
         namespaceId: UUID,

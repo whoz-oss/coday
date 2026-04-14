@@ -34,7 +34,7 @@ model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts
 model/intention-generated-event.ts
-model/llm-config.ts
+model/ai-provider.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts

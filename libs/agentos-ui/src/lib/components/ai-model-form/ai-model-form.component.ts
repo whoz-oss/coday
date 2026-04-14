@@ -3,30 +3,35 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { catchError, of } from 'rxjs'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { LlmConfig, AiProviderControllerService, AiModel, AiModelControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AiProvider,
+  AiProviderControllerService,
+  AiModel,
+  AiModelControllerService,
+} from '@whoz-oss/agentos-api-client'
 
 /**
- * LlmModelConfigFormComponent — full-page create / edit form for an LLM model.
+ * AiModelFormComponent — full-page create / edit form for an LLM model.
  *
  * Mode is determined by the presence of `:modelId` in the route params:
  * - `/:namespaceId/llm-models/new`               → create mode
  * - `/:namespaceId/llm-models/:modelId/edit`      → edit mode
  *
  * The namespaceId is fixed at creation time and never shown as an editable field.
- * The llmConfigId (provider) is chosen from a select in create mode and becomes
+ * The aiProviderId (provider) is chosen from a select in create mode and becomes
  * read-only in edit mode — it cannot be reassigned after creation.
  *
  * On success or cancel, navigates back to /:namespaceId/llm-models.
  */
 @Component({
-  selector: 'agentos-llm-model-config-form',
+  selector: 'agentos-ai-model-form',
   standalone: true,
   imports: [ReactiveFormsModule],
-  templateUrl: './llm-model-config-form.component.html',
-  styleUrl: './llm-model-config-form.component.scss',
+  templateUrl: './ai-model-form.component.html',
+  styleUrl: './ai-model-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LlmModelConfigFormComponent implements OnInit {
+export class AiModelFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
@@ -37,8 +42,8 @@ export class LlmModelConfigFormComponent implements OnInit {
 
   /** All providers for this namespace — used to populate the provider select. */
   protected readonly providers = toSignal(
-    this.aiProviderController.listByParentAiProvider(this.namespaceId).pipe(catchError(() => of([] as LlmConfig[]))),
-    { initialValue: [] as LlmConfig[] }
+    this.aiProviderController.listByParentAiProvider(this.namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
+    { initialValue: [] as AiProvider[] }
   )
 
   protected readonly form = new FormGroup({
@@ -59,18 +64,23 @@ export class LlmModelConfigFormComponent implements OnInit {
   protected get aiProviderIdControl() {
     return this.form.controls.aiProviderId
   }
+
   protected get apiNameControl() {
     return this.form.controls.apiName
   }
+
   protected get aliasControl() {
     return this.form.controls.alias
   }
+
   protected get priorityControl() {
     return this.form.controls.priority
   }
+
   protected get temperatureControl() {
     return this.form.controls.temperature
   }
+
   protected get maxTokensControl() {
     return this.form.controls.maxTokens
   }
@@ -162,7 +172,7 @@ export class LlmModelConfigFormComponent implements OnInit {
     this.router.navigate(['/agentos', this.namespaceId, 'llm-models'])
   }
 
-  protected trackByProvider(_index: number, provider: LlmConfig): string {
+  protected trackByProvider(_index: number, provider: AiProvider): string {
     return provider.id ?? ''
   }
 }

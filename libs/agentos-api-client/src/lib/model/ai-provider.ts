@@ -8,16 +8,17 @@
  * Do not edit the class manually.
  */
 
-export interface LlmConfig {
+export interface AiProvider {
   id?: string
   namespaceId?: string
   userId?: string
   name: string
-  apiType: LlmConfigApiTypeEnum
+  apiType: AiProviderApiTypeEnum
   baseUrl?: string
   apiKey?: string
 }
-export enum LlmConfigApiTypeEnum {
+
+export enum AiProviderApiTypeEnum {
   OpenAI = 'OpenAI',
   Anthropic = 'Anthropic',
   Gemini = 'Gemini',

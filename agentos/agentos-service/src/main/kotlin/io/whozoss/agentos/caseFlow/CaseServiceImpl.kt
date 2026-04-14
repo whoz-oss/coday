@@ -185,8 +185,9 @@ class CaseServiceImpl(
                         WarnEvent(
                             namespaceId = namespaceId,
                             caseId = caseId,
-                            message = "No LLM model is configured for this namespace. " +
-                                "Create an LlmConfig and LlmModelConfig for namespace $namespaceId.",
+                            message =
+                                "No LLM model is configured for this namespace. " +
+                                    "Create an AiProvider and AiModel for namespace $namespaceId.",
                         ),
                     )
                 }

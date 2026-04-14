@@ -12,9 +12,9 @@ import java.util.UUID
  * and describes how to invoke a particular model: its real API name, optional stable
  * alias, and inference parameters.
  *
- * [namespaceId] and [userId] are denormalised from the parent [LlmConfig] at creation
+ * [namespaceId] and [userId] are denormalised from the parent [AiProvider] at creation
  * time so that namespace-scoped or user-scoped queries can be served with a single
- * index lookup, without joining through [LlmConfig]. This mirrors the pattern used
+ * index lookup, without joining through [AiProvider]. This mirrors the pattern used
  * throughout the codebase (e.g. [io.whozoss.agentos.caseFlow.Case] carries namespaceId
  * directly rather than traversing a graph relationship).
  *
@@ -27,10 +27,10 @@ import java.util.UUID
  * explicitly prioritised. Ties are broken by insertion order (first created wins).
  *
  * Uniqueness constraints enforced by [AiModelConfigServiceImpl]:
- * - (llmConfigId, apiName) must be unique
- * - (llmConfigId, alias) must be unique when alias is non-null
+ * - (aiProviderId, apiName) must be unique
+ * - (aiProviderId, alias) must be unique when alias is non-null
  *
- * Parent: LlmConfig (via []).
+ * Parent: AiProvider (via []).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AiModel(

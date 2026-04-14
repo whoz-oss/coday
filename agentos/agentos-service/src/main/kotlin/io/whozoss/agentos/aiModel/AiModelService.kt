@@ -42,7 +42,7 @@ interface AiModelService : EntityService<AiModel, UUID> {
      *
      * Resolution order:
      * 1. Match [AiModel.alias] (case-insensitive). If one or more configs match,
-     *    return the one with the highest [LlmModelConfig.priority].
+     *    return the one with the highest [AiModel.priority].
      * 2. If no alias matches, fall back to [AiModel.apiName] (case-insensitive)
      *    and again return the highest-priority match.
      *

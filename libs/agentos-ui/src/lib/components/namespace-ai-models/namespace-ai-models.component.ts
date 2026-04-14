@@ -5,31 +5,31 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { AiModel, AiProviderControllerService, AiModelControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, combineLatest, map, switchMap } from 'rxjs'
-import { LlmModelConfigItemComponent } from '../llm-model-config-item/llm-model-config-item.component'
+import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 
 /**
  * NamespaceLlmModelsComponent — list view for LLM model configs of a namespace.
  *
  * Loaded at /:namespaceId/llm-models. Responsibilities:
- * - Load all LlmModelConfig for the namespace in a single call
- * - Load LlmConfig providers in parallel to resolve group labels
+ * - Load all AiModel for the namespace in a single call
+ * - Load AiProvider providers in parallel to resolve group labels
  * - Display models grouped by provider name via ds-entity-list grouping
  * - Navigate back to the namespace list
  * - Navigate to the create form (/:namespaceId/llm-models/new)
- * - Deletion with inline confirmation (delegated to LlmModelConfigItemComponent)
+ * - Deletion with inline confirmation (delegated to AiModelItemComponent)
  *
- * Create and edit are handled by LlmModelConfigFormComponent on dedicated routes.
+ * Create and edit are handled by AiModelFormComponent on dedicated routes.
  * The namespaceId is fixed at creation time and cannot be changed afterwards.
  */
 @Component({
   selector: 'agentos-namespace-llm-models',
   standalone: true,
-  imports: [AsyncPipe, EntityListComponent, LlmModelConfigItemComponent],
-  templateUrl: './namespace-llm-models.component.html',
-  styleUrl: './namespace-llm-models.component.scss',
+  imports: [AsyncPipe, EntityListComponent, AiModelItemComponent],
+  templateUrl: './namespace-ai-models.component.html',
+  styleUrl: './namespace-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class NamespaceLlmModelsComponent {
+export class NamespaceAiModelsComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)

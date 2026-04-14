@@ -68,48 +68,44 @@ export const AGENTOS_ROUTES: Route[] = [
           },
           // --- LLM Providers ---
           {
-            path: ':namespaceId/llm-configs/new',
+            path: ':namespaceId/ai-providers/new',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/llm-config-form/llm-config-form.component').then((m) => m.LlmConfigFormComponent),
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
           },
           {
-            path: ':namespaceId/llm-configs/:llmConfigId/edit',
+            path: ':namespaceId/ai-providers/:aiProviderId/edit',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/llm-config-form/llm-config-form.component').then((m) => m.LlmConfigFormComponent),
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
           },
           {
-            path: ':namespaceId/llm-configs',
+            path: ':namespaceId/ai-providers',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/namespace-llm-configs/namespace-llm-configs.component').then(
-                (m) => m.NamespaceLlmConfigsComponent
+              import('./components/namespace-ai-providers/namespace-ai-providers.component').then(
+                (m) => m.NamespaceAiProvidersComponent
               ),
           },
           // --- LLM Models ---
           {
-            path: ':namespaceId/llm-models/new',
+            path: ':namespaceId/ai-models/new',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/llm-model-config-form/llm-model-config-form.component').then(
-                (m) => m.LlmModelConfigFormComponent
-              ),
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
           },
           {
-            path: ':namespaceId/llm-models/:modelId/edit',
+            path: ':namespaceId/ai-models/:modelId/edit',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/llm-model-config-form/llm-model-config-form.component').then(
-                (m) => m.LlmModelConfigFormComponent
-              ),
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
           },
           {
-            path: ':namespaceId/llm-models',
+            path: ':namespaceId/ai-models',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/namespace-llm-models/namespace-llm-models.component').then(
-                (m) => m.NamespaceLlmModelsComponent
+              import('libs/agentos-ui/src/lib/components/namespace-ai-models/namespace-ai-models.component').then(
+                (m) => m.NamespaceAiModelsComponent
               ),
           },
           // --- User profile ---

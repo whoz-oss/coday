@@ -2,31 +2,31 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { LlmConfig, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
+import { AiProvider, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
-import { LlmConfigItemComponent } from '../llm-config-item/llm-config-item.component'
+import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
 
 /**
- * NamespaceLlmConfigsComponent — list view for LLM providers of a namespace.
+ * NamespaceAiProvidersComponent — list view for LLM providers of a namespace.
  *
- * Loaded at /:namespaceId/llm-configs. Responsibilities:
- * - Load and display the list of LlmConfig via ds-entity-list
+ * Loaded at /:namespaceId/ai-providers. Responsibilities:
+ * - Load and display the list of AiProvider via ds-entity-list
  * - Navigate back to the namespace list
- * - Navigate to the create form (/:namespaceId/llm-configs/new)
- * - Deletion with inline confirmation (delegated to LlmConfigItemComponent)
+ * - Navigate to the create form (/:namespaceId/ai-providers/new)
+ * - Deletion with inline confirmation (delegated to AiProviderItemComponent)
  *
- * Create and edit are handled by LlmConfigFormComponent on dedicated routes.
+ * Create and edit are handled by AiProviderFormComponent on dedicated routes.
  */
 @Component({
-  selector: 'agentos-namespace-llm-configs',
+  selector: 'agentos-namespace-ai-providers',
   standalone: true,
-  imports: [AsyncPipe, EntityListComponent, LlmConfigItemComponent],
-  templateUrl: './namespace-llm-configs.component.html',
-  styleUrl: './namespace-llm-configs.component.scss',
+  imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent],
+  templateUrl: './namespace-ai-providers.component.html',
+  styleUrl: './namespace-ai-providers.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class NamespaceLlmConfigsComponent {
+export class NamespaceAiProvidersComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
@@ -55,7 +55,7 @@ export class NamespaceLlmConfigsComponent {
   )
 
   /** Full config objects indexed by id — used to resolve itemTemplate events. */
-  private configsById = new Map<string, LlmConfig>()
+  private configsById = new Map<string, AiProvider>()
 
   constructor() {
     this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs) => {
@@ -68,17 +68,17 @@ export class NamespaceLlmConfigsComponent {
   }
 
   protected openCreateForm(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'llm-configs', 'new'])
+    this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'])
   }
 
-  protected deleteConfig(config: LlmConfig): void {
+  protected deleteConfig(config: AiProvider): void {
     this.aiProviderController
       .deleteAiProvider(config.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }
 
-  protected resolveConfig(id: string): LlmConfig | null {
+  protected resolveConfig(id: string): AiProvider | null {
     return this.configsById.get(id) ?? null
   }
 }

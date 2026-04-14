@@ -2,27 +2,27 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { LlmConfig, LlmConfigApiTypeEnum, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
+import { AiProvider, AiProviderApiTypeEnum, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
 
 /**
- * LlmConfigFormComponent — full-page create / edit form for an LLM provider.
+ * AiProviderFormComponent — full-page create / edit form for an LLM provider.
  *
- * Mode is determined by the presence of `:llmConfigId` in the route params:
- * - `/:namespaceId/llm-configs/new`                  → create mode
- * - `/:namespaceId/llm-configs/:llmConfigId/edit`    → edit mode
+ * Mode is determined by the presence of `:aiProviderId` in the route params:
+ * - `/:namespaceId/ai-providers/new`                  → create mode
+ * - `/:namespaceId/ai-providers/:aiProviderId/edit`    → edit mode
  *
  * The namespaceId is fixed at creation time and never exposed as an editable field.
- * On success or cancel, navigates back to /:namespaceId/llm-configs.
+ * On success or cancel, navigates back to /:namespaceId/ai-providers.
  */
 @Component({
-  selector: 'agentos-llm-config-form',
+  selector: 'agentos-ai-provider-form',
   standalone: true,
   imports: [ReactiveFormsModule],
-  templateUrl: './llm-config-form.component.html',
-  styleUrl: './llm-config-form.component.scss',
+  templateUrl: './ai-provider-form.component.html',
+  styleUrl: './ai-provider-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LlmConfigFormComponent implements OnInit {
+export class AiProviderFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
@@ -30,14 +30,14 @@ export class LlmConfigFormComponent implements OnInit {
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
-  protected readonly apiTypeOptions = Object.values(LlmConfigApiTypeEnum)
+  protected readonly apiTypeOptions = Object.values(AiProviderApiTypeEnum)
 
   protected readonly form = new FormGroup({
     name: new FormControl<string>('', {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(1)],
     }),
-    apiType: new FormControl<LlmConfigApiTypeEnum>(LlmConfigApiTypeEnum.OpenAI, {
+    apiType: new FormControl<AiProviderApiTypeEnum>(AiProviderApiTypeEnum.OpenAI, {
       nonNullable: true,
       validators: [Validators.required],
     }),
@@ -48,12 +48,15 @@ export class LlmConfigFormComponent implements OnInit {
   protected get nameControl() {
     return this.form.controls.name
   }
+
   protected get apiTypeControl() {
     return this.form.controls.apiType
   }
+
   protected get baseUrlControl() {
     return this.form.controls.baseUrl
   }
+
   protected get apiKeyControl() {
     return this.form.controls.apiKey
   }
@@ -63,13 +66,13 @@ export class LlmConfigFormComponent implements OnInit {
   protected readonly isLoading = signal(false)
 
   /** Kept for the update payload (preserves server-side fields). */
-  private existingConfig: LlmConfig | null = null
+  private existingConfig: AiProvider | null = null
 
   ngOnInit(): void {
-    const llmConfigId = this.route.snapshot.paramMap.get('llmConfigId')
-    if (llmConfigId) {
+    const aiProviderId = this.route.snapshot.paramMap.get('aiProviderId')
+    if (aiProviderId) {
       this.isEditMode.set(true)
-      this.loadConfig(llmConfigId)
+      this.loadConfig(aiProviderId)
     }
   }
 
@@ -99,7 +102,7 @@ export class LlmConfigFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
-    const payload: LlmConfig = {
+    const payload: AiProvider = {
       ...(this.existingConfig ?? {}),
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
@@ -123,6 +126,6 @@ export class LlmConfigFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'llm-configs'])
+    this.router.navigate(['/agentos', this.namespaceId, 'ai-providers'])
   }
 }
