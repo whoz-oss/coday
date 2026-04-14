@@ -26,7 +26,7 @@
             tabindex="-1"
           />
         } @else {
-          <select id="model-provider" class="llm-model-config-form__select" [formControl]="llmConfigIdControl">
+          <select id="model-provider" class="llm-model-config-form__select" [formControl]="aiProviderIdControl">
             <option value="" disabled>Select provider</option>
             @for (provider of providers(); track trackByProvider($index, provider)) {
               <option [value]="provider.id">{{ provider.name }} ({{ provider.apiType }})</option>

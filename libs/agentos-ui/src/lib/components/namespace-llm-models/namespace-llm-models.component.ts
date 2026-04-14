@@ -2,11 +2,7 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  LlmModelConfig,
-  LlmConfigControllerService,
-  LlmModelConfigControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { AiModel, AiProviderControllerService, AiModelControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, combineLatest, map, switchMap } from 'rxjs'
 import { LlmModelConfigItemComponent } from '../llm-model-config-item/llm-model-config-item.component'
@@ -37,8 +33,8 @@ export class NamespaceLlmModelsComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly llmModelConfigController = inject(LlmModelConfigControllerService)
-  private readonly llmConfigController = inject(LlmConfigControllerService)
+  private readonly aiModelController = inject(AiModelControllerService)
+  private readonly aiProviderController = inject(AiProviderControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -51,8 +47,8 @@ export class NamespaceLlmModelsComponent {
   private readonly data$ = this.refresh$.pipe(
     switchMap(() =>
       combineLatest([
-        this.llmModelConfigController.listByNamespaceIdLlmModelConfig(this.namespaceId),
-        this.llmConfigController.listByParentLlmConfig(this.namespaceId),
+        this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
+        this.aiProviderController.listByParentAiProvider(this.namespaceId),
       ])
     )
   )
@@ -66,15 +62,15 @@ export class NamespaceLlmModelsComponent {
           id: m.id ?? '',
           name: m.alias ?? m.apiName,
           description: m.apiName,
-          groupKey: m.llmConfigId,
-          groupLabel: providerNames.get(m.llmConfigId) ?? m.llmConfigId,
+          groupKey: m.aiProviderId,
+          groupLabel: providerNames.get(m.aiProviderId) ?? m.aiProviderId,
         })
       )
     })
   )
 
   /** Full model objects indexed by id — used to resolve itemTemplate events. */
-  private modelsById = new Map<string, LlmModelConfig>()
+  private modelsById = new Map<string, AiModel>()
 
   constructor() {
     this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(([models]) => {
@@ -90,14 +86,14 @@ export class NamespaceLlmModelsComponent {
     this.router.navigate(['/agentos', this.namespaceId, 'llm-models', 'new'])
   }
 
-  protected deleteModel(model: LlmModelConfig): void {
-    this.llmModelConfigController
-      .deleteLlmModelConfig(model.id ?? '')
+  protected deleteModel(model: AiModel): void {
+    this.aiModelController
+      .deleteAiModel(model.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }
 
-  protected resolveModel(id: string): LlmModelConfig | null {
+  protected resolveModel(id: string): AiModel | null {
     return this.modelsById.get(id) ?? null
   }
 }

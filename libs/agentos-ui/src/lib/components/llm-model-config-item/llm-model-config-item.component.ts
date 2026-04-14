@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { LlmModelConfig } from '@whoz-oss/agentos-api-client'
+import { AiModel } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
@@ -21,10 +21,10 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
 export class LlmModelConfigItemComponent {
   private readonly router = inject(Router)
 
-  @Input({ required: true }) model!: LlmModelConfig
+  @Input({ required: true }) model!: AiModel
   @Input({ required: true }) namespaceId!: string
 
-  @Output() deleteRequested = new EventEmitter<LlmModelConfig>()
+  @Output() deleteRequested = new EventEmitter<AiModel>()
 
   protected readonly pendingDelete = signal(false)
 

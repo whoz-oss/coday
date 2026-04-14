@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { LlmConfig, LlmConfigApiTypeEnum, LlmConfigControllerService } from '@whoz-oss/agentos-api-client'
+import { LlmConfig, LlmConfigApiTypeEnum, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
 
 /**
  * LlmConfigFormComponent — full-page create / edit form for an LLM provider.
@@ -26,7 +26,7 @@ export class LlmConfigFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly llmConfigController = inject(LlmConfigControllerService)
+  private readonly aiProviderController = inject(AiProviderControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -75,8 +75,8 @@ export class LlmConfigFormComponent implements OnInit {
 
   private loadConfig(id: string): void {
     this.isLoading.set(true)
-    this.llmConfigController
-      .getByIdLlmConfig(id)
+    this.aiProviderController
+      .getByIdAiProvider(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -109,8 +109,8 @@ export class LlmConfigFormComponent implements OnInit {
     }
 
     const call$ = this.isEditMode()
-      ? this.llmConfigController.updateLlmConfig(this.existingConfig!.id ?? '', payload)
-      : this.llmConfigController.createLlmConfig(payload)
+      ? this.aiProviderController.updateAiProvider(this.existingConfig!.id ?? '', payload)
+      : this.aiProviderController.createAiProvider(payload)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),

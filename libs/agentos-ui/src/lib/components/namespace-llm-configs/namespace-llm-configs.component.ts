@@ -2,7 +2,7 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { LlmConfig, LlmConfigControllerService } from '@whoz-oss/agentos-api-client'
+import { LlmConfig, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { LlmConfigItemComponent } from '../llm-config-item/llm-config-item.component'
@@ -30,7 +30,7 @@ export class NamespaceLlmConfigsComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly llmConfigController = inject(LlmConfigControllerService)
+  private readonly aiProviderController = inject(AiProviderControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -38,7 +38,7 @@ export class NamespaceLlmConfigsComponent {
 
   /** Raw configs, kept for delete lookups. */
   private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.llmConfigController.listByParentLlmConfig(this.namespaceId))
+    switchMap(() => this.aiProviderController.listByParentAiProvider(this.namespaceId))
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
@@ -72,8 +72,8 @@ export class NamespaceLlmConfigsComponent {
   }
 
   protected deleteConfig(config: LlmConfig): void {
-    this.llmConfigController
-      .deleteLlmConfig(config.id ?? '')
+    this.aiProviderController
+      .deleteAiProvider(config.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }

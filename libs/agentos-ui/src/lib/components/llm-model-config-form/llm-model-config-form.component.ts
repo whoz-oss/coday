@@ -3,12 +3,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { catchError, of } from 'rxjs'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  LlmConfig,
-  LlmConfigControllerService,
-  LlmModelConfig,
-  LlmModelConfigControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { LlmConfig, AiProviderControllerService, AiModel, AiModelControllerService } from '@whoz-oss/agentos-api-client'
 
 /**
  * LlmModelConfigFormComponent — full-page create / edit form for an LLM model.
@@ -35,19 +30,19 @@ export class LlmModelConfigFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly llmModelConfigController = inject(LlmModelConfigControllerService)
-  private readonly llmConfigController = inject(LlmConfigControllerService)
+  private readonly aiModelController = inject(AiModelControllerService)
+  private readonly aiProviderController = inject(AiProviderControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   /** All providers for this namespace — used to populate the provider select. */
   protected readonly providers = toSignal(
-    this.llmConfigController.listByParentLlmConfig(this.namespaceId).pipe(catchError(() => of([] as LlmConfig[]))),
+    this.aiProviderController.listByParentAiProvider(this.namespaceId).pipe(catchError(() => of([] as LlmConfig[]))),
     { initialValue: [] as LlmConfig[] }
   )
 
   protected readonly form = new FormGroup({
-    llmConfigId: new FormControl<string>('', {
+    aiProviderId: new FormControl<string>('', {
       nonNullable: true,
       validators: [Validators.required],
     }),
@@ -61,8 +56,8 @@ export class LlmModelConfigFormComponent implements OnInit {
     maxTokens: new FormControl<number | null>(null),
   })
 
-  protected get llmConfigIdControl() {
-    return this.form.controls.llmConfigId
+  protected get aiProviderIdControl() {
+    return this.form.controls.aiProviderId
   }
   protected get apiNameControl() {
     return this.form.controls.apiName
@@ -86,17 +81,17 @@ export class LlmModelConfigFormComponent implements OnInit {
 
   /**
    * Display label for the locked provider field in edit mode.
-   * Derived reactively from providers + llmConfigId so it resolves correctly
+   * Derived reactively from providers + aiProviderId so it resolves correctly
    * regardless of which signal settles first (providers load vs model load).
    */
   protected readonly selectedProviderLabel = computed(() => {
-    const id = this.llmConfigIdControl.value
+    const id = this.aiProviderIdControl.value
     const provider = this.providers().find((p) => p.id === id)
     return provider ? `${provider.name} (${provider.apiType})` : id
   })
 
   /** Kept for the update payload (preserves server-side fields). */
-  private existingModel: LlmModelConfig | null = null
+  private existingModel: AiModel | null = null
 
   ngOnInit(): void {
     const modelId = this.route.snapshot.paramMap.get('modelId')
@@ -108,15 +103,15 @@ export class LlmModelConfigFormComponent implements OnInit {
 
   private loadModel(id: string): void {
     this.isLoading.set(true)
-    this.llmModelConfigController
-      .getByIdLlmModelConfig(id)
+    this.aiModelController
+      .getByIdAiModel(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (model) => {
           this.existingModel = model
-          this.llmConfigIdControl.setValue(model.llmConfigId)
+          this.aiProviderIdControl.setValue(model.aiProviderId)
           // Provider cannot be changed after creation — lock the control
-          this.llmConfigIdControl.disable()
+          this.aiProviderIdControl.disable()
           this.apiNameControl.setValue(model.apiName)
           this.aliasControl.setValue(model.alias ?? '')
           this.priorityControl.setValue(model.priority ?? 0)
@@ -136,12 +131,12 @@ export class LlmModelConfigFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
-    // getRawValue() includes disabled controls (llmConfigId in edit mode)
+    // getRawValue() includes disabled controls (aiProviderId in edit mode)
     const raw = this.form.getRawValue()
 
-    const payload: LlmModelConfig = {
+    const payload: AiModel = {
       ...(this.existingModel ?? {}),
-      llmConfigId: raw.llmConfigId,
+      aiProviderId: raw.aiProviderId,
       apiName: raw.apiName.trim(),
       alias: raw.alias.trim() || undefined,
       priority: raw.priority,
@@ -150,8 +145,8 @@ export class LlmModelConfigFormComponent implements OnInit {
     }
 
     const call$ = this.isEditMode()
-      ? this.llmModelConfigController.updateLlmModelConfig(this.existingModel!.id ?? '', payload)
-      : this.llmModelConfigController.createLlmModelConfig(payload)
+      ? this.aiModelController.updateAiModel(this.existingModel!.id ?? '', payload)
+      : this.aiModelController.createAiModel(payload)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
