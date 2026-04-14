@@ -1,12 +1,14 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.aiModel.AiModelRegistry
+import io.whozoss.agentos.auth.PermissionManifestBuilder
 import io.whozoss.agentos.auth.ToolExecutionGuard
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -38,6 +40,7 @@ class AgentServiceImpl(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     @Lazy private val toolExecutionGuard: ToolExecutionGuard,
+    @Lazy private val manifestBuilder: PermissionManifestBuilder,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -88,7 +91,7 @@ class AgentServiceImpl(
         val chatClient = chatClientProvider.getChatClient(model.name)
         logger.debug { "[AgentService] ChatClient created for model: ${model.name} via provider: ${model.providerName}" }
 
-        val instructions = buildInstructions(model, context)
+        val instructions = buildInstructions(model, context, resolved)
 
         return AgentSimple(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
@@ -113,6 +116,7 @@ class AgentServiceImpl(
     private fun buildInstructions(
         model: AiModel,
         context: AgentExecutionContext,
+        tools: Collection<StandardTool<*>>,
     ): String {
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceBlock =
@@ -139,8 +143,18 @@ class AgentServiceImpl(
                     }
                 }
 
+        val permissionBlock =
+            context.userId?.let { userId ->
+                manifestBuilder.buildManifest(
+                    userId = userId.toString(),
+                    caseId = context.caseId.toString(),
+                    allTools = tools,
+                )
+            }?.takeIf { it.isNotBlank() }
+
         val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
-        return if (userBlock != null) "$base\n$userBlock" else base
+        val withUser = if (userBlock != null) "$base\n$userBlock" else base
+        return if (permissionBlock != null) "$withUser\n$permissionBlock" else withUser
     }
 
     companion object : KLogging()
