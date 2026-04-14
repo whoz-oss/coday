@@ -1,7 +1,7 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.aiProvider
 
-import io.whozoss.agentos.llmConfig.LlmConfig
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -9,21 +9,21 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Spring Data Neo4j projection for [LlmConfig].
+ * Spring Data Neo4j projection for [io.whozoss.agentos.sdk.aiProvider.AiProvider].
  *
  * Stored as a (:LlmConfig) node with a [namespaceId] property linking it to its
  * parent namespace (represented as a property, not an SDN @Relationship).
  *
  * [apiKey] is stored in clear text — masking is handled at the API layer by
- * [io.whozoss.agentos.llmConfig.LlmConfigController], not at the persistence layer.
+ * [AiProviderController], not at the persistence layer.
  *
- * [apiType] is stored as its enum name string and round-tripped via [AiApiType.valueOf].
+ * [apiType] is stored as its enum name string and round-tripped via [io.whozoss.agentos.sdk.aiProvider.AiApiType.valueOf].
  *
  * Properties kept flat (no nested objects) to avoid SDN's limited support for
  * embedded value types in Community Edition.
  */
-@Node("LlmConfig")
-data class LlmConfigNode(
+@Node("AiProvider")
+data class AiProviderNode(
     @Id
     val id: String,
     val namespaceId: String? = null,
@@ -39,8 +39,8 @@ data class LlmConfigNode(
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
 ) {
-    fun toDomain(): LlmConfig =
-        LlmConfig(
+    fun toDomain(): AiProvider =
+        AiProvider(
             metadata =
                 EntityMetadata(
                     id = UUID.fromString(id),
@@ -59,8 +59,8 @@ data class LlmConfigNode(
         )
 
     companion object {
-        fun fromDomain(config: LlmConfig): LlmConfigNode =
-            LlmConfigNode(
+        fun fromDomain(config: AiProvider): AiProviderNode =
+            AiProviderNode(
                 id = config.id.toString(),
                 namespaceId = config.namespaceId?.toString(),
                 userId = config.userId?.toString(),

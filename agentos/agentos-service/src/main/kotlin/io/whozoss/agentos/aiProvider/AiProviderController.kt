@@ -1,7 +1,8 @@
-package io.whozoss.agentos.llmConfig
+package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.validation.Valid
 import mu.KLogging
@@ -17,9 +18,9 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * REST API for managing [LlmConfig] entities.
+ * REST API for managing [AiProvider] entities.
  *
- * Extends [EntityController] with [LlmConfigResource] as the HTTP DTO.
+ * Extends [EntityController] with [AiProviderResource] as the HTTP DTO.
  *
  * Standard CRUD endpoints (inherited):
  *   GET    /api/llm-configs/{id}
@@ -38,12 +39,11 @@ import java.util.UUID
     "/api/llm-configs",
     produces = [MediaType.APPLICATION_JSON_VALUE],
 )
-class LlmConfigController(
-    private val llmConfigService: LlmConfigService,
-) : EntityController<LlmConfig, UUID, LlmConfigResource>(llmConfigService) {
-
-    override fun toResource(entity: LlmConfig): LlmConfigResource =
-        LlmConfigResource(
+class AiProviderController(
+    private val aiProviderService: AiProviderService,
+) : EntityController<AiProvider, UUID, AiProviderResource>(aiProviderService) {
+    override fun toResource(entity: AiProvider): AiProviderResource =
+        AiProviderResource(
             id = entity.metadata.id,
             namespaceId = entity.namespaceId,
             userId = entity.userId,
@@ -53,8 +53,8 @@ class LlmConfigController(
             apiKey = maskApiKey(entity.apiKey),
         )
 
-    override fun toDomain(resource: LlmConfigResource): LlmConfig =
-        LlmConfig(
+    override fun toDomain(resource: AiProviderResource): AiProvider =
+        AiProvider(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
             namespaceId = resource.namespaceId,
             userId = resource.userId,
@@ -76,19 +76,22 @@ class LlmConfigController(
     )
     override fun update(
         @PathVariable id: UUID,
-        @Valid @RequestBody resource: LlmConfigResource,
-    ): LlmConfigResource {
-        val existing = llmConfigService.findById(id)
-            ?: throw ResourceNotFoundException("Entity not found: $id")
-        val resolvedApiKey = when {
-            isMasked(resource.apiKey) -> existing.apiKey
-            else -> resource.apiKey
-        }
-        val updated = toDomain(resource).copy(
-            metadata = existing.metadata,
-            apiKey = resolvedApiKey,
-        )
-        return toResource(llmConfigService.update(updated))
+        @Valid @RequestBody resource: AiProviderResource,
+    ): AiProviderResource {
+        val existing =
+            aiProviderService.findById(id)
+                ?: throw ResourceNotFoundException("Entity not found: $id")
+        val resolvedApiKey =
+            when {
+                isMasked(resource.apiKey) -> existing.apiKey
+                else -> resource.apiKey
+            }
+        val updated =
+            toDomain(resource).copy(
+                metadata = existing.metadata,
+                apiKey = resolvedApiKey,
+            )
+        return toResource(aiProviderService.update(updated))
     }
 
     /**
@@ -98,8 +101,7 @@ class LlmConfigController(
     @ResponseStatus(HttpStatus.OK)
     fun listByNamespaceId(
         @PathVariable namespaceId: UUID,
-    ): List<LlmConfigResource> =
-        llmConfigService.findByNamespaceId(namespaceId).map { toResource(it) }
+    ): List<AiProviderResource> = aiProviderService.findByNamespaceId(namespaceId).map { toResource(it) }
 
     /**
      * GET /by-userId/{userId} — list all configs scoped to a user.
@@ -108,8 +110,7 @@ class LlmConfigController(
     @ResponseStatus(HttpStatus.OK)
     fun listByUserId(
         @PathVariable userId: UUID,
-    ): List<LlmConfigResource> =
-        llmConfigService.findByUserId(userId).map { toResource(it) }
+    ): List<AiProviderResource> = aiProviderService.findByUserId(userId).map { toResource(it) }
 
     companion object : KLogging()
 }

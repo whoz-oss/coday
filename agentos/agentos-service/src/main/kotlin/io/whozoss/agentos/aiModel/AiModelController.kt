@@ -1,7 +1,8 @@
-package io.whozoss.agentos.llmModelConfig
+package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.validation.Valid
 import mu.KLogging
@@ -9,7 +10,6 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -17,9 +17,9 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * REST API for managing [LlmModelConfig] entities.
+ * REST API for managing [AiModel] entities.
  *
- * Extends [EntityController] with [LlmModelConfigResource] as the HTTP DTO.
+ * Extends [EntityController] with [AiModelResource] as the HTTP DTO.
  *
  * Standard CRUD endpoints (inherited):
  *   GET    /api/llm-model-configs/{id}
@@ -37,14 +37,13 @@ import java.util.UUID
     "/api/llm-model-configs",
     produces = [MediaType.APPLICATION_JSON_VALUE],
 )
-class LlmModelConfigController(
-    private val llmModelConfigService: LlmModelConfigService,
-) : EntityController<LlmModelConfig, UUID, LlmModelConfigResource>(llmModelConfigService) {
-
-    override fun toResource(entity: LlmModelConfig): LlmModelConfigResource =
-        LlmModelConfigResource(
+class AiModelController(
+    private val aiModelService: AiModelService,
+) : EntityController<AiModel, UUID, AiModelResource>(aiModelService) {
+    override fun toResource(entity: AiModel): AiModelResource =
+        AiModelResource(
             id = entity.metadata.id,
-            llmConfigId = entity.llmConfigId,
+            aiProviderId = entity.aiProviderId,
             namespaceId = entity.namespaceId,
             userId = entity.userId,
             apiName = entity.apiName,
@@ -58,17 +57,17 @@ class LlmModelConfigController(
      * Convert a resource to a domain entity for **create** only.
      *
      * [namespaceId] and [userId] are intentionally omitted here — they are
-     * server-resolved from the parent [io.whozoss.agentos.llmConfig.LlmConfig] by
-     * [LlmModelConfigServiceImpl.create] before persisting. The nil-UUID placeholder
+     * server-resolved from the parent [io.whozoss.agentos.aiProvider.AiProvider] by
+     * [AiModelServiceImpl.create] before persisting. The nil-UUID placeholder
      * is never stored; the service always overwrites it.
      *
      * For **update**, use [toDomainForUpdate] so server-owned fields are preserved
      * from the persisted record rather than accepted from the client.
      */
-    override fun toDomain(resource: LlmModelConfigResource): LlmModelConfig =
-        LlmModelConfig(
+    override fun toDomain(resource: AiModelResource): AiModel =
+        AiModel(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-            llmConfigId = resource.llmConfigId!!,
+            aiProviderId = resource.aiProviderId!!,
             namespaceId = null,
             userId = resource.userId,
             apiName = resource.apiName,
@@ -81,11 +80,14 @@ class LlmModelConfigController(
     /**
      * Merge an update resource onto an existing persisted entity.
      *
-     * Server-owned fields ([LlmModelConfig.namespaceId], [LlmModelConfig.userId],
-     * [LlmModelConfig.llmConfigId]) are always taken from [existing] — the client
+     * Server-owned fields ([AiModel.namespaceId], [AiModel.userId],
+     * [AiModel.llmConfigId]) are always taken from [existing] — the client
      * cannot change them via a PUT. Client-supplied fields overwrite the rest.
      */
-    private fun toDomainForUpdate(resource: LlmModelConfigResource, existing: LlmModelConfig): LlmModelConfig =
+    private fun toDomainForUpdate(
+        resource: AiModelResource,
+        existing: AiModel,
+    ): AiModel =
         existing.copy(
             apiName = resource.apiName,
             alias = resource.alias,
@@ -102,25 +104,25 @@ class LlmModelConfigController(
      */
     override fun update(
         id: UUID,
-        @Valid @RequestBody resource: LlmModelConfigResource,
-    ): LlmModelConfigResource {
-        val existing = service.findById(id)
-            ?: throw ResourceNotFoundException("LlmModelConfig not found: $id")
+        @Valid @RequestBody resource: AiModelResource,
+    ): AiModelResource {
+        val existing =
+            service.findById(id)
+                ?: throw ResourceNotFoundException("LlmModelConfig not found: $id")
         return toResource(service.update(toDomainForUpdate(resource, existing)))
     }
 
     /**
      * GET /by-namespaceId/{namespaceId} — list all model configs in a namespace.
      *
-     * Uses the denormalised [LlmModelConfig.namespaceId] property so no join through
-     * [io.whozoss.agentos.llmConfig.LlmConfig] is needed.
+     * Uses the denormalised [AiModel.namespaceId] property so no join through
+     * [io.whozoss.agentos.aiProvider.AiProvider] is needed.
      */
     @GetMapping("/by-namespaceId/{namespaceId}")
     @ResponseStatus(HttpStatus.OK)
     fun listByNamespaceId(
         @PathVariable namespaceId: UUID,
-    ): List<LlmModelConfigResource> =
-        llmModelConfigService.findByNamespaceId(namespaceId).map { toResource(it) }
+    ): List<AiModelResource> = aiModelService.findByNamespaceId(namespaceId).map { toResource(it) }
 
     companion object : KLogging()
 }

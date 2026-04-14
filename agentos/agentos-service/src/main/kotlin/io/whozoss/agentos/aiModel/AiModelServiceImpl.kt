@@ -1,16 +1,17 @@
-package io.whozoss.agentos.llmModelConfig
+package io.whozoss.agentos.aiModel
 
-import io.whozoss.agentos.llmConfig.LlmConfigService
+import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.sdk.aiProvider.AiModel
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * Default implementation of [LlmModelConfigService].
+ * Default implementation of [AiModelService].
  *
  * [create] resolves [namespaceId] and [userId] from the parent [LlmConfig] via
- * [LlmConfigService] and denormalises them onto the entity before saving, so that
+ * [AiProviderService] and denormalises them onto the entity before saving, so that
  * namespace-scoped queries can be served without joining through [LlmConfig].
  *
  * [create] also enforces two uniqueness constraints:
@@ -18,81 +19,80 @@ import java.util.UUID
  * - (llmConfigId, alias): aliases must be unambiguous within a provider config
  */
 @Service
-class LlmModelConfigServiceImpl(
-    private val repository: LlmModelConfigRepository,
-    private val llmConfigService: LlmConfigService,
-) : LlmModelConfigService {
-    override fun create(entity: LlmModelConfig): LlmModelConfig {
-        findByLlmConfigAndApiName(entity.llmConfigId, entity.apiName)?.let {
+class AiModelServiceImpl(
+    private val repository: AiModelRepository,
+    private val aiProviderService: AiProviderService,
+) : AiModelService {
+    override fun create(entity: AiModel): AiModel {
+        findByAiProviderAndApiName(entity.aiProviderId, entity.apiName)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "A model config for apiName '${entity.apiName}' already exists in LlmConfig ${entity.llmConfigId}",
+                "A model config for apiName '${entity.apiName}' already exists in LlmConfig ${entity.aiProviderId}",
             )
         }
         entity.alias?.let { alias ->
-            findByLlmConfigAndAlias(entity.llmConfigId, alias)?.let {
+            findByAiProviderAndAlias(entity.aiProviderId, alias)?.let {
                 throw ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "A model config with alias '$alias' already exists in LlmConfig ${entity.llmConfigId}",
+                    "A model config with alias '$alias' already exists in LlmConfig ${entity.aiProviderId}",
                 )
             }
         }
-        val parent = llmConfigService.getById(entity.llmConfigId)
+        val parent = aiProviderService.getById(entity.aiProviderId)
         return repository.save(
             entity.copy(
                 namespaceId = parent.namespaceId,
                 userId = parent.userId,
-            )
+            ),
         )
     }
 
-    override fun update(entity: LlmModelConfig): LlmModelConfig {
-        findByLlmConfigAndApiName(entity.llmConfigId, entity.apiName)
+    override fun update(entity: AiModel): AiModel {
+        findByAiProviderAndApiName(entity.aiProviderId, entity.apiName)
             ?.takeIf { it.id != entity.id }
             ?.let {
                 throw ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "A model config for apiName '${entity.apiName}' already exists in LlmConfig ${entity.llmConfigId}",
+                    "A model config for apiName '${entity.apiName}' already exists in LlmConfig ${entity.aiProviderId}",
                 )
             }
         entity.alias?.let { alias ->
-            findByLlmConfigAndAlias(entity.llmConfigId, alias)
+            findByAiProviderAndAlias(entity.aiProviderId, alias)
                 ?.takeIf { it.id != entity.id }
                 ?.let {
                     throw ResponseStatusException(
                         HttpStatus.CONFLICT,
-                        "A model config with alias '$alias' already exists in LlmConfig ${entity.llmConfigId}",
+                        "A model config with alias '$alias' already exists in LlmConfig ${entity.aiProviderId}",
                     )
                 }
         }
         return repository.save(entity)
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<LlmModelConfig> = repository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>): List<AiModel> = repository.findByIds(ids)
 
-    override fun findByParent(parentId: UUID): List<LlmModelConfig> = repository.findByParent(parentId)
+    override fun findByParent(parentId: UUID): List<AiModel> = repository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean = repository.delete(id)
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
-    override fun findByNamespaceId(namespaceId: UUID): List<LlmModelConfig> =
-        repository.findByNamespaceId(namespaceId)
+    override fun findByNamespaceId(namespaceId: UUID): List<AiModel> = repository.findByNamespaceId(namespaceId)
 
-    override fun findByLlmConfigAndApiName(
-        llmConfigId: UUID,
+    override fun findByAiProviderAndApiName(
+        aiProviderId: UUID,
         apiName: String,
-    ): LlmModelConfig? = repository.findByLlmConfigAndApiName(llmConfigId, apiName)
+    ): AiModel? = repository.findByLlmConfigAndApiName(aiProviderId, apiName)
 
-    override fun findByLlmConfigAndAlias(
-        llmConfigId: UUID,
+    override fun findByAiProviderAndAlias(
+        aiProviderId: UUID,
         alias: String,
-    ): LlmModelConfig? = repository.findByLlmConfigAndAlias(llmConfigId, alias)
+    ): AiModel? = repository.findByLlmConfigAndAlias(aiProviderId, alias)
 
-    override fun findModelConfig(
+    override fun findAiModel(
         namespaceId: UUID,
         name: String,
-    ): LlmModelConfig? {
+    ): AiModel? {
         val candidates = repository.findByNamespaceId(namespaceId)
         return candidates
             .filter { it.alias.equals(name, ignoreCase = true) }

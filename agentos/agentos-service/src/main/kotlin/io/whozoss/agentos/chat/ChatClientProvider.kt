@@ -1,17 +1,17 @@
 package io.whozoss.agentos.chat
 
-import io.whozoss.agentos.llmConfig.LlmConfig
-import io.whozoss.agentos.llmModelConfig.LlmModelConfig
+import io.whozoss.agentos.aiModel.AiModelConfig
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 
 /**
- * Creates [ChatClient] instances on demand from a resolved [LlmModelConfig] + [LlmConfig] pair.
+ * Creates [ChatClient] instances on demand from a resolved [AiModelConfig] + [AiProvider] pair.
  *
  * The two entities carry everything [ChatModelFactory] needs:
- * - provider connectivity ([LlmConfig.apiType], [LlmConfig.baseUrl], [LlmConfig.apiKey])
- * - model identity and inference parameters ([LlmModelConfig.apiName],
- *   [LlmModelConfig.temperature], [LlmModelConfig.maxTokens])
+ * - provider connectivity ([AiProvider.apiType], [AiProvider.baseUrl], [AiProvider.apiKey])
+ * - model identity and inference parameters ([AiModelConfig.apiName],
+ *   [AiModelConfig.temperature], [AiModelConfig.maxTokens])
  *
  * Resolution of which model/provider pair to use is the responsibility of the caller
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
@@ -21,8 +21,8 @@ class ChatClientProvider(
     private val chatModelFactory: ChatModelFactory,
 ) {
     fun getChatClient(
-        modelConfig: LlmModelConfig,
-        providerConfig: LlmConfig,
+        modelConfig: AiModelConfig,
+        providerConfig: AiProvider,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(

@@ -1,4 +1,4 @@
-package io.whozoss.agentos.llmConfig
+package io.whozoss.agentos.aiProvider
 
 private const val MASK = "****"
 
@@ -23,7 +23,7 @@ fun maskApiKey(apiKey: String?): String? {
 /**
  * Return true when [value] is a masked placeholder (contains the sentinel "****").
  *
- * Used by [LlmConfigController.update] to detect that the client sent back a masked
+ * Used by [AiProviderController.update] to detect that the client sent back a masked
  * value unchanged and that the original persisted key should be preserved.
  */
 fun isMasked(value: String?): Boolean = value != null && MASK in value

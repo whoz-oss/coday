@@ -1,13 +1,12 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.aiModel.AiModelService
+import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
-import io.whozoss.agentos.llmConfig.LlmConfig
-import io.whozoss.agentos.llmConfig.LlmConfigService
-import io.whozoss.agentos.llmModelConfig.LlmModelConfig
-import io.whozoss.agentos.llmModelConfig.LlmModelConfigService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.UserService
@@ -17,21 +16,21 @@ import java.util.UUID
 
 /**
  * Implementation of [AgentService] that resolves agents from namespace-scoped
- * [LlmModelConfig] + [LlmConfig] entity pairs.
+ * [AiModel] + [AiProvider] entity pairs.
  *
  * Resolution strategy for a logical model name (e.g. "default"):
- * 1. Load all [LlmModelConfig] entries for the namespace.
- * 2. Match by [LlmModelConfig.alias] first, then [LlmModelConfig.apiName] as fallback.
+ * 1. Load all [AiModel] entries for the namespace.
+ * 2. Match by [AiModel.alias] first, then [AiModel.apiName] as fallback.
  *    Within each group, the config with the highest [LlmModelConfig.priority] wins.
- * 3. Load the parent [LlmConfig] to get provider connectivity (apiType, baseUrl, apiKey).
+ * 3. Load the parent [AiProvider] to get provider connectivity (apiType, baseUrl, apiKey).
  * 4. Build a [ChatClient] directly from the two entities via [ChatClientProvider].
  *
- * There is no fallback to a plugin-based registry — if no matching [LlmModelConfig]
+ * There is no fallback to a plugin-based registry — if no matching [AiModel]
  * exists for the namespace the call fails fast with a clear error.
  *
  * The recommended alias for the primary model in a namespace is "default". This keeps
  * agent definitions provider-agnostic: switching providers only requires updating the
- * [LlmModelConfig], not any agent definition.
+ * [AiModel], not any agent definition.
  *
  * Agent definitions are currently hardcoded and reference a logical model name.
  * Once an Agent entity is introduced this service will resolve against that instead.
@@ -40,8 +39,8 @@ import java.util.UUID
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
     private val toolRegistryService: ToolRegistryService,
-    private val llmModelConfigService: LlmModelConfigService,
-    private val llmConfigService: LlmConfigService,
+    private val aiModelService: AiModelService,
+    private val aiProviderService: AiProviderService,
     private val namespaceService: NamespaceService,
     private val userService: UserService,
 ) : AgentService {
@@ -58,7 +57,7 @@ class AgentServiceImpl(
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
         val modelConfig = findDefaultModelConfig(context.namespaceId) ?: return null
-        val providerConfig = llmConfigService.getById(modelConfig.llmConfigId)
+        val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
         return createAgentInstance(modelConfig.alias ?: modelConfig.apiName, modelConfig, providerConfig, context)
     }
 
@@ -70,43 +69,43 @@ class AgentServiceImpl(
     override fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
-    ): String? = llmModelConfigService.findModelConfig(namespaceId, namePart)?.let { it.alias ?: it.apiName }
+    ): String? = aiModelService.findAiModel(namespaceId, namePart)?.let { it.alias ?: it.apiName }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
     // -------------------------------------------------------------------------
 
     /**
-     * Resolve a [LlmModelConfig] + [LlmConfig] pair for [name] within [namespaceId].
+     * Resolve a [AiModel] + [AiProvider] pair for [name] within [namespaceId].
      *
-     * Delegates resolution to [LlmModelConfigService.findModelConfig] (alias first,
+     * Delegates resolution to [AiModelService.findAiModel] (alias first,
      * then apiName, highest priority wins within each group).
      * Throws [IllegalArgumentException] if no match is found.
      */
     private fun resolveModelPair(
         name: String,
         namespaceId: UUID,
-    ): Pair<LlmModelConfig, LlmConfig> {
+    ): Pair<AiModel, AiProvider> {
         logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId" }
 
-        val modelConfig = llmModelConfigService.findModelConfig(namespaceId, name)
-            ?: throw IllegalArgumentException(
-                "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
-                    "Configure an LlmModelConfig with alias or apiName matching '$name'.",
-            )
+        val modelConfig =
+            aiModelService.findAiModel(namespaceId, name)
+                ?: throw IllegalArgumentException(
+                    "No LlmModelConfig found for name '$name' in namespace $namespaceId. " +
+                        "Configure an LlmModelConfig with alias or apiName matching '$name'.",
+                )
 
         logger.info {
             "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiName}' " +
-                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, llmConfigId=${modelConfig.llmConfigId})"
+                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, llmConfigId=${modelConfig.aiProviderId})"
         }
 
-        val providerConfig = llmConfigService.getById(modelConfig.llmConfigId)
+        val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
         logger.debug { "[AgentService] Provider resolved: name='${providerConfig.name}' apiType=${providerConfig.apiType}" }
         return modelConfig to providerConfig
     }
 
-    private fun findDefaultModelConfig(namespaceId: UUID): LlmModelConfig? =
-        llmModelConfigService.findModelConfig(namespaceId)
+    private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
 
     // -------------------------------------------------------------------------
     // Agent instantiation
@@ -120,8 +119,8 @@ class AgentServiceImpl(
      */
     private fun createAgentInstance(
         agentName: String,
-        modelConfig: LlmModelConfig,
-        providerConfig: LlmConfig,
+        modelConfig: AiModel,
+        providerConfig: AiProvider,
         context: AgentExecutionContext,
     ): Agent {
         logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId}" }

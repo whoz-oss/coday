@@ -1,4 +1,4 @@
-package io.whozoss.agentos.llmModelConfig
+package io.whozoss.agentos.aiModel
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.whozoss.agentos.sdk.entity.Entity
@@ -8,7 +8,7 @@ import java.util.UUID
 /**
  * Persistent configuration for accessing a specific LLM model under a provider.
  *
- * Each [LlmModelConfig] belongs to one [io.whozoss.agentos.llmConfig.LlmConfig] (via [llmConfigId])
+ * Each [AiModelConfig] belongs to one [io.whozoss.agentos.aiProvider.AiProvider] (via [])
  * and describes how to invoke a particular model: its real API name, optional stable
  * alias, and inference parameters.
  *
@@ -26,16 +26,16 @@ import java.util.UUID
  * within a namespace. Higher value wins. Defaults to 0 — all configs are equal unless
  * explicitly prioritised. Ties are broken by insertion order (first created wins).
  *
- * Uniqueness constraints enforced by [LlmModelConfigServiceImpl]:
+ * Uniqueness constraints enforced by [AiModelServiceImpl]:
  * - (llmConfigId, apiName) must be unique
  * - (llmConfigId, alias) must be unique when alias is non-null
  *
- * Parent: LlmConfig (via [llmConfigId]).
+ * Parent: LlmConfig (via []).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-data class LlmModelConfig(
+data class AiModelConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val llmConfigId: UUID,
+    val aiProviderId: UUID,
     val namespaceId: UUID? = null,
     val userId: UUID? = null,
     val apiName: String,

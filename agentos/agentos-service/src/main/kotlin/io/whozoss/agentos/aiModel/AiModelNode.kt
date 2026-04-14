@@ -1,6 +1,6 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.aiModel
 
-import io.whozoss.agentos.llmModelConfig.LlmModelConfig
+import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -8,21 +8,21 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Spring Data Neo4j projection for [LlmModelConfig].
+ * Spring Data Neo4j projection for [AiModel].
  *
  * Stored as a (:LlmModelConfig) node. Parent relationships are represented as
  * plain string properties (not SDN @Relationship), consistent with the pattern
  * used throughout this codebase.
  *
- * [namespaceId] and [userId] are denormalised from the parent [LlmConfigNode] at
+ * [namespaceId] and [userId] are denormalised from the parent [io.whozoss.agentos.aiProvider.AiProviderNode] at
  * creation time so that namespace-scoped queries can be served with a single
  * WHERE clause without graph traversal.
  */
 @Node("LlmModelConfig")
-data class LlmModelConfigNode(
+data class AiModelNode(
     @Id
     val id: String,
-    val llmConfigId: String,
+    val aiProviderId: String,
     val namespaceId: String? = null,
     val userId: String? = null,
     val apiName: String,
@@ -37,8 +37,8 @@ data class LlmModelConfigNode(
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
 ) {
-    fun toDomain(): LlmModelConfig =
-        LlmModelConfig(
+    fun toDomain(): AiModel =
+        AiModel(
             metadata =
                 EntityMetadata(
                     id = UUID.fromString(id),
@@ -48,7 +48,7 @@ data class LlmModelConfigNode(
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
                 ),
-            llmConfigId = UUID.fromString(llmConfigId),
+            aiProviderId = UUID.fromString(aiProviderId),
             namespaceId = namespaceId?.let { UUID.fromString(it) },
             userId = userId?.let { UUID.fromString(it) },
             apiName = apiName,
@@ -59,10 +59,10 @@ data class LlmModelConfigNode(
         )
 
     companion object {
-        fun fromDomain(model: LlmModelConfig): LlmModelConfigNode =
-            LlmModelConfigNode(
+        fun fromDomain(model: AiModel): AiModelNode =
+            AiModelNode(
                 id = model.id.toString(),
-                llmConfigId = model.llmConfigId.toString(),
+                aiProviderId = model.aiProviderId.toString(),
                 namespaceId = model.namespaceId?.toString(),
                 userId = model.userId?.toString(),
                 apiName = model.apiName,

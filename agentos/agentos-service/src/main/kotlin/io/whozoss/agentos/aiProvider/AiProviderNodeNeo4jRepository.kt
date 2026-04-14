@@ -1,12 +1,12 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.aiProvider
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
 
 /**
- * Spring Data Neo4j repository for [LlmConfigNode].
+ * Spring Data Neo4j repository for [AiProviderNode].
  */
-interface LlmConfigNodeNeo4jRepository : Neo4jRepository<LlmConfigNode, String> {
+interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String> {
     /**
      * Find all non-removed LLM configs scoped to a namespace, ordered by name.
      */
@@ -15,7 +15,7 @@ interface LlmConfigNodeNeo4jRepository : Neo4jRepository<LlmConfigNode, String> 
             "WHERE c.namespaceId = \$namespaceId AND (c.removed IS NULL OR c.removed = false) " +
             "RETURN c ORDER BY c.name ASC",
     )
-    fun findActiveByNamespaceId(namespaceId: String): List<LlmConfigNode>
+    fun findActiveByNamespaceId(namespaceId: String): List<AiProviderNode>
 
     /**
      * Find all non-removed LLM configs scoped to a user, ordered by name.
@@ -25,5 +25,5 @@ interface LlmConfigNodeNeo4jRepository : Neo4jRepository<LlmConfigNode, String> 
             "WHERE c.userId = \$userId AND (c.removed IS NULL OR c.removed = false) " +
             "RETURN c ORDER BY c.name ASC",
     )
-    fun findActiveByUserId(userId: String): List<LlmConfigNode>
+    fun findActiveByUserId(userId: String): List<AiProviderNode>
 }

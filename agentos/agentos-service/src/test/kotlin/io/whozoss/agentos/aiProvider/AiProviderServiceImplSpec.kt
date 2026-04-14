@@ -1,4 +1,4 @@
-package io.whozoss.agentos.llmConfig
+package io.whozoss.agentos.aiProvider
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -8,13 +8,13 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
-class LlmConfigServiceImplSpec : StringSpec() {
-
-    private fun newService() = LlmConfigServiceImpl(InMemoryLlmConfigRepository())
+class AiProviderServiceImplSpec : StringSpec() {
+    private fun newService() = AiProviderServiceImpl(InMemoryAiProviderRepository())
 
     private fun config(
         namespaceId: UUID? = UUID.randomUUID(),
@@ -22,8 +22,8 @@ class LlmConfigServiceImplSpec : StringSpec() {
         name: String = "anthropic",
         apiType: AiApiType = AiApiType.Anthropic,
         apiKey: String? = null,
-    ): LlmConfig =
-        LlmConfig(
+    ): AiProvider =
+        AiProvider(
             metadata = EntityMetadata(),
             namespaceId = namespaceId,
             userId = userId,
@@ -156,7 +156,7 @@ class LlmConfigServiceImplSpec : StringSpec() {
 
             service.findByNamespaceId(nsA) shouldHaveSize 2 // namespace-only + namespace+user
             service.findByNamespaceId(nsB) shouldHaveSize 1
-            service.findByUserId(userId) shouldHaveSize 2  // user-only + namespace+user
+            service.findByUserId(userId) shouldHaveSize 2 // user-only + namespace+user
         }
 
         // -------------------------------------------------------------------------

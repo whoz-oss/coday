@@ -13,7 +13,7 @@ import java.util.UUID
  *
  * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) do not
  * instantiate agents but do require a [namespaceId] to scope the lookup against
- * the namespace's [io.whozoss.agentos.llmModelConfig.LlmModelConfig] entities.
+ * the namespace's [io.whozoss.agentos.aiModel.AiModel] entities.
  */
 interface AgentService {
     /**
