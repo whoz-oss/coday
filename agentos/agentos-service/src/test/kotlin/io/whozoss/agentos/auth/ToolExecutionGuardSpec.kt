@@ -18,6 +18,7 @@ class ToolExecutionGuardSpec : StringSpec() {
     private val toolName = "testTool"
     private val toolArgs = """{"key":"value"}"""
     private val toolOutput = "tool executed successfully"
+    private val callerDisplayName = "Test User"
 
     private fun buildTool(
         name: String = toolName,
@@ -52,36 +53,43 @@ class ToolExecutionGuardSpec : StringSpec() {
 
     init {
         // =====================================================================
-        // AC-H: Authorized execution -> Success + logGranted
+        // AC-H: Authorized execution -> Success + logGranted with enriched params
         // =====================================================================
 
-        "authorized execution returns Success and calls logGranted" {
+        "authorized execution returns Success and calls logGranted with enriched params" {
             val tool = buildTool()
             val (guard, auditService) = buildGuard(canExecute = true)
 
-            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId)
+            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId, callerDisplayName)
 
             result.shouldBeInstanceOf<GuardedToolResult.Success>()
             result.toolName shouldBe toolName
             result.output shouldBe toolOutput
-            verify(exactly = 1) { auditService.logGranted(callerId, namespaceId, toolName, caseId) }
-            verify(exactly = 0) { auditService.logDenied(any(), any(), any(), any()) }
+            verify(exactly = 1) {
+                auditService.logGranted(callerId, namespaceId, toolName, caseId, "READ_ONLY", callerDisplayName)
+            }
+            verify(exactly = 0) { auditService.logDenied(any(), any(), any(), any(), any(), any(), any()) }
         }
 
         // =====================================================================
-        // AC-H: Denied execution -> Denied + logDenied + tool NOT executed
+        // AC-H: Denied execution -> Denied + logDenied with reason, category, callerDisplayName
         // =====================================================================
 
-        "denied execution returns Denied, calls logDenied and does NOT execute tool" {
+        "denied execution returns Denied, calls logDenied with enriched params and does NOT execute tool" {
             val tool = buildTool()
             val (guard, auditService) = buildGuard(canExecute = false)
 
-            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId)
+            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId, callerDisplayName)
 
             result.shouldBeInstanceOf<GuardedToolResult.Denied>()
             result.toolName shouldBe toolName
-            verify(exactly = 1) { auditService.logDenied(callerId, namespaceId, toolName, caseId) }
-            verify(exactly = 0) { auditService.logGranted(any(), any(), any(), any()) }
+            verify(exactly = 1) {
+                auditService.logDenied(
+                    callerId, namespaceId, toolName, caseId,
+                    "Permission denied for tool '$toolName'", "READ_ONLY", callerDisplayName,
+                )
+            }
+            verify(exactly = 0) { auditService.logGranted(any(), any(), any(), any(), any(), any()) }
             verify(exactly = 0) { tool.executeWithJson(any()) }
         }
 
@@ -93,12 +101,14 @@ class ToolExecutionGuardSpec : StringSpec() {
             val tool = buildTool(throwOnExecute = RuntimeException("tool crash"))
             val (guard, auditService) = buildGuard(canExecute = true)
 
-            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId)
+            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId, callerDisplayName)
 
             result.shouldBeInstanceOf<GuardedToolResult.Error>()
             result.toolName shouldBe toolName
             result.error shouldBe "tool crash"
-            verify(exactly = 1) { auditService.logGranted(callerId, namespaceId, toolName, caseId) }
+            verify(exactly = 1) {
+                auditService.logGranted(callerId, namespaceId, toolName, caseId, "READ_ONLY", callerDisplayName)
+            }
         }
 
         // =====================================================================
@@ -125,24 +135,46 @@ class ToolExecutionGuardSpec : StringSpec() {
             val tool = buildTool()
             val (guard, auditService) = buildGuard(throwOnCheck = RuntimeException("auth service down"))
 
-            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId)
+            val result = guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId, callerDisplayName)
 
             result.shouldBeInstanceOf<GuardedToolResult.Denied>()
-            verify(exactly = 1) { auditService.logDenied(callerId, namespaceId, toolName, caseId) }
+            verify(exactly = 1) {
+                auditService.logDenied(
+                    callerId, namespaceId, toolName, caseId,
+                    "Permission denied for tool '$toolName'", "READ_ONLY", callerDisplayName,
+                )
+            }
             verify(exactly = 0) { tool.executeWithJson(any()) }
         }
 
         // =====================================================================
-        // AC-H: Correct audit calls in each scenario
+        // AC-G: Correct audit calls with enriched parameters
         // =====================================================================
 
-        "audit service receives correct parameters for granted execution" {
+        "audit service receives correct enriched parameters for granted execution" {
             val tool = buildTool(name = "specificTool", category = ToolCategory.WRITE)
             val (guard, auditService) = buildGuard(canExecute = true)
 
-            guard.executeWithPermissionCheck(tool, toolArgs, "caller-abc", "case-def", "ns-ghi")
+            guard.executeWithPermissionCheck(tool, toolArgs, "caller-abc", "case-def", "ns-ghi", "Admin User")
 
-            verify(exactly = 1) { auditService.logGranted("caller-abc", "ns-ghi", "specificTool", "case-def") }
+            verify(exactly = 1) {
+                auditService.logGranted("caller-abc", "ns-ghi", "specificTool", "case-def", "WRITE", "Admin User")
+            }
+        }
+
+        // =====================================================================
+        // AC-G: callerDisplayName null is handled correctly
+        // =====================================================================
+
+        "callerDisplayName defaults to null and is passed correctly" {
+            val tool = buildTool()
+            val (guard, auditService) = buildGuard(canExecute = true)
+
+            guard.executeWithPermissionCheck(tool, toolArgs, callerId, caseId, namespaceId)
+
+            verify(exactly = 1) {
+                auditService.logGranted(callerId, namespaceId, toolName, caseId, "READ_ONLY", null)
+            }
         }
 
         // =====================================================================

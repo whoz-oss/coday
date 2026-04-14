@@ -50,7 +50,7 @@ class AgentSimpleTest :
                     instructions = instructions,
                 )
             val guard = mockk<ToolExecutionGuard> {
-                every { executeWithPermissionCheck(any(), any(), any(), any(), any()) } answers {
+                every { executeWithPermissionCheck(any(), any(), any(), any(), any(), any()) } answers {
                     val tool = firstArg<StandardTool<*>>()
                     val args = secondArg<String?>()
                     GuardedToolResult.Success(tool.name, tool.executeWithJson(args))

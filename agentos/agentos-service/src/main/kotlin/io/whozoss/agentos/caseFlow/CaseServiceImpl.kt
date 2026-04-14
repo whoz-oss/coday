@@ -225,7 +225,12 @@ class CaseServiceImpl(
         }
 
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
-        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId, userId = userId)
+        val context = AgentExecutionContext(
+            namespaceId = runtime.namespaceId,
+            caseId = caseId,
+            userId = userId,
+            callerDisplayName = runtime.callerContext.getCallerDisplayName(),
+        )
         agentService
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)

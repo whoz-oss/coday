@@ -444,6 +444,7 @@ class AgentSimple(
                             callerId = callerId,
                             caseId = executionContext.caseId.toString(),
                             namespaceId = executionContext.namespaceId.toString(),
+                            callerDisplayName = executionContext.callerDisplayName,
                         )
                         result = when (guardResult) {
                             is GuardedToolResult.Success -> guardResult.output

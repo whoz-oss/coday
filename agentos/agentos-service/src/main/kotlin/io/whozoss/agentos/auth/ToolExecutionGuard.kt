@@ -17,6 +17,7 @@ class ToolExecutionGuard(
         callerId: String,
         caseId: String,
         namespaceId: String,
+        callerDisplayName: String? = null,
     ): GuardedToolResult {
         val category = tool.category
         val allowed = try {
@@ -28,14 +29,27 @@ class ToolExecutionGuard(
 
         return when {
             !allowed -> {
-                auditService.logDenied(callerId, namespaceId, tool.name, caseId)
-                GuardedToolResult.Denied(
+                val reason = "Permission denied for tool '${tool.name}'"
+                auditService.logDenied(
+                    callerId = callerId,
+                    namespaceId = namespaceId,
                     toolName = tool.name,
-                    reason = "Permission denied for tool '${tool.name}'",
+                    caseId = caseId,
+                    reason = reason,
+                    toolCategory = category.name,
+                    callerDisplayName = callerDisplayName,
                 )
+                GuardedToolResult.Denied(toolName = tool.name, reason = reason)
             }
             else -> {
-                auditService.logGranted(callerId, namespaceId, tool.name, caseId)
+                auditService.logGranted(
+                    callerId = callerId,
+                    namespaceId = namespaceId,
+                    toolName = tool.name,
+                    caseId = caseId,
+                    toolCategory = category.name,
+                    callerDisplayName = callerDisplayName,
+                )
                 try {
                     val output = tool.executeWithJson(args)
                     GuardedToolResult.Success(tool.name, output)

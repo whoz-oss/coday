@@ -311,6 +311,7 @@ Generate the JSON parameters for this tool call.
             callerId = callerId,
             caseId = executionContext.caseId.toString(),
             namespaceId = executionContext.namespaceId.toString(),
+            callerDisplayName = executionContext.callerDisplayName,
         )
 
         return when (guardResult) {
