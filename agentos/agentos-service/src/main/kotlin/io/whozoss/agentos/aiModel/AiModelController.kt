@@ -22,19 +22,19 @@ import java.util.UUID
  * Extends [EntityController] with [AiModelResource] as the HTTP DTO.
  *
  * Standard CRUD endpoints (inherited):
- *   GET    /api/llm-model-configs/{id}
- *   POST   /api/llm-model-configs/by-ids
- *   GET    /api/llm-model-configs/by-parentId/{llmConfigId}  — list by provider config
- *   POST   /api/llm-model-configs
- *   PUT    /api/llm-model-configs/{id}
- *   DELETE /api/llm-model-configs/{id}
+ *   GET    /api/ai-models/{id}
+ *   POST   /api/ai-models/by-ids
+ *   GET    /api/ai-models/by-parentId/{aiProviderId}  — list by provider
+ *   POST   /api/ai-models
+ *   PUT    /api/ai-models/{id}
+ *   DELETE /api/ai-models/{id}
  *
  * Additional endpoints:
- *   GET    /api/llm-model-configs/by-namespaceId/{namespaceId}  — list all models in a namespace
+ *   GET    /api/ai-models/by-namespaceId/{namespaceId}  — list all models in a namespace
  */
 @RestController
 @RequestMapping(
-    "/api/llm-model-configs",
+    "/api/ai-models",
     produces = [MediaType.APPLICATION_JSON_VALUE],
 )
 class AiModelController(

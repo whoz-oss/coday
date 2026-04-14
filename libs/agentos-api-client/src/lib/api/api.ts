@@ -1,3 +1,7 @@
+export * from './ai-model-controller.service'
+import { AiModelControllerService } from './ai-model-controller.service'
+export * from './ai-provider-controller.service'
+import { AiProviderControllerService } from './ai-provider-controller.service'
 export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
@@ -6,10 +10,6 @@ export * from './integration-config-controller.service'
 import { IntegrationConfigControllerService } from './integration-config-controller.service'
 export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
-export * from './llm-config-controller.service'
-import { LlmConfigControllerService } from './llm-config-controller.service'
-export * from './llm-model-config-controller.service'
-import { LlmModelConfigControllerService } from './llm-model-config-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
 export * from './plugin-controller.service'
@@ -19,12 +19,12 @@ import { SseService } from './sse.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export const APIS = [
+  AiModelControllerService,
+  AiProviderControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
-  LlmConfigControllerService,
-  LlmModelConfigControllerService,
   NamespaceControllerService,
   PluginControllerService,
   SseService,

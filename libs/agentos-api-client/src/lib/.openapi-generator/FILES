@@ -2,12 +2,12 @@
 README.md
 api.base.service.ts
 api.module.ts
+api/ai-model-controller.service.ts
+api/ai-provider-controller.service.ts
 api/api.ts
 api/case-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
-api/llm-config-controller.service.ts
-api/llm-model-config-controller.service.ts
 api/namespace-controller.service.ts
 api/plugin-controller.service.ts
 api/sse.service.ts
@@ -21,6 +21,7 @@ model/add-message-request.ts
 model/agent-finished-event.ts
 model/agent-running-event.ts
 model/agent-selected-event.ts
+model/ai-model.ts
 model/answer-event.ts
 model/case-status-event.ts
 model/case.ts
@@ -31,7 +32,6 @@ model/integration-config.ts
 model/integration-type-descriptor.ts
 model/intention-generated-event.ts
 model/llm-config.ts
-model/llm-model-config.ts
 model/message-content.ts
 model/message-event.ts
 model/models.ts
