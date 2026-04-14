@@ -202,12 +202,8 @@ class AgentServiceImpl(
                 }
             }
 
-        return when {
-            baseInstructions.isNullOrBlank() && userBlock == null -> namespaceBlock
-            baseInstructions.isNullOrBlank() -> "$namespaceBlock\n$userBlock"
-            userBlock == null -> "$baseInstructions\n$namespaceBlock"
-            else -> "$baseInstructions\n$namespaceBlock\n$userBlock"
-        }
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, namespaceBlock, integrationsBlock, userBlock)
+            .joinToString("\n")
     }
 
     companion object : KLogging()
