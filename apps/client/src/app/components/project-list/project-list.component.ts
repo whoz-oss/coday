@@ -1,10 +1,19 @@
-import { Component, computed, inject } from '@angular/core'
+import { Component, computed, DestroyRef, inject } from '@angular/core'
 import { Router } from '@angular/router'
 import { filter, take } from 'rxjs'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityCardComponent, EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { ProjectInfo } from '../../core/services/project-api.service'
+import { MatDialog } from '@angular/material/dialog'
+import { MatIconModule } from '@angular/material/icon'
+import { MatIconButton } from '@angular/material/button'
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+  ConfirmDialogResult,
+} from '../confirm-dialog/confirm-dialog.component'
+import { NotificationService } from '../../services/notification.service'
 
 /** Separator used in the worktree project naming convention: `parent__subProject` */
 const WORKTREE_SEPARATOR = '__'
@@ -21,16 +30,19 @@ const WORKTREE_SEPARATOR = '__'
 @Component({
   selector: 'app-project-selection',
   standalone: true,
-  imports: [EntityListComponent],
+  imports: [EntityListComponent, EntityCardComponent, MatIconModule, MatIconButton],
   templateUrl: './project-list.component.html',
   styleUrl: './project-list.component.scss',
 })
 export class ProjectListComponent {
   private readonly router = inject(Router)
   private readonly projectStateService = inject(ProjectStateService)
+  private readonly dialog = inject(MatDialog)
+  private readonly destroyRef = inject(DestroyRef)
+  private readonly notification = inject(NotificationService)
 
   protected readonly projects = toSignal(this.projectStateService.projectList$)
-  protected readonly forcedProject = toSignal(this.projectStateService.forcedProject$)
+  protected readonly forcedProject = toSignal(this.projectStateService.forcedProject$, { initialValue: null })
 
   /**
    * Maps the flat project list to EntityListItem[], with three kinds of groups:
@@ -143,6 +155,52 @@ export class ProjectListComponent {
 
   protected onCreateRequested(): void {
     this.router.navigate(['project', 'new'])
+  }
+
+  protected onDeleteRequested(projectName: string): void {
+    const isWorktree = projectName.includes(WORKTREE_SEPARATOR)
+
+    const dialogRef = this.dialog.open<ConfirmDialogComponent, ConfirmDialogData, ConfirmDialogResult>(
+      ConfirmDialogComponent,
+      {
+        width: '400px',
+        panelClass: 'confirm-dialog-panel',
+        data: {
+          title: 'Delete project',
+          message: `This will remove the project "${projectName}" from Coday and archive its configuration. The project source code on disk is not affected.`,
+          confirmLabel: 'Delete',
+          cancelLabel: 'Cancel',
+          isDestructive: true,
+          ...(isWorktree ? { checkboxLabel: 'Also remove git worktree from disk' } : {}),
+        },
+      }
+    )
+
+    dialogRef
+      .afterClosed()
+      .pipe(
+        filter((result): result is ConfirmDialogResult => result?.confirmed === true),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((result) => {
+        this.notification.info('Deleting project…')
+        this.projectStateService
+          .deleteProject(projectName, result.checkboxChecked)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe({
+            next: () => {
+              this.notification.success(`Project "${projectName}" deleted`)
+              // If user was inside the deleted project, ensure we leave its route.
+              if (this.router.url.includes(`/project/${encodeURIComponent(projectName)}`)) {
+                this.router.navigate(['/'])
+              }
+            },
+            error: (err) => {
+              console.error('[PROJECT-LIST] Failed to delete project:', err)
+              this.notification.error(err?.error?.error ?? 'Failed to delete project')
+            },
+          })
+      })
   }
 
   private toEntityListItem(project: ProjectInfo): EntityListItem {

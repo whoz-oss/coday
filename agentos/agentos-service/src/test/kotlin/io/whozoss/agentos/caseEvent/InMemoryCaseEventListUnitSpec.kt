@@ -11,7 +11,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import java.time.Instant
 import java.util.UUID
 
-class InMemoryCaseEventListTest :
+class InMemoryCaseEventListUnitSpec :
     StringSpec({
         timeout = 5000
 

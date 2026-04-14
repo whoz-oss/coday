@@ -14,3 +14,10 @@
 .sidenav-sections {
   max-height: calc(100vh - 45px) !important;
 }
+
+/* Hide the voice/microphone recording button.
+   Web Speech Recognition API does not work in Electron (no cloud backend),
+   so the button is hidden to avoid confusion. */
+.voice-btn {
+  display: none !important;
+}

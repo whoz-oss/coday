@@ -24,7 +24,7 @@ import org.springframework.ai.chat.prompt.Prompt
 import reactor.core.publisher.Flux
 import java.util.UUID
 
-class AgentSimpleTest :
+class AgentSimpleUnitSpec :
     StringSpec({
         timeout = 5000
 

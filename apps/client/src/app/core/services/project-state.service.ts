@@ -143,4 +143,26 @@ export class ProjectStateService {
       })
     )
   }
+
+  /**
+   * Delete a project
+   * @param projectName Project name
+   * @param removeGitWorktree If true, also remove the git worktree from disk (worktree projects only)
+   */
+  deleteProject(projectName: string, removeGitWorktree?: boolean) {
+    this.isLoadingSubject.next(true)
+
+    return this.projectApi.deleteProject(projectName, removeGitWorktree).pipe(
+      tap(() => {
+        this.isLoadingSubject.next(false)
+        // Trigger project list refresh
+        this.refreshTriggerSubject.next()
+
+        // If the deleted project was selected, clear selection
+        if (this.selectedProjectIdSubject.value === projectName) {
+          this.clearSelection()
+        }
+      })
+    )
+  }
 }

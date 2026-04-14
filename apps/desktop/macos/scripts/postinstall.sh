@@ -175,5 +175,14 @@ else
     echo "uvx already installed: $(run_as_user 'uvx --version' | head -1)"
 fi
 
+# Step 7: Install tmux if not present
+if ! run_as_user "command -v tmux" &>/dev/null; then
+    echo "Installing tmux..."
+    run_as_user "$BREW_PATH install tmux"
+    echo "tmux installed successfully"
+else
+    echo "tmux already installed: $(run_as_user 'tmux -V' | head -1)"
+fi
+
 echo "=== Coday Desktop Post-Install Complete ==="
 exit 0

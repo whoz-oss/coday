@@ -1,3 +1,54 @@
+## 0.117.1 (2026-04-13)
+
+### 🩹 Fixes
+
+- #715 deduplicate tools by name in Toolbox to prevent AI provider… ([#731](https://github.com/whoz-oss/coday/pull/731), [#715](https://github.com/whoz-oss/coday/issues/715), [#730](https://github.com/whoz-oss/coday/issues/730))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+
+## 0.117.0 (2026-04-13)
+
+### 🚀 Features
+
+- #31353 add description field to IntegrationConfig and inject into agent prompt ([#747](https://github.com/whoz-oss/coday/pull/747), [#31353](https://github.com/whoz-oss/coday/issues/31353))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.116.0 (2026-04-13)
+
+### 🚀 Features
+
+- #748 project deletion from the Projects view ([#749](https://github.com/whoz-oss/coday/pull/749), [#748](https://github.com/whoz-oss/coday/issues/748))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+
+## 0.115.3 (2026-04-12)
+
+### 🩹 Fixes
+
+- oauthRedirectUri for MCP Oauth ([728cb64e](https://github.com/whoz-oss/coday/commit/728cb64e))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.115.2 (2026-04-11)
+
+### 🩹 Fixes
+
+- desktop-twin package ([735040da](https://github.com/whoz-oss/coday/commit/735040da))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.115.1 (2026-04-09)
 
 ### 🩹 Fixes

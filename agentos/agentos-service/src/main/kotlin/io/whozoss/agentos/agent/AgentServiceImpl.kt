@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -27,6 +28,10 @@ import java.util.UUID
  *
  * There is no fallback to a plugin-based registry — if no matching [AiModel]
  * exists for the namespace the call fails fast with a clear error.
+ * - Append an integration-descriptions block to the system prompt listing any
+ *   [IntegrationConfig][io.whozoss.agentos.integrationConfig.IntegrationConfig]s in the
+ *   namespace that carry a non-null description, so the agent understands what each
+ *   named integration is for.
  *
  * The recommended alias for the primary model in a namespace is "default". This keeps
  * agent definitions provider-agnostic: switching providers only requires updating the
@@ -42,6 +47,7 @@ class AgentServiceImpl(
     private val aiModelService: AiModelService,
     private val aiProviderService: AiProviderService,
     private val namespaceService: NamespaceService,
+    private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
 ) : AgentService {
     override fun findAgentByName(
@@ -146,11 +152,14 @@ class AgentServiceImpl(
     /**
      * Compose the final system instructions for the agent.
      *
-     * Appends a namespace context block (always) and an optional user context block
-     * into the privileged system-prompt channel so they are never compacted away
-     * by the provider, regardless of conversation length.
+     * Starts from the model's own instructions (may be null) and appends:
+     * 1. A namespace context block (always, when [context] is provided).
+     * 2. An integrations block listing each [IntegrationConfig] in the namespace that
+     *    carries a non-null description (omitted entirely when none have a description).
+     * 3. A user context block (when [context.userId] resolves to a known [User]).
      *
-     * [baseInstructions] will be populated from the Agent entity once it exists.
+     * All blocks are injected in the privileged system-prompt channel so they are
+     * never compacted away by the provider, regardless of conversation length.
      */
     private fun buildInstructions(
         baseInstructions: String?,
@@ -160,12 +169,23 @@ class AgentServiceImpl(
         val namespaceBlock =
             buildString {
                 appendLine()
-                appendLine("## Context: ${namespace?.name ?: context.namespaceId}")
-                val description = namespace?.description
-                if (!description.isNullOrBlank()) {
-                    appendLine(description)
+                appendLine("""## Context: ${namespace?.name ?: context.namespaceId}""")
+                namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+            }.trimEnd()
+
+        val integrationsWithDescription = integrationConfigService
+            .findByParent(context.namespaceId)
+            .filter { !it.description.isNullOrBlank() }
+        val integrationsBlock = when {
+            integrationsWithDescription.isEmpty() -> null
+            else -> buildString {
+                appendLine()
+                appendLine("## Integrations")
+                integrationsWithDescription.forEach { config ->
+                    appendLine("- ${config.name}: ${config.description}")
                 }
             }.trimEnd()
+        }
 
         val userBlock =
             context.userId?.let { userId ->

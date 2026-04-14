@@ -562,7 +562,13 @@ export class McpToolsFactory extends AssistantToolFactory {
             `pass them to McpToolsFactory constructor`
         )
       }
-      const redirectUri = `${this.mcpBaseUrl ?? 'http://localhost:3000'}/oauth/callback`
+      const redirectUri =
+        this.serverConfig.oauthRedirectUri ?? (this.mcpBaseUrl ? `${this.mcpBaseUrl}/oauth/callback` : undefined)
+      if (!redirectUri) {
+        throw new Error(
+          `MCP server ${this.serverConfig.name}: oauth2 requires a redirect URI — set oauthRedirectUri in the server config or ensure mcpBaseUrl is provided`
+        )
+      }
       console.log(`[MCP] ${this.serverConfig.name}: using OAuth 2.1 transport (redirectUri=${redirectUri})`)
       this.oauthProvider = new McpOAuthProvider(
         this.mcpInteractor,
