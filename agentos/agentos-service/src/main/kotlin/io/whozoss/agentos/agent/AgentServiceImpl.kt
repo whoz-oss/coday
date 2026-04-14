@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.aiModel.AiModelRegistry
+import io.whozoss.agentos.auth.ToolExecutionGuard
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
@@ -9,6 +10,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -35,6 +37,7 @@ class AgentServiceImpl(
     private val aiModelRegistry: AiModelRegistry,
     private val namespaceService: NamespaceService,
     private val userService: UserService,
+    @Lazy private val toolExecutionGuard: ToolExecutionGuard,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -92,6 +95,8 @@ class AgentServiceImpl(
             model = model.copy(instructions = instructions),
             chatClient = chatClient,
             tools = resolved,
+            guard = toolExecutionGuard,
+            executionContext = context,
         )
     }
 

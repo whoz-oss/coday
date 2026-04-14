@@ -1,5 +1,7 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.auth.GuardedToolResult
+import io.whozoss.agentos.auth.ToolExecutionGuard
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -55,6 +57,8 @@ class AgentSimple(
     private val model: AiModel,
     private val chatClient: ChatClient,
     private val tools: Collection<StandardTool<*>>,
+    private val guard: ToolExecutionGuard,
+    private val executionContext: AgentExecutionContext,
 ) : Agent {
     override val name: String get() = model.name
 
@@ -417,10 +421,33 @@ class AgentSimple(
                 val result: String
                 val toolDuration =
                     measureTime {
-                        result =
-                            try {
-                                tool.executeWithJson(toolInput)
-                            } catch (e: Exception) {
+                        val callerId = executionContext.userId?.toString()
+                        if (callerId == null) {
+                            runBlocking {
+                                eventChannel.send(
+                                    ToolResponseEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = caseId,
+                                        toolRequestId = toolRequestId,
+                                        toolName = tool.name,
+                                        output = MessageContent.Text("Error: no authenticated caller"),
+                                        success = false,
+                                    ),
+                                )
+                            }
+                            throw IllegalStateException("No authenticated caller for tool execution")
+                        }
+
+                        val guardResult = guard.executeWithPermissionCheck(
+                            tool = tool,
+                            args = toolInput,
+                            callerId = callerId,
+                            caseId = executionContext.caseId.toString(),
+                            namespaceId = executionContext.namespaceId.toString(),
+                        )
+                        result = when (guardResult) {
+                            is GuardedToolResult.Success -> guardResult.output
+                            is GuardedToolResult.Denied -> {
                                 runBlocking {
                                     eventChannel.send(
                                         ToolResponseEvent(
@@ -428,13 +455,29 @@ class AgentSimple(
                                             caseId = caseId,
                                             toolRequestId = toolRequestId,
                                             toolName = tool.name,
-                                            output = MessageContent.Text("Error: ${e.message}"),
+                                            output = MessageContent.Text("Permission denied: ${guardResult.reason}"),
                                             success = false,
                                         ),
                                     )
                                 }
-                                throw e
+                                throw IllegalStateException("Permission denied: ${guardResult.reason}")
                             }
+                            is GuardedToolResult.Error -> {
+                                runBlocking {
+                                    eventChannel.send(
+                                        ToolResponseEvent(
+                                            namespaceId = namespaceId,
+                                            caseId = caseId,
+                                            toolRequestId = toolRequestId,
+                                            toolName = tool.name,
+                                            output = MessageContent.Text("Error: ${guardResult.error}"),
+                                            success = false,
+                                        ),
+                                    )
+                                }
+                                throw Exception(guardResult.error)
+                            }
+                        }
                     }
                 logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
 

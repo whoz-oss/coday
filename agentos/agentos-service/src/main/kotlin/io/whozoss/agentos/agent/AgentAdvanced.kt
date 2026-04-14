@@ -1,5 +1,7 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.auth.GuardedToolResult
+import io.whozoss.agentos.auth.ToolExecutionGuard
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -44,6 +46,8 @@ class AgentAdvanced(
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
     private val agentService: AgentService,
+    private val guard: ToolExecutionGuard,
+    private val executionContext: AgentExecutionContext,
     private val maxIterations: Int = 20,
 ) : Agent {
     override val name: String get() = model.name
@@ -273,6 +277,7 @@ Generate the JSON parameters for this tool call.
 
     /**
      * Execute the tool with the generated parameters.
+     * All tool execution goes through [ToolExecutionGuard] for permission enforcement.
      */
     private fun executeTool(
         toolRequest: ToolRequestEvent,
@@ -290,24 +295,47 @@ Generate the JSON parameters for this tool call.
                     success = false,
                 )
 
-        return try {
-            val result = tool.executeWithJson(toolRequest.args)
-
-            ToolResponseEvent(
+        val callerId = executionContext.userId?.toString()
+            ?: return ToolResponseEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 toolRequestId = toolRequest.toolRequestId,
                 toolName = toolRequest.toolName,
-                output = MessageContent.Text(result),
+                output = MessageContent.Text("Error: no authenticated caller"),
+                success = false,
+            )
+
+        val guardResult = guard.executeWithPermissionCheck(
+            tool = tool,
+            args = toolRequest.args,
+            callerId = callerId,
+            caseId = executionContext.caseId.toString(),
+            namespaceId = executionContext.namespaceId.toString(),
+        )
+
+        return when (guardResult) {
+            is GuardedToolResult.Success -> ToolResponseEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = toolRequest.toolRequestId,
+                toolName = toolRequest.toolName,
+                output = MessageContent.Text(guardResult.output),
                 success = true,
             )
-        } catch (e: Exception) {
-            ToolResponseEvent(
+            is GuardedToolResult.Denied -> ToolResponseEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 toolRequestId = toolRequest.toolRequestId,
                 toolName = toolRequest.toolName,
-                output = MessageContent.Text("Error executing tool: ${e.message}"),
+                output = MessageContent.Text("Permission denied: ${guardResult.reason}"),
+                success = false,
+            )
+            is GuardedToolResult.Error -> ToolResponseEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = toolRequest.toolRequestId,
+                toolName = toolRequest.toolName,
+                output = MessageContent.Text("Error: ${guardResult.error}"),
                 success = false,
             )
         }

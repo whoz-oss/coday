@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.auth.ToolExecutionGuard
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
@@ -71,6 +72,12 @@ class AgentAdvancedSpec :
                     modelName = "gpt-4o",
                     providerName = "openai",
                 )
+            val mockGuard = mockk<ToolExecutionGuard>(relaxed = true)
+            val executionContext = AgentExecutionContext(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                userId = UUID.randomUUID(),
+            )
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -78,6 +85,8 @@ class AgentAdvancedSpec :
                     chatClient = mockChatClient,
                     tools = tools,
                     agentService = mockAgentService,
+                    guard = mockGuard,
+                    executionContext = executionContext,
                     maxIterations = 5,
                 )
 

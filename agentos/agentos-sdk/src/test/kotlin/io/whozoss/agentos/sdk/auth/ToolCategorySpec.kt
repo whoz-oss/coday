@@ -28,5 +28,15 @@ class ToolCategorySpec : StringSpec() {
             categories[2] shouldBe ToolCategory.DESTRUCTIVE
             categories[3] shouldBe ToolCategory.ADMIN
         }
+        "ordinals are strictly increasing: READ_ONLY < WRITE < DESTRUCTIVE < ADMIN" {
+            (ToolCategory.READ_ONLY.ordinal < ToolCategory.WRITE.ordinal) shouldBe true
+            (ToolCategory.WRITE.ordinal < ToolCategory.DESTRUCTIVE.ordinal) shouldBe true
+            (ToolCategory.DESTRUCTIVE.ordinal < ToolCategory.ADMIN.ordinal) shouldBe true
+        }
+        "every category has a non-empty riskLabel" {
+            ToolCategory.entries.forEach { category ->
+                category.riskLabel.isNotBlank() shouldBe true
+            }
+        }
     }
 }

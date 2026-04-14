@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.auth.CallerContext
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
 import io.whozoss.agentos.orchestration.CaseEventEmitter
@@ -47,6 +48,7 @@ class CaseRuntime(
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
+    val callerContext: CallerContext = CallerContext()
 
     /**
      * Set by [processNextStep] when it finds an [AgentFinishedEvent] for the current
@@ -151,6 +153,9 @@ class CaseRuntime(
             "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
                 "content: ${content.size} part(s), answerTo: $answerToEventId"
         }
+
+        // Update caller context BEFORE any event storage — security invariant FR22
+        callerContext.setLastMessageSender(actor.id, actor.displayName)
 
         if (answerToEventId != null) {
             val questionEvent = eventList.getById(answerToEventId)
@@ -282,7 +287,8 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), resolveUserId(events)) { !interruptRequested.get() }
+                    val userId = callerContext.getCallerId()?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                    runAgent(event.agentName, eventList.getAll(), userId) { !interruptRequested.get() }
                     return
                 }
 
@@ -314,18 +320,6 @@ class CaseRuntime(
         logger.warn { "[CaseRuntime $id] No agent selection found in history, stopping" }
         interruptRequested.set(true)
     }
-
-    /**
-     * Scans the event history backward and returns the UUID of the last user actor,
-     * or null if no user message is found or the actor id is not a valid UUID.
-     */
-    private fun resolveUserId(events: List<CaseEvent>): UUID? =
-        events
-            .filterIsInstance<MessageEvent>()
-            .lastOrNull { it.actor.role == ActorRole.USER }
-            ?.actor
-            ?.id
-            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     companion object : KLogging()
 }

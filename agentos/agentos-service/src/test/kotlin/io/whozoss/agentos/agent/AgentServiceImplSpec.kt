@@ -14,6 +14,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.auth.ToolExecutionGuard
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -26,7 +27,8 @@ class AgentServiceImplSpec : StringSpec() {
     private val aiModelRegistry: AiModelRegistry = mockk()
     private val namespaceService: NamespaceService = mockk()
     private val userService: UserService = mockk(relaxed = true)
-    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistryService, aiModelRegistry, namespaceService, userService)
+    private val toolExecutionGuard: ToolExecutionGuard = mockk(relaxed = true)
+    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistryService, aiModelRegistry, namespaceService, userService, toolExecutionGuard)
 
     // A context and matching namespace used across most tests
     private val namespaceId: UUID = UUID.randomUUID()

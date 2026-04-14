@@ -17,6 +17,8 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.auth.GuardedToolResult
+import io.whozoss.agentos.auth.ToolExecutionGuard
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
@@ -61,11 +63,25 @@ class AgentSimpleToolCallbackTest :
                     modelName = "claude-opus",
                     providerName = "anthropic",
                 )
+            val guard = mockk<ToolExecutionGuard> {
+                every { executeWithPermissionCheck(any(), any(), any(), any(), any()) } answers {
+                    val tool = firstArg<StandardTool<*>>()
+                    val args = secondArg<String?>()
+                    GuardedToolResult.Success(tool.name, tool.executeWithJson(args))
+                }
+            }
+            val executionContext = AgentExecutionContext(
+                namespaceId = UUID.randomUUID(),
+                caseId = UUID.randomUUID(),
+                userId = UUID.randomUUID(),
+            )
             return AgentSimple(
                 metadata = EntityMetadata(id = agentId),
                 model = model,
                 chatClient = chatClient,
                 tools = tools,
+                guard = guard,
+                executionContext = executionContext,
             )
         }
 
