@@ -27,12 +27,12 @@ class AiModelRegistry(
     }
 
     fun register(model: AiModel) {
-        val key = model.name.lowercase()
+        val key = (model.alias ?: model.apiName).lowercase()
         if (modelsByName.containsKey(key)) {
-            logger.warn { "Overwriting existing AI model registration: ${model.name}" }
+            logger.warn { "Overwriting existing AI model registration: ${model.alias ?: model.apiName}" }
         }
         modelsByName[key] = model
-        logger.info { "Registered AI model: ${model.name} (provider: ${model.providerName}, model: ${model.modelName})" }
+        logger.info { "Registered AI model: ${model.alias ?: model.apiName} (apiName: ${model.apiName})" }
     }
 
     fun findByName(name: String): AiModel? = modelsByName[name.lowercase()]

@@ -60,7 +60,7 @@ class AiModelControllerMvcUnitSpec : StringSpec() {
                 .perform(
                     post("/api/llm-model-configs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "llmConfigId": "${parent.id}", "apiName": "" }"""),
+                        .content("""{ "aiProviderId": "${parent.id}", "apiName": "" }"""),
                 ).andExpect(status().isBadRequest)
         }
 
@@ -70,7 +70,7 @@ class AiModelControllerMvcUnitSpec : StringSpec() {
                 .perform(
                     post("/api/llm-model-configs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "llmConfigId": "${parent.id}", "apiName": "claude-haiku-4-5" }"""),
+                        .content("""{ "aiProviderId": "${parent.id}", "apiName": "claude-haiku-4-5" }"""),
                 ).andExpect(status().isCreated)
         }
 
@@ -81,7 +81,7 @@ class AiModelControllerMvcUnitSpec : StringSpec() {
                 .perform(
                     put("/api/llm-model-configs/$id")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "id": "$id", "llmConfigId": "${parent.id}", "apiName": "" }"""),
+                        .content("""{ "id": "$id", "aiProviderId": "${parent.id}", "apiName": "" }"""),
                 ).andExpect(status().isBadRequest)
         }
 
@@ -101,7 +101,7 @@ class AiModelControllerMvcUnitSpec : StringSpec() {
                     put("/api/llm-model-configs/${created.id}")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
-                            """{ "id": "${created.id}", "llmConfigId": "${parent.id}", "apiName": "gpt-4o-to-update", "alias": "BIG" }""",
+                            """{ "id": "${created.id}", "aiProviderId": "${parent.id}", "apiName": "gpt-4o-to-update", "alias": "BIG" }""",
                         ),
                 ).andExpect(status().isOk)
         }

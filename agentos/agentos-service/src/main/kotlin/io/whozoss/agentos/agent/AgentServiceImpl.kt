@@ -132,27 +132,14 @@ class AgentServiceImpl(
         }
 
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
-
-        // Build a minimal AiModel so AgentSimple keeps its current constructor unchanged.
-        // This will be replaced once the Agent entity is introduced.
         val instructions = buildInstructions(baseInstructions = null, context = context)
-        val model =
-            AiModel(
-                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
-                name = agentName,
-                description = agentName,
-                modelName = modelConfig.apiName,
-                providerName = providerConfig.name,
-                temperature = modelConfig.temperature,
-                maxTokens = modelConfig.maxTokens,
-                instructions = instructions,
-            )
 
         return AgentSimple(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
-            model = model,
+            name = agentName,
             chatClient = chatClient,
             tools = tools,
+            instructions = instructions,
         )
     }
 

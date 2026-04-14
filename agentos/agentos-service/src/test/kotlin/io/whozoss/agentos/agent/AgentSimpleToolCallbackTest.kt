@@ -10,7 +10,6 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -52,22 +51,13 @@ class AgentSimpleToolCallbackTest :
             agentId: UUID,
             chatClient: ChatClient,
             tools: Collection<StandardTool<*>>,
-        ): AgentSimple {
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    description = "Test agent",
-                    modelName = "claude-opus",
-                    providerName = "anthropic",
-                )
-            return AgentSimple(
+        ): AgentSimple =
+            AgentSimple(
                 metadata = EntityMetadata(id = agentId),
-                model = model,
+                name = "TestAgent",
                 chatClient = chatClient,
                 tools = tools,
             )
-        }
 
         fun userMessage(
             namespaceId: UUID,

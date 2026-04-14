@@ -6,7 +6,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import io.whozoss.agentos.aiModel.AiModelConfig
+import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
@@ -42,7 +42,7 @@ class ChatClientProviderTest :
             alias: String? = "sonnet",
             temperature: Double? = 0.7,
             maxTokens: Int? = 8192,
-        ) = AiModelConfig(
+        ) = AiModel(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             aiProviderId = aiProviderId,
             namespaceId = namespaceId,

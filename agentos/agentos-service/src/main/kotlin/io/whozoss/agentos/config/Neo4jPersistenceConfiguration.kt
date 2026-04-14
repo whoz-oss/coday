@@ -1,8 +1,8 @@
 package io.whozoss.agentos.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.aiModel.AiModelConfigRepository
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
+import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
@@ -52,7 +52,13 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
     "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
         "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
 )
-@EnableNeo4jRepositories(basePackages = ["io.whozoss.agentos.persistence.neo4j"])
+@EnableNeo4jRepositories(
+    basePackages = [
+        "io.whozoss.agentos.persistence.neo4j",
+        "io.whozoss.agentos.aiModel",
+        "io.whozoss.agentos.aiProvider",
+    ],
+)
 class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jNamespaceRepository(namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository): NamespaceRepository {
@@ -98,7 +104,7 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jLlmModelConfigRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelConfigRepository {
+    fun neo4jLlmModelConfigRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelRepository {
         logger.info { "[Persistence] Neo4jLlmModelConfigRepository active" }
         return Neo4JAiModelRepository(aiModelNodeNeo4JRepository)
     }
