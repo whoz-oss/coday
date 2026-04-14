@@ -8,20 +8,20 @@ import org.springframework.data.neo4j.repository.query.Query
  */
 interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String> {
     /**
-     * Find all non-removed LLM configs scoped to a namespace, ordered by name.
+     * Find all non-removed AI provider configs scoped to a namespace, ordered by name.
      */
     @Query(
-        "MATCH (c:LlmConfig) " +
+        "MATCH (c:AiProvider) " +
             "WHERE c.namespaceId = \$namespaceId AND (c.removed IS NULL OR c.removed = false) " +
             "RETURN c ORDER BY c.name ASC",
     )
     fun findActiveByNamespaceId(namespaceId: String): List<AiProviderNode>
 
     /**
-     * Find all non-removed LLM configs scoped to a user, ordered by name.
+     * Find all non-removed AI provider configs scoped to a user, ordered by name.
      */
     @Query(
-        "MATCH (c:LlmConfig) " +
+        "MATCH (c:AiProvider) " +
             "WHERE c.userId = \$userId AND (c.removed IS NULL OR c.removed = false) " +
             "RETURN c ORDER BY c.name ASC",
     )

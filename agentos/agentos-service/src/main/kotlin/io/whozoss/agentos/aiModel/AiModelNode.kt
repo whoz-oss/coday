@@ -10,7 +10,7 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [AiModel].
  *
- * Stored as a (:LlmModelConfig) node. Parent relationships are represented as
+ * Stored as a (:AiModel) node. Parent relationships are represented as
  * plain string properties (not SDN @Relationship), consistent with the pattern
  * used throughout this codebase.
  *
@@ -18,7 +18,7 @@ import java.util.UUID
  * creation time so that namespace-scoped queries can be served with a single
  * WHERE clause without graph traversal.
  */
-@Node("LlmModelConfig")
+@Node("AiModel")
 data class AiModelNode(
     @Id
     val id: String,

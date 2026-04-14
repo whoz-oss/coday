@@ -11,7 +11,7 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [io.whozoss.agentos.sdk.aiProvider.AiProvider].
  *
- * Stored as a (:LlmConfig) node with a [namespaceId] property linking it to its
+ * Stored as a (:AiProvider) node with a [namespaceId] property linking it to its
  * parent namespace (represented as a property, not an SDN @Relationship).
  *
  * [apiKey] is stored in clear text — masking is handled at the API layer by
