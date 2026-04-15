@@ -38,7 +38,7 @@ class AiModelControllerSpec :
             metadata = EntityMetadata(id = id),
             aiProviderId = aiProviderId,
             namespaceId = namespaceId,
-            apiName = apiName,
+            apiModelName = apiName,
             description = description,
             alias = alias,
             priority = priority,
@@ -56,7 +56,7 @@ class AiModelControllerSpec :
             id = id,
             aiProviderId = aiProviderId,
             namespaceId = namespaceId,
-            apiName = apiName,
+            apiModelName = apiName,
             description = description,
             alias = alias,
             priority = priority,
@@ -68,14 +68,23 @@ class AiModelControllerSpec :
 
         "toResource maps all fields correctly" {
             val id = UUID.randomUUID()
-            val m = model(id = id, apiName = "claude-opus-4-6", description = "A powerful model", alias = "BIG", priority = 5, temperature = 0.7, maxTokens = 4096)
+            val m =
+                model(
+                    id = id,
+                    apiName = "claude-opus-4-6",
+                    description = "A powerful model",
+                    alias = "BIG",
+                    priority = 5,
+                    temperature = 0.7,
+                    maxTokens = 4096,
+                )
 
             val result = controller.toResource(m)
 
             result.id shouldBe id
             result.aiProviderId shouldBe aiProviderId
             result.namespaceId shouldBe namespaceId
-            result.apiName shouldBe "claude-opus-4-6"
+            result.apiModelName shouldBe "claude-opus-4-6"
             result.description shouldBe "A powerful model"
             result.alias shouldBe "BIG"
             result.priority shouldBe 5

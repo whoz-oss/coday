@@ -20,7 +20,7 @@ open class Neo4JAiModelRepository(
             .toDomain()
             .also {
                 logger.debug {
-                    "[Neo4jAiModelRepository] Saved AiModel ${it.id} ('${entity.apiName}') under AiProvider ${entity.aiProviderId}"
+                    "[Neo4jAiModelRepository] Saved AiModel ${it.id} ('${entity.apiModelName}') under AiProvider ${entity.aiProviderId}"
                 }
             }
 

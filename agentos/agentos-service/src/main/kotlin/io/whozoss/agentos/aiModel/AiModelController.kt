@@ -46,7 +46,7 @@ class AiModelController(
             aiProviderId = entity.aiProviderId,
             namespaceId = entity.namespaceId,
             userId = entity.userId,
-            apiName = entity.apiName,
+            apiModelName = entity.apiModelName,
             description = entity.description,
             alias = entity.alias,
             priority = entity.priority,
@@ -71,7 +71,7 @@ class AiModelController(
             aiProviderId = resource.aiProviderId!!,
             namespaceId = null,
             userId = resource.userId,
-            apiName = resource.apiName,
+            apiModelName = resource.apiModelName,
             description = resource.description,
             alias = resource.alias,
             priority = resource.priority,
@@ -91,7 +91,7 @@ class AiModelController(
         existing: AiModel,
     ): AiModel =
         existing.copy(
-            apiName = resource.apiName,
+            apiModelName = resource.apiModelName,
             description = resource.description,
             alias = resource.alias,
             priority = resource.priority,

@@ -24,10 +24,10 @@ class AiModelServiceImpl(
     private val aiProviderService: AiProviderService,
 ) : AiModelService {
     override fun create(entity: AiModel): AiModel {
-        findByAiProviderAndApiName(entity.aiProviderId, entity.apiName)?.let {
+        findByAiProviderAndApiName(entity.aiProviderId, entity.apiModelName)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "A model config for apiName '${entity.apiName}' already exists in AiProvider ${entity.aiProviderId}",
+                "A model config for apiName '${entity.apiModelName}' already exists in AiProvider ${entity.aiProviderId}",
             )
         }
         entity.alias?.let { alias ->
@@ -48,12 +48,12 @@ class AiModelServiceImpl(
     }
 
     override fun update(entity: AiModel): AiModel {
-        findByAiProviderAndApiName(entity.aiProviderId, entity.apiName)
+        findByAiProviderAndApiName(entity.aiProviderId, entity.apiModelName)
             ?.takeIf { it.id != entity.id }
             ?.let {
                 throw ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "A model config for apiName '${entity.apiName}' already exists in AiProvider ${entity.aiProviderId}",
+                    "A model config for apiName '${entity.apiModelName}' already exists in AiProvider ${entity.aiProviderId}",
                 )
             }
         entity.alias?.let { alias ->
@@ -98,7 +98,7 @@ class AiModelServiceImpl(
             .filter { it.alias.equals(name, ignoreCase = true) }
             .maxByOrNull { it.priority }
             ?: candidates
-                .filter { it.apiName.equals(name, ignoreCase = true) }
+                .filter { it.apiModelName.equals(name, ignoreCase = true) }
                 .maxByOrNull { it.priority }
     }
 }

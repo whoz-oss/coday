@@ -1,7 +1,6 @@
 package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.sdk.aiProvider.AiModel
-import jakarta.annotation.PostConstruct
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.concurrent.ConcurrentHashMap
@@ -27,12 +26,12 @@ class AiModelRegistry(
     }
 
     fun register(model: AiModel) {
-        val key = (model.alias ?: model.apiName).lowercase()
+        val key = (model.alias ?: model.apiModelName).lowercase()
         if (modelsByName.containsKey(key)) {
-            logger.warn { "Overwriting existing AI model registration: ${model.alias ?: model.apiName}" }
+            logger.warn { "Overwriting existing AI model registration: ${model.alias ?: model.apiModelName}" }
         }
         modelsByName[key] = model
-        logger.info { "Registered AI model: ${model.alias ?: model.apiName} (apiName: ${model.apiName})" }
+        logger.info { "Registered AI model: ${model.alias ?: model.apiModelName} (apiName: ${model.apiModelName})" }
     }
 
     fun findByName(name: String): AiModel? = modelsByName[name.lowercase()]

@@ -76,7 +76,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
         namespaceId = namespaceId,
-        apiName = apiName,
+        apiModelName = apiName,
         alias = alias,
         priority = priority,
         temperature = temperature,

@@ -15,7 +15,7 @@ class InMemoryAiModelRepository : AiModelRepository {
     private val delegate =
         InMemoryEntityRepository<AiModel, UUID>(
             parentIdExtractor = { it.aiProviderId },
-            comparator = compareBy { it.apiName },
+            comparator = compareBy { it.apiModelName },
         )
 
     override fun save(entity: AiModel): AiModel = delegate.save(entity)
@@ -33,7 +33,7 @@ class InMemoryAiModelRepository : AiModelRepository {
     override fun findByAiProviderAndApiName(
         aiProviderId: UUID,
         apiName: String,
-    ): AiModel? = findByParent(aiProviderId).firstOrNull { it.apiName == apiName }
+    ): AiModel? = findByParent(aiProviderId).firstOrNull { it.apiModelName == apiName }
 
     override fun findByAiProviderAndAlias(
         aiProviderId: UUID,

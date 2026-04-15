@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service
  *
  * The two entities carry everything [ChatModelFactory] needs:
  * - provider connectivity ([AiProvider.apiType], [AiProvider.baseUrl], [AiProvider.apiKey])
- * - model identity and inference parameters ([AiModel.apiName],
+ * - model identity and inference parameters ([AiModel.apiModelName],
  *   [AiModel.temperature], [AiModel.maxTokens])
  *
  * Resolution of which model/provider pair to use is the responsibility of the caller
@@ -29,7 +29,7 @@ class ChatClientProvider(
                 apiType = providerConfig.apiType,
                 baseUrl = providerConfig.baseUrl,
                 apiKey = providerConfig.apiKey,
-                modelName = modelConfig.apiName,
+                modelName = modelConfig.apiModelName,
                 temperature = modelConfig.temperature,
                 maxTokens = modelConfig.maxTokens,
             )

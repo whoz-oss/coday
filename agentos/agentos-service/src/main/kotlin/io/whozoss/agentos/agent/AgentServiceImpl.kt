@@ -21,7 +21,7 @@ import java.util.UUID
  *
  * Resolution strategy for a logical model name (e.g. "default"):
  * 1. Load all [AiModel] entries for the namespace.
- * 2. Match by [AiModel.alias] first, then [AiModel.apiName] as fallback.
+ * 2. Match by [AiModel.alias] first, then [AiModel.apiModelName] as fallback.
  *    Within each group, the config with the highest [AiModel.priority] wins.
  * 3. Load the parent [AiProvider] to get provider connectivity (apiType, baseUrl, apiKey).
  * 4. Build a [ChatClient] directly from the two entities via [ChatClientProvider].
@@ -57,25 +57,25 @@ class AgentServiceImpl(
         val (modelConfig, providerConfig) = resolveModelPair(namePart, context.namespaceId)
         // Use the canonical name from the config (alias if set, otherwise apiName)
         // rather than the raw input so the agent's identity is always stable.
-        val canonicalName = modelConfig.alias ?: modelConfig.apiName
+        val canonicalName = modelConfig.alias ?: modelConfig.apiModelName
         return createAgentInstance(canonicalName, modelConfig, providerConfig, context)
     }
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
         val modelConfig = findDefaultModelConfig(context.namespaceId) ?: return null
         val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
-        return createAgentInstance(modelConfig.alias ?: modelConfig.apiName, modelConfig, providerConfig, context)
+        return createAgentInstance(modelConfig.alias ?: modelConfig.apiModelName, modelConfig, providerConfig, context)
     }
 
     override fun getDefaultAgentName(namespaceId: UUID): String? {
         val modelConfig = findDefaultModelConfig(namespaceId) ?: return null
-        return modelConfig.alias ?: modelConfig.apiName
+        return modelConfig.alias ?: modelConfig.apiModelName
     }
 
     override fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
-    ): String? = aiModelService.findAiModel(namespaceId, namePart)?.let { it.alias ?: it.apiName }
+    ): String? = aiModelService.findAiModel(namespaceId, namePart)?.let { it.alias ?: it.apiModelName }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
@@ -102,7 +102,7 @@ class AgentServiceImpl(
                 )
 
         logger.info {
-            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiName}' " +
+            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiModelName}' " +
                 "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, aiProviderId=${modelConfig.aiProviderId})"
         }
 
@@ -173,19 +173,22 @@ class AgentServiceImpl(
                 namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
             }.trimEnd()
 
-        val integrationsWithDescription = integrationConfigService
-            .findByParent(context.namespaceId)
-            .filter { !it.description.isNullOrBlank() }
-        val integrationsBlock = when {
-            integrationsWithDescription.isEmpty() -> null
-            else -> buildString {
-                appendLine()
-                appendLine("## Integrations")
-                integrationsWithDescription.forEach { config ->
-                    appendLine("- ${config.name}: ${config.description}")
-                }
-            }.trimEnd()
-        }
+        val integrationsWithDescription =
+            integrationConfigService
+                .findByParent(context.namespaceId)
+                .filter { !it.description.isNullOrBlank() }
+        val integrationsBlock =
+            when {
+                integrationsWithDescription.isEmpty() -> null
+                else ->
+                    buildString {
+                        appendLine()
+                        appendLine("## Integrations")
+                        integrationsWithDescription.forEach { config ->
+                            appendLine("- ${config.name}: ${config.description}")
+                        }
+                    }.trimEnd()
+            }
 
         val userBlock =
             context.userId?.let { userId ->

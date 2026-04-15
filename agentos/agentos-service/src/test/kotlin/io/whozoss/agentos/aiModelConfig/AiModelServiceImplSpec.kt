@@ -62,7 +62,7 @@ class AiModelServiceImplSpec : StringSpec() {
             metadata = EntityMetadata(),
             aiProviderId = aiProviderId,
             namespaceId = nsId,
-            apiName = apiName,
+            apiModelName = apiName,
             alias = alias,
             priority = priority,
             temperature = temperature,
@@ -92,7 +92,7 @@ class AiModelServiceImplSpec : StringSpec() {
             val found = service.findById(saved.metadata.id)
 
             found.shouldNotBeNull()
-            found.apiName shouldBe "claude-haiku-4-5"
+            found.apiModelName shouldBe "claude-haiku-4-5"
             found.alias shouldBe "SMALL"
             found.temperature shouldBe 0.3
         }
@@ -125,7 +125,7 @@ class AiModelServiceImplSpec : StringSpec() {
             service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5"))
             service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-sonnet-4-6"))
 
-            val names = service.findByParent(aiProviderId).map { it.apiName }
+            val names = service.findByParent(aiProviderId).map { it.apiModelName }
             names shouldBe listOf("claude-haiku-4-5", "claude-opus-4-6", "claude-sonnet-4-6")
         }
 
@@ -139,7 +139,7 @@ class AiModelServiceImplSpec : StringSpec() {
 
             val found = service.findByAiProviderAndApiName(aiProviderId, "claude-haiku-4-5")
             found.shouldNotBeNull()
-            found.apiName shouldBe "claude-haiku-4-5"
+            found.apiModelName shouldBe "claude-haiku-4-5"
         }
 
         "findByAiProviderAndApiName returns null when apiName does not exist" {
@@ -243,7 +243,7 @@ class AiModelServiceImplSpec : StringSpec() {
 
             val found = service.findAiModel(namespaceId)
             found.shouldNotBeNull()
-            found.apiName shouldBe "claude-sonnet-4-5"
+            found.apiModelName shouldBe "claude-sonnet-4-5"
         }
 
         "findModelConfig is case-insensitive on the alias" {
@@ -267,7 +267,7 @@ class AiModelServiceImplSpec : StringSpec() {
 
             val found = service.findAiModel(namespaceId)
             found.shouldNotBeNull()
-            found.apiName shouldBe "claude-sonnet-4-5"
+            found.apiModelName shouldBe "claude-sonnet-4-5"
         }
 
         "findModelConfig accepts a custom name" {
@@ -289,7 +289,7 @@ class AiModelServiceImplSpec : StringSpec() {
 
             val found = service.findAiModel(namespaceId, "claude-sonnet-4-5")
             found.shouldNotBeNull()
-            found.apiName shouldBe "claude-sonnet-4-5"
+            found.apiModelName shouldBe "claude-sonnet-4-5"
         }
 
         "findModelConfig prefers alias over apiName when both could match" {
@@ -305,7 +305,7 @@ class AiModelServiceImplSpec : StringSpec() {
             val found = svc.findAiModel(namespaceId, "sonnet")
             found.shouldNotBeNull()
             found.alias shouldBe "sonnet"
-            found.apiName shouldBe "claude-haiku-4-5"
+            found.apiModelName shouldBe "claude-haiku-4-5"
         }
 
         "findModelConfig apiName fallback is case-insensitive" {
@@ -370,7 +370,7 @@ class AiModelServiceImplSpec : StringSpec() {
             val toUpdate = service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5"))
 
             shouldThrow<ResponseStatusException> {
-                service.update(toUpdate.copy(apiName = "claude-opus-4-6"))
+                service.update(toUpdate.copy(apiModelName = "claude-opus-4-6"))
             }.statusCode.value() shouldBe 409
         }
 

@@ -68,7 +68,7 @@ class FilesystemAiModelProvider : AiModelPlugin {
                         logger.debug { "Processing AI model file: $yamlFile" }
                         val model = loadAiModelFromYaml(yamlFile.toFile())
                         models.add(model)
-                        logger.info { "Loaded AI model '${model.apiName}' from ${yamlFile.fileName}" }
+                        logger.info { "Loaded AI model '${model.apiModelName}' from ${yamlFile.fileName}" }
                     } catch (e: Exception) {
                         logger.error(e) { "Failed to load AI model from $yamlFile: ${e.message}" }
                     }
@@ -86,7 +86,7 @@ class FilesystemAiModelProvider : AiModelPlugin {
         return AiModel(
             metadata = EntityMetadata(),
             aiProviderId = FilesystemAIProviderProvider.deterministicId(yaml.providerName),
-            apiName = yaml.apiName,
+            apiModelName = yaml.apiName,
             description = yaml.description,
             alias = yaml.alias,
             priority = yaml.priority,

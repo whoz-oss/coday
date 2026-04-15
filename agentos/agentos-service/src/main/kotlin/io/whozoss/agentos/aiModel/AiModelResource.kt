@@ -23,7 +23,7 @@ data class AiModelResource(
     val namespaceId: UUID? = null,
     val userId: UUID? = null,
     @field:NotBlank
-    val apiName: String,
+    val apiModelName: String,
     val description: String? = null,
     val alias: String? = null,
     val priority: Int = 0,

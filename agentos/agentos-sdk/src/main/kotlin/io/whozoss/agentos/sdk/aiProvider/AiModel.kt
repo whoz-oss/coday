@@ -18,7 +18,7 @@ import java.util.UUID
  * throughout the codebase (e.g. [io.whozoss.agentos.caseFlow.Case] carries namespaceId
  * directly rather than traversing a graph relationship).
  *
- * [apiName] is the real API model identifier sent to the provider (e.g. "claude-haiku-4-5").
+ * [apiModelName] is the real API model identifier sent to the provider (e.g. "claude-haiku-4-5").
  * [alias] is an optional stable contract name (e.g. "SMALL", "BIG") that agent definitions
  * can reference without knowing the underlying model.
  *
@@ -38,7 +38,7 @@ data class AiModel(
     val aiProviderId: UUID,
     val namespaceId: UUID? = null,
     val userId: UUID? = null,
-    val apiName: String,
+    val apiModelName: String,
     val description: String? = null,
     val alias: String? = null,
     val priority: Int = 0,

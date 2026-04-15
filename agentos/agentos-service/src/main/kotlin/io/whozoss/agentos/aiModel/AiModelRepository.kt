@@ -22,7 +22,7 @@ interface AiModelRepository : EntityRepository<AiModel, UUID> {
     fun findByNamespaceId(namespaceId: UUID): List<AiModel>
 
     /**
-     * Find the first non-removed model config under [aiProviderId] whose [AiModel.apiName]
+     * Find the first non-removed model config under [aiProviderId] whose [AiModel.apiModelName]
      * matches [apiName] (exact, case-sensitive). Returns null if none found.
      */
     fun findByAiProviderAndApiName(
