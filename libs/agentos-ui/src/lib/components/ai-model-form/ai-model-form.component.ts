@@ -51,7 +51,7 @@ export class AiModelFormComponent implements OnInit {
       nonNullable: true,
       validators: [Validators.required],
     }),
-    apiName: new FormControl<string>('', {
+    apiModelName: new FormControl<string>('', {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(1)],
     }),
@@ -65,8 +65,8 @@ export class AiModelFormComponent implements OnInit {
     return this.form.controls.aiProviderId
   }
 
-  protected get apiNameControl() {
-    return this.form.controls.apiName
+  protected get apiModelNameControl() {
+    return this.form.controls.apiModelName
   }
 
   protected get aliasControl() {
@@ -122,7 +122,7 @@ export class AiModelFormComponent implements OnInit {
           this.aiProviderIdControl.setValue(model.aiProviderId)
           // Provider cannot be changed after creation — lock the control
           this.aiProviderIdControl.disable()
-          this.apiNameControl.setValue(model.apiName)
+          this.apiModelNameControl.setValue(model.apiModelName)
           this.aliasControl.setValue(model.alias ?? '')
           this.priorityControl.setValue(model.priority ?? 0)
           this.temperatureControl.setValue(model.temperature ?? null)
@@ -147,7 +147,7 @@ export class AiModelFormComponent implements OnInit {
     const payload: AiModel = {
       ...(this.existingModel ?? {}),
       aiProviderId: raw.aiProviderId,
-      apiName: raw.apiName.trim(),
+      apiModelName: raw.apiModelName.trim(),
       alias: raw.alias.trim() || undefined,
       priority: raw.priority,
       temperature: raw.temperature ?? undefined,

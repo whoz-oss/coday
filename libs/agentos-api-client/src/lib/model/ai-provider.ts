@@ -13,11 +13,11 @@ export interface AiProvider {
   namespaceId?: string
   userId?: string
   name: string
+  description?: string
   apiType: AiProviderApiTypeEnum
   baseUrl?: string
   apiKey?: string
 }
-
 export enum AiProviderApiTypeEnum {
   OpenAI = 'OpenAI',
   Anthropic = 'Anthropic',

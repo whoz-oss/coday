@@ -1299,6 +1299,8 @@ components:
         name:
           type: string
           minLength: 1
+        description:
+          type: string
         apiType:
           type: string
           enum:
@@ -1327,9 +1329,11 @@ components:
         userId:
           type: string
           format: uuid
-        apiName:
+        apiModelName:
           type: string
           minLength: 1
+        description:
+          type: string
         alias:
           type: string
         priority:
@@ -1343,7 +1347,7 @@ components:
           format: int32
       required:
       - aiProviderId
-      - apiName
+      - apiModelName
       - priority
     PluginActionResponse:
       type: object

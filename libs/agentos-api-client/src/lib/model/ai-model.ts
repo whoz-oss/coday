@@ -13,7 +13,8 @@ export interface AiModel {
   aiProviderId: string
   namespaceId?: string
   userId?: string
-  apiName: string
+  apiModelName: string
+  description?: string
   alias?: string
   priority: number
   temperature?: number

@@ -60,8 +60,8 @@ export class NamespaceAiModelsComponent {
       return models.map(
         (m): EntityListItem => ({
           id: m.id ?? '',
-          name: m.alias ?? m.apiName,
-          description: m.apiName,
+          name: m.alias ?? m.apiModelName,
+          description: m.apiModelName,
           groupKey: m.aiProviderId,
           groupLabel: providerNames.get(m.aiProviderId) ?? m.aiProviderId,
         })

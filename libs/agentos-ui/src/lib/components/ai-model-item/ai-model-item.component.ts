@@ -34,7 +34,7 @@ export class AiModelItemComponent {
   ]
 
   protected get displayTitle(): string {
-    return this.model.alias ?? this.model.apiName
+    return this.model.alias ?? this.model.apiModelName
   }
 
   protected onMenuAction(key: string): void {

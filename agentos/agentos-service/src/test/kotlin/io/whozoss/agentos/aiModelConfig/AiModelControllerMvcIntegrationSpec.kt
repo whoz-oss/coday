@@ -60,7 +60,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                 .perform(
                     post("/api/ai-models")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "aiProviderId": "${parent.id}", "apiName": "" }"""),
+                        .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "" }"""),
                 ).andExpect(status().isBadRequest)
         }
 
@@ -70,7 +70,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                 .perform(
                     post("/api/ai-models")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "aiProviderId": "${parent.id}", "apiName": "claude-haiku-4-5" }"""),
+                        .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "claude-haiku-4-5" }"""),
                 ).andExpect(status().isCreated)
         }
 
@@ -81,7 +81,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                 .perform(
                     put("/api/ai-models/$id")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "id": "$id", "aiProviderId": "${parent.id}", "apiName": "" }"""),
+                        .content("""{ "id": "$id", "aiProviderId": "${parent.id}", "apiModelName": "" }"""),
                 ).andExpect(status().isBadRequest)
         }
 
@@ -93,7 +93,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                         metadata = EntityMetadata(id = UUID.randomUUID()),
                         aiProviderId = parent.id,
                         namespaceId = namespaceId,
-                        apiName = "gpt-4o-to-update",
+                        apiModelName = "gpt-4o-to-update",
                     ),
                 )
             mockMvc
@@ -101,7 +101,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                     put("/api/ai-models/${created.id}")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
-                            """{ "id": "${created.id}", "aiProviderId": "${parent.id}", "apiName": "gpt-4o-to-update", "alias": "BIG" }""",
+                            """{ "id": "${created.id}", "aiProviderId": "${parent.id}", "apiModelName": "gpt-4o-to-update", "alias": "BIG" }""",
                         ),
                 ).andExpect(status().isOk)
         }

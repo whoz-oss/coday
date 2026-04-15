@@ -24,6 +24,7 @@ model/agent-finished-event.ts
 model/agent-running-event.ts
 model/agent-selected-event.ts
 model/ai-model.ts
+model/ai-provider.ts
 model/answer-event.ts
 model/case-event.ts
 model/case-status-event.ts
@@ -34,7 +35,6 @@ model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts
 model/intention-generated-event.ts
-model/ai-provider.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
