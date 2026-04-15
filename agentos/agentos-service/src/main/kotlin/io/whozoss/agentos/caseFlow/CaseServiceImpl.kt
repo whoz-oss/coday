@@ -9,7 +9,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -243,14 +243,9 @@ class CaseServiceImpl(
                 }
             }.collect { event ->
                 val saved = storeEvent(event)
-                if (event.caseId == caseId && saved !is TextChunkEvent) {
-                    // Push into the runtime's event list so processNextStep can see it
-                    // (e.g. AgentFinishedEvent stops the loop).
-                    // TextChunkEvents are excluded: they are streaming-only fragments
-                    // and must not accumulate in the list that processNextStep scans.
+                if (event.caseId == caseId && event !is TransientCaseEvent) {
                     runtime.pushEvents(listOf(saved))
                 }
-                // emit on the SSE flow — unconditional, chunks must reach the client.
                 runtime.emitEvent(saved)
             }
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
@@ -268,10 +263,7 @@ class CaseServiceImpl(
      */
     private fun storeEvent(event: CaseEvent): CaseEvent =
         when (event) {
-            is TextChunkEvent ->
-                // Streaming-only fragment: superseded by the final MessageEvent.
-                // Return as-is — no persistence, but still emitted on the SSE flow.
-                event
+            is TransientCaseEvent -> event
             else -> caseEventService.create(event)
         }
 

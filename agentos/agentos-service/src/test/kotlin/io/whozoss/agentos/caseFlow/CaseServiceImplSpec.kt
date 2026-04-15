@@ -22,6 +22,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.CoroutineScope
@@ -404,12 +405,10 @@ class CaseServiceImplSpec :
         // TextChunkEvent must not be persisted
         // -------------------------------------------------------------------------
 
-        "TextChunkEvents are not persisted but do appear on the SSE flow" {
-            // TextChunkEvents are streaming-only fragments. They must reach the SSE
-            // flow (for progressive display) but must NOT be written to the event
-            // store, because the final MessageEvent already carries the full text.
-            // They must also NOT be pushed into the runtime's in-memory event list
-            // to avoid bloating the list that processNextStep scans.
+        "TransientCaseEvents are not persisted but do appear on the SSE flow" {
+            // TransientCaseEvents (TextChunkEvent, ThinkingEvent, ...) must reach the
+            // SSE flow for real-time display but must NOT be written to the event store
+            // and must NOT be pushed into the runtime's in-memory event list.
 
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val chunkingAgent =
@@ -419,6 +418,7 @@ class CaseServiceImplSpec :
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
+                            emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
                             emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = "Hello"))
                             emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = " world"))
                             emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName))
@@ -480,11 +480,13 @@ class CaseServiceImplSpec :
             }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
 
-            // TextChunkEvents must NOT be in the persistent store
             val persisted = caseEventService.findByParent(case.id)
-            persisted.filterIsInstance<TextChunkEvent>() shouldBe emptyList()
             // Orchestration events must still be persisted
             persisted.filterIsInstance<AgentFinishedEvent>() shouldHaveAtLeastSize 1
+
+            // TransientCaseEvents must NOT be in the persistent store
+            persisted.filterIsInstance<ThinkingEvent>() shouldBe emptyList()
+            persisted.filterIsInstance<TextChunkEvent>() shouldBe emptyList()
 
             // TextChunkEvents MUST have arrived on the SSE flow
             collectedChunks.size shouldBe 2
