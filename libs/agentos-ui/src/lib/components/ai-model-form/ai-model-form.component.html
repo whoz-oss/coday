@@ -46,6 +46,18 @@
       </div>
 
       <div class="ai-model-form__field">
+        <label class="ai-model-form__label" for="model-description">Description</label>
+        <input
+          id="model-description"
+          class="ai-model-form__input"
+          type="text"
+          placeholder="Optional — short description of this model config"
+          [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="ai-model-form__field">
         <label class="ai-model-form__label" for="model-alias">Alias</label>
         <input
           id="model-alias"

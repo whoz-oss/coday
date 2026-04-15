@@ -33,6 +33,18 @@
       </div>
 
       <div class="ai-provider-form__field">
+        <label class="ai-provider-form__label" for="llm-description">Description</label>
+        <input
+          id="llm-description"
+          class="ai-provider-form__input"
+          type="text"
+          placeholder="Optional — short description of this provider"
+          [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="ai-provider-form__field">
         <label class="ai-provider-form__label" for="llm-base-url">Base URL</label>
         <input
           id="llm-base-url"

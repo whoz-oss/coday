@@ -37,6 +37,7 @@ export class AiProviderFormComponent implements OnInit {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(1)],
     }),
+    description: new FormControl<string | null>(null),
     apiType: new FormControl<AiProviderApiTypeEnum>(AiProviderApiTypeEnum.OpenAI, {
       nonNullable: true,
       validators: [Validators.required],
@@ -47,6 +48,10 @@ export class AiProviderFormComponent implements OnInit {
 
   protected get nameControl() {
     return this.form.controls.name
+  }
+
+  protected get descriptionControl() {
+    return this.form.controls.description
   }
 
   protected get apiTypeControl() {
@@ -85,6 +90,7 @@ export class AiProviderFormComponent implements OnInit {
         next: (config) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
+          this.descriptionControl.setValue(config.description ?? null)
           this.apiTypeControl.setValue(config.apiType)
           this.baseUrlControl.setValue(config.baseUrl ?? '')
           this.apiKeyControl.setValue(config.apiKey ?? '')
@@ -106,6 +112,7 @@ export class AiProviderFormComponent implements OnInit {
       ...(this.existingConfig ?? {}),
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
+      description: this.descriptionControl.value?.trim() || undefined,
       apiType: this.apiTypeControl.value,
       baseUrl: this.baseUrlControl.value.trim() || undefined,
       apiKey: this.apiKeyControl.value.trim() || undefined,
