@@ -1,3 +1,14 @@
+## 0.117.2 (2026-04-15)
+
+### 🩹 Fixes
+
+- #752 use chooseOption for tool confirmation prompt instead of promptText ([#753](https://github.com/whoz-oss/coday/pull/753), [#752](https://github.com/whoz-oss/coday/issues/752))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.117.1 (2026-04-13)
 
 ### 🩹 Fixes
