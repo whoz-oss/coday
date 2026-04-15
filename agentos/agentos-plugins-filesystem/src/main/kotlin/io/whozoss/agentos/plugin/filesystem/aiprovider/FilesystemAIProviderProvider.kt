@@ -72,6 +72,7 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
         return AiProvider(
             metadata = EntityMetadata(id = deterministicId(yamlModel.name)),
             name = yamlModel.name,
+            description = yamlModel.description,
             apiType = AiApiType.valueOf(yamlModel.apiType),
             baseUrl = yamlModel.baseUrl,
             apiKey = yamlModel.apiKey,

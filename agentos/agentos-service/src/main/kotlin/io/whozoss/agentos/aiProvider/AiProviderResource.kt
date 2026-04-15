@@ -27,6 +27,7 @@ data class AiProviderResource(
     val userId: UUID? = null,
     @field:NotBlank
     val name: String,
+    val description: String? = null,
     @field:NotNull
     val apiType: AiApiType?,
     val baseUrl: String? = null,

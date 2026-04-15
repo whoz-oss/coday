@@ -24,6 +24,7 @@ data class AiModelResource(
     val userId: UUID? = null,
     @field:NotBlank
     val apiName: String,
+    val description: String? = null,
     val alias: String? = null,
     val priority: Int = 0,
     val temperature: Double? = null,

@@ -27,12 +27,14 @@ class AiProviderControllerSpec :
             nsId: UUID? = namespaceId,
             uId: UUID? = null,
             name: String = "anthropic",
+            description: String? = null,
             apiKey: String? = null,
         ) = AiProvider(
             metadata = EntityMetadata(id = id),
             namespaceId = nsId,
             userId = uId,
             name = name,
+            description = description,
             apiType = AiApiType.Anthropic,
             apiKey = apiKey,
         )
@@ -42,12 +44,14 @@ class AiProviderControllerSpec :
             nsId: UUID? = namespaceId,
             uId: UUID? = null,
             name: String = "anthropic",
+            description: String? = null,
             apiKey: String? = null,
         ) = AiProviderResource(
             id = id,
             namespaceId = nsId,
             userId = uId,
             name = name,
+            description = description,
             apiType = AiApiType.Anthropic,
             apiKey = apiKey,
         )
@@ -55,6 +59,15 @@ class AiProviderControllerSpec :
         // -------------------------------------------------------------------------
         // toResource
         // -------------------------------------------------------------------------
+
+        "toResource maps description" {
+            val result = controller.toResource(config(description = "Anthropic Claude provider"))
+            result.description shouldBe "Anthropic Claude provider"
+        }
+
+        "toResource maps null description" {
+            controller.toResource(config(description = null)).description shouldBe null
+        }
 
         "toResource masks a long apiKey" {
             controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe "sk-a****mnop"

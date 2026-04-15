@@ -29,6 +29,7 @@ class AiModelControllerSpec :
         fun model(
             id: UUID = UUID.randomUUID(),
             apiName: String = "claude-haiku-4-5",
+            description: String? = null,
             alias: String? = "SMALL",
             priority: Int = 0,
             temperature: Double? = 0.3,
@@ -38,6 +39,7 @@ class AiModelControllerSpec :
             aiProviderId = aiProviderId,
             namespaceId = namespaceId,
             apiName = apiName,
+            description = description,
             alias = alias,
             priority = priority,
             temperature = temperature,
@@ -47,6 +49,7 @@ class AiModelControllerSpec :
         fun resource(
             id: UUID? = UUID.randomUUID(),
             apiName: String = "claude-haiku-4-5",
+            description: String? = null,
             alias: String? = "SMALL",
             priority: Int = 0,
         ) = AiModelResource(
@@ -54,6 +57,7 @@ class AiModelControllerSpec :
             aiProviderId = aiProviderId,
             namespaceId = namespaceId,
             apiName = apiName,
+            description = description,
             alias = alias,
             priority = priority,
         )
@@ -64,7 +68,7 @@ class AiModelControllerSpec :
 
         "toResource maps all fields correctly" {
             val id = UUID.randomUUID()
-            val m = model(id = id, apiName = "claude-opus-4-6", alias = "BIG", priority = 5, temperature = 0.7, maxTokens = 4096)
+            val m = model(id = id, apiName = "claude-opus-4-6", description = "A powerful model", alias = "BIG", priority = 5, temperature = 0.7, maxTokens = 4096)
 
             val result = controller.toResource(m)
 
@@ -72,10 +76,16 @@ class AiModelControllerSpec :
             result.aiProviderId shouldBe aiProviderId
             result.namespaceId shouldBe namespaceId
             result.apiName shouldBe "claude-opus-4-6"
+            result.description shouldBe "A powerful model"
             result.alias shouldBe "BIG"
             result.priority shouldBe 5
             result.temperature shouldBe 0.7
             result.maxTokens shouldBe 4096
+        }
+
+        "toResource maps null description" {
+            val m = model(description = null)
+            controller.toResource(m).description shouldBe null
         }
 
         // -------------------------------------------------------------------------

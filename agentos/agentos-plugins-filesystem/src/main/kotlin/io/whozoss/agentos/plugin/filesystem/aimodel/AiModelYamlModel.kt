@@ -20,6 +20,7 @@ package io.whozoss.agentos.plugin.filesystem.aimodel
 data class AiModelYamlModel(
     val apiName: String,
     val providerName: String,
+    val description: String? = null,
     val alias: String? = null,
     val priority: Int = 0,
     val temperature: Double? = null,

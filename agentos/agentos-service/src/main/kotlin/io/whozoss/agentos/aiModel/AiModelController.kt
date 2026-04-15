@@ -47,6 +47,7 @@ class AiModelController(
             namespaceId = entity.namespaceId,
             userId = entity.userId,
             apiName = entity.apiName,
+            description = entity.description,
             alias = entity.alias,
             priority = entity.priority,
             temperature = entity.temperature,
@@ -71,6 +72,7 @@ class AiModelController(
             namespaceId = null,
             userId = resource.userId,
             apiName = resource.apiName,
+            description = resource.description,
             alias = resource.alias,
             priority = resource.priority,
             temperature = resource.temperature,
@@ -90,6 +92,7 @@ class AiModelController(
     ): AiModel =
         existing.copy(
             apiName = resource.apiName,
+            description = resource.description,
             alias = resource.alias,
             priority = resource.priority,
             temperature = resource.temperature,

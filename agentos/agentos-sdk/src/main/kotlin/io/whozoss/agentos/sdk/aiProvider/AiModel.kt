@@ -39,6 +39,7 @@ data class AiModel(
     val namespaceId: UUID? = null,
     val userId: UUID? = null,
     val apiName: String,
+    val description: String? = null,
     val alias: String? = null,
     val priority: Int = 0,
     val temperature: Double? = null,

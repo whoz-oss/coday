@@ -31,6 +31,7 @@ data class AiProvider(
     val namespaceId: UUID? = null,
     val userId: UUID? = null,
     val name: String,
+    val description: String? = null,
     val apiType: AiApiType,
     val baseUrl: String? = null,
     val apiKey: String? = null,
