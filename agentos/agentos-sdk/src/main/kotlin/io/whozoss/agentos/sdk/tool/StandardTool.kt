@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.tool
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.sdk.auth.ToolCategory
 
 interface StandardTool<T> {
     val name: String
@@ -8,6 +9,8 @@ interface StandardTool<T> {
     val inputSchema: String
     val version: String
     val paramType: Class<T>?
+
+    val category: ToolCategory get() = ToolCategory.READ_ONLY
 
     fun execute(input: T?): String
 

@@ -431,6 +431,80 @@ class CaseRuntimeSpec : StringSpec() {
             lambdaResultDuringRun shouldBe true
         }
 
+        // -------------------------------------------------------------------------
+        // CallerContext integration
+        // -------------------------------------------------------------------------
+
+        "addUserMessage updates callerContext with the actor's id and displayName" {
+            val (runtime) = buildRuntime()
+
+            runtime.addUserMessage(userActor, userMessage)
+
+            runtime.callerContext.getCallerId() shouldBe userActor.id
+            runtime.callerContext.getCallerDisplayName() shouldBe userActor.displayName
+        }
+
+        "callerContext is updated BEFORE the MessageEvent is stored" {
+            val runtimeId = UUID.randomUUID()
+            var callerIdAtStoreTime: String? = "NOT_SET"
+
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    updateStatus = { _, _ -> },
+                    storeEvent = { event ->
+                        if (event is MessageEvent && event.actor.role == ActorRole.USER) {
+                            callerIdAtStoreTime = runtime.callerContext.getCallerId()
+                        }
+                        event
+                    },
+                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "default-agent")) },
+                    runAgent = { _, _, _, _ -> },
+                )
+
+            runtime.addUserMessage(userActor, userMessage)
+
+            callerIdAtStoreTime shouldBe userActor.id
+        }
+
+        "runAgent receives the callerContext userId as UUID" {
+            val runtimeId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            val actor = Actor(id = userId.toString(), displayName = "Caller User", role = ActorRole.USER)
+            var capturedUserId: UUID? = null
+
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    updateStatus = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, uid, _ ->
+                        capturedUserId = uid
+                        // Push AgentFinishedEvent so the loop exits cleanly
+                        runtime.pushEvents(
+                            listOf(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = runtimeId,
+                                    agentId = UUID.nameUUIDFromBytes("agent".toByteArray()),
+                                    agentName = "agent",
+                                ),
+                            ),
+                        )
+                    },
+                )
+
+            runtime.addUserMessage(actor, userMessage)
+            runtime.run()
+
+            capturedUserId shouldBe userId
+        }
+
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
             val agentName = "gemini-flash"
             val caseId = UUID.randomUUID()

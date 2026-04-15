@@ -14,4 +14,5 @@ data class AgentExecutionContext(
     val namespaceId: UUID,
     val caseId: UUID,
     val userId: UUID? = null,
+    val callerDisplayName: String? = null,
 )
