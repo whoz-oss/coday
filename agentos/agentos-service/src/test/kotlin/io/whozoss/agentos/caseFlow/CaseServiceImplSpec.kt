@@ -404,10 +404,12 @@ class CaseServiceImplSpec :
         // TextChunkEvent must not be persisted
         // -------------------------------------------------------------------------
 
-        "TextChunkEvents emitted by the agent are not persisted in the event store" {
+        "TextChunkEvents are not persisted but do appear on the SSE flow" {
             // TextChunkEvents are streaming-only fragments. They must reach the SSE
             // flow (for progressive display) but must NOT be written to the event
             // store, because the final MessageEvent already carries the full text.
+            // They must also NOT be pushed into the runtime's in-memory event list
+            // to avoid bloating the list that processNextStep scans.
 
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val chunkingAgent =
@@ -417,28 +419,9 @@ class CaseServiceImplSpec :
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
-                            emit(
-                                TextChunkEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = caseId,
-                                    chunk = "Hello",
-                                ),
-                            )
-                            emit(
-                                TextChunkEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = caseId,
-                                    chunk = " world",
-                                ),
-                            )
-                            emit(
-                                AgentFinishedEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = caseId,
-                                    agentId = agentId,
-                                    agentName = agentName,
-                                ),
-                            )
+                            emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = "Hello"))
+                            emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = " world"))
+                            emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName))
                         }
                     }
                 }
@@ -451,12 +434,44 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+
+            // Collect TextChunkEvents from the SSE flow until the case reaches IDLE.
+            // Subscribe BEFORE sending the message so no chunks are missed.
+            val collectedChunks = mutableListOf<TextChunkEvent>()
+            val collectorScope = CoroutineScope(Dispatchers.IO)
+            val collectJob: Job =
+                collectorScope.launch {
+                    withTimeout(8_000) {
+                        runtime.events
+                            .filterIsInstance<CaseStatusEvent>()
+                            .takeWhile { it.status != CaseStatus.IDLE }
+                            .toList()
+                        // IDLE reached — stop. Chunks were collected in parallel below.
+                    }
+                }
+            val chunkCollectJob: Job =
+                collectorScope.launch {
+                    withTimeout(8_000) {
+                        runtime.events
+                            .filterIsInstance<TextChunkEvent>()
+                            .takeWhile { event ->
+                                collectedChunks.add(event)
+                                true // keep collecting until the scope is cancelled
+                            }.toList()
+                    }
+                }
+
+            Thread.sleep(100) // give collectors time to subscribe
 
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("hi")),
             )
+
+            collectJob.join()
+            chunkCollectJob.cancel() // stop the infinite chunk collector once IDLE is reached
 
             val deadline = System.currentTimeMillis() + 5_000
             while (System.currentTimeMillis() < deadline) {
@@ -465,10 +480,16 @@ class CaseServiceImplSpec :
             }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
 
+            // TextChunkEvents must NOT be in the persistent store
             val persisted = caseEventService.findByParent(case.id)
             persisted.filterIsInstance<TextChunkEvent>() shouldBe emptyList()
-            // The AgentFinishedEvent and orchestration events are still persisted
+            // Orchestration events must still be persisted
             persisted.filterIsInstance<AgentFinishedEvent>() shouldHaveAtLeastSize 1
+
+            // TextChunkEvents MUST have arrived on the SSE flow
+            collectedChunks.size shouldBe 2
+            collectedChunks[0].chunk shouldBe "Hello"
+            collectedChunks[1].chunk shouldBe " world"
         }
 
         "agent runs once per message when two messages are sent sequentially" {

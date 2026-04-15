@@ -243,12 +243,14 @@ class CaseServiceImpl(
                 }
             }.collect { event ->
                 val saved = storeEvent(event)
-                if (event.caseId == caseId) {
+                if (event.caseId == caseId && saved !is TextChunkEvent) {
                     // Push into the runtime's event list so processNextStep can see it
-                    // (e.g. AgentFinishedEvent stops the loop)
+                    // (e.g. AgentFinishedEvent stops the loop).
+                    // TextChunkEvents are excluded: they are streaming-only fragments
+                    // and must not accumulate in the list that processNextStep scans.
                     runtime.pushEvents(listOf(saved))
                 }
-                // emit on the SSE flow.
+                // emit on the SSE flow — unconditional, chunks must reach the client.
                 runtime.emitEvent(saved)
             }
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
@@ -264,10 +266,14 @@ class CaseServiceImpl(
      * Persisting them would bloat the event store without adding any replay value,
      * so they are returned as-is without being written to the repository.
      */
-    private fun storeEvent(event: CaseEvent): CaseEvent {
-        if (event is TextChunkEvent) return event
-        return caseEventService.create(event)
-    }
+    private fun storeEvent(event: CaseEvent): CaseEvent =
+        when (event) {
+            is TextChunkEvent ->
+                // Streaming-only fragment: superseded by the final MessageEvent.
+                // Return as-is — no persistence, but still emitted on the SSE flow.
+                event
+            else -> caseEventService.create(event)
+        }
 
     // ========================================
     // Status transitions
