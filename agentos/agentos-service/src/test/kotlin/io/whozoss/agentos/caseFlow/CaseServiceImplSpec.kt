@@ -21,6 +21,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.CoroutineScope
@@ -398,6 +399,77 @@ class CaseServiceImplSpec :
         // -------------------------------------------------------------------------
         // Second message after the first completes
         // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // TextChunkEvent must not be persisted
+        // -------------------------------------------------------------------------
+
+        "TextChunkEvents emitted by the agent are not persisted in the event store" {
+            // TextChunkEvents are streaming-only fragments. They must reach the SSE
+            // flow (for progressive display) but must NOT be written to the event
+            // store, because the final MessageEvent already carries the full text.
+
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val chunkingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                TextChunkEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    chunk = "Hello",
+                                ),
+                            )
+                            emit(
+                                TextChunkEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    chunk = " world",
+                                ),
+                            )
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+
+            val agentService =
+                mockk<AgentService> {
+                    every { getDefaultAgentName() } returns agentName
+                    every { findAgentByName(agentName, any()) } returns chunkingAgent
+                }
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService)
+            val case = service.create(Case(namespaceId = namespaceId))
+
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hi")),
+            )
+
+            val deadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < deadline) {
+                if (service.getById(case.id).status == CaseStatus.IDLE) break
+                Thread.sleep(50)
+            }
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+
+            val persisted = caseEventService.findByParent(case.id)
+            persisted.filterIsInstance<TextChunkEvent>() shouldBe emptyList()
+            // The AgentFinishedEvent and orchestration events are still persisted
+            persisted.filterIsInstance<AgentFinishedEvent>() shouldHaveAtLeastSize 1
+        }
 
         "agent runs once per message when two messages are sent sequentially" {
             var runCallCount = 0
