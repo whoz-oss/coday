@@ -12,6 +12,7 @@ export * from './lib/memory.service'
 export * from './lib/project.service'
 export * from './lib/project-state.service'
 export * from './lib/prompt.service'
+export * from './lib/messaging-gateway.service'
 export * from './lib/prompt-execution.service'
 export * from './lib/scheduler.service'
 

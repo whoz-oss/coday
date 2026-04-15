@@ -9,6 +9,7 @@ import {
   ThreadCleanupService,
   PromptService,
   SchedulerService,
+  MessagingGatewayService,
   PromptExecutionService,
   ConfigServiceRegistry,
   ProjectService,
@@ -27,6 +28,8 @@ import { AgentCrudService } from '@coday/service'
 import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
+import { registerMessagingGatewayRoutes } from './lib/messaging-gateway.routes'
+import { SlackConnector } from './lib/slack-connector'
 import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
@@ -204,6 +207,9 @@ debugLog('INIT', 'Prompt service initialized')
 
 // Create prompt execution service
 promptExecutionService = new PromptExecutionService(promptService)
+
+// Create messaging gateway service
+const messagingGatewayService = new MessagingGatewayService()
 debugLog('INIT', 'Prompt execution service initialized (will be initialized with dependencies after thread manager)')
 
 // Initialize thread file service for REST API endpoints
@@ -218,11 +224,22 @@ const mcpPool = new McpInstancePool()
 debugLog('INIT', 'MCP instance pool initialized')
 
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, promptService, mcpPool)
+const threadCodayManager = new ThreadCodayManager(
+  logger,
+  projectService,
+  threadService,
+  promptService,
+  mcpPool,
+  messagingGatewayService
+)
 
 // Initialize prompt execution dependencies now that thread manager is ready
 promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
 debugLog('INIT', 'Prompt execution service initialized')
+
+// Initialize messaging gateway service
+messagingGatewayService.initialize(threadCodayManager, threadService, codayOptions, logger)
+debugLog('INIT', 'Messaging gateway service initialized')
 
 debugLog('INIT', 'Webhook service initialized with prompt execution delegation')
 
@@ -301,6 +318,9 @@ registerPromptRoutes(app, promptService, getUsername)
 // Register prompt execution routes (webhook execution)
 registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 
+// Register messaging gateway routes
+registerMessagingGatewayRoutes(app, messagingGatewayService)
+
 // Register project management routes
 registerProjectRoutes(app, projectService)
 
@@ -372,6 +392,7 @@ if (process.env.BUILD_ENV !== 'development') {
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
+let slackConnector: SlackConnector | null = null
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
@@ -431,6 +452,30 @@ PORT_PROMISE.then(async (PORT) => {
   } catch (error) {
     console.error('Failed to initialize scheduler service:', error)
   }
+
+  // Start Slack Connector if SLACK integration is configured with appToken
+  try {
+    const projectName = resolvedProjectName ?? 'coday'
+    const project = projectService.getProject(projectName)
+    const slackConfig = project?.config?.integration?.SLACK
+
+    if (slackConfig?.apiKey && slackConfig?.appToken) {
+      slackConnector = new SlackConnector(
+        slackConfig.apiKey, // xoxb-... bot token
+        slackConfig.appToken, // xapp-... app-level token
+        slackConfig.defaultProject ?? projectName,
+        slackConfig.channels ?? {}, // channel -> project mapping
+        messagingGatewayService
+      )
+      await slackConnector.start()
+      messagingGatewayService.registerConnector(slackConnector)
+      debugLog('INIT', `Slack Connector started for project '${projectName}'`)
+    } else {
+      debugLog('INIT', 'Slack Connector not started (SLACK integration missing apiKey or appToken)')
+    }
+  } catch (error) {
+    console.error('Failed to start Slack Connector:', error)
+  }
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
@@ -464,6 +509,12 @@ async function gracefulShutdown(signal: string) {
     if (cleanupService) {
       console.log('Stopping thread cleanup service...')
       await cleanupService.stop()
+    }
+
+    // Stop Slack Connector if running
+    if (slackConnector) {
+      console.log('Stopping Slack Connector...')
+      await slackConnector.stop()
     }
 
     // Cleanup thread-based Coday instances

@@ -8,6 +8,7 @@ export const Integrations: Record<string, string[]> = {
   GIT_WORKTREE: [],
   GITLAB: [],
   JIRA: [],
+  MESSAGING: [],
   SLACK: [],
   ZENDESK: [],
   BASECAMP: [],

@@ -432,6 +432,15 @@ export class OpenaiClient extends AiClient {
       role: 'system',
     }
 
+    // Prepend system messages: static instructions + optional ephemeral context
+    const systemMessages: ChatCompletionMessageParam[] = [systemInstructionMessage]
+    if (agent.activeEphemeralContext) {
+      systemMessages.push({
+        content: agent.activeEphemeralContext,
+        role: 'system',
+      })
+    }
+
     const openaiMessages = messages.flatMap((msg): ChatCompletionMessageParam[] => {
       // Handle SummaryEvent - just the summary text
       if (msg instanceof SummaryEvent) {
@@ -603,7 +612,7 @@ export class OpenaiClient extends AiClient {
       throw new Error(`Unknown message type: ${(msg as any).type}`)
     })
 
-    return [systemInstructionMessage, ...openaiMessages]
+    return [...systemMessages, ...openaiMessages]
   }
 
   private async updateAssistantThread(

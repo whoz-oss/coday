@@ -16,6 +16,7 @@ import {
   IntegrationConfigService,
   MemoryService,
   McpConfigService,
+  MessagingGatewayService,
   PromptService,
   ProjectService,
   ThreadService,
@@ -50,7 +51,8 @@ class ThreadCodayInstance {
     private readonly threadService: ThreadService,
     private readonly promptService: PromptService,
     private readonly mcpPool: McpInstancePool,
-    private readonly onTimeout: (threadId: string) => void
+    private readonly onTimeout: (threadId: string) => void,
+    private readonly messagingGateway?: MessagingGatewayService
   ) {
     // Start inactivity timeout
     this.resetInactivityTimeout()
@@ -219,6 +221,7 @@ class ThreadCodayInstance {
       prompt: this.promptService,
       logger: this.logger,
       options: this.options,
+      messagingGateway: this.messagingGateway,
     })
     console.log(`[THREAD_CODAY] Instance created for thread '${this.threadId}'`)
 
@@ -400,7 +403,8 @@ export class ThreadCodayManager {
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
     private readonly promptService: PromptService,
-    private readonly mcpPool: McpInstancePool
+    private readonly mcpPool: McpInstancePool,
+    private readonly messagingGateway?: MessagingGatewayService
   ) {
     // Start global heartbeat mechanism
     this.heartbeatInterval = setInterval(() => this.sendHeartbeats(), ThreadCodayManager.HEARTBEAT_INTERVAL)
@@ -456,7 +460,8 @@ export class ThreadCodayManager {
         this.threadService,
         this.promptService,
         this.mcpPool,
-        this.handleInstanceTimeout
+        this.handleInstanceTimeout,
+        this.messagingGateway
       )
       this.instances.set(threadId, instance)
     } else {
@@ -498,7 +503,8 @@ export class ThreadCodayManager {
         this.threadService,
         this.promptService,
         this.mcpPool,
-        this.handleInstanceTimeout
+        this.handleInstanceTimeout,
+        this.messagingGateway
       )
       instance.markAsOneshot() // Mark as oneshot for shorter timeout
       this.instances.set(threadId, instance)
