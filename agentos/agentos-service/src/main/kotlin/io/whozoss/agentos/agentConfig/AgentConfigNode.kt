@@ -1,6 +1,5 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.agentConfig
 
-import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
