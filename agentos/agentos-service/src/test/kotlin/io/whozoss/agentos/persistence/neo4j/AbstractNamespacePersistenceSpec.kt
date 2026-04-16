@@ -75,5 +75,18 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
             found shouldHaveSize 1
             found.first().name shouldBe "updated"
         }
+
+        "configPath is persisted and retrieved" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "coday-project", configPath = "/opt/coday"))
+            val found = repo.findByIds(listOf(ns.id)).first()
+            found.configPath shouldBe "/opt/coday"
+        }
+
+        "configPath can be cleared by updating to null" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "project", configPath = "/opt/coday"))
+            repo.save(ns.copy(configPath = null))
+            val found = repo.findByIds(listOf(ns.id)).first()
+            found.configPath shouldBe null
+        }
     }
 }
