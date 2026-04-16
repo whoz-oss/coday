@@ -366,7 +366,14 @@ export class Coday {
     if (!this.options.thread) {
       throw Error('No thread given, cannot start Coday instance')
     }
-    await this.aiThreadService.select(this.options.thread)
+    // Directly assign the resolved thread to context so it is guaranteed to be set
+    // before any agent or tool execution begins. Relying solely on the RxJS subscription
+    // in the constructor creates a race condition: select() may return before the
+    // subscription fires, leaving context.aiThread undefined when run() continues.
+    const thread = await this.aiThreadService.select(this.options.thread)
+    if (this.context) {
+      this.context.aiThread = thread
+    }
   }
 
   private async initCommand(): Promise<string | undefined> {
