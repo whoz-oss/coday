@@ -4,7 +4,7 @@
 
 All domain objects implement `Entity` from `agentos-sdk`, which provides a UUID id, audit timestamps, and a soft-delete flag via `EntityMetadata`.
 
-`EntityService<EntityType, ParentId>` defines the CRUD contract. `EntityRepository<EntityType, ParentId>` is the persistence abstraction. The SDK also ships `InMemoryEntityRepository`, a thread-safe, sorted in-memory base — it is used by in-memory repository subclasses (one per entity package) that activate under the default `in-memory` persistence mode and in the `test` profile. Production runs use Neo4j-backed implementations (see below).
+`EntityService<EntityType, ParentId>` defines the CRUD contract. `EntityRepository<EntityType, ParentId>` is the persistence abstraction. Production runs use Neo4j-backed implementations (see below).
 
 ## Entity vs Resource (DTO)
 
@@ -53,27 +53,7 @@ interface MyEntityRepository : EntityRepository<MyEntity, UUID>
 
 The `ParentId` type matches the field used to scope the entity (usually `UUID`, or `String` for root-level entities like `Namespace`).
 
-### 3. In-memory implementation
-
-**Location:** `agentos-service/src/main/kotlin/io/whozoss/agentos/<package>/InMemoryMyEntityRepository.kt`
-
-Required for the `test` profile and for the OpenAPI spec generation task, which starts the application without Neo4j.
-
-```kotlin
-@Repository
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' != 'neo4j' " +
-        "and '\${agentos.persistence.mode:in-memory}' != 'embedded-neo4j'",
-)
-class InMemoryMyEntityRepository :
-    MyEntityRepository,
-    EntityRepository<MyEntity, UUID> by InMemoryEntityRepository(
-        parentIdExtractor = { it.parentId },
-        comparator = compareBy { it.name },
-    )
-```
-
-### 4. Neo4j persistence
+### 3. Neo4j persistence
 
 Three files in `persistence/neo4j/`, plus a line in `Neo4jPersistenceConfiguration`.
 
@@ -170,7 +150,7 @@ fun neo4jMyEntityRepository(
 
 > **Critical:** omitting this registration causes the Spring context to fail in both `neo4j` and `embedded-neo4j` profiles — and this breaks *all* Neo4j integration tests, not just the new ones, because the entire context fails to load.
 
-### 5. Service interface + impl
+### 4. Service interface + impl
 
 ```kotlin
 // MyEntityService.kt
@@ -190,7 +170,7 @@ class MyEntityServiceImpl(
 }
 ```
 
-### 6. HTTP resource + controller
+### 5. HTTP resource + controller
 
 ```kotlin
 // MyEntityResource.kt
@@ -222,15 +202,15 @@ class MyEntityController(
 
 The six standard endpoints (`GET /{id}`, `POST /by-ids`, `GET /by-parentId/{parentId}`, `POST`, `PUT /{id}`, `DELETE /{id}`) are inherited. Override only what needs different behaviour.
 
-### 7. Tests
+### 6. Tests
 
 Two complementary test classes (see `testing.md` for the full rationale):
 
 **`MyEntityControllerUnitSpec`** (StringSpec, no Spring) — instantiate the controller directly with MockK stubs. Cover `toResource`, `toDomain`, and every inherited endpoint (happy path + 404 cases).
 
-**`MyEntityControllerIntegrationSpec`** (`@SpringBootTest` + `@ActiveProfiles("test")`) — verify that `@Valid` fires through the dispatcher. Test at minimum: missing required field → 400, blank required field → 400, valid payload → 201/200. The `test` profile activates in-memory persistence, so no Neo4j needed.
+**`MyEntityControllerIntegrationSpec`** (`@SpringBootTest` + `@ActiveProfiles("test")`) — verify that `@Valid` fires through the dispatcher. Test at minimum: missing required field → 400, blank required field → 400, valid payload → 201/200.
 
-### 8. Regenerate the OpenAPI spec
+### 7. Regenerate the OpenAPI spec
 
 ```bash
 nx run agentos-service:regenerate
@@ -240,16 +220,6 @@ Commit the updated `agentos/openapi/agentos-openapi.yaml` alongside the Kotlin c
 
 ---
 
-## Persistence modes
-
-| `agentos.persistence.mode` | What activates | When used |
-|---|---|---|
-| `in-memory` (default) | `InMemory*Repository` classes (one per entity package) | Local dev without Neo4j, `test` profile |
-| `neo4j` | `Neo4jPersistenceConfiguration` + SDN repositories | Production, staging |
-| `embedded-neo4j` | Same as `neo4j` but with harness-managed Driver | Neo4j integration tests (CI) |
-
-When adding a new entity, implementations for **both** modes are required. Missing either causes the Spring context to fail on startup for the corresponding profile.
-
 ## Package layout
 
 ```
@@ -257,7 +227,6 @@ agentos-service/src/main/kotlin/io/whozoss/agentos/
   <package>/
     MyEntity.kt
     MyEntityRepository.kt
-    InMemoryMyEntityRepository.kt
     MyEntityService.kt
     MyEntityServiceImpl.kt
     MyEntityResource.kt
