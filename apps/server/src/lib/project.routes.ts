@@ -453,17 +453,31 @@ export function registerProjectRoutes(
         const worktreeProject = projectService.getProject(worktreeProjectName)
         const worktreePath = worktreeProject?.config?.path
 
-        // Remove git worktree from disk first
+        // Remove git worktree from disk and delete the associated branch
         if (worktreePath) {
           const sourceProject = projectService.getProject(name)
           const sourcePath = sourceProject?.config?.path
           if (sourcePath) {
+            // Detect the branch name checked out in the worktree before removing it
+            const branchName = await new Promise<string | null>((resolve) => {
+              execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: worktreePath }, (err, stdout) =>
+                resolve(err ? null : stdout.trim())
+              )
+            })
+
             await new Promise<void>((resolve) => {
               execFile('git', ['worktree', 'remove', '--force', worktreePath], { cwd: sourcePath }, () => resolve())
             })
             await new Promise<void>((resolve) => {
               execFile('git', ['worktree', 'prune'], { cwd: sourcePath }, () => resolve())
             })
+
+            // Delete the local branch so recreating a mission with the same ticket works
+            if (branchName && branchName !== 'HEAD') {
+              await new Promise<void>((resolve) => {
+                execFile('git', ['branch', '-D', branchName], { cwd: sourcePath }, () => resolve())
+              })
+            }
           }
         }
 
