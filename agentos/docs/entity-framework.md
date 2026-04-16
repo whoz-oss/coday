@@ -14,8 +14,6 @@ Domain entities must be annotated `@JsonIgnoreProperties(ignoreUnknown = true)` 
 
 `EntityService<T, P>` (service: `entity/EntityService.kt`) is the business-logic contract with the same shape plus a `getById` convenience that throws `ResourceNotFoundException` on miss.
 
-`InMemoryEntityRepository<T, P>` (service: `entity/InMemoryEntityRepository.kt`) is the generic in-memory implementation. It maintains a primary map by entity id and a secondary index by parent id, kept in sorted order via a caller-supplied `Comparator`. Used as the default/test persistence backend via Kotlin delegation.
-
 `EntityController<EntityType, ParentIdentifier, ResourceType>` (service: `entity/EntityController.kt`) is the abstract REST base. Concrete controllers extend it, declare `@RestController` + `@RequestMapping`, and implement two mapping methods:
 - `toResource(entity)` — domain to HTTP DTO
 - `toDomain(resource)` — HTTP DTO to domain
@@ -31,12 +29,11 @@ Domain entities are never exposed directly. Each controller defines a companion 
 
 ## Persistence
 
-Three modes are available, selected via `agentos.persistence.mode`:
+Two modes are available, selected via `agentos.persistence.mode`:
 
 | Mode | Beans active |
 |---|---|
-| `in-memory` (default) | `InMemory*Repository` beans registered via `@ConditionalOnExpression` |
-| `embedded-neo4j` | `Neo4jPersistenceConfiguration` active; in-process Neo4j engine |
+| `embedded-neo4j` (default) | `Neo4jPersistenceConfiguration` active; in-process Neo4j engine |
 | `neo4j` | `Neo4jPersistenceConfiguration` active; standalone Neo4j server |
 
 `Neo4jPersistenceConfiguration` (`config/Neo4jPersistenceConfiguration.kt`) registers one `@Bean` per entity type, wiring the Spring Data Neo4j interface into a hand-written implementation class.
@@ -63,7 +60,6 @@ Use `AgentConfig` (namespace-scoped, UUID parent) or `Namespace` (root-level, St
   MyEntityServiceImpl.kt               # @Service, delegates to repository
   MyEntityResource.kt                  # HTTP DTO, @Schema(name="MyEntity"), Bean Validation
   MyEntityController.kt                # @RestController, extends EntityController
-  InMemoryMyEntityRepository.kt        # @Repository @ConditionalOnExpression(not neo4j)
 persistence/neo4j/
   MyEntityNode.kt                      # @Node, flat fields, toDomain/fromDomain
   MyEntityNodeNeo4jRepository.kt       # Neo4jRepository<MyEntityNode, String>
