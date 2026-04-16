@@ -49,6 +49,7 @@ import kotlin.time.measureTime
  *
  * This is simpler but gives less control over the orchestration loop
  * compared to AgentAdvanced.
+ *
  */
 class AgentSimple(
     override val metadata: EntityMetadata = EntityMetadata(),

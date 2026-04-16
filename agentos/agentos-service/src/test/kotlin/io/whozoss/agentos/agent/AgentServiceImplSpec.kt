@@ -29,7 +29,7 @@ class AgentServiceImplSpec : StringSpec() {
     private val namespaceService: NamespaceService = mockk()
     private val integrationConfigService: IntegrationConfigService = mockk()
     private val userService: UserService = mockk(relaxed = true)
-    private val agentService = AgentServiceImpl(chatClientProvider, toolRegistryService, aiModelRegistry, namespaceService, integrationConfigService, userService)
+    private val agentService = AgentServiceImpl(chatClientProvider, aiModelRegistry, toolRegistryService, namespaceService, integrationConfigService, userService)
 
     // A context and matching namespace used across most tests
     private val namespaceId: UUID = UUID.randomUUID()

@@ -36,8 +36,8 @@ import java.util.UUID
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
-    private val toolRegistryService: ToolRegistryService,
     private val aiModelRegistry: AiModelRegistry,
+    private val toolRegistryService: ToolRegistryService,
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
