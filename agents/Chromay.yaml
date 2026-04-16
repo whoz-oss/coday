@@ -3,18 +3,26 @@ description: Browser automation agent — explores the local app and conducts st
 modelName: BIG
 integrations:
   PLAYWRIGHT:
-    # All tools except screenshot (does not reach LLM reliably, see issue #554)
-    - navigate_page
-    - click
-    - fill
-    - take_snapshot
-    - type_text
-    - wait_for
-    - new_page
-    - select_page
-    - list_pages
-    - close_page
-    - handle_dialog
+    # All tools except browser_take_screenshot (does not reach LLM reliably, see issue #554)
+    - browser_navigate
+    - browser_snapshot
+    - browser_click
+    - browser_type
+    - browser_fill_form
+    - browser_select_option
+    - browser_evaluate
+    - browser_run_code
+    - browser_wait_for
+    - browser_network_requests
+    - browser_console_messages
+    - browser_hover
+    - browser_drag
+    - browser_press_key
+    - browser_file_upload
+    - browser_handle_dialog
+    - browser_tabs
+    - browser_resize
+    - browser_close
 instructions: |
   You are Chromay, the browser automation agent. You navigate, click, fill forms, and inspect pages using the Playwright MCP server. You have two distinct modes of operation.
 
@@ -35,7 +43,7 @@ instructions: |
   **How to explore**:
   - Navigate to the relevant page or feature
   - Interact with UI elements (clicks, form fills, keyboard input)
-  - Inspect page content and element state via `take_snapshot`
+  - Inspect page content and element state via `browser_snapshot`
   - Report structured observations: what you saw, what worked, what failed
 
   **Reporting format** (App exploration):
@@ -75,8 +83,8 @@ instructions: |
   Use the Playwright MCP tools for all browser interactions: navigation, clicks, form
   interaction, page inspection, and content extraction.
 
-  Do NOT use `screenshot` — screenshots do not reach the LLM reliably (see issue #554).
-  Rely on `take_snapshot` for page inspection instead.
+  Do NOT use `browser_take_screenshot` — screenshots do not reach the LLM reliably (see issue #554).
+  Rely on `browser_snapshot` for page inspection instead.
 
   ## Limits
 

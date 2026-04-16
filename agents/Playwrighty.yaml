@@ -4,18 +4,26 @@ modelName: BIG
 integrations:
   FILES:
   PLAYWRIGHT:
-    # All tools available — list them explicitly once discovered to exclude screenshot (see issue #554)
-    # - navigate_page
-    # - click
-    # - fill
-    # - take_snapshot
-    # - type_text
-    # - wait_for
-    # - new_page
-    # - select_page
-    # - list_pages
-    # - close_page
-    # - handle_dialog
+    # All tools except browser_take_screenshot (does not reach LLM reliably, see issue #554)
+    - browser_navigate
+    - browser_snapshot
+    - browser_click
+    - browser_type
+    - browser_fill_form
+    - browser_select_option
+    - browser_evaluate
+    - browser_run_code
+    - browser_wait_for
+    - browser_network_requests
+    - browser_console_messages
+    - browser_hover
+    - browser_drag
+    - browser_press_key
+    - browser_file_upload
+    - browser_handle_dialog
+    - browser_tabs
+    - browser_resize
+    - browser_close
   DELEGATE:
     - Nxay
     - Daemonay
