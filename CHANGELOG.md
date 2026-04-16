@@ -1,3 +1,20 @@
+## 0.118.2 (2026-04-16)
+
+### 🚀 Features
+
+- **agentos:** add file access plugin — ISO Coday TypeScript V1 ([#697](https://github.com/whoz-oss/coday/pull/697))
+
+### 🩹 Fixes
+
+- #655 scheduler threads crash on execution - addAnswerEvent on undefined context ([#763](https://github.com/whoz-oss/coday/pull/763), [#655](https://github.com/whoz-oss/coday/issues/655))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
 ## 0.118.1 (2026-04-16)
 
 ### 🩹 Fixes
