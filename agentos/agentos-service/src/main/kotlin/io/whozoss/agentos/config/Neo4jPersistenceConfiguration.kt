@@ -1,16 +1,19 @@
 package io.whozoss.agentos.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.persistence.neo4j.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.CaseEventNodeMapper
 import io.whozoss.agentos.persistence.neo4j.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.CaseNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.MessageContentSerializer
 import io.whozoss.agentos.persistence.neo4j.NamespaceNodeNeo4jRepository
+import io.whozoss.agentos.persistence.neo4j.Neo4jAgentConfigRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseEventRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jCaseRepository
 import io.whozoss.agentos.persistence.neo4j.Neo4jIntegrationConfigRepository
@@ -48,6 +51,12 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 )
 @EnableNeo4jRepositories(basePackages = ["io.whozoss.agentos.persistence.neo4j"])
 class Neo4jPersistenceConfiguration {
+    @Bean
+    fun neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository): AgentConfigRepository {
+        logger.info { "[Persistence] Neo4jAgentConfigRepository active" }
+        return Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository)
+    }
+
     @Bean
     fun neo4jNamespaceRepository(namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository): NamespaceRepository {
         logger.info { "[Persistence] Neo4jNamespaceRepository active" }
