@@ -41,6 +41,7 @@ export class IntegrationFormComponent implements OnInit {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(1)],
     }),
+    description: new FormControl<string | null>(null),
     type: new FormControl<string>('', {
       nonNullable: true,
       validators: [Validators.required],
@@ -49,6 +50,9 @@ export class IntegrationFormComponent implements OnInit {
 
   protected get nameControl() {
     return this.form.controls.name
+  }
+  protected get descriptionControl() {
+    return this.form.controls.description
   }
   protected get typeControl() {
     return this.form.controls.type
@@ -102,6 +106,7 @@ export class IntegrationFormComponent implements OnInit {
         next: (config) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
+          this.descriptionControl.setValue(config.description ?? null)
           this.typeControl.setValue(config.integrationType)
           this.initialParams.set(config.parameters as Record<string, unknown> | null)
           this.paramsValue.set(config.parameters as Record<string, unknown> | null)
@@ -127,11 +132,13 @@ export class IntegrationFormComponent implements OnInit {
       ? this.integrationConfigController.updateIntegrationConfig(this.existingConfig!.id ?? '', {
           ...this.existingConfig!,
           name: this.nameControl.value.trim(),
+          description: this.descriptionControl.value?.trim() || null,
           integrationType: this.typeControl.value,
           parameters: this.paramsValue(),
         })
       : this.integrationConfigController.createIntegrationConfig({
           name: this.nameControl.value.trim(),
+          description: this.descriptionControl.value?.trim() || null,
           integrationType: this.typeControl.value,
           namespaceId: this.namespaceId,
           parameters: this.paramsValue(),

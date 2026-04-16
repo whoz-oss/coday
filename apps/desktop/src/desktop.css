@@ -1,0 +1,12 @@
+/* ============================================================
+   Desktop-specific CSS overrides
+   Injected by Electron into the Angular client on every page load.
+   Use this file for all UI tweaks specific to the desktop app.
+   ============================================================ */
+
+/* Hide the voice/microphone recording button.
+   Web Speech Recognition API does not work in Electron (no cloud backend),
+   so the button is hidden to avoid confusion. */
+.voice-btn {
+  display: none !important;
+}

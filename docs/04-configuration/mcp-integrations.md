@@ -89,6 +89,7 @@ mcp:
 - **oauthClientId**: *(optional)* Pre-registered OAuth client ID. When provided, Coday skips dynamic client registration and uses this identity directly.
 - **oauthClientSecret**: *(optional)* OAuth client secret. Used together with `oauthClientId`.
 - **oauthScope**: *(optional)* Override the OAuth scope requested during authorization. Set to an empty string `""` to request no scope at all.
+- **oauthRedirectUri**: *(optional)* Override the OAuth redirect URI. When not set, Coday derives it from its own base URL as `<coday-base-url>/oauth/callback`. Must match a redirect URI registered with your OAuth provider.
 - **noShare**: Set to `true` to prevent sharing this MCP server instance across threads. This is required for OAuth-authenticated servers (Coday sets it automatically when `oauth2: true`).
 
 ## Remote MCP Servers
@@ -322,7 +323,7 @@ Check the [MCP documentation](https://modelcontextprotocol.io) for additional se
 
 ### OAuth Not Working
 
-- Make sure the redirect URI `http://localhost:3000/oauth/callback` (or your Coday deployment URL) is registered as an allowed redirect URI with the OAuth provider
+- Make sure the redirect URI (your Coday deployment URL + `/oauth/callback`, or the explicit `oauthRedirectUri` value if set) is registered as an allowed redirect URI with the OAuth provider
 - If using pre-registered client credentials, double-check `oauthClientId` and `oauthClientSecret` are correct
 - Some providers require specific scopes — use `oauthScope` to match what the provider expects
 

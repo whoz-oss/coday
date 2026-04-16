@@ -19,7 +19,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 data class User(
     override val metadata: EntityMetadata = EntityMetadata(),
     val externalId: String,
-    val email: String,
+    val email: String = "",
     val firstname: String? = null,
     val lastname: String? = null,
     val bio: String? = null,

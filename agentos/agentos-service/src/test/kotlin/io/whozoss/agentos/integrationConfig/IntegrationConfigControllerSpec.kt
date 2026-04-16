@@ -6,8 +6,8 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -36,11 +36,13 @@ class IntegrationConfigControllerSpec : StringSpec({
         nsId: UUID = namespaceId,
         name: String = "JIRA_PROD",
         integrationType: String = "JIRA",
+        description: String? = null,
     ) = IntegrationConfig(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
         name = name,
         integrationType = integrationType,
+        description = description,
         parameters = params,
     )
 
@@ -49,11 +51,13 @@ class IntegrationConfigControllerSpec : StringSpec({
         nsId: UUID = namespaceId,
         name: String = "JIRA_PROD",
         integrationType: String = "JIRA",
+        description: String? = null,
     ) = IntegrationConfigResource(
         id = id,
         namespaceId = nsId,
         name = name,
         integrationType = integrationType,
+        description = description,
         parameters = params,
     )
 
@@ -63,7 +67,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "toResource maps all fields from IntegrationConfig to IntegrationConfigResource" {
         val id = UUID.randomUUID()
-        val c = config(id = id, name = "SLACK_DEV", integrationType = "SLACK")
+        val c = config(id = id, name = "SLACK_DEV", integrationType = "SLACK", description = "Dev Slack workspace")
 
         val result = controller.toResource(c)
 
@@ -72,8 +76,17 @@ class IntegrationConfigControllerSpec : StringSpec({
             namespaceId = namespaceId,
             name = "SLACK_DEV",
             integrationType = "SLACK",
+            description = "Dev Slack workspace",
             parameters = params,
         )
+    }
+
+    "toResource preserves null description" {
+        val c = config(description = null)
+
+        val result = controller.toResource(c)
+
+        result.description shouldBe null
     }
 
     "toResource preserves null parameters" {
@@ -90,7 +103,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "toDomain maps all fields from IntegrationConfigResource to IntegrationConfig" {
         val id = UUID.randomUUID()
-        val r = resource(id = id, name = "GITHUB_MAIN", integrationType = "GITHUB")
+        val r = resource(id = id, name = "GITHUB_MAIN", integrationType = "GITHUB", description = "Main GitHub org")
 
         val result = controller.toDomain(r)
 
@@ -98,7 +111,16 @@ class IntegrationConfigControllerSpec : StringSpec({
         result.namespaceId shouldBe namespaceId
         result.name shouldBe "GITHUB_MAIN"
         result.integrationType shouldBe "GITHUB"
+        result.description shouldBe "Main GitHub org"
         result.parameters shouldBe params
+    }
+
+    "toDomain preserves null description" {
+        val r = resource(description = null)
+
+        val result = controller.toDomain(r)
+
+        result.description shouldBe null
     }
 
     "toDomain generates a random UUID when resource id is null" {
@@ -137,8 +159,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         val ex = runCatching { controller.getById(id) }.exceptionOrNull()
 
-        (ex is ResponseStatusException) shouldBe true
-        (ex as ResponseStatusException).statusCode.value() shouldBe 404
+        (ex is ResourceNotFoundException) shouldBe true
     }
 
     // -------------------------------------------------------------------------
@@ -209,8 +230,7 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         val ex = runCatching { controller.update(id, r) }.exceptionOrNull()
 
-        (ex is ResponseStatusException) shouldBe true
-        (ex as ResponseStatusException).statusCode.value() shouldBe 404
+        (ex is ResourceNotFoundException) shouldBe true
     }
 
     // -------------------------------------------------------------------------
@@ -232,7 +252,6 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         val ex = runCatching { controller.delete(id) }.exceptionOrNull()
 
-        (ex is ResponseStatusException) shouldBe true
-        (ex as ResponseStatusException).statusCode.value() shouldBe 404
+        (ex is ResourceNotFoundException) shouldBe true
     }
 })

@@ -7,7 +7,7 @@ import org.springframework.test.context.ActiveProfiles
 
 @SpringBootTest
 @ActiveProfiles("test")
-class AgentOSApplicationTest : StringSpec() {
+class AgentOSApplicationIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     init {

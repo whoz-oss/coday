@@ -22,8 +22,6 @@ class UserServiceImplSpec : StringSpec({
     fun makeUser(externalId: String) = User(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         externalId = externalId,
-        email = externalId,
-        firstname = externalId,
     )
 
     // -------------------------------------------------------------------------
@@ -90,6 +88,7 @@ class UserServiceImplSpec : StringSpec({
         val result = service.resolveOrCreateByExternalId(externalId)
 
         result shouldBe createdUser
-        verify(exactly = 1) { userRepository.save(match { it.externalId == externalId && it.email == externalId }) }
+        // email and firstname are no longer seeded from externalId at creation time
+        verify(exactly = 1) { userRepository.save(match { it.externalId == externalId && it.email == "" }) }
     }
 })

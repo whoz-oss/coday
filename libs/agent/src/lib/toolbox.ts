@@ -212,7 +212,13 @@ export class Toolbox implements Killable {
         })
       )
 
-      this.tools = toolResults.flat()
+      const { tools: deduplicated, duplicates } = Toolbox.deduplicateTools(toolResults.flat())
+      for (const dup of duplicates) {
+        this.interactor.warn(
+          `Duplicate tool '${dup.name}': kept source '${dup.keptSource}', discarded source '${dup.discardedSource}'`
+        )
+      }
+      this.tools = deduplicated
       return this.tools
     } catch (error) {
       this.interactor.debug(`Unexpected error building tools for agent ${agentName}: ${error}`)
@@ -257,6 +263,51 @@ export class Toolbox implements Killable {
       this.interactor.debug(`Error creating factory for '${instanceName}': ${error}`)
       return undefined
     }
+  }
+
+  /**
+   * Deduplicate tools by name, keeping the last registered instance ("last wins").
+   * This is consistent with AgentOS ToolRegistryService which overwrites existing tools
+   * with the same name upon re-registration.
+   *
+   * Tool source is inferred from the naming convention: tools are named
+   * 'SOURCE__toolName' (e.g. 'GIT__status', 'my-mcp-server__search').
+   * Tools without '__' use their full name as source.
+   *
+   * @param tools - flat array of tools potentially containing duplicates
+   * @returns deduplicated tools and a list of detected duplicates with provenance info
+   */
+  private static deduplicateTools(tools: CodayTool[]): {
+    tools: CodayTool[]
+    duplicates: { name: string; keptSource: string; discardedSource: string }[]
+  } {
+    const toolMap = new Map<string, CodayTool>()
+    const duplicates: { name: string; keptSource: string; discardedSource: string }[] = []
+
+    for (const tool of tools) {
+      const name = tool.function.name
+      const existing = toolMap.get(name)
+      if (existing) {
+        duplicates.push({
+          name,
+          keptSource: Toolbox.extractSource(tool),
+          discardedSource: Toolbox.extractSource(existing),
+        })
+      }
+      toolMap.set(name, tool)
+    }
+
+    return { tools: Array.from(toolMap.values()), duplicates }
+  }
+
+  /**
+   * Extract the source/integration prefix from a tool name.
+   * Convention: 'SOURCE__toolName' → 'SOURCE', plain name → name itself.
+   */
+  private static extractSource(tool: CodayTool): string {
+    const name = tool.function.name
+    const separatorIndex = name.indexOf('__')
+    return separatorIndex > 0 ? name.substring(0, separatorIndex) : name
   }
 
   /**

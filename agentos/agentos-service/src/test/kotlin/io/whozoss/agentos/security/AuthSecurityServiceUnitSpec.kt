@@ -11,7 +11,7 @@ import org.springframework.web.context.request.ServletRequestAttributes
 import org.springframework.web.server.ResponseStatusException
 import java.util.Base64
 
-class AuthSecurityServiceTest : StringSpec({
+class AuthSecurityServiceUnitSpec : StringSpec({
     timeout = 5000
 
     val objectMapper = ObjectMapper().registerKotlinModule()

@@ -10,7 +10,7 @@ import org.springframework.mock.web.MockMultipartFile
 import java.nio.file.Files
 import java.nio.file.Paths
 
-class PluginControllerTest : StringSpec({
+class PluginControllerUnitSpec : StringSpec({
 
     val pluginService = mockk<PluginService>(relaxed = true)
     val agentRegistry = mockk<AgentRegistry>(relaxed = true)

@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit
  * 2. Past case    — history replayed, emitter completed immediately (no live flow).
  * 3. Unknown case — history is empty and no active instance; emitter completed immediately.
  */
-class CaseEventSseControllerTest : StringSpec() {
+class CaseEventSseControllerUnitSpec : StringSpec() {
     val namespaceId: UUID = UUID.randomUUID()
     val userActor = Actor(id = "u1", displayName = "User", role = ActorRole.USER)
 

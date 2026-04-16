@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -24,6 +25,10 @@ import java.util.UUID
  *   the conversation grows (system prompt is never compacted by the provider).
  * - Scope tool resolution to the namespace via [ToolRegistryService.resolveToolsForNamespace],
  *   producing fresh tool instances for each agent run.
+ * - Append an integration-descriptions block to the system prompt listing any
+ *   [IntegrationConfig][io.whozoss.agentos.integrationConfig.IntegrationConfig]s in the
+ *   namespace that carry a non-null description, so the agent understands what each
+ *   named integration is for.
  *
  * Every agent-instantiating method requires a non-null [AgentExecutionContext].
  * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) are context-free.
@@ -34,6 +39,7 @@ class AgentServiceImpl(
     private val aiModelRegistry: AiModelRegistry,
     private val toolRegistryService: ToolRegistryService,
     private val namespaceService: NamespaceService,
+    private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
 ) : AgentService {
     override fun findAgentByName(
@@ -100,9 +106,11 @@ class AgentServiceImpl(
      *
      * Starts from the model's own instructions (may be null) and appends:
      * 1. A namespace context block (always, when [context] is provided).
-     * 2. A user context block (when [context.userId] resolves to a known [User]).
+     * 2. An integrations block listing each [IntegrationConfig] in the namespace that
+     *    carries a non-null description (omitted entirely when none have a description).
+     * 3. A user context block (when [context.userId] resolves to a known [User]).
      *
-     * Both blocks are injected in the privileged system-prompt channel so they are
+     * All blocks are injected in the privileged system-prompt channel so they are
      * never compacted away by the provider, regardless of conversation length.
      */
     private fun buildInstructions(
@@ -114,10 +122,22 @@ class AgentServiceImpl(
             buildString {
                 appendLine()
                 appendLine("""## Context: ${namespace?.name ?: context.namespaceId}""")
-                if (!namespace?.description.isNullOrBlank()) {
-                    appendLine(namespace!!.description!!)
+                namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+            }.trimEnd()
+
+        val integrationsWithDescription = integrationConfigService
+            .findByParent(context.namespaceId)
+            .filter { !it.description.isNullOrBlank() }
+        val integrationsBlock = when {
+            integrationsWithDescription.isEmpty() -> null
+            else -> buildString {
+                appendLine()
+                appendLine("## Integrations")
+                integrationsWithDescription.forEach { config ->
+                    appendLine("- ${config.name}: ${config.description}")
                 }
             }.trimEnd()
+        }
 
         val userBlock =
             context.userId?.let { userId ->
@@ -126,16 +146,17 @@ class AgentServiceImpl(
                         appendLine()
                         appendLine("## User")
                         appendLine("- id: ${user.metadata.id}")
-                        appendLine("- email: ${user.email}")
-                        if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
-                        if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
-                        if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
-                    }.trimEnd()
+                        if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
+                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                        }.trimEnd()
+                    }
                 }
-            }
 
         val base = if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
-        return if (userBlock != null) "$base\n$userBlock" else base
+        val withIntegrations = if (integrationsBlock != null) "$base\n$integrationsBlock" else base
+        return if (userBlock != null) "$withIntegrations\n$userBlock" else withIntegrations
     }
 
     companion object : KLogging()

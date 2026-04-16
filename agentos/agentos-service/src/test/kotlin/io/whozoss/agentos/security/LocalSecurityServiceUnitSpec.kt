@@ -5,7 +5,7 @@ import io.kotest.matchers.shouldBe
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 
-class LocalSecurityServiceTest : StringSpec({
+class LocalSecurityServiceUnitSpec : StringSpec({
     timeout = 5000
 
     "resolveCurrentIdentity returns OS username" {
