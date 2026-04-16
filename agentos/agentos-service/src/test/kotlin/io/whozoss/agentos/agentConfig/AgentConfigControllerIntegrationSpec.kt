@@ -28,7 +28,7 @@ import java.util.UUID
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class AgentConfigControllerMvcTest : StringSpec() {
+class AgentConfigControllerIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc

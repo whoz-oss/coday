@@ -226,9 +226,9 @@ The six standard endpoints (`GET /{id}`, `POST /by-ids`, `GET /by-parentId/{pare
 
 Two complementary test classes (see `testing.md` for the full rationale):
 
-**`MyEntityControllerSpec`** (StringSpec, no Spring) — instantiate the controller directly with MockK stubs. Cover `toResource`, `toDomain`, and every inherited endpoint (happy path + 404 cases).
+**`MyEntityControllerUnitSpec`** (StringSpec, no Spring) — instantiate the controller directly with MockK stubs. Cover `toResource`, `toDomain`, and every inherited endpoint (happy path + 404 cases).
 
-**`MyEntityControllerMvcTest`** (`@SpringBootTest` + `@ActiveProfiles("test")`) — verify that `@Valid` fires through the dispatcher. Test at minimum: missing required field → 400, blank required field → 400, valid payload → 201/200. The `test` profile activates in-memory persistence, so no Neo4j needed.
+**`MyEntityControllerIntegrationSpec`** (`@SpringBootTest` + `@ActiveProfiles("test")`) — verify that `@Valid` fires through the dispatcher. Test at minimum: missing required field → 400, blank required field → 400, valid payload → 201/200. The `test` profile activates in-memory persistence, so no Neo4j needed.
 
 ### 8. Regenerate the OpenAPI spec
 

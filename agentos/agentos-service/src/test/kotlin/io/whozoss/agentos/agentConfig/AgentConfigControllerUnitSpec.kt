@@ -20,7 +20,7 @@ import java.util.UUID
  *   getById (found / not-found), getByIds, listByParent, create,
  *   update (found / not-found), delete (found / not-found)
  */
-class AgentConfigControllerSpec : StringSpec({
+class AgentConfigControllerUnitSpec : StringSpec({
     timeout = 5000
 
     val service = mockk<AgentConfigService>()
