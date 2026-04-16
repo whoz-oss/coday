@@ -33,5 +33,6 @@ data class IntegrationConfig(
     val namespaceId: UUID,
     val name: String,
     val integrationType: String,
+    val description: String? = null,
     val parameters: JsonNode? = null,
 ) : Entity

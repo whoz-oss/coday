@@ -78,6 +78,14 @@ export interface McpServerConfig {
    * Only relevant when `oauth2: true`.
    */
   oauthScope?: string
+
+  /**
+   * Override the OAuth redirect URI used during authorization.
+   * When set, replaces the auto-computed default (`<coday-base-url>/oauth/callback`).
+   * Must match one of the redirect URIs registered with your OAuth provider.
+   * Only relevant when `oauth2: true`.
+   */
+  oauthRedirectUri?: string
 }
 
 export const McpServerConfigArgs = [
@@ -97,6 +105,7 @@ export const McpServerConfigArgs = [
   'oauthClientId',
   'oauthClientSecret',
   'oauthScope',
+  'oauthRedirectUri',
 ]
 
 /**

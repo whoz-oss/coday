@@ -27,5 +27,6 @@ data class IntegrationConfigResource(
     val name: String,
     @field:NotBlank
     val integrationType: String,
+    val description: String? = null,
     val parameters: JsonNode? = null,
 )

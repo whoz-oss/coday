@@ -9,6 +9,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -242,12 +243,9 @@ class CaseServiceImpl(
                 }
             }.collect { event ->
                 val saved = storeEvent(event)
-                if (event.caseId == caseId) {
-                    // Push into the runtime's event list so processNextStep can see it
-                    // (e.g. AgentFinishedEvent stops the loop)
+                if (event.caseId == caseId && event !is TransientCaseEvent) {
                     runtime.pushEvents(listOf(saved))
                 }
-                // emit on the SSE flow.
                 runtime.emitEvent(saved)
             }
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
@@ -257,8 +255,17 @@ class CaseServiceImpl(
      * Persists an event via [CaseEventService] and returns the saved copy.
      * Called by the runtime's [CaseRuntime.storeEvent] callback —
      * the runtime itself handles adding to its list and emitting on the SSE flow.
+     *
+     * [TextChunkEvent]s are streaming-only: they carry incremental text fragments
+     * that are superseded by the final [io.whozoss.agentos.sdk.caseEvent.MessageEvent].
+     * Persisting them would bloat the event store without adding any replay value,
+     * so they are returned as-is without being written to the repository.
      */
-    private fun storeEvent(event: CaseEvent): CaseEvent = caseEventService.create(event)
+    private fun storeEvent(event: CaseEvent): CaseEvent =
+        when (event) {
+            is TransientCaseEvent -> event
+            else -> caseEventService.create(event)
+        }
 
     // ========================================
     // Status transitions

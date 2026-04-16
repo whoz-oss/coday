@@ -1,5 +1,9 @@
 import { retrieveZendeskArticle } from './retrieve-zendesk-article'
 import { searchZendeskArticles } from './search-zendesk-articles'
+import { listZendeskCategories } from './list-zendesk-categories'
+import { listZendeskSections } from './list-zendesk-sections'
+import { listZendeskArticlesInSection } from './list-zendesk-articles-in-section'
+import { listZendeskArticlesInCategory } from './list-zendesk-articles-in-category'
 import { IntegrationService } from '@coday/service'
 import { Interactor } from '@coday/model'
 import { AssistantToolFactory } from '@coday/model'
@@ -99,7 +103,135 @@ export class ZendeskTools extends AssistantToolFactory {
       },
     }
 
-    result.push(articleRetrievalFunction, searchFunction)
+    const listCategoriesFunction: FunctionTool<{ locale?: string }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__listCategories`,
+        description:
+          'List all Zendesk Help Center categories. Use this as the entry point to navigate the knowledge base structure. Returns id, name, description, locale, url, and position for each category.',
+        parameters: {
+          type: 'object',
+          properties: {
+            locale: {
+              type: 'string',
+              description:
+                'Optional locale code (e.g., "en-us", "fr"). If not provided, returns categories in default locale.',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: (params: { locale?: string }) =>
+          listZendeskCategories(zendeskSubdomain, zendeskEmail, zendeskApiToken, this.interactor, params.locale),
+      },
+    }
+
+    const listSectionsFunction: FunctionTool<{ categoryId: string; locale?: string }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__listSections`,
+        description:
+          'List all sections within a Zendesk Help Center category. Returns id, name, description, locale, url, category_id, and position for each section.',
+        parameters: {
+          type: 'object',
+          properties: {
+            categoryId: {
+              type: 'string',
+              description: 'Zendesk category ID (numeric)',
+            },
+            locale: {
+              type: 'string',
+              description:
+                'Optional locale code (e.g., "en-us", "fr"). If not provided, returns sections in default locale.',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: (params: { categoryId: string; locale?: string }) =>
+          listZendeskSections(
+            params.categoryId,
+            zendeskSubdomain,
+            zendeskEmail,
+            zendeskApiToken,
+            this.interactor,
+            params.locale
+          ),
+      },
+    }
+
+    const listArticlesInSectionFunction: FunctionTool<{ sectionId: string; locale?: string }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__listArticlesInSection`,
+        description:
+          'List all articles within a Zendesk Help Center section. Returns id, title, locale, url, section_id, and updated_at for each article. Use getArticle to retrieve the full content of a specific article.',
+        parameters: {
+          type: 'object',
+          properties: {
+            sectionId: {
+              type: 'string',
+              description: 'Zendesk section ID (numeric)',
+            },
+            locale: {
+              type: 'string',
+              description:
+                'Optional locale code (e.g., "en-us", "fr"). If not provided, returns articles in default locale.',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: (params: { sectionId: string; locale?: string }) =>
+          listZendeskArticlesInSection(
+            params.sectionId,
+            zendeskSubdomain,
+            zendeskEmail,
+            zendeskApiToken,
+            this.interactor,
+            params.locale
+          ),
+      },
+    }
+
+    const listArticlesInCategoryFunction: FunctionTool<{ categoryId: string; locale?: string }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__listArticlesInCategory`,
+        description:
+          'List all articles within a Zendesk Help Center category (across all its sections). Returns id, title, locale, url, section_id, and updated_at for each article. Use getArticle to retrieve the full content of a specific article.',
+        parameters: {
+          type: 'object',
+          properties: {
+            categoryId: {
+              type: 'string',
+              description: 'Zendesk category ID (numeric)',
+            },
+            locale: {
+              type: 'string',
+              description:
+                'Optional locale code (e.g., "en-us", "fr"). If not provided, returns articles in default locale.',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: (params: { categoryId: string; locale?: string }) =>
+          listZendeskArticlesInCategory(
+            params.categoryId,
+            zendeskSubdomain,
+            zendeskEmail,
+            zendeskApiToken,
+            this.interactor,
+            params.locale
+          ),
+      },
+    }
+
+    result.push(
+      articleRetrievalFunction,
+      searchFunction,
+      listCategoriesFunction,
+      listSectionsFunction,
+      listArticlesInSectionFunction,
+      listArticlesInCategoryFunction
+    )
 
     return result
   }

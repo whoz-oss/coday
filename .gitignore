@@ -57,3 +57,11 @@ apps/desktop/release
 
 .claude/worktrees
 .claude/settings.local.json
+# BMAD output artifacts (contains Whoz-specific content)
+_bmad-output/
+
+# BMAD core (local tooling)
+_bmad/
+
+# Claude Code settings
+.claude/

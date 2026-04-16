@@ -207,5 +207,6 @@ optionalDocs:
     description: Extras folder organization
 
 integrations:
-  - DELEGATE:
-  - FILES:
+  CORE:
+  DELEGATE:
+  FILES:

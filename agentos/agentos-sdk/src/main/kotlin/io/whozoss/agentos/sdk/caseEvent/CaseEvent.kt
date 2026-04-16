@@ -81,6 +81,23 @@ sealed interface CaseEvent : Entity {
 }
 
 /**
+ * Marker interface for [CaseEvent] subtypes that must NOT be persisted.
+ *
+ * Transient events are emitted on the SSE flow for real-time display but carry
+ * no replay value — they are superseded by the durable events that follow them
+ * (e.g. [TextChunkEvent]s are superseded by the final [MessageEvent]).
+ *
+ * Rules for transient events:
+ * - They reach the SSE flow unconditionally.
+ * - They are never written to the event store (neither in-memory nor Neo4j).
+ * - They are never pushed into the runtime's in-memory event list.
+ *
+ * Plugin authors may mark their own event subtypes as transient by implementing
+ * this interface alongside [CaseEvent].
+ */
+interface TransientCaseEvent
+
+/**
  * Emitted when the case status changes.
  */
 data class CaseStatusEvent(
@@ -186,13 +203,14 @@ data class ToolResponseEvent(
 
 /**
  * Emitted to indicate the case is thinking/processing.
+ * Transient: streamed live but not persisted.
  */
 data class ThinkingEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val namespaceId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
-) : CaseEvent {
+) : CaseEvent, TransientCaseEvent {
     override val type: CaseEventType = CaseEventType.THINKING
 }
 
@@ -277,6 +295,7 @@ data class ToolSelectedEvent(
 /**
  * Emitted during streaming text generation.
  * Allows progressive display of agent responses.
+ * Transient: streamed live but not persisted.
  */
 data class TextChunkEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -284,6 +303,6 @@ data class TextChunkEvent(
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
     val chunk: String,
-) : CaseEvent {
+) : CaseEvent, TransientCaseEvent {
     override val type: CaseEventType = CaseEventType.TEXT_CHUNK
 }
