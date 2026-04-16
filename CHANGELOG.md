@@ -1,3 +1,14 @@
+## 0.118.1 (2026-04-16)
+
+### 🩹 Fixes
+
+- #760 basecamp oauth silent token refresh before full re-auth ([#761](https://github.com/whoz-oss/coday/pull/761), [#760](https://github.com/whoz-oss/coday/issues/760))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.118.0 (2026-04-16)
 
 ### 🚀 Features
