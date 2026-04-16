@@ -2,6 +2,7 @@ package io.whozoss.agentos.namespace
 
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import java.util.UUID
 
 /**
@@ -17,5 +18,11 @@ data class NamespaceResource(
     val name: String,
     val description: String? = null,
     @Schema(description = "Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.)")
+    // Reject path-traversal sequences (".." segments) to prevent a malicious or mistaken value
+    // from escaping the intended directory when the filesystem plugin resolves resources.
+    @field:Pattern(
+        regexp = """^(?!.*\.\.).*""",
+        message = "configPath must not contain path-traversal sequences (..)"
+    )
     val configPath: String? = null,
 )

@@ -88,5 +88,12 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
             val found = repo.findByIds(listOf(ns.id)).first()
             found.configPath shouldBe null
         }
+
+        "configPath can be set on a namespace that had none" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "project", configPath = null))
+            repo.save(ns.copy(configPath = "/opt/coday"))
+            val found = repo.findByIds(listOf(ns.id)).first()
+            found.configPath shouldBe "/opt/coday"
+        }
     }
 }

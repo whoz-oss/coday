@@ -53,7 +53,8 @@ class NamespaceController(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
             name = resource.name,
             description = resource.description,
-            configPath = resource.configPath,
+            // Normalize blank strings to null so the backend never stores an empty configPath.
+            configPath = resource.configPath?.takeIf { it.isNotBlank() },
         )
 
     // -------------------------------------------------------------------------
