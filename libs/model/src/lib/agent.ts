@@ -53,6 +53,11 @@ export class Agent {
    * @param thread
    */
   async run(command: string, thread: AiThread, username?: string): Promise<Observable<CodayEvent>> {
+    if (!thread) {
+      throw new Error(
+        `[Agent:${this.name}] Cannot run: thread context is undefined. Ensure initThread() completed before agent execution.`
+      )
+    }
     const trimmedCommand = command.trim()
 
     // Add AnswerEvent to thread with the original command (including @agentName if present)
