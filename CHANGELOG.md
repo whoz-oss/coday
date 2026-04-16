@@ -1,3 +1,37 @@
+## 0.118.1 (2026-04-16)
+
+### 🩹 Fixes
+
+- #760 basecamp oauth silent token refresh before full re-auth ([#761](https://github.com/whoz-oss/coday/pull/761), [#760](https://github.com/whoz-oss/coday/issues/760))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.118.0 (2026-04-16)
+
+### 🚀 Features
+
+- #31416 remove TextChunkEvents from saved case events ([#754](https://github.com/whoz-oss/coday/pull/754), [#31416](https://github.com/whoz-oss/coday/issues/31416))
+- #562 add Zendesk tools to browse categories, sections and articles ([#759](https://github.com/whoz-oss/coday/pull/759), [#562](https://github.com/whoz-oss/coday/issues/562))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.117.2 (2026-04-15)
+
+### 🩹 Fixes
+
+- #752 use chooseOption for tool confirmation prompt instead of promptText ([#753](https://github.com/whoz-oss/coday/pull/753), [#752](https://github.com/whoz-oss/coday/issues/752))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.117.1 (2026-04-13)
 
 ### 🩹 Fixes
