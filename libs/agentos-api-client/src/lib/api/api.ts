@@ -1,3 +1,5 @@
+export * from './agent-config-controller.service'
+import { AgentConfigControllerService } from './agent-config-controller.service'
 export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
@@ -15,6 +17,7 @@ import { SseService } from './sse.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export const APIS = [
+  AgentConfigControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
   IntegrationConfigControllerService,

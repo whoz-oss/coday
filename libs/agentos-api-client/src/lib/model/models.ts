@@ -1,5 +1,6 @@
 export * from './actor'
 export * from './add-message-request'
+export * from './agent-config'
 export * from './agent-finished-event'
 export * from './agent-running-event'
 export * from './agent-selected-event'
