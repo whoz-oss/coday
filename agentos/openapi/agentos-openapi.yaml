@@ -933,6 +933,10 @@ components:
           minLength: 1
         description:
           type: string
+        configPath:
+          type: string
+          description: "Optional filesystem path to a directory containing base configuration\
+            \ for this namespace (agents, tools, etc.)"
       required:
       - name
     IntegrationConfig:

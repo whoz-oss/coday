@@ -33,6 +33,7 @@ export class NamespaceFormComponent implements OnInit {
       validators: [Validators.required, Validators.minLength(1)],
     }),
     description: new FormControl<string>('', { nonNullable: true }),
+    configPath: new FormControl<string>('', { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -41,6 +42,10 @@ export class NamespaceFormComponent implements OnInit {
 
   protected get descriptionControl() {
     return this.form.controls.description
+  }
+
+  protected get configPathControl() {
+    return this.form.controls.configPath
   }
 
   protected readonly isEditMode = signal(false)
@@ -68,6 +73,7 @@ export class NamespaceFormComponent implements OnInit {
           this.existingNamespace = ns
           this.nameControl.setValue(ns.name)
           this.descriptionControl.setValue(ns.description ?? '')
+          this.configPathControl.setValue(ns.configPath ?? '')
           this.isLoading.set(false)
         },
         error: () => {
@@ -87,10 +93,12 @@ export class NamespaceFormComponent implements OnInit {
           ...this.existingNamespace!,
           name: this.nameControl.value.trim(),
           description: this.descriptionControl.value.trim() || undefined,
+          configPath: this.configPathControl.value.trim() || undefined,
         })
       : this.namespaceController.createNamespace({
           name: this.nameControl.value.trim(),
           ...(this.descriptionControl.value.trim() ? { description: this.descriptionControl.value.trim() } : {}),
+          ...(this.configPathControl.value.trim() ? { configPath: this.configPathControl.value.trim() } : {}),
         } as Namespace)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
