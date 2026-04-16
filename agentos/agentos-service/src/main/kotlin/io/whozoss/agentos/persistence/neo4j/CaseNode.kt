@@ -12,17 +12,6 @@ import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [Case].
- *
- * Stored as a `(:Case)-[:BELONGS_TO]->(:Namespace)` edge.
- *
- * [namespace] is a nullable `var` so SDN can call the primary constructor before
- * injecting the @Relationship field via property injection.
- *
- * [toDomain] reads [namespace]!!.id — a null here is a data-integrity error and
- * should surface as an NPE rather than be silently ignored.
- *
- * On write, [fromDomain] provides a stub [NamespaceNode] carrying only the `@Id`.
- * SDN MERGEs by `@Id` on save and never overwrites existing Namespace properties.
  */
 @Node("Case")
 data class CaseNode(
@@ -68,6 +57,5 @@ data class CaseNode(
                 modifiedBy = case.metadata.modifiedBy,
                 removed = case.metadata.removed.takeIf { it },
             )
-
     }
 }

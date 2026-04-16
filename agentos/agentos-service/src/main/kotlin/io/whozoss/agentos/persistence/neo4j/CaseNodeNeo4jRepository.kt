@@ -36,5 +36,19 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
             MERGE (c)-[:BELONGS_TO]->(ns)
             """,
     )
-    fun linkCaseToNamespace(caseId: String, namespaceId: String)
+    fun linkCaseToNamespace(
+        caseId: String,
+        namespaceId: String,
+    )
+
+    @Query(
+        $$"""MATCH (c:Case {id: $caseId})
+            MATCH (u:User {id: $userId})
+            MERGE (c)-[:CREATED_BY]->(u)
+            """,
+    )
+    fun linkCaseToUser(
+        caseId: String,
+        userId: String,
+    )
 }

@@ -22,6 +22,7 @@ open class Neo4jCaseRepository(
         caseNodeNeo4jRepository
             .save(CaseNode.fromDomain(entity))
             .also { caseNodeNeo4jRepository.linkCaseToNamespace(it.id, entity.namespaceId.toString()) }
+            .also { it.createdBy?.let { createdBy -> caseNodeNeo4jRepository.linkCaseToUser(caseId = it.id, userId = createdBy) } }
             .toDomain()
             .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }
 
