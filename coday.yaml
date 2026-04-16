@@ -238,7 +238,6 @@ mcp:
       enabled: true
       args:
         - '@playwright/mcp@latest'
-        - "--user-data-dir=/Users/vincent.audibert/Library/Application Support/Google/Chrome/Profile 1"
       command: npx
       debug: false
     - id: chrome

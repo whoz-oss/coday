@@ -4,18 +4,18 @@ modelName: BIG
 integrations:
   FILES:
   PLAYWRIGHT:
-    # All tools except screenshot (does not reach LLM reliably, see issue #554)
-    - navigate_page
-    - click
-    - fill
-    - take_snapshot
-    - type_text
-    - wait_for
-    - new_page
-    - select_page
-    - list_pages
-    - close_page
-    - handle_dialog
+    # All tools available — list them explicitly once discovered to exclude screenshot (see issue #554)
+    # - navigate_page
+    # - click
+    # - fill
+    # - take_snapshot
+    # - type_text
+    # - wait_for
+    # - new_page
+    # - select_page
+    # - list_pages
+    # - close_page
+    # - handle_dialog
   DELEGATE:
     - Nxay
     - Daemonay
