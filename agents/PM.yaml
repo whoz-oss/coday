@@ -51,6 +51,8 @@ integrations:
     - Dev
     - Reviewer
     - Searchay
+    - Chromay
+    - Playwrighty
   CHROME:
   GIT_WORKTREE:
 instructions: |
