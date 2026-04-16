@@ -40,7 +40,7 @@ Two modes are available, selected via `agentos.persistence.mode`:
 
 ### Neo4j persistence layer
 
-For each entity, three files live in `persistence/neo4j/`:
+For each entity, three files live alongside the domain classes in the entity's package:
 
 - **`*Node`** — `@Node` data class with all fields flattened (no nested objects; `EntityMetadata` fields inlined). `removed` is stored as `Boolean?` where `null` means active and `true` means soft-deleted. Provides `toDomain()` and a companion `fromDomain()`.
 - **`*NodeNeo4jRepository`** — Spring Data Neo4j interface extending `Neo4jRepository<*Node, String>`. Active-filter queries are always written by hand (`WHERE removed IS NULL OR removed = false`) — do not rely on SDN derived queries for nullable booleans.
@@ -60,7 +60,6 @@ Use `AgentConfig` (namespace-scoped, UUID parent) or `Namespace` (root-level, St
   MyEntityServiceImpl.kt               # @Service, delegates to repository
   MyEntityResource.kt                  # HTTP DTO, @Schema(name="MyEntity"), Bean Validation
   MyEntityController.kt                # @RestController, extends EntityController
-persistence/neo4j/
   MyEntityNode.kt                      # @Node, flat fields, toDomain/fromDomain
   MyEntityNodeNeo4jRepository.kt       # Neo4jRepository<MyEntityNode, String>
   Neo4jMyEntityRepository.kt           # open class, @Transactional on deleteByParent
