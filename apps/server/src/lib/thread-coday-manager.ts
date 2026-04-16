@@ -471,6 +471,23 @@ export class ThreadCodayManager {
     this.projectEventManager.onNewConnection = (projectName, res) => {
       this.replayActiveStatusForProject(projectName, res)
     }
+
+    // Replay active invite states for ALL projects when a new global SSE client connects
+    this.projectEventManager.onNewGlobalConnection = (res) => {
+      for (const instance of this.instances.values()) {
+        if (!this.pendingInvites.has(instance.threadId)) continue
+        const lastInvite = instance.coday?.interactor?.getLastInviteEvent()
+        if (lastInvite) {
+          const enriched = { ...lastInvite, threadId: instance.threadId, projectName: instance.projectName }
+          const data = `data: ${JSON.stringify(enriched)}\n\n`
+          try {
+            if (!res.writableEnded) res.write(data)
+          } catch {
+            // ignore write errors on the new connection
+          }
+        }
+      }
+    }
   }
 
   /** Mark a thread as having a pending invite (synchronous). */
@@ -511,7 +528,8 @@ export class ThreadCodayManager {
   }
 
   /**
-   * Send heartbeats to all active instances with SSE connections
+   * Send heartbeats to all active instances with SSE connections,
+   * and to all global SSE connections.
    */
   private sendHeartbeats(): void {
     for (const instance of this.instances.values()) {
@@ -519,6 +537,8 @@ export class ThreadCodayManager {
         instance.sendHeartbeat()
       }
     }
+    // Also keep global SSE connections alive
+    this.projectEventManager.sendGlobalHeartbeat(new HeartBeatEvent({}))
   }
 
   /**

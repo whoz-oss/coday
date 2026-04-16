@@ -494,6 +494,33 @@ export function registerProjectRoutes(
   })
 
   /**
+   * GET /api/event-stream
+   * Global SSE endpoint — aggregates events from ALL projects.
+   * Used by Global Mission Control to receive real-time updates with a single connection
+   * instead of one connection per project (which saturates browser HTTP/1.1 limits).
+   * Events are enriched with a `projectName` field so the client can identify the source.
+   */
+  app.get('/api/event-stream', (req: express.Request, res: express.Response) => {
+    if (!projectEventManager) {
+      res.status(503).send('Event stream not available')
+      return
+    }
+
+    debugLog('GLOBAL_SSE', 'New global SSE connection')
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    projectEventManager.addGlobalConnection(res)
+
+    req.on('close', () => {
+      debugLog('GLOBAL_SSE', 'Global SSE client disconnected')
+      projectEventManager.removeGlobalConnection(res)
+    })
+  })
+
+  /**
    * GET /api/projects/:name/event-stream
    * Project-level SSE endpoint — broadcasts ThreadUpdateEvent for any thread in the project.
    * Used by Mission Control to auto-refresh the thread list without a per-thread SSE connection.

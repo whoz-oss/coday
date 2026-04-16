@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, OnInit, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { MatDialog } from '@angular/material/dialog'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -34,9 +34,10 @@ const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
  * Aggregates threads from ALL accessible projects using GlobalMissionService,
  * which calls each project's thread list endpoint in parallel.
  *
- * For live status updates (waiting-you / in-progress), opens one project-level
- * SSE connection per project found in the mission list. This avoids the need
- * for a per-thread SSE connection.
+ * For live status updates (waiting-you / in-progress), opens a SINGLE global
+ * SSE connection to /api/event-stream which aggregates events from all projects.
+ * This prevents saturating browser HTTP/1.1 connection limits (max ~6 per domain)
+ * when many projects are present.
  */
 @Component({
   selector: 'app-global-mission-control',
@@ -51,8 +52,8 @@ export class GlobalMissionControlComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly dialog = inject(MatDialog)
 
-  /** One EventSource per project, keyed by project name */
-  private readonly projectSseMap = new Map<string, EventSource>()
+  /** Single global SSE connection aggregating events from all projects */
+  private globalEventSource: EventSource | null = null
 
   protected readonly filters = FILTERS
   protected readonly activeFilter = signal<FilterKey>('all')
@@ -116,18 +117,13 @@ export class GlobalMissionControlComponent implements OnInit {
   })
 
   constructor() {
-    // When the mission list changes, open/close SSE connections for each project
-    effect(() => {
-      const projectNames = new Set(this.allMissions().map((m) => m.projectId))
-      this.syncProjectSseConnections(projectNames)
-    })
-
-    // Close all SSE connections when the component is destroyed
-    this.destroyRef.onDestroy(() => this.closeAllProjectSse())
+    // Close the SSE connection when the component is destroyed
+    this.destroyRef.onDestroy(() => this.disconnectGlobalSse())
   }
 
   ngOnInit(): void {
     this.globalMissionService.refresh()
+    this.connectGlobalSse()
   }
 
   protected setFilter(key: FilterKey): void {
@@ -150,10 +146,6 @@ export class GlobalMissionControlComponent implements OnInit {
     })
     ref.afterClosed().subscribe((result: { threadId: string; projectId: string } | null) => {
       if (result) {
-        // Open SSE for the new project immediately (worktree or not)
-        if (!this.projectSseMap.has(result.projectId)) {
-          this.openProjectSse(result.projectId)
-        }
         // Refresh the mission list — retry a few times to catch the new thread
         setTimeout(() => this.globalMissionService.refresh(), 300)
         setTimeout(() => this.globalMissionService.refresh(), 1500)
@@ -195,27 +187,13 @@ export class GlobalMissionControlComponent implements OnInit {
     })
   }
 
-  // ── Project-level SSE management ─────────────────────────────────────────────────
+  // ── Global SSE management ────────────────────────────────────────────────────────
 
-  private syncProjectSseConnections(activeProjects: Set<string>): void {
-    // Open new connections for projects not yet tracked
-    for (const projectName of activeProjects) {
-      if (!this.projectSseMap.has(projectName)) {
-        this.openProjectSse(projectName)
-      }
-    }
-    // Close connections for projects no longer in the list
-    for (const [projectName, es] of this.projectSseMap) {
-      if (!activeProjects.has(projectName)) {
-        es.close()
-        this.projectSseMap.delete(projectName)
-      }
-    }
-  }
+  private connectGlobalSse(retryDelayMs = 5_000): void {
+    this.disconnectGlobalSse()
 
-  private openProjectSse(projectName: string, retryDelayMs = 5_000): void {
-    const url = `/api/projects/${encodeURIComponent(projectName)}/event-stream`
-    const es = new EventSource(url)
+    const es = new EventSource('/api/event-stream')
+    this.globalEventSource = es
 
     es.onmessage = (evt) => {
       try {
@@ -241,24 +219,22 @@ export class GlobalMissionControlComponent implements OnInit {
     }
 
     es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED && this.projectSseMap.has(projectName)) {
-        es.close()
-        this.projectSseMap.delete(projectName)
+      if (es.readyState === EventSource.CLOSED) {
+        this.globalEventSource = null
+        // Reconnect with exponential backoff, max 60s
         setTimeout(() => {
-          if (this.projectSseMap.has(projectName) === false) {
-            this.openProjectSse(projectName, Math.min(retryDelayMs * 2, 60_000))
+          if (!this.globalEventSource) {
+            this.connectGlobalSse(Math.min(retryDelayMs * 2, 60_000))
           }
         }, retryDelayMs)
       }
     }
-
-    this.projectSseMap.set(projectName, es)
   }
 
-  private closeAllProjectSse(): void {
-    for (const es of this.projectSseMap.values()) {
-      es.close()
+  private disconnectGlobalSse(): void {
+    if (this.globalEventSource) {
+      this.globalEventSource.close()
+      this.globalEventSource = null
     }
-    this.projectSseMap.clear()
   }
 }
