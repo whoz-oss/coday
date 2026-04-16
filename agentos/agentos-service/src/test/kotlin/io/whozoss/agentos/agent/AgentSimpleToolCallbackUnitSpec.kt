@@ -44,7 +44,7 @@ import java.util.UUID
  * 4. A prior empty-args ToolRequestEvent in history does not crash the next run
  *    (Spring AI's AnthropicChatModel calls jsonToMap on args — empty string crashes it)
  */
-class AgentSimpleToolCallbackTest :
+class AgentSimpleToolCallbackUnitSpec :
     StringSpec({
         timeout = 5000
 

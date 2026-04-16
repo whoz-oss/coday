@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.toList
 import java.time.Instant
 import java.util.*
 
-class DefaultCaseEventEmitterTest :
+class DefaultCaseEventEmitterUnitSpec :
     StringSpec({
         timeout = 5000
 
