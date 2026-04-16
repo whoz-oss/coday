@@ -204,11 +204,7 @@ The six standard endpoints (`GET /{id}`, `POST /by-ids`, `GET /by-parentId/{pare
 
 ### 6. Tests
 
-Two complementary test classes (see `testing.md` for the full rationale):
-
-**`MyEntityControllerUnitSpec`** (StringSpec, no Spring) — instantiate the controller directly with MockK stubs. Cover `toResource`, `toDomain`, and every inherited endpoint (happy path + 404 cases).
-
-**`MyEntityControllerIntegrationSpec`** (`@SpringBootTest` + `@ActiveProfiles("test")`) — verify that `@Valid` fires through the dispatcher. Test at minimum: missing required field → 400, blank required field → 400, valid payload → 201/200.
+See `testing.md` — Controller Tests section.
 
 ### 7. Regenerate the OpenAPI spec
 
