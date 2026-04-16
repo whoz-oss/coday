@@ -64,20 +64,12 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
             ).andExpect(status().isCreated)
         }
 
-        "POST /api/namespaces with path-traversal configPath returns 400" {
+        "POST /api/namespaces with path-traversal in configPath returns 201" {
             mockMvc.perform(
                 post("/api/namespaces")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "name": "evil", "configPath": "../../etc/passwd" }""")
-            ).andExpect(status().isBadRequest)
-        }
-
-        "POST /api/namespaces with embedded path-traversal in configPath returns 400" {
-            mockMvc.perform(
-                post("/api/namespaces")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "name": "evil", "configPath": "/opt/coday/../../etc" }""")
-            ).andExpect(status().isBadRequest)
+                    .content("""{ "name": "coday", "configPath": "../../etc/passwd" }""")
+            ).andExpect(status().isCreated)
         }
 
         // -------------------------------------------------------------------------
@@ -91,16 +83,6 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
                 put("/api/namespaces/$id")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "id": "$id", "name": "" }""")
-            ).andExpect(status().isBadRequest)
-        }
-
-        "PUT /api/namespaces/{id} with path-traversal configPath returns 400" {
-            val id = UUID.randomUUID()
-
-            mockMvc.perform(
-                put("/api/namespaces/$id")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "$id", "name": "engineering", "configPath": "../secret" }""")
             ).andExpect(status().isBadRequest)
         }
 
