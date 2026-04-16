@@ -1,236 +1,81 @@
 # Entity Framework
 
-## Interfaces
+## Core Concepts
 
-All domain objects implement `Entity` from `agentos-sdk`, which provides a UUID id, audit timestamps, and a soft-delete flag via `EntityMetadata`.
+All domain objects implement `Entity` (sdk: `entity/Entity.kt`), which exposes a UUID `id` computed from a mandatory `EntityMetadata` field. `EntityMetadata` carries identity, audit timestamps (`created`, `createdBy`, `modified`, `modifiedBy`), and the soft-delete flag `removed`.
 
-`EntityService<EntityType, ParentId>` defines the CRUD contract. `EntityRepository<EntityType, ParentId>` is the persistence abstraction. Production runs use Neo4j-backed implementations (see below).
+All deletes are soft: `removed = true`. Active-only filtering is applied in every `findBy*` method — callers never see removed entities.
 
-## Entity vs Resource (DTO)
+Domain entities must be annotated `@JsonIgnoreProperties(ignoreUnknown = true)` because `Entity` exposes a computed `id` property that Jackson serialises on write but cannot find in the constructor on read.
 
-Domain entities are never exposed directly by controllers. Each controller defines a companion **resource class** (HTTP DTO) that represents the API contract. The two evolve independently.
+## Abstractions
 
-Conventions:
-- The resource class lives alongside the controller (e.g. `UserResource` next to `UserController`).
-- Bean Validation annotations (`@NotBlank`, `@Email`, …) belong on the resource, not on the domain entity — keeping the domain model clean.
-- The resource is annotated `@Schema(name = "Foo")` so the OpenAPI spec uses the clean name (`User`, not `UserResource`).
-- Mapping between entity and resource is done in the controller via `toResource()` / `toDomain()` overrides on `EntityController`.
-- Business logic (e.g. identity resolution) stays in the service; the controller only converts and delegates.
+`EntityRepository<T, P>` (service: `entity/EntityRepository.kt`) is the persistence contract: `save`, `findByIds`, `findByParent`, `delete`, `deleteByParent`. `P` is the parent identifier type (typically `UUID`).
 
-## Soft Delete
+`EntityService<T, P>` (service: `entity/EntityService.kt`) is the business-logic contract with the same shape plus a `getById` convenience that throws `ResourceNotFoundException` on miss.
 
-`delete()` sets `metadata.removed = true`. All `findBy*` methods exclude removed entities by default. There is no hard delete.
+`InMemoryEntityRepository<T, P>` (service: `entity/InMemoryEntityRepository.kt`) is the generic in-memory implementation. It maintains a primary map by entity id and a secondary index by parent id, kept in sorted order via a caller-supplied `Comparator`. Used as the default/test persistence backend via Kotlin delegation.
 
----
+`EntityController<EntityType, ParentIdentifier, ResourceType>` (service: `entity/EntityController.kt`) is the abstract REST base. Concrete controllers extend it, declare `@RestController` + `@RequestMapping`, and implement two mapping methods:
+- `toResource(entity)` — domain to HTTP DTO
+- `toDomain(resource)` — HTTP DTO to domain
+
+Six endpoints are inherited: `GET /{id}`, `POST /by-ids`, `GET /by-parentId/{parentId}`, `POST`, `PUT /{id}`, `DELETE /{id}`. Any can be overridden.
+
+## Entity vs Resource
+
+Domain entities are never exposed directly. Each controller defines a companion **resource class** (the HTTP DTO). Conventions:
+- Resource class lives alongside the controller (e.g. `AgentConfigResource` next to `AgentConfigController`).
+- Bean Validation annotations (`@NotBlank`, `@NotNull`, ...) belong on the resource, not on the domain entity.
+- The resource is annotated `@Schema(name = "Foo")` so the OpenAPI spec uses the clean name, not `FooResource`.
+
+## Persistence
+
+Three modes are available, selected via `agentos.persistence.mode`:
+
+| Mode | Beans active |
+|---|---|
+| `in-memory` (default) | `InMemory*Repository` beans registered via `@ConditionalOnExpression` |
+| `embedded-neo4j` | `Neo4jPersistenceConfiguration` active; in-process Neo4j engine |
+| `neo4j` | `Neo4jPersistenceConfiguration` active; standalone Neo4j server |
+
+`Neo4jPersistenceConfiguration` (`config/Neo4jPersistenceConfiguration.kt`) registers one `@Bean` per entity type, wiring the Spring Data Neo4j interface into a hand-written implementation class.
+
+### Neo4j persistence layer
+
+For each entity, three files live in `persistence/neo4j/`:
+
+- **`*Node`** — `@Node` data class with all fields flattened (no nested objects; `EntityMetadata` fields inlined). `removed` is stored as `Boolean?` where `null` means active and `true` means soft-deleted. Provides `toDomain()` and a companion `fromDomain()`.
+- **`*NodeNeo4jRepository`** — Spring Data Neo4j interface extending `Neo4jRepository<*Node, String>`. Active-filter queries are always written by hand (`WHERE removed IS NULL OR removed = false`) — do not rely on SDN derived queries for nullable booleans.
+- **`Neo4j*Repository`** — hand-written implementation of the domain `*Repository` interface. `deleteByParent` must be `open` for CGLIB proxying of `@Transactional`.
+
+Every `Neo4j*Repository` bean must be registered in `Neo4jPersistenceConfiguration`. Omitting the registration breaks the entire Spring context under Neo4j profiles, causing all Neo4j integration tests to fail.
 
 ## Adding a New Entity
 
-Use `AgentConfig` (namespace-scoped, UUID parent) or `Namespace` (root-level, String parent) as reference implementations.
+Use `AgentConfig` (namespace-scoped, UUID parent) or `Namespace` (root-level, String parent) as reference implementations. The required files per entity are:
 
-### 1. Domain model
-
-**Location:** `agentos-service/src/main/kotlin/io/whozoss/agentos/<package>/MyEntity.kt`
-
-```kotlin
-@JsonIgnoreProperties(ignoreUnknown = true)  // required: Entity exposes computed `id`
-data class MyEntity(
-    override val metadata: EntityMetadata = EntityMetadata(),
-    val parentId: UUID,
-    val name: String,
-    val description: String? = null,
-) : Entity
+```
+<package>/
+  MyEntity.kt                          # data class : Entity, @JsonIgnoreProperties
+  MyEntityRepository.kt                # interface : EntityRepository<MyEntity, UUID>
+  MyEntityService.kt                   # interface : EntityService<MyEntity, UUID>
+  MyEntityServiceImpl.kt               # @Service, delegates to repository
+  MyEntityResource.kt                  # HTTP DTO, @Schema(name="MyEntity"), Bean Validation
+  MyEntityController.kt                # @RestController, extends EntityController
+  InMemoryMyEntityRepository.kt        # @Repository @ConditionalOnExpression(not neo4j)
+persistence/neo4j/
+  MyEntityNode.kt                      # @Node, flat fields, toDomain/fromDomain
+  MyEntityNodeNeo4jRepository.kt       # Neo4jRepository<MyEntityNode, String>
+  Neo4jMyEntityRepository.kt           # open class, @Transactional on deleteByParent
+config/
+  Neo4jPersistenceConfiguration.kt     # add one @Bean
 ```
 
-`@JsonIgnoreProperties(ignoreUnknown = true)` is mandatory because the `Entity` interface exposes a computed `id` property that Jackson serialises on write but cannot deserialise back from the constructor.
-
-### 2. Repository interface
-
-**Location:** `agentos-service/src/main/kotlin/io/whozoss/agentos/<package>/MyEntityRepository.kt`
-
-```kotlin
-interface MyEntityRepository : EntityRepository<MyEntity, UUID>
-```
-
-The `ParentId` type matches the field used to scope the entity (usually `UUID`, or `String` for root-level entities like `Namespace`).
-
-### 3. Neo4j persistence
-
-Three files in `persistence/neo4j/`, plus a line in `Neo4jPersistenceConfiguration`.
-
-**`MyEntityNode.kt`** — flat `@Node` data class. Keep `EntityMetadata` fields inlined. Use `removed: Boolean? = null` (null = not removed, true = soft-deleted):
-
-```kotlin
-@Node("MyEntity")
-data class MyEntityNode(
-    @Id val id: String,
-    val parentId: String,
-    val name: String,
-    val description: String? = null,
-    val created: Instant = Instant.now(),
-    val createdBy: String? = null,
-    val modified: Instant = Instant.now(),
-    val modifiedBy: String? = null,
-    val removed: Boolean? = null,
-) {
-    fun toDomain(): MyEntity = MyEntity(
-        metadata = EntityMetadata(
-            id = UUID.fromString(id),
-            created = created, createdBy = createdBy,
-            modified = modified, modifiedBy = modifiedBy,
-            removed = removed ?: false,
-        ),
-        parentId = UUID.fromString(parentId),
-        name = name, description = description,
-    )
-    companion object {
-        fun fromDomain(e: MyEntity): MyEntityNode = MyEntityNode(
-            id = e.id.toString(), parentId = e.parentId.toString(),
-            name = e.name, description = e.description,
-            created = e.metadata.created, createdBy = e.metadata.createdBy,
-            modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy,
-            removed = e.metadata.removed.takeIf { it },
-        )
-    }
-}
-```
-
-If the entity has a JSON field (like `IntegrationConfig.parameters`), store it as a `String?` column and round-trip via `ObjectMapper`.
-
-**`MyEntityNodeNeo4jRepository.kt`** — always write the active-filter query by hand; do not rely on SDN derived queries for nullable booleans:
-
-```kotlin
-interface MyEntityNodeNeo4jRepository : Neo4jRepository<MyEntityNode, String> {
-    @Query(
-        "MATCH (e:MyEntity) " +
-        "WHERE e.parentId = \$parentId AND (e.removed IS NULL OR e.removed = false) " +
-        "RETURN e ORDER BY e.name ASC"
-    )
-    fun findActiveByParentId(parentId: String): List<MyEntityNode>
-}
-```
-
-**`Neo4jMyEntityRepository.kt`** — `deleteByParent` must be `open` so CGLIB can proxy `@Transactional`:
-
-```kotlin
-open class Neo4jMyEntityRepository(
-    private val neo4jRepository: MyEntityNodeNeo4jRepository,
-) : MyEntityRepository {
-    override fun save(entity: MyEntity): MyEntity =
-        neo4jRepository.save(MyEntityNode.fromDomain(entity)).toDomain()
-    override fun findByIds(ids: Collection<UUID>): List<MyEntity> =
-        neo4jRepository.findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }.map { it.toDomain() }
-    override fun findByParent(parentId: UUID): List<MyEntity> =
-        neo4jRepository.findActiveByParentId(parentId.toString()).map { it.toDomain() }
-    override fun delete(id: UUID): Boolean =
-        neo4jRepository.findByIdOrNull(id.toString())
-            ?.takeIf { it.removed != true }
-            ?.let { neo4jRepository.save(it.copy(removed = true)); true } ?: false
-    @Transactional
-    open override fun deleteByParent(parentId: UUID): Int {
-        val active = neo4jRepository.findActiveByParentId(parentId.toString())
-        neo4jRepository.saveAll(active.map { it.copy(removed = true) })
-        return active.size
-    }
-    companion object : KLogging()
-}
-```
-
-**`Neo4jPersistenceConfiguration.kt`** — add one `@Bean`:
-
-```kotlin
-@Bean
-fun neo4jMyEntityRepository(
-    myEntityNodeNeo4jRepository: MyEntityNodeNeo4jRepository,
-): MyEntityRepository {
-    logger.info { "[Persistence] Neo4jMyEntityRepository active" }
-    return Neo4jMyEntityRepository(myEntityNodeNeo4jRepository)
-}
-```
-
-> **Critical:** omitting this registration causes the Spring context to fail in both `neo4j` and `embedded-neo4j` profiles — and this breaks *all* Neo4j integration tests, not just the new ones, because the entire context fails to load.
-
-### 4. Service interface + impl
-
-```kotlin
-// MyEntityService.kt
-interface MyEntityService : EntityService<MyEntity, UUID>
-
-// MyEntityServiceImpl.kt
-@Service
-class MyEntityServiceImpl(
-    private val myEntityRepository: MyEntityRepository,
-) : MyEntityService {
-    override fun create(entity: MyEntity): MyEntity = myEntityRepository.save(entity)
-    override fun update(entity: MyEntity): MyEntity = myEntityRepository.save(entity)
-    override fun findByIds(ids: Collection<UUID>): List<MyEntity> = myEntityRepository.findByIds(ids)
-    override fun findByParent(parentId: UUID): List<MyEntity> = myEntityRepository.findByParent(parentId)
-    override fun delete(id: UUID): Boolean = myEntityRepository.delete(id)
-    override fun deleteByParent(parentId: UUID): Int = myEntityRepository.deleteByParent(parentId)
-}
-```
-
-### 5. HTTP resource + controller
-
-```kotlin
-// MyEntityResource.kt
-@Schema(name = "MyEntity")
-data class MyEntityResource(
-    val id: UUID? = null,
-    @field:NotNull(message = "parentId must not be null") val parentId: UUID,
-    @field:NotBlank(message = "name must not be blank") val name: String,
-    val description: String? = null,
-)
-
-// MyEntityController.kt
-@RestController
-@RequestMapping("/api/my-entities", produces = [MediaType.APPLICATION_JSON_VALUE])
-class MyEntityController(
-    private val myEntityService: MyEntityService,
-) : EntityController<MyEntity, UUID, MyEntityResource>(myEntityService) {
-    override fun toResource(entity: MyEntity): MyEntityResource = MyEntityResource(
-        id = entity.metadata.id, parentId = entity.parentId,
-        name = entity.name, description = entity.description,
-    )
-    override fun toDomain(resource: MyEntityResource): MyEntity = MyEntity(
-        metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-        parentId = resource.parentId, name = resource.name, description = resource.description,
-    )
-    companion object : KLogging()
-}
-```
-
-The six standard endpoints (`GET /{id}`, `POST /by-ids`, `GET /by-parentId/{parentId}`, `POST`, `PUT /{id}`, `DELETE /{id}`) are inherited. Override only what needs different behaviour.
-
-### 6. Tests
-
-See `testing.md` — Controller Tests section.
-
-### 7. Regenerate the OpenAPI spec
+After adding the controller, regenerate the OpenAPI spec and TypeScript client:
 
 ```bash
 nx run agentos-service:regenerate
 ```
 
 Commit the updated `agentos/openapi/agentos-openapi.yaml` alongside the Kotlin changes. CI fails if the committed spec diverges from the generated one.
-
----
-
-## Package layout
-
-```
-agentos-service/src/main/kotlin/io/whozoss/agentos/
-  <package>/
-    MyEntity.kt
-    MyEntityRepository.kt
-    MyEntityService.kt
-    MyEntityServiceImpl.kt
-    MyEntityResource.kt
-    MyEntityController.kt
-  persistence/neo4j/
-    MyEntityNode.kt
-    MyEntityNodeNeo4jRepository.kt
-    Neo4jMyEntityRepository.kt
-  config/
-    Neo4jPersistenceConfiguration.kt     ← add one @Bean here
-```
