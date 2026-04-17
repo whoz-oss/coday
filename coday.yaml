@@ -102,8 +102,9 @@ scripts:
       Ports are allocated dynamically to avoid collisions across worktrees.
 
       Three tmux sessions/windows are created:
-        - agentos-<dir>-<port>       AgentOS Spring Boot backend
-        - coday-dev-<dir>-<port>     Express server (window: server) + Angular (window: client)
+        - agentos_<branch>_<port>       AgentOS Spring Boot backend
+        - coday-dev_<branch>_<port>     Express server (window: server) + Angular (window: client)
+      Where <branch> is the first 12 chars of the last git branch segment.
 
       Output includes a machine-readable block with allocated ports:
         AGENTOS_PORT=<n>

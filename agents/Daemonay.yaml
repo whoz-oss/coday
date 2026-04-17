@@ -24,8 +24,14 @@ instructions: |
 
   ## Session naming
 
-  Use short, stable, lowercase names matching the application role: `backend`, `frontend`,
-  `agentos`, `worker`, `db`. Never invent names — reuse existing ones or ask if ambiguous.
+  Sessions started by the `web-dev` script follow the pattern:
+    `agentos_<branch>_<port>`   — AgentOS Spring Boot backend
+    `coday-dev_<branch>_<port>` — Express server + Angular client
+
+  Where `<branch>` is the first 12 chars of the last git branch segment (e.g. `issue-0764-l`)
+  and `<port>` is the dynamically allocated port.
+
+  Always use `tmux list` to discover actual session names before acting — never guess them.
 
   ## Workflows
 
