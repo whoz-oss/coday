@@ -127,11 +127,13 @@ done
 
 # ---------------------------------------------------------------------------
 # Session: AgentOS (Spring Boot)
-# deployPlugins builds plugins and copies JARs to agentos/plugins/ before start.
-# cd to absolute path avoids any working dir ambiguity.
+# deployPlugins (root agentos/ build) must run first to build plugin JARs and
+# copy them into agentos/plugins/ before bootRun loads them.
+# bootRun is a sub-project task invoked via pnpm nx from the worktree root.
 # ---------------------------------------------------------------------------
+AGENTOS_DIR="$(pwd)/agentos"
 tmux new-session -d -s "${SESSION_AGENTOS}" \
-  "cd '$(pwd)/agentos' && ./gradlew deployPlugins bootRun --args='--server.port=${AGENTOS_PORT}'"
+  "cd '${AGENTOS_DIR}' && ./gradlew deployPlugins && cd '$(pwd)' && pnpm nx bootRun agentos-service --args='--server.port=${AGENTOS_PORT}'"
 
 # ---------------------------------------------------------------------------
 # Session: Express server
