@@ -3,6 +3,7 @@
 README.md
 api.base.service.ts
 api.module.ts
+api/agent-config-controller.service.ts
 api/ai-model-controller.service.ts
 api/ai-provider-controller.service.ts
 api/api.ts
@@ -20,6 +21,7 @@ git_push.sh
 index.ts
 model/actor.ts
 model/add-message-request.ts
+model/agent-config.ts
 model/agent-finished-event.ts
 model/agent-running-event.ts
 model/agent-selected-event.ts

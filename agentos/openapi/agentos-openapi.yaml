@@ -352,6 +352,63 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/agent-configs/{id}:
+    get:
+      tags:
+      - agent-config-controller
+      operationId: getByIdAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+    put:
+      tags:
+      - agent-config-controller
+      operationId: updateAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfig"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+    delete:
+      tags:
+      - agent-config-controller
+      operationId: deleteAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/users:
     get:
       tags:
@@ -797,6 +854,47 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AiModel"
+  /api/agent-configs:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: createAgentConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfig"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/by-ids:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: getByIdsAgentConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
   /api/users/me:
     get:
       tags:
@@ -1207,6 +1305,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AiModel"
+  /api/agent-configs/by-parentId/{parentId}:
+    get:
+      tags:
+      - agent-config-controller
+      operationId: listByParentAgentConfig
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
 components:
   schemas:
     User:
@@ -1353,6 +1473,27 @@ components:
       - aiProviderId
       - apiModelName
       - priority
+    AgentConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        instructions:
+          type: string
+        modelName:
+          type: string
+      required:
+      - name
+      - namespaceId
     PluginActionResponse:
       type: object
       properties:
