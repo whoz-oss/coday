@@ -14,35 +14,7 @@ import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/commo
 import { Observable } from 'rxjs'
 
 // @ts-ignore
-import { AgentFinishedEvent } from '../model/agent-finished-event'
-// @ts-ignore
-import { AgentRunningEvent } from '../model/agent-running-event'
-// @ts-ignore
-import { AgentSelectedEvent } from '../model/agent-selected-event'
-// @ts-ignore
-import { AnswerEvent } from '../model/answer-event'
-// @ts-ignore
-import { CaseStatusEvent } from '../model/case-status-event'
-// @ts-ignore
-import { GetById2200Response } from '../model/get-by-id2200-response'
-// @ts-ignore
-import { IntentionGeneratedEvent } from '../model/intention-generated-event'
-// @ts-ignore
-import { MessageEvent } from '../model/message-event'
-// @ts-ignore
-import { QuestionEvent } from '../model/question-event'
-// @ts-ignore
-import { TextChunkEvent } from '../model/text-chunk-event'
-// @ts-ignore
-import { ThinkingEvent } from '../model/thinking-event'
-// @ts-ignore
-import { ToolRequestEvent } from '../model/tool-request-event'
-// @ts-ignore
-import { ToolResponseEvent } from '../model/tool-response-event'
-// @ts-ignore
-import { ToolSelectedEvent } from '../model/tool-selected-event'
-// @ts-ignore
-import { WarnEvent } from '../model/warn-event'
+import { GetByIdsCaseEventRest200ResponseInner } from '../model/get-by-ids-case-event-rest200-response-inner'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -62,245 +34,36 @@ export class CaseEventRestControllerService extends BaseService {
   }
 
   /**
-   * @param agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public create2(
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<GetById2200Response>
-  public create2(
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<GetById2200Response>>
-  public create2(
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<GetById2200Response>>
-  public create2(
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (
-      agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent ===
-        null ||
-      agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent ===
-        undefined
-    ) {
-      throw new Error(
-        'Required parameter agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent was null or undefined when calling create2.'
-      )
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    // to determine the Content-Type header
-    const consumes: string[] = ['application/json']
-    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
-    if (httpContentTypeSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
-    }
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/case-events`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<GetById2200Response>('post', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      body: agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
    * @param id
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public delete2(
-    id: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any>
-  public delete2(
-    id: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<any>>
-  public delete2(
-    id: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<any>>
-  public delete2(
-    id: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling delete2.')
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/case-events/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * @param id
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public getById2(
+  public getByIdCaseEventRest(
     id: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<GetById2200Response>
-  public getById2(
+  ): Observable<GetByIdsCaseEventRest200ResponseInner>
+  public getByIdCaseEventRest(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<GetById2200Response>>
-  public getById2(
+  ): Observable<HttpResponse<GetByIdsCaseEventRest200ResponseInner>>
+  public getByIdCaseEventRest(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<GetById2200Response>>
-  public getById2(
+  ): Observable<HttpEvent<GetByIdsCaseEventRest200ResponseInner>>
+  public getByIdCaseEventRest(
     id: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling getById2.')
+      throw new Error('Required parameter id was null or undefined when calling getByIdCaseEventRest.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -328,7 +91,7 @@ export class CaseEventRestControllerService extends BaseService {
 
     let localVarPath = `/api/case-events/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<GetById2200Response>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<GetByIdsCaseEventRest200ResponseInner>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
@@ -344,32 +107,32 @@ export class CaseEventRestControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getByIds2(
+  public getByIdsCaseEventRest(
     requestBody: Array<string>,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<GetById2200Response>>
-  public getByIds2(
+  ): Observable<Array<GetByIdsCaseEventRest200ResponseInner>>
+  public getByIdsCaseEventRest(
     requestBody: Array<string>,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<GetById2200Response>>>
-  public getByIds2(
+  ): Observable<HttpResponse<Array<GetByIdsCaseEventRest200ResponseInner>>>
+  public getByIdsCaseEventRest(
     requestBody: Array<string>,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<GetById2200Response>>>
-  public getByIds2(
+  ): Observable<HttpEvent<Array<GetByIdsCaseEventRest200ResponseInner>>>
+  public getByIdsCaseEventRest(
     requestBody: Array<string>,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIds2.')
+      throw new Error('Required parameter requestBody was null or undefined when calling getByIdsCaseEventRest.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -404,7 +167,7 @@ export class CaseEventRestControllerService extends BaseService {
 
     let localVarPath = `/api/case-events/by-ids`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<GetById2200Response>>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<GetByIdsCaseEventRest200ResponseInner>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: requestBody,
       responseType: <any>responseType_,
@@ -417,36 +180,36 @@ export class CaseEventRestControllerService extends BaseService {
   }
 
   /**
-   * @param parentId Parent entity ID
+   * @param caseId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByParent2(
-    parentId: string,
+  public listByCaseCaseEventRest(
+    caseId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<GetById2200Response>>
-  public listByParent2(
-    parentId: string,
+  ): Observable<Array<GetByIdsCaseEventRest200ResponseInner>>
+  public listByCaseCaseEventRest(
+    caseId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<GetById2200Response>>>
-  public listByParent2(
-    parentId: string,
+  ): Observable<HttpResponse<Array<GetByIdsCaseEventRest200ResponseInner>>>
+  public listByCaseCaseEventRest(
+    caseId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<GetById2200Response>>>
-  public listByParent2(
-    parentId: string,
+  ): Observable<HttpEvent<Array<GetByIdsCaseEventRest200ResponseInner>>>
+  public listByCaseCaseEventRest(
+    caseId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParent2.')
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling listByCaseCaseEventRest.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -472,158 +235,10 @@ export class CaseEventRestControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/case-events/by-parentId/${this.configuration.encodeParam({ name: 'parentId', value: parentId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
+    let localVarPath = `/api/case-events/by-parentId/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<GetById2200Response>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<GetByIdsCaseEventRest200ResponseInner>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * @param id
-   * @param agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public update2(
-    id: string,
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<GetById2200Response>
-  public update2(
-    id: string,
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<GetById2200Response>>
-  public update2(
-    id: string,
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<GetById2200Response>>
-  public update2(
-    id: string,
-    agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent:
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling update2.')
-    }
-    if (
-      agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent ===
-        null ||
-      agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent ===
-        undefined
-    ) {
-      throw new Error(
-        'Required parameter agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent was null or undefined when calling update2.'
-      )
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    // to determine the Content-Type header
-    const consumes: string[] = ['application/json']
-    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
-    if (httpContentTypeSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
-    }
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/case-events/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<GetById2200Response>('put', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      body: agentFinishedEventAgentRunningEventAgentSelectedEventAnswerEventCaseStatusEventIntentionGeneratedEventMessageEventQuestionEventTextChunkEventThinkingEventToolRequestEventToolResponseEventToolSelectedEventWarnEvent,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

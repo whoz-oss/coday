@@ -2,12 +2,18 @@ package io.whozoss.agentos.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
+import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
+import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
+import io.whozoss.agentos.aiModel.AiModelRepository
+import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
+import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
+import io.whozoss.agentos.aiProvider.AiProviderRepository
+import io.whozoss.agentos.aiProvider.Neo4JAiProviderRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
-import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
-import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
 import io.whozoss.agentos.persistence.neo4j.CaseEventNodeMapper
 import io.whozoss.agentos.persistence.neo4j.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.CaseNodeNeo4jRepository
@@ -49,7 +55,14 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
     "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
         "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
 )
-@EnableNeo4jRepositories(basePackages = ["io.whozoss.agentos.persistence.neo4j", "io.whozoss.agentos.agentConfig"])
+@EnableNeo4jRepositories(
+    basePackages = [
+        "io.whozoss.agentos.persistence.neo4j",
+        "io.whozoss.agentos.agentConfig",
+        "io.whozoss.agentos.aiModel",
+        "io.whozoss.agentos.aiProvider",
+    ],
+)
 class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository): AgentConfigRepository {
@@ -92,6 +105,18 @@ class Neo4jPersistenceConfiguration {
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper)
+    }
+
+    @Bean
+    fun neo4jAiProviderRepository(aiProviderNodeNeo4JRepository: AiProviderNodeNeo4jRepository): AiProviderRepository {
+        logger.info { "[Persistence] Neo4jAiProviderRepository active" }
+        return Neo4JAiProviderRepository(aiProviderNodeNeo4JRepository)
+    }
+
+    @Bean
+    fun neo4jAiModelRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelRepository {
+        logger.info { "[Persistence] Neo4jAiModelRepository active" }
+        return Neo4JAiModelRepository(aiModelNodeNeo4JRepository)
     }
 
     companion object : KLogging()

@@ -46,11 +46,15 @@ export const runBash = async ({
 
     // If confirmation is required, ask for it
     if (requireConfirmation) {
-      const rejectReason = await interactor.promptText(
-        `\nPlease type the reason to reject this command (nothing = validate)`
+      const answer = await interactor.chooseOption(
+        ['OK', 'Cancel'],
+        `Confirm execution of: \`${command}\``,
+        undefined,
+        true
       )
-      if (rejectReason) {
-        return `Command execution was cancelled by user with following reason: ${rejectReason}`
+      if (answer !== 'OK') {
+        const reason = answer && answer !== 'Cancel' ? ` with reason: ${answer}` : ''
+        return `Command execution was cancelled by user${reason}`
       }
     }
 

@@ -17,6 +17,7 @@
       "cache": false,
       "options": {
         "commands": [
+          "rm -rf src/lib",
           "openapi-generator-cli generate -c openapitools.json -o src/lib",
           "eslint --fix --no-ignore 'src/lib/**/*.ts'",
           "prettier --write 'src/lib/**/*.ts'"

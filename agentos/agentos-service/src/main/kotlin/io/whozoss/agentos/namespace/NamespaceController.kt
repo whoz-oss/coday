@@ -45,6 +45,7 @@ class NamespaceController(
             id = entity.metadata.id,
             name = entity.name,
             description = entity.description,
+            configPath = entity.configPath,
         )
 
     override fun toDomain(resource: NamespaceResource): Namespace =
@@ -52,6 +53,8 @@ class NamespaceController(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
             name = resource.name,
             description = resource.description,
+            // Normalize blank strings to null so the backend never stores an empty configPath.
+            configPath = resource.configPath?.takeIf { it.isNotBlank() },
         )
 
     // -------------------------------------------------------------------------

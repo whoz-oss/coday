@@ -102,6 +102,19 @@ export class BasecampOAuth {
       return this.tokenData!
     }
 
+    // Token is expired or missing — try silent refresh first
+    if (this.tokenData?.refreshToken) {
+      try {
+        this.interactor.debug('Access token expired, attempting silent refresh...')
+        await this.refreshToken()
+        this.interactor.debug('Token refreshed successfully')
+        return this.tokenData!
+      } catch (error: any) {
+        // Refresh failed: tokenData and storage already cleared by refreshToken()
+        this.interactor.debug(`Silent refresh failed (${error.message}), starting full re-authentication`)
+      }
+    }
+
     // Generate PKCE challenge and state
     const state = oauth.generateRandomState()
     const codeVerifier = oauth.generateRandomCodeVerifier()

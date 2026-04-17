@@ -21,6 +21,11 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
+// Note: fromDomain does NOT set the `case` @Relationship field. The BELONGS_TO
+// edge is created separately via CaseEventNodeNeo4jRepository.linkEventToCase()
+// after the node is saved. This avoids SDN writing stub CaseNode properties
+// (empty status/title) onto the existing Case node.
+
 /**
  * Maps between [CaseEvent] domain objects and their [CaseEventNode] graph projections.
  *
@@ -85,7 +90,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             is TextChunkEventNode -> TextChunkEventNode(node.id, node.caseId, node.namespaceId, node.timestamp, node.chunk, node.created, node.createdBy, node.modified, node.modifiedBy, removed)
         }
 
-    // ─── toDomain ────────────────────────────────────────────────────────────
+    // ─── toDomain ──────────────────────────────────────────────────────────────────────────
 
     private fun toDomain(n: CaseStatusEventNode) =
         CaseStatusEvent(
@@ -228,7 +233,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             chunk = n.chunk,
         )
 
-    // ─── fromDomain ──────────────────────────────────────────────────────────
+    // ─── fromDomain ───────────────────────────────────────────────────────────────────────
 
     private fun fromDomain(e: CaseStatusEvent) =
         CaseStatusEventNode(
@@ -376,7 +381,7 @@ class CaseEventNodeMapper(private val serializer: MessageContentSerializer) {
             removed = e.metadata.removed.takeIf { it },
         )
 
-    // ─── Shared helper ───────────────────────────────────────────────────────
+    // ─── Shared helper ─────────────────────────────────────────────────────────────────────
 
     private fun metadata(n: CaseEventNode) =
         EntityMetadata(

@@ -16,13 +16,23 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * Used by [Neo4jUserRepository.findByParent] which receives the fixed
      * parent key [io.whozoss.agentos.user.UserRepository.USER_PARENT_KEY].
      */
-    @Query("MATCH (u:User) WHERE u.removed IS NULL OR u.removed = false RETURN u")
+    @Query(
+        $$"""MATCH (u:User)
+            WHERE u.removed IS NULL OR u.removed = false
+            RETURN u
+            """,
+    )
     fun findAllActive(): List<UserNode>
 
     /**
      * Find a non-removed user by external identity provider key.
      * Replaces the O(n) filesystem scan with a direct property lookup.
      */
-    @Query("MATCH (u:User) WHERE u.externalId = \$externalId AND (u.removed IS NULL OR u.removed = false) RETURN u LIMIT 1")
+    @Query(
+        $$"""MATCH (u:User)
+            WHERE u.externalId = $externalId AND (u.removed IS NULL OR u.removed = false)
+            RETURN u LIMIT 1
+            """,
+    )
     fun findActiveByExternalId(externalId: String): UserNode?
 }

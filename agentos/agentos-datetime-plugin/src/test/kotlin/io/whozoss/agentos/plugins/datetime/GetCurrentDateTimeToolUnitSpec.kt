@@ -1,0 +1,73 @@
+package io.whozoss.agentos.plugins.datetime
+
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+
+class GetCurrentDateTimeToolUnitSpec :
+    StringSpec({
+        "should return current datetime in UTC by default" {
+            val tool = GetCurrentDateTimeTool()
+            val result = tool.execute(null)
+
+            result shouldContain "success"
+            result shouldContain "datetime"
+            result shouldContain "UTC"
+        }
+
+        "should return datetime in specified timezone" {
+            val tool = GetCurrentDateTimeTool()
+            val input = GetCurrentDateTimeTool.Input(timezone = "America/New_York")
+
+            val result = tool.execute(input)
+
+            result shouldContain "America/New_York"
+            result shouldContain "datetime"
+            result shouldContain "\"success\":true"
+        }
+
+        "should return error for invalid timezone" {
+            val tool = GetCurrentDateTimeTool()
+            val input = GetCurrentDateTimeTool.Input(timezone = "Invalid/Timezone")
+
+            val result = tool.execute(input)
+
+            result shouldContain "\"success\":false"
+            result shouldContain "error"
+            result shouldContain "Invalid timezone"
+        }
+
+        "should have correct metadata" {
+            val tool = GetCurrentDateTimeTool()
+
+            tool.name shouldBe "GetCurrentDateTime"
+            tool.version shouldBe "1.0.0"
+            tool.inputSchema shouldContain "timezone"
+        }
+
+        "name should be prefixed with configName when provided" {
+            val tool = GetCurrentDateTimeTool(configName = "PARIS")
+
+            tool.name shouldBe "PARIS__GetCurrentDateTime"
+        }
+
+        "name should have no suffix when configName is null" {
+            val tool = GetCurrentDateTimeTool(configName = null)
+
+            tool.name shouldBe "GetCurrentDateTime"
+        }
+
+        "description should indicate timezone is optional with a default" {
+            val tool = GetCurrentDateTimeTool()
+
+            tool.description shouldContain "optional"
+            tool.description shouldContain "IANA"
+            tool.description shouldContain "UTC"
+        }
+
+        "description should reflect the configured default timezone" {
+            val tool = GetCurrentDateTimeTool(defaultTimezone = "Europe/Paris")
+
+            tool.description shouldContain "Europe/Paris"
+        }
+    })

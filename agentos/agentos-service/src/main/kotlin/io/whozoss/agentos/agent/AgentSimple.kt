@@ -3,7 +3,6 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
-import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -49,17 +48,16 @@ import kotlin.time.measureTime
  *
  * This is simpler but gives less control over the orchestration loop
  * compared to AgentAdvanced.
+ *
  */
 class AgentSimple(
     override val metadata: EntityMetadata = EntityMetadata(),
-    private val model: AiModel,
+    override val name: String,
     private val chatClient: ChatClient,
     private val tools: Collection<StandardTool<*>>,
-) : Agent {
-    override val name: String get() = model.name
-
     /** The effective system instructions passed to the LLM, after namespace context injection. */
-    val instructions: String? get() = model.instructions
+    val instructions: String? = null,
+) : Agent {
 
     override fun run(
         events: List<CaseEvent>,
@@ -78,8 +76,8 @@ class AgentSimple(
 
                 // Add system instructions if provided
                 val allMessages =
-                    if (model.instructions != null) {
-                        listOf(SystemMessage(model.instructions!!)) + messages
+                    if (instructions != null) {
+                        listOf(SystemMessage(instructions)) + messages
                     } else {
                         messages
                     }

@@ -293,6 +293,13 @@ app-main {
   }
 }
 
+/* Compact dialog — used for confirmation dialogs and other small modals */
+.cdk-overlay-pane.confirm-dialog-panel {
+  .mat-mdc-dialog-container {
+    height: auto;
+  }
+}
+
 /* Dark mode snackbar styles */
 [data-theme='dark'] {
   .mat-mdc-snack-bar-container {
@@ -320,4 +327,13 @@ app-main {
 mat-slide-toggle {
   transform: scale(0.75);
   transform-origin: right center;
+}
+
+/* ds-kebab-menu — danger variant for mat-menu items rendered in CDK overlay */
+[data-variant='danger'].mat-mdc-menu-item {
+  color: var(--color-error, #ff3b30);
+
+  .mat-icon {
+    color: var(--color-error, #ff3b30);
+  }
 }

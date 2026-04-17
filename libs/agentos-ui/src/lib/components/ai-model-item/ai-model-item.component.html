@@ -1,0 +1,19 @@
+<div class="ai-model-item" role="listitem">
+  <div class="ai-model-item__body">
+    <span class="ai-model-item__name">{{ displayTitle }}</span>
+    <span class="ai-model-item__api-name">{{ model.apiModelName }}</span>
+    <span class="ai-model-item__params">
+      <span>priority: {{ model.priority }}</span>
+    </span>
+  </div>
+
+  <div class="ai-model-item__actions">
+    @if (pendingDelete()) {
+      <span class="ai-model-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    }
+  </div>
+</div>

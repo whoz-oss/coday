@@ -13,5 +13,6 @@ export interface IntegrationConfig {
   namespaceId: string
   name: string
   integrationType: string
+  description?: string
   parameters?: any | null
 }

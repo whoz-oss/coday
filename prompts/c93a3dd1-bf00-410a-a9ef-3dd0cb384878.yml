@@ -1,0 +1,21 @@
+name: regen-api-client
+description: Asks Frontay to drive the re-generation of the openapi spec, then the api-client, then handle the changes in frontend.
+commands:
+  - |-
+    @Frontay We need to update the frontend regarding the recent API changes.
+
+    For this, do in this order with Nxay:
+    - generate the openapi spec
+    - regenerate the agentos-api-client lib
+    - build the frontend apps to check the impacts
+
+    Then, depending on the impacts, see how to handle them.
+    If unsure about a code change, stop there and explain the issue.
+
+    Otherwise, fix, check again by building the front with Nxay, then lint with Nxay and commit & push in the end when all good.
+webhookEnabled: false
+source: project
+createdBy: vincent.audibert
+id: c93a3dd1-bf00-410a-a9ef-3dd0cb384878
+createdAt: 2026-04-15T09:37:34.337Z
+parameterFormat: ""

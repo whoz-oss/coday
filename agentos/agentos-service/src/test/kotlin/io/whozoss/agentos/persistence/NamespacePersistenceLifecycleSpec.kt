@@ -99,6 +99,29 @@ class NamespacePersistenceLifecycleSpec : StringSpec({
     }
 
     // =========================================================================
+    // configPath round-trip
+    // =========================================================================
+
+    "configPath is persisted and retrieved" {
+        val repo = InMemoryNamespaceRepository()
+        val ns = Namespace(
+            metadata = EntityMetadata(),
+            name = "coday-project",
+            configPath = "/home/user/projects/coday",
+        )
+        val saved = repo.save(ns)
+        saved.configPath shouldBe "/home/user/projects/coday"
+
+        val found = repo.findByIds(listOf(saved.metadata.id)).first()
+        found.configPath shouldBe "/home/user/projects/coday"
+
+        val updated = saved.copy(configPath = null)
+        repo.save(updated)
+        val afterClear = repo.findByIds(listOf(saved.metadata.id)).first()
+        afterClear.configPath shouldBe null
+    }
+
+    // =========================================================================
     // Stable identity
     // =========================================================================
 

@@ -9,7 +9,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
@@ -63,18 +62,10 @@ class AgentAdvancedSpec :
             val tools = listOf(answerTool)
 
             // Create agent
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    description = "Test agent for advanced orchestration",
-                    modelName = "gpt-4o",
-                    providerName = "openai",
-                )
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
-                    model = model,
+                    name = "TestAgent",
                     chatClient = mockChatClient,
                     tools = tools,
                     agentService = mockAgentService,
