@@ -35,6 +35,7 @@ data class IntegrationConfigNode(
     val namespaceId: String,
     val name: String,
     val integrationType: String,
+    val description: String? = null,
     val parametersJson: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
@@ -59,6 +60,7 @@ data class IntegrationConfigNode(
             namespaceId = UUID.fromString(namespaceId),
             name = name,
             integrationType = integrationType,
+            description = description,
             parameters = parametersJson?.let { objectMapper.readTree(it) },
         )
 
@@ -72,6 +74,7 @@ data class IntegrationConfigNode(
                 namespaceId = config.namespaceId.toString(),
                 name = config.name,
                 integrationType = config.integrationType,
+                description = config.description,
                 parametersJson = config.parameters?.let { objectMapper.writeValueAsString(it) },
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,

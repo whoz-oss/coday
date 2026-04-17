@@ -44,12 +44,14 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
         namespaceId: UUID,
         name: String = "JIRA",
         integrationType: String = "JIRA",
+        description: String? = null,
         parametersJson: String? = null,
     ) = IntegrationConfig(
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
         name = name,
         integrationType = integrationType,
+        description = description,
         parameters =
             parametersJson?.let {
                 com.fasterxml.jackson.databind
@@ -146,6 +148,28 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
             val found = repo.findByIds(listOf(saved.id)).first()
             found.parameters?.get("apiUrl")?.asText() shouldBe "https://jira.example.com"
             found.parameters?.get("apiKey")?.asText() shouldBe "s3cr3t"
+        }
+
+        "config with description round-trips correctly" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = repo.save(config(ns.id, description = "My JIRA integration"))
+            val found = repo.findByIds(listOf(saved.id)).first()
+            found.description shouldBe "My JIRA integration"
+        }
+
+        "config with null description round-trips correctly" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = repo.save(config(ns.id, description = null))
+            val found = repo.findByIds(listOf(saved.id)).first()
+            found.description shouldBe null
+        }
+
+        "update preserves description" {
+            val ns = namespaceRepo.save(namespace())
+            val cfg = repo.save(config(ns.id, description = "original desc"))
+            repo.save(cfg.copy(description = "updated desc"))
+            val found = repo.findByIds(listOf(cfg.id)).first()
+            found.description shouldBe "updated desc"
         }
 
         "config with null parameters round-trips correctly" {
