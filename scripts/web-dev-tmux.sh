@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 # Start the full Coday dev stack in dedicated tmux sessions.
 #
-# Three processes are started:
-#   1. AgentOS (Spring Boot)  — session: agentos-<dir>-<port>
-#   2. Express server (Node)  — session: coday-dev-<dir>-<port>
-#   3. Angular client         — window in the Express session
+# Three processes are started, each in its own tmux session:
+#   1. AgentOS (Spring Boot)  — session: agentos_<branch>_<port>
+#   2. Express server (Node)  — session: server_<branch>_<port>
+#   3. Angular client         — session: client_<branch>_<port>
 #
 # Port allocation: scan upward from each START_*_PORT until a free port is
 # found. Ports are passed between processes via environment variables so that
 # Express knows where to proxy AgentOS requests.
 #
-# Each worktree gets its own sessions named after its directory, so multiple
+# Each worktree gets its own sessions (branch slug + port in name) so multiple
 # worktrees on the same machine can run simultaneously without conflict.
-# Each AgentOS instance gets its own data directory (derived from its port)
-# so that embedded Neo4j databases do not collide.
 #
 # Usage:
 #   pnpm run web:dev:tmux          # start the full stack
@@ -35,15 +33,15 @@ PROCESSES STARTED
   AgentOS   Spring Boot backend. Gradle task deployPlugins runs first to build
             and copy plugin JARs into agentos/plugins/. Ready signal in logs:
             "Started AgentOSApplication".
-            Session name: agentos-<dir>-<AGENTOS_PORT>
+            Session name: agentos_<branch>_<AGENTOS_PORT>
 
   Server    Express/Node proxy server. Proxies /api/agentos/* to AgentOS.
             Ready signal in logs: "Server is running on http://localhost:<port>"
-            Session name: coday-dev-<dir>-<SERVER_PORT>  (window: server)
+            Session name: server_<branch>_<SERVER_PORT>
 
   Client    Angular dev server with HMR.
             Ready signal in logs: "Local: http://localhost:<port>"
-            Session name: same as Server  (window: client)
+            Session name: client_<branch>_<CLIENT_PORT>
 
 PORT ALLOCATION
   AGENTOS_PORT  scans upward from 8123
@@ -58,10 +56,11 @@ OUTPUT
   This block can be parsed by Daemonay or other scripts.
 
 EXAMPLES
-  pnpm run web:dev:tmux          # start the full stack
-  tmux attach -t agentos-<dir>-<port>     # attach to AgentOS logs
-  tmux attach -t coday-dev-<dir>-<port>   # attach to server/client logs
-  tmux kill-session -t <session>          # stop a process
+  pnpm run web:dev:tmux                       # start the full stack
+  tmux attach -t agentos_<branch>_<port>      # attach to AgentOS logs
+  tmux attach -t server_<branch>_<port>       # attach to server logs
+  tmux attach -t client_<branch>_<port>       # attach to client logs
+  tmux kill-session -t <session>              # stop a process
 EOF
   exit 0
 fi
@@ -101,7 +100,8 @@ SERVER_PORT=$(find_free_port "${START_SERVER_PORT}")
 CLIENT_PORT=$(find_free_port "${START_CLIENT_PORT}")
 
 SESSION_AGENTOS="agentos_${BRANCH_SLUG}_${AGENTOS_PORT}"
-SESSION_WEB="coday-dev_${BRANCH_SLUG}_${SERVER_PORT}"
+SESSION_SERVER="server_${BRANCH_SLUG}_${SERVER_PORT}"
+SESSION_CLIENT="client_${BRANCH_SLUG}_${CLIENT_PORT}"
 
 # ---------------------------------------------------------------------------
 # Summary (human + machine readable)
@@ -112,12 +112,13 @@ echo "SERVER_PORT=${SERVER_PORT}"
 echo "CLIENT_PORT=${CLIENT_PORT}"
 echo
 echo "AgentOS session   : ${SESSION_AGENTOS}"
-echo "Web session       : ${SESSION_WEB}"
+echo "Server session    : ${SESSION_SERVER}"
+echo "Client session    : ${SESSION_CLIENT}"
 
 # ---------------------------------------------------------------------------
 # Kill any existing sessions for this worktree
 # ---------------------------------------------------------------------------
-for SESSION in "${SESSION_AGENTOS}" "${SESSION_WEB}"; do
+for SESSION in "${SESSION_AGENTOS}" "${SESSION_SERVER}" "${SESSION_CLIENT}"; do
   if tmux has-session -t "${SESSION}" 2>/dev/null; then
     echo "Killing existing session '${SESSION}'..."
     tmux kill-session -t "${SESSION}"
@@ -125,24 +126,26 @@ for SESSION in "${SESSION_AGENTOS}" "${SESSION_WEB}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Window 0: AgentOS (Spring Boot)
+# Session: AgentOS (Spring Boot)
 # deployPlugins builds plugins and copies JARs to agentos/plugins/ before start.
-# Working dir is set to agentos/ by the bootRun Gradle task configuration.
+# cd to absolute path avoids any working dir ambiguity.
 # ---------------------------------------------------------------------------
-tmux new-session -d -s "${SESSION_AGENTOS}" -n agentos \
-  "cd agentos && ./gradlew deployPlugins bootRun --args='--server.port=${AGENTOS_PORT}'"
+tmux new-session -d -s "${SESSION_AGENTOS}" \
+  "cd '$(pwd)/agentos' && ./gradlew deployPlugins bootRun --args='--server.port=${AGENTOS_PORT}'"
 
 # ---------------------------------------------------------------------------
-# Window 0: Express server
+# Session: Express server
 # AGENTOS_PORT — tells the server where to proxy /api/agentos/* requests
 # PORT         — the port the Express server binds to
 # ANGULAR_CLIENT_PORT — tells the server where to proxy Angular HMR requests
 # ---------------------------------------------------------------------------
-tmux new-session -d -s "${SESSION_WEB}" -n server \
+tmux new-session -d -s "${SESSION_SERVER}" \
   "AGENTOS_PORT=${AGENTOS_PORT} PORT=${SERVER_PORT} ANGULAR_CLIENT_PORT=${CLIENT_PORT} BUILD_ENV=development pnpm nx run server:serve"
 
-# Window 1: Angular dev server
-tmux new-window -t "${SESSION_WEB}" -n client \
+# ---------------------------------------------------------------------------
+# Session: Angular dev server
+# ---------------------------------------------------------------------------
+tmux new-session -d -s "${SESSION_CLIENT}" \
   "pnpm nx run client:serve --port=${CLIENT_PORT}"
 
 # ---------------------------------------------------------------------------
@@ -150,5 +153,5 @@ tmux new-window -t "${SESSION_WEB}" -n client \
 # ---------------------------------------------------------------------------
 echo
 echo "Started. Open: http://localhost:${SERVER_PORT}"
-echo "Attach with : tmux attach -t ${SESSION_WEB}"
-echo "Stop with   : tmux kill-session -t ${SESSION_AGENTOS} && tmux kill-session -t ${SESSION_WEB}"
+echo "Attach with : tmux attach -t ${SESSION_SERVER}"
+echo "Stop with   : tmux kill-session -t ${SESSION_AGENTOS} && tmux kill-session -t ${SESSION_SERVER} && tmux kill-session -t ${SESSION_CLIENT}"

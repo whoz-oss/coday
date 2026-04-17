@@ -101,9 +101,10 @@ scripts:
       Starts the full Coday dev stack (AgentOS + Express server + Angular client) in tmux sessions.
       Ports are allocated dynamically to avoid collisions across worktrees.
 
-      Three tmux sessions/windows are created:
-        - agentos_<branch>_<port>       AgentOS Spring Boot backend
-        - coday-dev_<branch>_<port>     Express server (window: server) + Angular (window: client)
+      Three tmux sessions are created (one process per session):
+        - agentos_<branch>_<port>   AgentOS Spring Boot backend
+        - server_<branch>_<port>    Express server
+        - client_<branch>_<port>    Angular dev server
       Where <branch> is the first 12 chars of the last git branch segment.
 
       Output includes a machine-readable block with allocated ports:

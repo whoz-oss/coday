@@ -23,12 +23,13 @@ instructions: |
 
   ## Session naming
 
-  Sessions started by the `web-dev` script follow the pattern:
-    `agentos_<branch>_<port>`   — AgentOS Spring Boot backend
-    `coday-dev_<branch>_<port>` — Express server + Angular client
+  Sessions started by the `web-dev-tmux.sh` script follow the pattern:
+    `agentos_<branch>_<port>` — AgentOS Spring Boot backend
+    `server_<branch>_<port>`  — Express server
+    `client_<branch>_<port>`  — Angular dev server
 
   Where `<branch>` is the first 12 chars of the last git branch segment (e.g. `issue-0764-l`)
-  and `<port>` is the dynamically allocated port.
+  and `<port>` is the dynamically allocated port. One process per session — no windows.
 
   Always use `tmux list` to discover actual session names before acting — never guess them.
 
