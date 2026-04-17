@@ -175,7 +175,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
   openTokenUsage(): void {
     this.configErrorMessage = ''
     void this.router.navigate(['/token-usage'])
-    this.close()
   }
 
   openUserConfig(): void {
@@ -307,7 +306,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
     const projectName = this.selectedProjectName()
     this.router.navigate(['project', projectName, 'agents'])
-    this.close()
   }
 
   /**
@@ -319,7 +317,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
     const projectName = this.selectedProjectName()
     this.router.navigate(['project', projectName, 'prompts'])
-    this.close()
   }
 
   /**
@@ -331,7 +328,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
     const projectName = this.selectedProjectName()
     this.router.navigate(['project', projectName, 'schedulers'])
-    this.close()
   }
 
   /**

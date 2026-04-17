@@ -1,11 +1,11 @@
-import { DecimalPipe } from '@angular/common'
+import { DecimalPipe, Location } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import { MatButtonModule } from '@angular/material/button'
+import { MatIconModule } from '@angular/material/icon'
 import { ModelUsageSummaryDto, TimeSeriesPointDto } from '../../core/services/token-usage-api.service'
 import { DailySeriesChartComponent, DailySeriesChartPoint } from './daily-series-chart.component'
-import { Router } from '@angular/router'
 import { TokenUsageStateService } from '../../core/services/token-usage-state.service'
-import { ProjectStateService } from '../../core/services/project-state.service'
 import { ApplyPipe, CallPipe } from '../../pipes/call-apply'
 
 const EM_DASH = '\u2014'
@@ -13,13 +13,12 @@ const EM_DASH = '\u2014'
 @Component({
   selector: 'app-token-usage',
   standalone: true,
-  imports: [FormsModule, CallPipe, ApplyPipe, DailySeriesChartComponent],
+  imports: [FormsModule, CallPipe, ApplyPipe, DailySeriesChartComponent, MatButtonModule, MatIconModule],
   templateUrl: './token-usage.component.html',
   styleUrl: './token-usage.component.scss',
 })
 export class TokenUsageComponent implements OnInit {
-  private readonly router = inject(Router)
-  private readonly projectState = inject(ProjectStateService)
+  private readonly location = inject(Location)
   protected readonly state = inject(TokenUsageStateService)
 
   protected readonly view = signal<'byAgent' | 'byModel'>('byModel')
@@ -124,9 +123,8 @@ export class TokenUsageComponent implements OnInit {
   /** True when token data is partial (some events had missing token counts, but not all). */
   protected readonly isPartialPeriod = computed(() => !this.isMissingPeriod() && this.state.tokenDataPartial())
 
-  protected navigateBackToProject(): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    void this.router.navigate(projectName ? ['project', projectName] : ['/'])
+  protected navigateBack(): void {
+    this.location.back()
   }
 
   /** Pure helper: format a nullable token count as a localised string or dash. */
