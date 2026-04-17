@@ -1,3 +1,22 @@
+## 0.119.0 (2026-04-17)
+
+### 🚀 Features
+
+- wz-28819: neo4j persistence doc ([303ef985](https://github.com/whoz-oss/coday/commit/303ef985))
+- wz-28819: Graph relationships added for Case, Namespace and IntegrationConfig ([8efc89a1](https://github.com/whoz-oss/coday/commit/8efc89a1))
+- wz-28819: use relations for queries and remove id property ([1dc97993](https://github.com/whoz-oss/coday/commit/1dc97993))
+- wz-28819: use relations for case events ([3d9e61fa](https://github.com/whoz-oss/coday/commit/3d9e61fa))
+- wz-28819: remove stubbing that was destroying properties on save of linked nodes ([dbd8ab22](https://github.com/whoz-oss/coday/commit/dbd8ab22))
+- #WZ-31326 add optional configPath to Namespace entity ([#757](https://github.com/whoz-oss/coday/pull/757))
+- **agentos-service:** add CREATED_BY link between case and user ([f0f2131b](https://github.com/whoz-oss/coday/commit/f0f2131b))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- thomas.martin @thomasmartin-whoz
+- vincent.audibert
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.118.2 (2026-04-16)
 
 ### 🚀 Features
