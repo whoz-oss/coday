@@ -175,21 +175,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) { aiModelService.findAiModel(namespaceId) }
         }
 
-        "findAgentByName falls back to AiModel resolution when no AgentConfig matches" {
-            val model = modelConfig(alias = "sonnet")
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = agentService.findAgentByName("sonnet", context)
-
-            agent.name shouldBe "sonnet"
-        }
-
         "findAgentByName resolution is case-insensitive for AgentConfig names" {
             val config = agentConfig(name = "My-Agent", modelName = "sonnet")
             val model = modelConfig(alias = "sonnet")
@@ -206,47 +191,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agent.name shouldBe "My-Agent"
         }
 
-        // -------------------------------------------------------------------------
-        // findAgentByName — legacy alias resolution (no AgentConfig)
-        // -------------------------------------------------------------------------
-
-        "findAgentByName resolves by AiModel alias when no AgentConfig exists" {
-            val model = modelConfig(alias = "sonnet")
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = agentService.findAgentByName("sonnet", context)
-
-            agent.name shouldBe "sonnet"
-            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider) }
-        }
-
-        "findAgentByName falls back to apiName when alias does not match" {
-            val model = modelConfig(apiName = "claude-sonnet-4-5", alias = null)
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { agentConfigService.findByName(namespaceId, "claude-sonnet-4-5") } returns null
-            every { aiModelService.findAiModel(namespaceId, "claude-sonnet-4-5") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = agentService.findAgentByName("claude-sonnet-4-5", context)
-
-            agent.name shouldBe "claude-sonnet-4-5"
-        }
-
-        "findAgentByName throws when no AgentConfig and no AiModel matches in the namespace" {
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns null
+        "findAgentByName throws when no AgentConfig matches in the namespace" {
+            every { agentConfigService.findByName(namespaceId, "unknown") } returns null
 
             shouldThrow<IllegalArgumentException> {
-                agentService.findAgentByName("sonnet", context)
+                agentService.findAgentByName("unknown", context)
             }
         }
 
@@ -255,16 +204,17 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "findAgentByName appends namespace name and description to instructions" {
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldContain namespace.name
             agent.instructions shouldContain "Engineering namespace for backend services"
@@ -279,15 +229,16 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 )
             every { namespaceService.findById(namespaceId) } returns namespaceWithoutDescription
 
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldContain "engineering"
             agent.instructions shouldNotContain "null"
@@ -331,15 +282,16 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     ),
                 )
             every { localIntegrationService.findByParent(any()) } returns configs
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            val agent = localService.findAgentByName("sonnet", context) as AgentSimple
+            val agent = localService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldContain "## Integrations"
             agent.instructions shouldContain "JIRA_PROD: Production Jira workspace for the engineering team"
@@ -358,15 +310,16 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     ),
                 )
             every { integrationConfigService.findByParent(namespaceId) } returns configs
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldNotContain "## Integrations"
         }
@@ -402,44 +355,47 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     ),
                 )
             every { localIntegrationService.findByParent(any()) } returns configs
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            val agent = localService.findAgentByName("sonnet", context) as AgentSimple
+            val agent = localService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldContain "JIRA_PROD: Production Jira"
             agent.instructions shouldNotContain "GITHUB_MAIN"
         }
 
         "findAgentByName omits integrations block when namespace has no configs" {
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldNotContain "## Integrations"
         }
 
         "findAgentByName resolves namespace by namespaceId from context" {
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            agentService.findAgentByName("sonnet", context)
+            agentService.findAgentByName("my-agent", context)
 
             verify(exactly = 1) { namespaceService.findById(namespaceId) }
         }
@@ -460,17 +416,18 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     bio = "Backend engineer passionate about distributed systems.",
                 )
             val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 
-            val agent = agentService.findAgentByName("sonnet", contextWithUser) as AgentSimple
+            val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
 
             agent.instructions shouldContain user.email
             agent.instructions shouldContain "Alice"
@@ -491,17 +448,18 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     bio = null,
                 )
             val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 
-            val agent = agentService.findAgentByName("sonnet", contextWithUser) as AgentSimple
+            val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
 
             agent.instructions shouldContain user.email
             agent.instructions shouldNotContain "firstname"
@@ -510,16 +468,17 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         "findAgentByName skips user block when userId is null" {
-            val model = modelConfig()
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
 
-            val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldNotContain "## User"
             verify(exactly = 0) { userService.findById(any()) }
@@ -549,7 +508,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // resolveAgentName — delegates to AgentConfig first
+        // resolveAgentName
         // -------------------------------------------------------------------------
 
         "resolveAgentName returns AgentConfig name when one matches" {
@@ -561,17 +520,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 0) { aiModelService.findAiModel(any(), any()) }
         }
 
-        "resolveAgentName falls back to AiModel when no AgentConfig matches" {
-            val model = modelConfig(alias = "sonnet")
-            every { agentConfigService.findByName(namespaceId, "sonnet") } returns null
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-
-            agentService.resolveAgentName("sonnet", namespaceId) shouldBe "sonnet"
-        }
-
-        "resolveAgentName returns null when neither AgentConfig nor AiModel matches" {
+        "resolveAgentName returns null when no AgentConfig matches" {
             every { agentConfigService.findByName(namespaceId, "unknown") } returns null
-            every { aiModelService.findAiModel(namespaceId, "unknown") } returns null
 
             agentService.resolveAgentName("unknown", namespaceId) shouldBe null
         }

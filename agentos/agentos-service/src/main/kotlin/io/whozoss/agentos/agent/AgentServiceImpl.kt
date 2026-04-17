@@ -19,18 +19,16 @@ import java.util.UUID
 
 /**
  * Implementation of [AgentService] that resolves agents from namespace-scoped
- * [AgentConfig] entities first, falling back to [AiModel] + [AiProvider] pairs
- * when no matching config exists.
+ * [AgentConfig] entities.
  *
  * ## Resolution strategy for [findAgentByName]
  *
- * 1. Look up an [AgentConfig] in the namespace whose `name` matches [namePart]
- *    (case-insensitive).
- *    - If found: use the config's `name` as agent identity, its `instructions` as
- *      base system prompt, and resolve the model via `config.modelName`
- *      (alias-first, then apiName).
- * 2. If no [AgentConfig] matches, fall back to the legacy path: resolve [namePart]
- *    directly against [AiModel] alias / apiName.
+ * Look up an [AgentConfig] in the namespace whose `name` matches [namePart]
+ * (case-insensitive).
+ * - If found: use the config's `name` as agent identity, its `instructions` as
+ *   base system prompt, and resolve the model via `config.modelName`
+ *   (alias-first, then apiName).
+ * - If not found: throws [IllegalArgumentException].
  *
  * ## Resolution strategy for [getDefaultAgent] / [getDefaultAgentName]
  *
@@ -56,15 +54,12 @@ class AgentServiceImpl(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
-        val agentConfig = agentConfigService.findByName(context.namespaceId, namePart)
-        return when {
-            agentConfig != null -> createAgentFromConfig(agentConfig, context)
-            else -> {
-                val (modelConfig, providerConfig) = resolveModelPair(namePart, context.namespaceId)
-                val canonicalName = modelConfig.alias ?: modelConfig.apiModelName
-                createAgentInstance(canonicalName, null, modelConfig, providerConfig, context)
-            }
-        }
+        val agentConfig =
+            agentConfigService.findByName(context.namespaceId, namePart)
+                ?: throw IllegalArgumentException(
+                    "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+                )
+        return createAgentFromConfig(agentConfig, context)
     }
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? =
@@ -77,13 +72,7 @@ class AgentServiceImpl(
     override fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
-    ): String? {
-        val agentConfig = agentConfigService.findByName(namespaceId, namePart)
-        return when {
-            agentConfig != null -> agentConfig.name
-            else -> aiModelService.findAiModel(namespaceId, namePart)?.let { it.alias ?: it.apiModelName }
-        }
-    }
+    ): String? = agentConfigService.findByName(namespaceId, namePart)?.name
 
     // -------------------------------------------------------------------------
     // Resolution helpers
