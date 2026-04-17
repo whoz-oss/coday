@@ -1,3 +1,15 @@
+## 0.121.1 (2026-04-17)
+
+### 🩹 Fixes
+
+- #768 token-usage back button replaces logo with proper back navigation ([#768](https://github.com/whoz-oss/coday/issues/768))
+- #768 token-usage back button replaces logo with proper back navi… ([#769](https://github.com/whoz-oss/coday/pull/769), [#768](https://github.com/whoz-oss/coday/issues/768))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+- louis-alexandre.celton @la-celton-whoz
+
 ## 0.121.0 (2026-04-17)
 
 ### 🚀 Features
