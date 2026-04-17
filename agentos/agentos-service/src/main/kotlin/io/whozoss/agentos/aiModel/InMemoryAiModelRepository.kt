@@ -8,8 +8,10 @@ import java.util.UUID
 
 @Repository
 @ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' != 'neo4j' " +
-        "and '\${agentos.persistence.mode:in-memory}' != 'embedded-neo4j'",
+    """
+    '\${agentos.persistence.mode:in-memory}' != 'neo4j'
+    and '\${agentos.persistence.mode:in-memory}' != 'embedded-neo4j'
+    """,
 )
 class InMemoryAiModelRepository : AiModelRepository {
     private val delegate =

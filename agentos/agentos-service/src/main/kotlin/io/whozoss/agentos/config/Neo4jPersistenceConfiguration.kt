@@ -9,7 +9,7 @@ import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
-import io.whozoss.agentos.aiProvider.Neo4JAiProviderRepository
+import io.whozoss.agentos.aiProvider.Neo4jAiProviderRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
@@ -110,7 +110,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jAiProviderRepository(aiProviderNodeNeo4JRepository: AiProviderNodeNeo4jRepository): AiProviderRepository {
         logger.info { "[Persistence] Neo4jAiProviderRepository active" }
-        return Neo4JAiProviderRepository(aiProviderNodeNeo4JRepository)
+        return Neo4jAiProviderRepository(aiProviderNodeNeo4JRepository)
     }
 
     @Bean
