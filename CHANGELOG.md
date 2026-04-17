@@ -1,3 +1,14 @@
+## 0.121.0 (2026-04-17)
+
+### 🚀 Features
+
+- #31326 add AgentConfig entity with CRUD, Neo4j persistence and tests ([#762](https://github.com/whoz-oss/coday/pull/762), [#31326](https://github.com/whoz-oss/coday/issues/31326))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.120.0 (2026-04-17)
 
 ### 🚀 Features
