@@ -1,7 +1,6 @@
 name: ovhai-vllm
 description: provider of infrastructure is ovhai, api provider is vllm with api like openai
 apiType: OpenAI
-defaultApiKey: "****"
+apiKey: "****"
 baseUrl: "****"
-baseModel: "/mnt/model"
-temperature: 0.0
+
