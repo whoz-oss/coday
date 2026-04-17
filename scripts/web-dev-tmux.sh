@@ -57,11 +57,6 @@ OUTPUT
     CLIENT_PORT=<n>
   This block can be parsed by Daemonay or other scripts.
 
-DATA ISOLATION
-  Each AgentOS instance stores its embedded Neo4j database under:
-    agentos/data-<AGENTOS_PORT>/
-  This prevents database collisions when running multiple worktrees.
-
 EXAMPLES
   pnpm run web:dev:tmux          # start the full stack
   tmux attach -t agentos-<dir>-<port>     # attach to AgentOS logs
@@ -96,9 +91,6 @@ AGENTOS_PORT=$(find_free_port "${START_AGENTOS_PORT}")
 SERVER_PORT=$(find_free_port "${START_SERVER_PORT}")
 CLIENT_PORT=$(find_free_port "${START_CLIENT_PORT}")
 
-# Embedded Neo4j data dir — isolated per AgentOS instance
-NEO4J_DATA_DIR="data-${AGENTOS_PORT}"
-
 SESSION_AGENTOS="agentos-${DIR_NAME}-${AGENTOS_PORT}"
 SESSION_WEB="coday-dev-${DIR_NAME}-${SERVER_PORT}"
 
@@ -110,7 +102,7 @@ echo "AGENTOS_PORT=${AGENTOS_PORT}"
 echo "SERVER_PORT=${SERVER_PORT}"
 echo "CLIENT_PORT=${CLIENT_PORT}"
 echo
-echo "AgentOS session   : ${SESSION_AGENTOS}  (data dir: agentos/${NEO4J_DATA_DIR})"
+echo "AgentOS session   : ${SESSION_AGENTOS}"
 echo "Web session       : ${SESSION_WEB}"
 
 # ---------------------------------------------------------------------------
@@ -129,7 +121,7 @@ done
 # Working dir is set to agentos/ by the bootRun Gradle task configuration.
 # ---------------------------------------------------------------------------
 tmux new-session -d -s "${SESSION_AGENTOS}" -n agentos \
-  "cd agentos && ./gradlew deployPlugins bootRun --args='--server.port=${AGENTOS_PORT}' -PjvmArgs='-DAGENTOS_PERSISTENCE_DATA_DIR=${NEO4J_DATA_DIR}'"
+  "cd agentos && ./gradlew deployPlugins bootRun --args='--server.port=${AGENTOS_PORT}'"
 
 # ---------------------------------------------------------------------------
 # Window 0: Express server
