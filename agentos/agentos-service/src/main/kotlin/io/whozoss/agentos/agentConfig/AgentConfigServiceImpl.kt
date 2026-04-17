@@ -21,4 +21,17 @@ class AgentConfigServiceImpl(
     override fun delete(id: UUID): Boolean = agentConfigRepository.delete(id)
 
     override fun deleteByParent(parentId: UUID): Int = agentConfigRepository.deleteByParent(parentId)
+
+    override fun findByName(
+        namespaceId: UUID,
+        name: String,
+    ): AgentConfig? =
+        agentConfigRepository
+            .findByParent(namespaceId)
+            .firstOrNull { it.name.equals(name, ignoreCase = true) }
+
+    override fun findDefault(namespaceId: UUID): AgentConfig? =
+        agentConfigRepository
+            .findByParent(namespaceId)
+            .minByOrNull { it.metadata.created }
 }
