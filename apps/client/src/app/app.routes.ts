@@ -5,6 +5,13 @@ import { threadStateGuard } from './core/guards/thread-state.guard'
 export const appRoutes: Route[] = [
   {
     path: '',
+    loadComponent: () =>
+      import('./components/global-task-control/global-task-control.component').then(
+        (m) => m.GlobalTaskControlComponent
+      ),
+  },
+  {
+    path: 'projects',
     loadComponent: () => import('./components/project-list/project-list.component').then((m) => m.ProjectListComponent),
   },
   {
@@ -38,10 +45,14 @@ export const appRoutes: Route[] = [
     canActivate: [projectStateGuard],
   },
   {
-    path: 'project/:projectName/missions',
-    loadComponent: () =>
-      import('./components/mission-control/mission-control.component').then((m) => m.MissionControlComponent),
+    path: 'project/:projectName/tasks',
+    loadComponent: () => import('./components/task-control/task-control.component').then((m) => m.TaskControlComponent),
     canActivate: [projectStateGuard],
+  },
+  // Legacy redirect: /missions -> /tasks
+  {
+    path: 'project/:projectName/missions',
+    redirectTo: 'project/:projectName/tasks',
   },
   {
     path: 'project/:projectName/thread/:threadId',

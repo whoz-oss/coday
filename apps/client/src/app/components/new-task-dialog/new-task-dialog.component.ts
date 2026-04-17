@@ -12,7 +12,7 @@ import { ProjectApiService } from '../../core/services/project-api.service'
 import { AgentApiService } from '../../core/services/agent-api.service'
 
 @Component({
-  selector: 'app-new-mission-dialog',
+  selector: 'app-new-task-dialog',
   standalone: true,
   // Default change detection (intentionally omitted): this dialog runs in a CDK overlay
   // created outside Angular's zone. OnPush + overlay is a known footgun — signal updates
@@ -29,13 +29,13 @@ import { AgentApiService } from '../../core/services/agent-api.service'
     MatProgressSpinnerModule,
     MatIconModule,
   ],
-  templateUrl: './new-mission-dialog.component.html',
-  styleUrl: './new-mission-dialog.component.scss',
+  templateUrl: './new-task-dialog.component.html',
+  styleUrl: './new-task-dialog.component.scss',
 })
-export class NewMissionDialogComponent implements OnInit {
+export class NewTaskDialogComponent implements OnInit {
   private readonly projectApi = inject(ProjectApiService)
   private readonly agentApi = inject(AgentApiService)
-  private readonly dialogRef = inject(MatDialogRef<NewMissionDialogComponent>)
+  private readonly dialogRef = inject(MatDialogRef<NewTaskDialogComponent>)
 
   // Form state
   protected readonly selectedProject = signal<string>('')
@@ -49,7 +49,10 @@ export class NewMissionDialogComponent implements OnInit {
   protected readonly branchType = signal<string>('feature')
   protected readonly task = signal<string>('')
 
-  protected readonly branchTypes = ['feature', 'fix', 'refactor', 'chore', 'docs']
+  /** Whether the selected project has git integration (branches available) */
+  protected readonly hasGit = signal(false)
+
+  protected readonly branchTypes = ['feature', 'fix', 'refactor', 'chore', 'docs', 'build']
 
   // Data
   protected readonly projects = signal<string[]>([])
@@ -81,7 +84,7 @@ export class NewMissionDialogComponent implements OnInit {
   protected readonly isLoadingBranches = signal(false)
   protected readonly isSubmitting = signal(false)
 
-  protected readonly isWorktree = computed(() => this.mode() === 'worktree')
+  protected readonly isWorktree = computed(() => this.mode() === 'worktree' && this.hasGit())
 
   protected readonly isValid = computed(() => {
     const projectValid = this.projects().includes(this.selectedProject())
@@ -115,6 +118,9 @@ export class NewMissionDialogComponent implements OnInit {
     this.branches.set([])
     this.selectedBranch.set('')
     this.branchSearch.set('')
+    this.hasGit.set(false)
+    this.mode.set('local')
+
     this.isLoadingAgents.set(true)
     this.agentApi.getAgents(name).subscribe({
       next: (agents) => {
@@ -123,6 +129,16 @@ export class NewMissionDialogComponent implements OnInit {
       },
       error: () => {
         this.isLoadingAgents.set(false)
+      },
+    })
+
+    // Check if project has git integration
+    this.projectApi.getGitBranches(name).subscribe({
+      next: ({ branches }) => {
+        this.hasGit.set(branches.length > 0)
+      },
+      error: () => {
+        this.hasGit.set(false)
       },
     })
   }
@@ -202,13 +218,13 @@ export class NewMissionDialogComponent implements OnInit {
         this.selectedProject(),
         this.selectedAgent(),
         fullTask,
-        this.mode(),
+        this.isWorktree() ? 'worktree' : 'local',
         this.isWorktree() ? this.selectedBranch() : undefined,
         this.isWorktree() ? this.issueNumber().trim() : undefined,
         this.isWorktree() ? this.branchType() : undefined
       )
       .subscribe({
-        next: ({ threadId, projectId }: { threadId: string; projectId: string }) => {
+        next: ({ threadId, projectId }) => {
           this.dialogRef.close({ threadId, projectId })
         },
         error: () => {

@@ -101,9 +101,9 @@ export class ProjectApiService {
     return this.http.get<{ branches: string[] }>(`${this.baseUrl}/${projectName}/git/branches`)
   }
 
-  // ── Missions ─────────────────────────────────────────────────────────────────────────
+  // ── Tasks / Missions ─────────────────────────────────────────────────────────────────
 
-  createMission(
+  createTask(
     projectName: string,
     agentName: string,
     task: string,
@@ -122,8 +122,12 @@ export class ProjectApiService {
     })
   }
 
-  closeMission(projectName: string, threadId: string): Observable<{ success: boolean }> {
+  closeTask(projectName: string, threadId: string): Observable<{ success: boolean }> {
     return this.http.delete<{ success: boolean }>(`${this.baseUrl}/${projectName}/missions/${threadId}`)
+  }
+
+  markThreadDone(projectName: string, threadId: string): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/${projectName}/threads/${threadId}/done`, {})
   }
 
   /**

@@ -375,12 +375,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Navigate to the Mission Control view
+   * Navigate to the Task Control view
    */
   openMissionControl(): void {
     const projectName = this.selectedProjectName()
     if (!projectName) return
-    void this.router.navigate(['project', projectName, 'missions'])
+    void this.router.navigate(['project', projectName, 'tasks'])
     this.close()
   }
 

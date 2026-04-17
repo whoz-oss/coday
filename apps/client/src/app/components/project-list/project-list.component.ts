@@ -14,7 +14,7 @@ import {
   ConfirmDialogResult,
 } from '../confirm-dialog/confirm-dialog.component'
 import { NotificationService } from '../../services/notification.service'
-import { GlobalMissionControlComponent } from '../global-mission-control/global-mission-control.component'
+// GlobalTaskControlComponent is now the home page (/) — no longer embedded here
 import { filter } from 'rxjs'
 
 /** Separator used in the worktree project naming convention: `parent__subProject` */
@@ -32,7 +32,7 @@ const WORKTREE_SEPARATOR = '__'
 @Component({
   selector: 'app-project-selection',
   standalone: true,
-  imports: [EntityListComponent, GlobalMissionControlComponent, EntityCardComponent, MatIconModule, MatIconButton],
+  imports: [EntityListComponent, EntityCardComponent, MatIconModule, MatIconButton],
   templateUrl: './project-list.component.html',
   styleUrl: './project-list.component.scss',
 })
