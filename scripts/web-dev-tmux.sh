@@ -132,7 +132,7 @@ done
 # ---------------------------------------------------------------------------
 ROOT_DIR="$(pwd)"
 tmux new-session -d -s "${SESSION_AGENTOS}" \
-  "cd '${ROOT_DIR}' && pnpm nx bootRun agentos-service --args='--server.port=${AGENTOS_PORT}'"
+  "cd '${ROOT_DIR}' && SERVER_PORT=${AGENTOS_PORT} pnpm nx bootRun agentos-service"
 
 # ---------------------------------------------------------------------------
 # Session: Express server
