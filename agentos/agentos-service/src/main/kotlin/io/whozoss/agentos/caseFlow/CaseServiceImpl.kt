@@ -178,20 +178,7 @@ class CaseServiceImpl(
             }
         }
 
-        val defaultName =
-            agentService.getDefaultAgentName(namespaceId)
-                ?: run {
-                    logger.warn { "[CaseService] No AI model configured for namespace $namespaceId" }
-                    return listOf(
-                        WarnEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            message =
-                                "No AI model is configured for this namespace. " +
-                                    "Create an AiProvider and AiModel for namespace $namespaceId.",
-                        ),
-                    )
-                }
+        val defaultName = agentService.getDefaultAgentName(namespaceId)
         logger.info { "[CaseService] Selecting default agent: $defaultName" }
         return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
     }

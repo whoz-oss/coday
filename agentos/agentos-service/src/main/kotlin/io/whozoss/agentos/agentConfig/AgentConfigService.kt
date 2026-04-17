@@ -19,11 +19,12 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
     ): AgentConfig?
 
     /**
-     * Find the default [AgentConfig] for [namespaceId].
+     * Return the default [AgentConfig] for [namespaceId].
      *
      * The default is the [AgentConfig] with the lowest [EntityMetadata.created] timestamp
-     * (i.e. the first one ever created in the namespace). Returns null if the namespace
-     * has no agent configs at all.
+     * (i.e. the first one ever created in the namespace). When no agent config has been
+     * persisted yet, a built-in fallback config is returned so callers can always rely
+     * on a non-null result.
      */
-    fun findDefault(namespaceId: UUID): AgentConfig?
+    fun findDefault(namespaceId: UUID): AgentConfig
 }

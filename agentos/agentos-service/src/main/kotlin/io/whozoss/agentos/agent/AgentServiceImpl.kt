@@ -34,13 +34,12 @@ import java.util.UUID
  *
  * ## Resolution strategy for [getDefaultAgent] / [getDefaultAgentName]
  *
- * 1. Return the first (oldest) [AgentConfig] in the namespace, if any.
- * 2. Otherwise fall back to the [AiModel]-based default (alias = "default" or
- *    highest-priority model).
+ * Delegates to [AgentConfigService.findDefault], which always returns a non-null
+ * [AgentConfig] — either the oldest persisted config in the namespace, or the
+ * built-in fallback. [getDefaultAgentName] is therefore always non-null.
  *
- * The recommended alias for the primary model in a namespace is "default". This keeps
- * agent definitions provider-agnostic: switching providers only requires updating the
- * [AiModel], not any agent definition.
+ * [getDefaultAgent] can still return null when the resolved config has no
+ * [AgentConfig.modelName] and no [AiModel] is configured for the namespace.
  */
 @Service
 class AgentServiceImpl(
@@ -68,25 +67,12 @@ class AgentServiceImpl(
         }
     }
 
-    override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
-        val agentConfig = agentConfigService.findDefault(context.namespaceId)
-        return when {
-            agentConfig != null -> createAgentFromConfig(agentConfig, context)
-            else -> {
-                val modelConfig = findDefaultModelConfig(context.namespaceId) ?: return null
-                val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
-                createAgentInstance(modelConfig.alias ?: modelConfig.apiModelName, null, modelConfig, providerConfig, context)
-            }
-        }
-    }
+    override fun getDefaultAgent(context: AgentExecutionContext): Agent? =
+        runCatching { createAgentFromConfig(agentConfigService.findDefault(context.namespaceId), context) }
+            .onFailure { logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" } }
+            .getOrNull()
 
-    override fun getDefaultAgentName(namespaceId: UUID): String? {
-        val agentConfig = agentConfigService.findDefault(namespaceId)
-        return when {
-            agentConfig != null -> agentConfig.name
-            else -> findDefaultModelConfig(namespaceId)?.let { it.alias ?: it.apiModelName }
-        }
-    }
+    override fun getDefaultAgentName(namespaceId: UUID): String = agentConfigService.findDefault(namespaceId).name
 
     override fun resolveAgentName(
         namePart: String,

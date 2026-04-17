@@ -13,7 +13,8 @@ import java.util.UUID
  *
  * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) do not
  * instantiate agents but do require a [namespaceId] to scope the lookup against
- * the namespace's [io.whozoss.agentos.aiModel.AiModel] entities.
+ * the namespace's [io.whozoss.agentos.agentConfig.AgentConfig] and
+ * [io.whozoss.agentos.aiModel.AiModel] entities.
  */
 interface AgentService {
     /**
@@ -29,19 +30,26 @@ interface AgentService {
 
     /**
      * Get the default agent for cases where no agent is explicitly selected.
-     * Returns null if no default is configured for the namespace.
+     * Returns null if the default [io.whozoss.agentos.agentConfig.AgentConfig]
+     * has no [io.whozoss.agentos.agentConfig.AgentConfig.modelName] and no
+     * [io.whozoss.agentos.aiModel.AiModel] is configured for the namespace.
      */
     fun getDefaultAgent(context: AgentExecutionContext): Agent?
 
     /**
      * Get the logical name of the default agent for [namespaceId] without
-     * instantiating a full Agent. Returns null if no model is configured.
+     * instantiating a full Agent.
+     *
+     * Always returns a non-null name: when no [io.whozoss.agentos.agentConfig.AgentConfig]
+     * has been persisted for the namespace, the built-in fallback config name is returned.
      */
-    fun getDefaultAgentName(namespaceId: UUID): String?
+    fun getDefaultAgentName(namespaceId: UUID): String
 
     /**
      * Resolve the canonical name for [namePart] within [namespaceId] by
-     * alias-first then apiName matching, without instantiating a full Agent.
+     * [io.whozoss.agentos.agentConfig.AgentConfig] name first, then
+     * [io.whozoss.agentos.aiModel.AiModel] alias / apiName matching,
+     * without instantiating a full Agent.
      * Returns null if no match is found.
      */
     fun resolveAgentName(

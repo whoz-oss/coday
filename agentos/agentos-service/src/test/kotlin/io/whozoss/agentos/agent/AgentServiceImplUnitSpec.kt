@@ -2,7 +2,6 @@ package io.whozoss.agentos.agent
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -11,6 +10,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.agentConfig.AgentConfigServiceImpl
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
@@ -36,7 +36,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val namespaceService: NamespaceService = mockk()
     private val integrationConfigService: IntegrationConfigService = mockk(relaxed = true)
     private val userService: UserService = mockk(relaxed = true)
-    private val agentConfigService: AgentConfigService = mockk(relaxed = true)
+    private val agentConfigService: AgentConfigService = mockk()
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -102,8 +102,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     init {
         every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
-        // agentConfigService is relaxed — returns null by default without explicit stub
-        // integrationConfigService is relaxed — returns emptyList() by default
+        every { integrationConfigService.findByParent(any()) } returns emptyList()
+        every { userService.findById(any()) } returns null
 
         // -------------------------------------------------------------------------
         // findAgentByName — AgentConfig-first resolution
@@ -267,7 +267,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
 
             agent.instructions shouldContain namespace.name
-            agent.instructions shouldContain namespace.description
+            agent.instructions shouldContain "Engineering namespace for backend services"
         }
 
         "findAgentByName includes namespace name but not null when namespace has no description" {
@@ -424,7 +424,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-            // integrationConfigService returns emptyList() by default
 
             val agent = agentService.findAgentByName("sonnet", context) as AgentSimple
 
@@ -474,9 +473,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("sonnet", contextWithUser) as AgentSimple
 
             agent.instructions shouldContain user.email
-            agent.instructions shouldContain user.firstname
-            agent.instructions shouldContain user.lastname
-            agent.instructions shouldContain user.bio
+            agent.instructions shouldContain "Alice"
+            agent.instructions shouldContain "Smith"
+            agent.instructions shouldContain "Backend engineer passionate about distributed systems."
             agent.instructions shouldContain userId.toString()
         }
 
@@ -540,22 +539,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
         }
 
-        "getDefaultAgentName falls back to AiModel alias when no AgentConfig exists" {
-            val defaultModel = modelConfig(apiName = "claude-sonnet-4-5", alias = "default")
-            every { agentConfigService.findDefault(namespaceId) } returns null
-            every { aiModelService.findAiModel(namespaceId) } returns defaultModel
+        "getDefaultAgentName returns built-in fallback name when no AgentConfig is persisted" {
+            every { agentConfigService.findDefault(namespaceId) } returns AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG
 
-            agentService.getDefaultAgentName(namespaceId) shouldBe "default"
+            agentService.getDefaultAgentName(namespaceId) shouldBe "Default Agent"
 
+            verify(exactly = 0) { aiModelService.findAiModel(any()) }
             verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
-            verify(exactly = 0) { toolRegistryService.resolveToolsForNamespace(any()) }
-        }
-
-        "getDefaultAgentName returns null when no AgentConfig and no AiModel configured" {
-            every { agentConfigService.findDefault(namespaceId) } returns null
-            every { aiModelService.findAiModel(namespaceId) } returns null
-
-            agentService.getDefaultAgentName(namespaceId).shouldBeNull()
         }
 
         // -------------------------------------------------------------------------
@@ -583,7 +573,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "unknown") } returns null
             every { aiModelService.findAiModel(namespaceId, "unknown") } returns null
 
-            agentService.resolveAgentName("unknown", namespaceId).shouldBeNull()
+            agentService.resolveAgentName("unknown", namespaceId) shouldBe null
         }
     }
 }
