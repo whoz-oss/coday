@@ -130,6 +130,10 @@ export class ProjectApiService {
     return this.http.post<void>(`${this.baseUrl}/${projectName}/threads/${threadId}/done`, {})
   }
 
+  markThreadActive(projectName: string, threadId: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${projectName}/threads/${threadId}/done`)
+  }
+
   /**
    * Delete a project
    * @param projectName Project name

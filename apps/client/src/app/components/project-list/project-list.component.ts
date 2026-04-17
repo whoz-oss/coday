@@ -16,6 +16,7 @@ import {
 import { NotificationService } from '../../services/notification.service'
 // GlobalTaskControlComponent is now the home page (/) — no longer embedded here
 import { filter } from 'rxjs'
+import { RouterLink } from '@angular/router'
 
 /** Separator used in the worktree project naming convention: `parent__subProject` */
 const WORKTREE_SEPARATOR = '__'
@@ -32,7 +33,7 @@ const WORKTREE_SEPARATOR = '__'
 @Component({
   selector: 'app-project-selection',
   standalone: true,
-  imports: [EntityListComponent, EntityCardComponent, MatIconModule, MatIconButton],
+  imports: [EntityListComponent, EntityCardComponent, MatIconModule, MatIconButton, RouterLink],
   templateUrl: './project-list.component.html',
   styleUrl: './project-list.component.scss',
 })

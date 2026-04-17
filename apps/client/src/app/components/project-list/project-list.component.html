@@ -11,7 +11,9 @@
     (itemSelected)="onItemSelected($event)"
     (createRequested)="onCreateRequested()"
   >
-    <img toolbar-start class="project-list__logo" src="CODAY-Logo.png" alt="Coday" />
+    <a toolbar-start class="project-list__logo" routerLink="/" title="Back to tasks">
+      <img src="CODAY-Logo.png" alt="Coday" />
+    </a>
   </ds-entity-list>
 </div>
 

@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
-import { Router } from '@angular/router'
+import { RouterLink } from '@angular/router'
 import { MatDialog } from '@angular/material/dialog'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatTooltipModule } from '@angular/material/tooltip'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
+import { MatFormFieldModule } from '@angular/material/form-field'
+import { MatInputModule } from '@angular/material/input'
 import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent, ThreadUpdateEvent } from '@coday/model'
 import { TaskCardComponent } from '../task-control/task-card/task-card.component'
 import { NewTaskDialogComponent } from '../new-task-dialog/new-task-dialog.component'
@@ -17,15 +19,16 @@ type FilterKey = 'all' | TaskStatus
 const STATUS_GROUPS: { status: TaskStatus; label: string; icon: string }[] = [
   { status: 'waiting-you', label: 'Waiting for you', icon: 'mark_unread_chat_alt' },
   { status: 'in-progress', label: 'In progress', icon: 'pending' },
-  { status: 'done', label: 'Done', icon: 'check_circle' },
   { status: 'paused', label: 'Paused', icon: 'pause_circle' },
   { status: 'error', label: 'Error', icon: 'error' },
+  { status: 'done', label: 'Done', icon: 'check_circle' },
 ]
 
 const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
   { key: 'all', label: 'All', icon: 'grid_view' },
   { key: 'waiting-you', label: 'Waiting for you', icon: 'mark_unread_chat_alt' },
   { key: 'in-progress', label: 'In progress', icon: 'pending' },
+  { key: 'paused', label: 'Paused', icon: 'pause_circle' },
   { key: 'done', label: 'Done', icon: 'check_circle' },
 ]
 
@@ -44,7 +47,16 @@ const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
   selector: 'app-global-task-control',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TaskCardComponent, MatIconModule, MatButtonModule, MatTooltipModule, MatProgressSpinnerModule],
+  imports: [
+    TaskCardComponent,
+    MatIconModule,
+    MatButtonModule,
+    MatTooltipModule,
+    MatProgressSpinnerModule,
+    MatFormFieldModule,
+    MatInputModule,
+    RouterLink,
+  ],
   templateUrl: './global-task-control.component.html',
   styleUrl: './global-task-control.component.scss',
 })
@@ -52,7 +64,6 @@ export class GlobalTaskControlComponent implements OnInit {
   private readonly globalTaskService = inject(GlobalTaskService)
   private readonly destroyRef = inject(DestroyRef)
   private readonly dialog = inject(MatDialog)
-  private readonly router = inject(Router)
 
   /** Single global SSE connection aggregating events from all projects */
   private globalEventSource: EventSource | null = null
@@ -60,6 +71,7 @@ export class GlobalTaskControlComponent implements OnInit {
   protected readonly filters = FILTERS
   protected readonly activeFilter = signal<FilterKey>('all')
   protected readonly activeProject = signal<string | null>(null)
+  protected readonly searchQuery = signal<string>('')
 
   protected readonly isLoading = this.globalTaskService.isLoading
   protected readonly allTasks = this.globalTaskService.tasks
@@ -109,13 +121,34 @@ export class GlobalTaskControlComponent implements OnInit {
     }
   })
 
+  /** Tasks after search filter applied */
+  protected readonly displayedTasks = computed(() => {
+    const q = this.searchQuery().toLowerCase().trim()
+    const tasks = this.sortedFilteredTasks()
+    if (!q) return tasks
+    return tasks.filter((t) => (t.name || '').toLowerCase().includes(q) || (t.summary || '').toLowerCase().includes(q))
+  })
+
   /** Groups for the "All" status view */
   protected readonly taskGroups = computed(() => {
-    const tasks = this.filteredTasks()
+    const tasks = this.displayedTasks()
     return STATUS_GROUPS.map((g) => ({
       ...g,
       tasks: tasks.filter((t) => t.status === g.status),
     })).filter((g) => g.tasks.length > 0)
+  })
+
+  /** Sorted tasks: waiting-you → in-progress → paused → done → error */
+  protected readonly sortedFilteredTasks = computed(() => {
+    const tasks = this.filteredTasks()
+    const priority: Record<TaskStatus, number> = {
+      'waiting-you': 0,
+      'in-progress': 1,
+      paused: 2,
+      error: 3,
+      done: 4,
+    }
+    return [...tasks].sort((a, b) => (priority[a.status] ?? 99) - (priority[b.status] ?? 99))
   })
 
   constructor() {
@@ -137,12 +170,16 @@ export class GlobalTaskControlComponent implements OnInit {
     this.activeFilter.set('all')
   }
 
-  protected refresh(): void {
-    this.globalTaskService.refresh()
+  protected onSearchInput(event: Event): void {
+    this.searchQuery.set((event.target as HTMLInputElement).value)
   }
 
-  protected navigateToProjects(): void {
-    void this.router.navigate(['/projects'])
+  protected clearSearch(): void {
+    this.searchQuery.set('')
+  }
+
+  protected refresh(): void {
+    this.globalTaskService.refresh()
   }
 
   protected openNewTaskDialog(): void {
@@ -195,6 +232,10 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected onMarkDoneRequested(threadId: string, projectId: string): void {
     this.globalTaskService.markTaskDone(projectId, threadId)
+  }
+
+  protected onMarkActiveRequested(threadId: string, projectId: string): void {
+    this.globalTaskService.markTaskActive(projectId, threadId)
   }
 
   // ── Global SSE management ───────────────────────────────────────────────────────────────────

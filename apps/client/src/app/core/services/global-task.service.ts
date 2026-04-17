@@ -146,6 +146,16 @@ export class GlobalTaskService {
     })
   }
 
+  /**
+   * Mark a thread as active again (clears closedByUser on the backend).
+   */
+  markTaskActive(projectId: string, threadId: string): void {
+    this.http.delete(`/api/projects/${projectId}/threads/${threadId}/done`).subscribe({
+      next: () => this.refresh(),
+      error: (err) => console.error('[GLOBAL-TC] Failed to mark task as active:', err),
+    })
+  }
+
   // Private helpers
 
   /**

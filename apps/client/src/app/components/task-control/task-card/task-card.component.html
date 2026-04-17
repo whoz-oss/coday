@@ -64,6 +64,16 @@
         >
           <mat-icon>check_circle_outline</mat-icon>
         </button>
+      } @else {
+        <button
+          mat-icon-button
+          class="action-btn mark-active-btn"
+          (click)="onMarkActive($event)"
+          matTooltip="Mark as active"
+          aria-label="Mark as active"
+        >
+          <mat-icon>replay</mat-icon>
+        </button>
       }
       <button
         mat-icon-button

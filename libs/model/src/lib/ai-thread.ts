@@ -96,6 +96,9 @@ export class AiThread {
   /** Worktree project name — set when this thread was created via the New Mission worktree flow */
   worktreeProject?: string
 
+  /** True when the user has manually marked this thread as done */
+  closedByUser: boolean = false
+
   private parentThread: AiThread | undefined
 
   /** Internal storage of thread messages in chronological order */
@@ -127,6 +130,7 @@ export class AiThread {
     this.delegatedAgentName = thread.delegatedAgentName
     this.delegatedTask = thread.delegatedTask
     this.worktreeProject = thread.worktreeProject
+    this.closedByUser = thread.closedByUser ?? false
 
     // Filter on type first, then build events
     // Ensure messages is always initialized as an array, even if empty
@@ -308,6 +312,13 @@ export class AiThread {
     }
 
     return cleanedMessages
+  }
+
+  /**
+   * Mark this thread as done by the user.
+   */
+  markAsDone(): void {
+    this.closedByUser = true
   }
 
   /**
@@ -696,6 +707,7 @@ export class AiThread {
       delegatedAgentName: this.delegatedAgentName,
       delegatedTask: this.delegatedTask,
       worktreeProject: this.worktreeProject,
+      closedByUser: this.closedByUser || undefined,
       messages: this.messages,
     }
   }

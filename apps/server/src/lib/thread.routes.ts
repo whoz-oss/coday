@@ -9,7 +9,7 @@ import { CodayOptions } from '@coday/model'
 import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model'
 import { ThreadService } from '@coday/service'
 import { ThreadFileService } from '@coday/service'
-import { hasAccess } from '@coday/model'
+import { hasAccess, ThreadUpdateEvent } from '@coday/model'
 
 /**
  * Thread Management REST API Routes
@@ -403,6 +403,116 @@ export function registerThreadRoutes(
         console.error('Error unstarring thread:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: `Failed to unstar thread: ${errorMessage}` })
+      }
+    }
+  )
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/done
+   * Mark a thread as done by the current user
+   */
+  app.post('/api/projects/:projectName/threads/:threadId/done', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
+      if (!projectName || !threadId) {
+        res.status(400).json({ error: 'Project name and thread ID are required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      const existingThread = await threadService.getThread(projectName, threadId)
+      if (!existingThread) {
+        res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+        return
+      }
+
+      if (!hasAccess(existingThread, username)) {
+        res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+        return
+      }
+
+      debugLog('THREAD', `POST mark as done: ${threadId} in project: ${projectName} by user: ${username}`)
+      const updatedThread = await threadService.updateThread(projectName, threadId, { closedByUser: true })
+
+      // Broadcast to project-level SSE clients so Mission Control refreshes
+      threadCodayManager.projectEventManager.broadcast(
+        projectName,
+        new ThreadUpdateEvent({ threadId: updatedThread.id })
+      )
+
+      res.status(200).json({
+        success: true,
+        thread: {
+          id: updatedThread.id,
+          closedByUser: updatedThread.closedByUser,
+          modifiedDate: updatedThread.modifiedDate,
+        },
+      })
+    } catch (error) {
+      console.error('Error marking thread as done:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to mark thread as done: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * DELETE /api/projects/:projectName/threads/:threadId/done
+   * Unmark a thread as done (set closedByUser back to false)
+   */
+  app.delete(
+    '/api/projects/:projectName/threads/:threadId/done',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const projectName = getParamAsString(req.params.projectName)
+        const threadId = getParamAsString(req.params.threadId)
+        if (!projectName || !threadId) {
+          res.status(400).json({ error: 'Project name and thread ID are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        const existingThread = await threadService.getThread(projectName, threadId)
+        if (!existingThread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+          return
+        }
+
+        if (!hasAccess(existingThread, username)) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        debugLog('THREAD', `DELETE mark as active: ${threadId} in project: ${projectName} by user: ${username}`)
+        const updatedThread = await threadService.updateThread(projectName, threadId, { closedByUser: false })
+
+        threadCodayManager.projectEventManager.broadcast(
+          projectName,
+          new ThreadUpdateEvent({ threadId: updatedThread.id })
+        )
+
+        res.status(200).json({
+          success: true,
+          thread: {
+            id: updatedThread.id,
+            closedByUser: updatedThread.closedByUser,
+            modifiedDate: updatedThread.modifiedDate,
+          },
+        })
+      } catch (error) {
+        console.error('Error unmarking thread as done:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to unmark thread as done: ${errorMessage}` })
       }
     }
   )

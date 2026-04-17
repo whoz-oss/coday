@@ -63,6 +63,8 @@ export type ThreadSerialized = {
   delegatedTask?: string
   /** Name of the worktree project created for this mission (worktree mode only) */
   worktreeProject?: string
+  /** True when the user has manually marked this thread as done */
+  closedByUser?: boolean
 }
 
 export interface ThreadSummary {
@@ -83,6 +85,8 @@ export interface ThreadSummary {
   delegatedTask?: string
   /** Name of the worktree project created for this mission (worktree mode only) */
   worktreeProject?: string
+  /** True when the user has manually marked this thread as done */
+  closedByUser?: boolean
   /** True when a non-default InviteEvent is pending a user response */
   pendingInvite?: boolean
 }

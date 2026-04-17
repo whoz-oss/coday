@@ -27,6 +27,7 @@ const FILTERS: FilterOption[] = [
   { key: 'all', label: 'All', icon: 'grid_view' },
   { key: 'waiting-you', label: 'Waiting for you', icon: 'mark_unread_chat_alt' },
   { key: 'in-progress', label: 'In progress', icon: 'pending' },
+  { key: 'paused', label: 'Paused', icon: 'pause_circle' },
   { key: 'done', label: 'Done', icon: 'check_circle' },
 ]
 
@@ -73,6 +74,7 @@ export class TaskControlComponent implements OnInit {
       all: tasks.length,
       'waiting-you': tasks.filter((t) => t.status === 'waiting-you').length,
       'in-progress': tasks.filter((t) => t.status === 'in-progress').length,
+      paused: tasks.filter((t) => t.status === 'paused').length,
       done: tasks.filter((t) => t.status === 'done').length,
     } as Record<FilterKey, number>
   })
@@ -175,6 +177,18 @@ export class TaskControlComponent implements OnInit {
       .subscribe({
         next: () => this.threadState.refreshThreadList(),
         error: (err) => console.error('[TASK-CONTROL] Failed to mark task as done:', err),
+      })
+  }
+
+  onMarkActiveRequested(threadId: string): void {
+    const project = this.projectState.getSelectedProjectId()
+    if (!project) return
+    this.projectApi
+      .markThreadActive(project, threadId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.threadState.refreshThreadList(),
+        error: (err) => console.error('[TASK-CONTROL] Failed to mark task as active:', err),
       })
   }
 }

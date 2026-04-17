@@ -27,6 +27,7 @@ export class TaskCardComponent {
   readonly starToggled = output<string>()
   readonly closeTaskRequested = output<string>()
   readonly markDoneRequested = output<string>()
+  readonly markActiveRequested = output<string>()
 
   private readonly router = inject(Router)
   private readonly projectState = inject(ProjectStateService)
@@ -69,6 +70,11 @@ export class TaskCardComponent {
   onMarkDone(event: Event): void {
     event.stopPropagation()
     this.markDoneRequested.emit(this.task().id)
+  }
+
+  onMarkActive(event: Event): void {
+    event.stopPropagation()
+    this.markActiveRequested.emit(this.task().id)
   }
 
   formatRelativeTime(dateString: string): string {

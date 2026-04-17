@@ -224,6 +224,7 @@ export class ThreadFileRepository implements ThreadRepository {
                 delegatedAgentName: data.delegatedAgentName,
                 delegatedTask: data.delegatedTask,
                 worktreeProject: data.worktreeProject,
+                closedByUser: data.closedByUser || undefined,
               } as ThreadSummary
             })
         )

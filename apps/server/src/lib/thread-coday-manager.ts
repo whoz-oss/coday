@@ -9,6 +9,7 @@ import {
   InviteEvent,
   InviteEventDefault,
   ChoiceEvent,
+  MessageEvent,
   ThreadUpdateEvent,
   OAuthCallbackEvent,
 } from '@coday/model'
@@ -320,6 +321,26 @@ class ThreadCodayInstance {
     ) {
       this.setPendingInviteCb(this.threadId)
       this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+    }
+
+    // Detect natural questions in assistant messages (no queryUser call needed).
+    // If the last sentence of the message contains a '?', treat it as a pending invite
+    // so Mission Control shows 'waiting-you' status.
+    // "Last sentence" = text after the last newline, or after the last '.'/  '!' that closes a block.
+    if (!this.isReplaying && event instanceof MessageEvent && event.role === 'assistant') {
+      const textContent = event.getTextContent().trim()
+      if (textContent) {
+        // Split on newlines first, then take the last non-empty line
+        const lines = textContent
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)
+        const lastLine = lines[lines.length - 1] ?? ''
+        if (lastLine.includes('?')) {
+          this.setPendingInviteCb(this.threadId)
+          this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+        }
+      }
     }
 
     // If this is a ThreadUpdateEvent with a name, update the thread service cache
