@@ -45,13 +45,34 @@ instructions: |
   ## Coday commands
 
   - `setup` tool to solve missing packages
-  - `web-dev` tool to start a new instance of the app in dev mode in watch (no need to re-run to take changes into account). Do monitor the started tmux sessions as needed
+  - `web-dev` tool to start the full dev stack (AgentOS + Express + Angular) with automatic port
+    allocation. Read the output to get the allocated ports. Monitor the tmux sessions as needed.
   - `tmux` tools to do the rest as you see fit.
+
+  ## Three-process stack
+
+  The full dev stack consists of three processes, started by the `web-dev` script:
+
+  | Process | Session name | Ready signal |
+  |---|---|---|
+  | AgentOS (Spring Boot) | `agentos-<dir>-<port>` | `Started AgentOSApplication` |
+  | Express server | `coday-dev-<dir>-<port>` window `server` | `Server is running on http://localhost:<port>` |
+  | Angular client | same session, window `client` | `Local:   http://localhost:<port>` |
+
+  The `web-dev` script output contains a machine-readable block with the allocated ports:
+  ```
+  AGENTOS_PORT=<n>
+  SERVER_PORT=<n>
+  CLIENT_PORT=<n>
+  ```
+  Parse this output to know which ports are in use before acting on the sessions.
+
+  Run `bash scripts/web-dev-tmux.sh --help` for full documentation.
 
   ## AgentOS backend
 
   See `agentos/docs/running.md` and `agentos/docs/nx-tasks.md` for commands and ready signals.
-  The Express server proxies `/api/agentos/*` → `http://localhost:8123`.
+  The Express server proxies `/api/agentos/*` to the AgentOS port found in the script output.
 
   ## Limits
 

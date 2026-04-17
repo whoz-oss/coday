@@ -98,7 +98,25 @@ scripts:
     command: bash setup.sh
   web-dev:
     description: |
-      Starts the application in dev mode in tmux sessions, with ports management to avoid collisions.
+      Starts the full Coday dev stack (AgentOS + Express server + Angular client) in tmux sessions.
+      Ports are allocated dynamically to avoid collisions across worktrees.
+
+      Three tmux sessions/windows are created:
+        - agentos-<dir>-<port>       AgentOS Spring Boot backend
+        - coday-dev-<dir>-<port>     Express server (window: server) + Angular (window: client)
+
+      Output includes a machine-readable block with allocated ports:
+        AGENTOS_PORT=<n>
+        SERVER_PORT=<n>
+        CLIENT_PORT=<n>
+
+      Ready signals to look for in tmux logs:
+        AgentOS  : "Started AgentOSApplication"
+        Server   : "Server is running on http://localhost:<port>"
+        Client   : "Local:   http://localhost:<port>"
+
+      Run with --help for full documentation:
+        bash scripts/web-dev-tmux.sh --help
     command: bash ./scripts/web-dev-tmux.sh
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains,
