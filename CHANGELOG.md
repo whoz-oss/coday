@@ -1,3 +1,15 @@
+## 0.120.0 (2026-04-17)
+
+### 🚀 Features
+
+- #31209 namespace-level LLM configuration (LlmConfig + LlmModelConfig entities) ([#746](https://github.com/whoz-oss/coday/pull/746), [#31209](https://github.com/whoz-oss/coday/issues/31209))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent.audibert
+
 ## 0.119.0 (2026-04-17)
 
 ### 🚀 Features
