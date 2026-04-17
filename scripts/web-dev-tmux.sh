@@ -127,13 +127,12 @@ done
 
 # ---------------------------------------------------------------------------
 # Session: AgentOS (Spring Boot)
-# deployPlugins (root agentos/ build) must run first to build plugin JARs and
-# copy them into agentos/plugins/ before bootRun loads them.
-# bootRun is a sub-project task invoked via pnpm nx from the worktree root.
+# Plugins must be deployed before starting — run deploy-plugins.sh first.
+# bootRun is invoked via pnpm nx from the worktree root.
 # ---------------------------------------------------------------------------
-AGENTOS_DIR="$(pwd)/agentos"
+ROOT_DIR="$(pwd)"
 tmux new-session -d -s "${SESSION_AGENTOS}" \
-  "cd '${AGENTOS_DIR}' && ./gradlew deployPlugins && cd '$(pwd)' && pnpm nx bootRun agentos-service --args='--server.port=${AGENTOS_PORT}'"
+  "cd '${ROOT_DIR}' && pnpm nx bootRun agentos-service --args='--server.port=${AGENTOS_PORT}'"
 
 # ---------------------------------------------------------------------------
 # Session: Express server

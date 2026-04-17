@@ -96,6 +96,14 @@ scripts:
       Works both in the main clone and in git worktrees.
       Run this once after cloning or creating a new worktree.
     command: bash setup.sh
+  deploy-plugins:
+    description: |
+      Builds all AgentOS plugins and copies their JARs into agentos/plugins/.
+      Must be run before starting AgentOS if plugins are needed.
+      Run from the worktree root. Exits with code 1 on failure.
+      Run with --help for full documentation:
+        bash scripts/deploy-plugins.sh --help
+    command: bash ./scripts/deploy-plugins.sh
   web-dev:
     description: |
       Starts the full Coday dev stack (AgentOS + Express server + Angular client) in tmux sessions.

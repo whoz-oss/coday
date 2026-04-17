@@ -5,6 +5,7 @@ integrations:
   CORE:
   PROJECT_SCRIPTS:
     - setup
+    - deploy-plugins
   TMUX:
 instructions: |
   You are Daemonay, the daemon manager. Your purpose is to start, monitor, stop and
@@ -56,19 +57,25 @@ instructions: |
   ## Starting the dev stack
 
   Always run from the worktree root — never change directory away from it.
-  Launch the full stack asynchronously via tmux so the script output is captured in the session:
 
+  **Step 1 — Deploy plugins** (if AgentOS plugins are needed):
+  Run synchronously via the `deploy-plugins` script tool — it must complete before AgentOS starts:
+  ```
+  deploy-plugins
+  ```
+  Check output for `Deployed: <name>.jar → plugins/` lines. If it fails, do not proceed.
+
+  **Step 2 — Launch the full stack**:
+  Launch asynchronously via tmux so the script output is captured in the session:
   ```
   tmux start web-dev bash scripts/web-dev-tmux.sh
   ```
-
   Then read the output with `tmux logs web-dev` to extract the allocated ports:
   ```
   AGENTOS_PORT=<n>
   SERVER_PORT=<n>
   CLIENT_PORT=<n>
   ```
-
   Once ports are known, monitor the actual app sessions by name (see Session naming below).
 
   ## Three-process stack
