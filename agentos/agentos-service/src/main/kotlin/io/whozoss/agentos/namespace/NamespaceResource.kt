@@ -16,4 +16,6 @@ data class NamespaceResource(
     @field:NotBlank(message = "name must not be blank")
     val name: String,
     val description: String? = null,
+    @Schema(description = "Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.)")
+    val configPath: String? = null,
 )

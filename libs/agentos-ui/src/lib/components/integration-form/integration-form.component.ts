@@ -132,13 +132,13 @@ export class IntegrationFormComponent implements OnInit {
       ? this.integrationConfigController.updateIntegrationConfig(this.existingConfig!.id ?? '', {
           ...this.existingConfig!,
           name: this.nameControl.value.trim(),
-          description: this.descriptionControl.value?.trim() || null,
+          description: this.descriptionControl.value?.trim() || undefined,
           integrationType: this.typeControl.value,
           parameters: this.paramsValue(),
         })
       : this.integrationConfigController.createIntegrationConfig({
           name: this.nameControl.value.trim(),
-          description: this.descriptionControl.value?.trim() || null,
+          description: this.descriptionControl.value?.trim() || undefined,
           integrationType: this.typeControl.value,
           namespaceId: this.namespaceId,
           parameters: this.paramsValue(),

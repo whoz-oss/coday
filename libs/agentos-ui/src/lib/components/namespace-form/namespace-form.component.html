@@ -35,6 +35,18 @@
         />
       </div>
 
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-config-path">Config path</label>
+        <input
+          id="ns-config-path"
+          class="namespace-form__input"
+          type="text"
+          placeholder="Optional path to base configuration directory"
+          [formControl]="configPathControl"
+          autocomplete="off"
+        />
+      </div>
+
       <div class="namespace-form__actions">
         <button
           class="namespace-form__btn namespace-form__btn--primary"
