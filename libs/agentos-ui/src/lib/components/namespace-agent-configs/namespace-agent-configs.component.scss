@@ -1,0 +1,13 @@
+.namespace-agent-configs__back {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-primary, #007aff);
+  font-family: inherit;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
