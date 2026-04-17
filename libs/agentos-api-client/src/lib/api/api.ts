@@ -1,3 +1,5 @@
+export * from './agent-config-controller.service'
+import { AgentConfigControllerService } from './agent-config-controller.service'
 export * from './ai-model-controller.service'
 import { AiModelControllerService } from './ai-model-controller.service'
 export * from './ai-provider-controller.service'
@@ -19,6 +21,7 @@ import { SseService } from './sse.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export const APIS = [
+  AgentConfigControllerService,
   AiModelControllerService,
   AiProviderControllerService,
   CaseControllerService,

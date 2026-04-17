@@ -1,6 +1,9 @@
 package io.whozoss.agentos.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
+import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
 import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
@@ -55,11 +58,18 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 @EnableNeo4jRepositories(
     basePackages = [
         "io.whozoss.agentos.persistence.neo4j",
+        "io.whozoss.agentos.agentConfig",
         "io.whozoss.agentos.aiModel",
         "io.whozoss.agentos.aiProvider",
     ],
 )
 class Neo4jPersistenceConfiguration {
+    @Bean
+    fun neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository): AgentConfigRepository {
+        logger.info { "[Persistence] Neo4jAgentConfigRepository active" }
+        return Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository)
+    }
+
     @Bean
     fun neo4jNamespaceRepository(namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository): NamespaceRepository {
         logger.info { "[Persistence] Neo4jNamespaceRepository active" }

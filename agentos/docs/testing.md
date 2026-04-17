@@ -32,15 +32,22 @@ Each test states a single, named behaviour. Test the public API of the class und
 - Spring wiring / bean creation — covered by `AgentOSApplicationTest` (context load)
 - Simple data classes with no logic
 
+## File Naming
+
+| Suffix | Type | When to use |
+|---|---|---|
+| `*UnitSpec.kt` | Unit test — no Spring context | Service logic, controller mapping, pure Kotlin |
+| `*IntegrationSpec.kt` | Integration test — full Spring context | MVC / validation layer, persistence, context wiring |
+
 ## Controller Tests
 
 Controllers require two complementary test classes:
 
-**Unit test (`FooControllerSpec` — `StringSpec`)** — instantiates the controller directly with MockK stubs, no Spring context. Covers `toResource`/`toDomain` mapping and all endpoints (including inherited ones from `EntityController`). Fast, no infrastructure needed.
+**Unit test (`FooControllerUnitSpec` — `StringSpec`)** — instantiates the controller directly with MockK stubs, no Spring context. Covers `toResource`/`toDomain` mapping and all endpoints (including inherited ones from `EntityController`). Fast, no infrastructure needed.
 
-**MVC test (`FooControllerMvcTest` — `@SpringBootTest` + `@AutoConfigureMockMvc`)** — loads the full Spring context with `@ActiveProfiles("test")` and `SpringExtension`. Verifies that Bean Validation (`@Valid`) is triggered by the dispatcher on create/update endpoints. Use `MockMvc` with raw JSON payloads to assert 400 on invalid input and 201/200 on valid input. The `test` profile enables in-memory persistence so no external services are needed.
+**Integration test (`FooControllerIntegrationSpec` — `@SpringBootTest` + `@AutoConfigureMockMvc`)** — loads the full Spring context with `@ActiveProfiles("test")` and `SpringExtension`. Verifies that Bean Validation (`@Valid`) is triggered by the dispatcher on create/update endpoints. Use `MockMvc` with raw JSON payloads to assert 400 on invalid input and 201/200 on valid input. The `test` profile enables in-memory persistence so no external services are needed.
 
-The two classes are complementary: the unit spec covers logic, the MVC test covers the validation layer that only activates through the dispatcher.
+The two classes are complementary: the unit spec covers logic, the integration spec covers the validation layer that only activates through the dispatcher.
 
 ## Spring Integration Tests
 
