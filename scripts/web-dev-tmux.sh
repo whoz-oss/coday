@@ -79,6 +79,15 @@ unset TMUX
 
 DIR_NAME="$(basename "$(pwd)")"
 
+# Extract last segment of current git branch, truncated to 12 chars
+# Falls back to DIR_NAME if not in a git repo or branch is detached
+BRANCH_RAW=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [[ -n "${BRANCH_RAW}" && "${BRANCH_RAW}" != "HEAD" ]]; then
+  BRANCH_SLUG="$(basename "${BRANCH_RAW}" | cut -c1-12)"
+else
+  BRANCH_SLUG="${DIR_NAME}"
+fi
+
 find_free_port() {
   local port=$1
   while lsof -ti :"${port}" >/dev/null 2>&1; do
@@ -91,8 +100,8 @@ AGENTOS_PORT=$(find_free_port "${START_AGENTOS_PORT}")
 SERVER_PORT=$(find_free_port "${START_SERVER_PORT}")
 CLIENT_PORT=$(find_free_port "${START_CLIENT_PORT}")
 
-SESSION_AGENTOS="agentos-${DIR_NAME}-${AGENTOS_PORT}"
-SESSION_WEB="coday-dev-${DIR_NAME}-${SERVER_PORT}"
+SESSION_AGENTOS="agentos_${BRANCH_SLUG}_${AGENTOS_PORT}"
+SESSION_WEB="coday-dev_${BRANCH_SLUG}_${SERVER_PORT}"
 
 # ---------------------------------------------------------------------------
 # Summary (human + machine readable)
