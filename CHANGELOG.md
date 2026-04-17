@@ -1,3 +1,14 @@
+## 0.121.2 (2026-04-17)
+
+### 🩹 Fixes
+
+- remove 'push' from git danger keywords ([#772](https://github.com/whoz-oss/coday/pull/772))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.121.1 (2026-04-17)
 
 ### 🩹 Fixes
