@@ -1,6 +1,5 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.caseEvent
 
-import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull

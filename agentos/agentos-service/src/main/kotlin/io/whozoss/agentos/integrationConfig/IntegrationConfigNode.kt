@@ -1,7 +1,7 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.integrationConfig.IntegrationConfig
+import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node

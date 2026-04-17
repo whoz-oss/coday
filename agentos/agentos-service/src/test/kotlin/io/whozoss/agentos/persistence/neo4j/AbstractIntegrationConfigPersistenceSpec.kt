@@ -23,7 +23,7 @@ import java.util.UUID
  * and inherit all test cases, ensuring both modes satisfy the same contract.
  *
  * A [Namespace] node must exist before [IntegrationConfig] nodes are saved because
- * [IntegrationConfigNodeNeo4jRepository.findActiveByNamespaceId] traverses the
+ * [io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository.findActiveByNamespaceId] traverses the
  * BELONGS_TO edge to the Namespace node. [namespaceRepo] is used to pre-create namespaces.
  */
 abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
@@ -50,9 +50,12 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
         namespaceId = namespaceId,
         name = name,
         integrationType = integrationType,
-        parameters = parametersJson?.let {
-            com.fasterxml.jackson.databind.ObjectMapper().readTree(it)
-        },
+        parameters =
+            parametersJson?.let {
+                com.fasterxml.jackson.databind
+                    .ObjectMapper()
+                    .readTree(it)
+            },
     )
 
     init {
