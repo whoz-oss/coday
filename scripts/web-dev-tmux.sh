@@ -116,13 +116,17 @@ echo "Server session    : ${SESSION_SERVER}"
 echo "Client session    : ${SESSION_CLIENT}"
 
 # ---------------------------------------------------------------------------
-# Kill any existing sessions for this worktree
+# Kill any existing sessions for this worktree (any port variant)
+# A previous run may have used a different port, leaving a stale session that
+# still holds the Neo4j store_lock. Match on branch slug prefix to catch all.
 # ---------------------------------------------------------------------------
-for SESSION in "${SESSION_AGENTOS}" "${SESSION_SERVER}" "${SESSION_CLIENT}"; do
-  if tmux has-session -t "${SESSION}" 2>/dev/null; then
-    echo "Killing existing session '${SESSION}'..."
-    tmux kill-session -t "${SESSION}"
-  fi
+for PREFIX in "agentos_${BRANCH_SLUG}_" "server_${BRANCH_SLUG}_" "client_${BRANCH_SLUG}_"; do
+  tmux list-sessions -F '#{session_name}' 2>/dev/null \
+    | grep "^${PREFIX}" \
+    | while read -r SESSION; do
+        echo "Killing existing session '${SESSION}'..."
+        tmux kill-session -t "${SESSION}"
+      done
 done
 
 # ---------------------------------------------------------------------------
