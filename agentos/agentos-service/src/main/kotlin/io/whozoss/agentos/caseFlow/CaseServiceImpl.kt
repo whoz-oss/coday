@@ -165,7 +165,7 @@ class CaseServiceImpl(
         val mentionedName = firstText?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
 
         if (mentionedName != null) {
-            val resolvedName = agentService.resolveAgentName(mentionedName)
+            val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
             if (resolvedName != null) {
                 logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
                 return listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
@@ -173,20 +173,22 @@ class CaseServiceImpl(
                 logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
                 val warn =
                     WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")
-                val defaultName = agentService.getDefaultAgentName() ?: return listOf(warn)
+                val defaultName = agentService.getDefaultAgentName(namespaceId) ?: return listOf(warn)
                 return listOf(warn, agentSelectedEvent(defaultName, namespaceId, caseId))
             }
         }
 
         val defaultName =
-            agentService.getDefaultAgentName()
+            agentService.getDefaultAgentName(namespaceId)
                 ?: run {
-                    logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
+                    logger.warn { "[CaseService] No AI model configured for namespace $namespaceId" }
                     return listOf(
                         WarnEvent(
                             namespaceId = namespaceId,
                             caseId = caseId,
-                            message = "No AI model is configured. Load a plugin that provides an AiModel.",
+                            message =
+                                "No AI model is configured for this namespace. " +
+                                    "Create an AiProvider and AiModel for namespace $namespaceId.",
                         ),
                     )
                 }

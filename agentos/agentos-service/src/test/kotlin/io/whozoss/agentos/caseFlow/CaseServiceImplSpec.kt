@@ -9,8 +9,6 @@ import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
-import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -25,6 +23,8 @@ import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -63,11 +63,12 @@ class CaseServiceImplSpec :
         val namespaceId: UUID = UUID.randomUUID()
         val userId: UUID = UUID.randomUUID()
         val userActor = Actor(id = userId.toString(), displayName = "Test User", role = ActorRole.USER)
-        val activeUser = User(
-            metadata = EntityMetadata(id = userId),
-            externalId = "ext-1",
-            email = "test@example.com",
-        )
+        val activeUser =
+            User(
+                metadata = EntityMetadata(id = userId),
+                externalId = "ext-1",
+                email = "test@example.com",
+            )
         val agentName = "test-agent"
         val agentId: UUID = UUID.nameUUIDFromBytes(agentName.toByteArray())
 
@@ -98,7 +99,8 @@ class CaseServiceImplSpec :
         ): CaseServiceImpl {
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName() } returns agentName
+                    every { getDefaultAgentName(any()) } returns agentName
+                    every { resolveAgentName(any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
@@ -223,7 +225,8 @@ class CaseServiceImplSpec :
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName() } returns agentName
+                    every { getDefaultAgentName(any()) } returns agentName
+                    every { resolveAgentName(any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
@@ -428,7 +431,7 @@ class CaseServiceImplSpec :
 
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName() } returns agentName
+                    every { getDefaultAgentName(namespaceId) } returns agentName
                     every { findAgentByName(agentName, any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }

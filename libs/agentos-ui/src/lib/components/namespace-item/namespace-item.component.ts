@@ -1,21 +1,20 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent } from '@whoz-oss/design-system'
+import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
- * NamespaceItemComponent — presentational component for a single namespace row.
+ * NamespaceItemComponent — presentational component for a single namespace card.
  *
- * Displays the namespace name and description, with edit and delete buttons (ds-icon-button).
- * Navigation on click, editing and deletion are emitted upward — no direct service injection.
+ * Displays the namespace name and description. All actions (edit, integrations,
+ * delete) are grouped in a ds-kebab-menu and emitted upward — no direct service
+ * injection.
  *
- * Delete uses an inline two-step confirmation: first click arms the delete, a second click
- * on the confirm button (or a cancel) resolves the intent. This avoids accidental deletions
- * without requiring a modal dialog.
+ * Delete uses a native confirm() dialog to prevent accidental deletions.
  */
 @Component({
   selector: 'agentos-namespace-item',
   standalone: true,
-  imports: [IconButtonComponent],
+  imports: [KebabMenuComponent],
   templateUrl: './namespace-item.component.html',
   styleUrl: './namespace-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,32 +25,41 @@ export class NamespaceItemComponent {
   @Output() selected = new EventEmitter<Namespace>()
   @Output() editRequested = new EventEmitter<Namespace>()
   @Output() integrationsRequested = new EventEmitter<Namespace>()
+  @Output() aiProvidersRequested = new EventEmitter<Namespace>()
+  @Output() aiModelsRequested = new EventEmitter<Namespace>()
   @Output() deleteRequested = new EventEmitter<Namespace>()
 
-  protected readonly pendingDelete = signal(false)
+  protected readonly menuItems: KebabMenuItem[] = [
+    { key: 'edit', label: 'Edit namespace', icon: 'edit' },
+    { key: 'integrations', label: 'Manage integrations', icon: 'settings' },
+    { key: 'ai-providers', label: 'AI Providers', icon: 'smart_toy' },
+    { key: 'ai-models', label: 'AI models', icon: 'model_training' },
+    { key: 'delete', label: 'Delete namespace', icon: 'delete', variant: 'danger' },
+  ]
 
   protected onSelect(): void {
     this.selected.emit(this.namespace)
   }
 
-  protected onEdit(): void {
-    this.editRequested.emit(this.namespace)
-  }
-
-  protected onIntegrations(): void {
-    this.integrationsRequested.emit(this.namespace)
-  }
-
-  protected onDeleteArmed(): void {
-    this.pendingDelete.set(true)
-  }
-
-  protected onDeleteConfirmed(): void {
-    this.pendingDelete.set(false)
-    this.deleteRequested.emit(this.namespace)
-  }
-
-  protected onDeleteCancelled(): void {
-    this.pendingDelete.set(false)
+  protected onMenuAction(key: string): void {
+    switch (key) {
+      case 'edit':
+        this.editRequested.emit(this.namespace)
+        break
+      case 'integrations':
+        this.integrationsRequested.emit(this.namespace)
+        break
+      case 'ai-providers':
+        this.aiProvidersRequested.emit(this.namespace)
+        break
+      case 'ai-models':
+        this.aiModelsRequested.emit(this.namespace)
+        break
+      case 'delete':
+        if (confirm(`Delete namespace "${this.namespace.name}"?`)) {
+          this.deleteRequested.emit(this.namespace)
+        }
+        break
+    }
   }
 }

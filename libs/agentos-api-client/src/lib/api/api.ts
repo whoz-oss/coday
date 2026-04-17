@@ -1,3 +1,7 @@
+export * from './ai-model-controller.service'
+import { AiModelControllerService } from './ai-model-controller.service'
+export * from './ai-provider-controller.service'
+import { AiProviderControllerService } from './ai-provider-controller.service'
 export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
@@ -15,6 +19,8 @@ import { SseService } from './sse.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export const APIS = [
+  AiModelControllerService,
+  AiProviderControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
   IntegrationConfigControllerService,

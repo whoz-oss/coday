@@ -328,3 +328,12 @@ mat-slide-toggle {
   transform: scale(0.75);
   transform-origin: right center;
 }
+
+/* ds-kebab-menu — danger variant for mat-menu items rendered in CDK overlay */
+[data-variant='danger'].mat-mdc-menu-item {
+  color: var(--color-error, #ff3b30);
+
+  .mat-icon {
+    color: var(--color-error, #ff3b30);
+  }
+}

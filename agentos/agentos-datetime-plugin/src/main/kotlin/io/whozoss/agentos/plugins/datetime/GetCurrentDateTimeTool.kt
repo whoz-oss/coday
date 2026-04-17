@@ -10,7 +10,7 @@ import java.time.format.DateTimeFormatter
  * Tool that returns the current date and time in a specified timezone.
  *
  * [defaultTimezone] is injected at construction time from the plugin's
- * IntegrationConfig parameters. The LLM can still override it per-call
+ * IntegrationConfig parameters. The AI can still override it per-call
  * by supplying an explicit [Input.timezone] value.
  */
 class GetCurrentDateTimeTool(

@@ -3,7 +3,6 @@ package io.whozoss.agentos.aiProvider
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import jakarta.annotation.PostConstruct
 import mu.KLogging
-import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap

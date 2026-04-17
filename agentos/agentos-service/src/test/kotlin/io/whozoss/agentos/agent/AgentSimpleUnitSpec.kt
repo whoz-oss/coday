@@ -10,7 +10,6 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -35,23 +34,14 @@ class AgentSimpleUnitSpec :
             name: String = "SimpleAgent",
             tools: Collection<StandardTool<*>> = emptyList(),
             instructions: String? = null,
-        ): AgentSimple {
-            val model =
-                AiModel(
-                    metadata = EntityMetadata(id = agentId),
-                    name = name,
-                    description = "A simple test agent",
-                    modelName = "gpt-4o",
-                    providerName = "openai",
-                    instructions = instructions,
-                )
-            return AgentSimple(
+        ): AgentSimple =
+            AgentSimple(
                 metadata = EntityMetadata(id = agentId),
-                model = model,
+                name = name,
                 chatClient = chatClient,
                 tools = tools,
+                instructions = instructions,
             )
-        }
 
         fun userMessage(
             namespaceId: UUID,

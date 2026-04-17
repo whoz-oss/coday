@@ -238,6 +238,120 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/ai-providers/{id}:
+    get:
+      tags:
+      - ai-provider-controller
+      operationId: getByIdAiProvider
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
+    put:
+      tags:
+      - ai-provider-controller
+      operationId: updateAiProvider
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiProvider"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
+    delete:
+      tags:
+      - ai-provider-controller
+      operationId: deleteAiProvider
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/ai-models/{id}:
+    get:
+      tags:
+      - ai-model-controller
+      operationId: getByIdAiModel
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModel"
+    put:
+      tags:
+      - ai-model-controller
+      operationId: updateAiModel
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiModel"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModel"
+    delete:
+      tags:
+      - ai-model-controller
+      operationId: deleteAiModel
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/users:
     get:
       tags:
@@ -601,6 +715,88 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/ai-providers:
+    post:
+      tags:
+      - ai-provider-controller
+      operationId: createAiProvider
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiProvider"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
+  /api/ai-providers/by-ids:
+    post:
+      tags:
+      - ai-provider-controller
+      operationId: getByIdsAiProvider
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
+  /api/ai-models:
+    post:
+      tags:
+      - ai-model-controller
+      operationId: createAiModel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiModel"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModel"
+  /api/ai-models/by-ids:
+    post:
+      tags:
+      - ai-model-controller
+      operationId: getByIdsAiModel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiModel"
   /api/users/me:
     get:
       tags:
@@ -904,6 +1100,113 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/ai-providers/by-userId/{userId}:
+    get:
+      tags:
+      - ai-provider-controller
+      operationId: listByUserIdAiProvider
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
+  /api/ai-providers/by-parentId/{parentId}:
+    get:
+      tags:
+      - ai-provider-controller
+      operationId: listByParentAiProvider
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
+  /api/ai-providers/by-namespaceId/{namespaceId}:
+    get:
+      tags:
+      - ai-provider-controller
+      operationId: listByNamespaceIdAiProvider
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
+  /api/ai-models/by-parentId/{parentId}:
+    get:
+      tags:
+      - ai-model-controller
+      operationId: listByParentAiModel
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiModel"
+  /api/ai-models/by-namespaceId/{namespaceId}:
+    get:
+      tags:
+      - ai-model-controller
+      operationId: listByNamespaceIdAiModel
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiModel"
 components:
   schemas:
     User:
@@ -985,6 +1288,71 @@ components:
       required:
       - namespaceId
       - status
+    AiProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        apiType:
+          type: string
+          enum:
+          - OpenAI
+          - Anthropic
+          - Gemini
+        baseUrl:
+          type: string
+        apiKey:
+          type: string
+      required:
+      - apiType
+      - name
+    AiModel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        aiProviderId:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        apiModelName:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        alias:
+          type: string
+        priority:
+          type: integer
+          format: int32
+        temperature:
+          type: number
+          format: double
+        maxTokens:
+          type: integer
+          format: int32
+      required:
+      - aiProviderId
+      - apiModelName
+      - priority
     PluginActionResponse:
       type: object
       properties:

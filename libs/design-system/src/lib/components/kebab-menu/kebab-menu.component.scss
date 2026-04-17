@@ -1,0 +1,15 @@
+// mat-menu items are rendered in a CDK overlay outside this component's shadow.
+// We use [attr.data-variant] on the button element and style it with :host-context
+// won't work either. The reliable approach: declare the rule without encapsulation
+// by targeting the attribute selector on the mat-menu-item host element.
+// Angular emits these buttons directly into the overlay; the attribute is preserved.
+//
+// Note: no _ng-deep_ or :global needed — the [data-variant] attribute lives on the
+// native <button> element in the DOM and is matched by the global stylesheet rule
+// we add in styles.scss (see apps/client/src/styles.scss).
+//
+// Local styles (scoped to this component's own host element):
+:host {
+  display: inline-flex;
+  align-items: center;
+}

@@ -1,0 +1,20 @@
+<ds-entity-list
+  title="AI Providers"
+  [items]="(configItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No AI providers configured yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="aiProviderItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="namespace-ai-providers__back" type="button" (click)="goBack()">
+    &#8592; Namespaces
+  </button>
+</ds-entity-list>
+
+<!-- Item template: renders AiProviderItemComponent for each entity-list card slot -->
+<ng-template #aiProviderItemTpl let-item>
+  @if (resolveConfig(item.id); as config) {
+    <agentos-ai-provider-item [config]="config" [namespaceId]="namespaceId" (deleteRequested)="deleteConfig($event)" />
+  }
+</ng-template>
