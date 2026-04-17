@@ -133,6 +133,7 @@ done
 ROOT_DIR="$(pwd)"
 tmux new-session -d -s "${SESSION_AGENTOS}" \
   "cd '${ROOT_DIR}' && SERVER_PORT=${AGENTOS_PORT} pnpm nx bootRun agentos-service"
+tmux set-option -t "${SESSION_AGENTOS}" remain-on-exit on
 
 # ---------------------------------------------------------------------------
 # Session: Express server
@@ -142,12 +143,14 @@ tmux new-session -d -s "${SESSION_AGENTOS}" \
 # ---------------------------------------------------------------------------
 tmux new-session -d -s "${SESSION_SERVER}" \
   "AGENTOS_PORT=${AGENTOS_PORT} PORT=${SERVER_PORT} ANGULAR_CLIENT_PORT=${CLIENT_PORT} BUILD_ENV=development pnpm nx run server:serve"
+tmux set-option -t "${SESSION_SERVER}" remain-on-exit on
 
 # ---------------------------------------------------------------------------
 # Session: Angular dev server
 # ---------------------------------------------------------------------------
 tmux new-session -d -s "${SESSION_CLIENT}" \
   "pnpm nx run client:serve --port=${CLIENT_PORT}"
+tmux set-option -t "${SESSION_CLIENT}" remain-on-exit on
 
 # ---------------------------------------------------------------------------
 # Done
