@@ -129,9 +129,10 @@ done
 # Session: AgentOS (Spring Boot)
 # Plugins must be deployed before starting — run deploy-plugins.sh first.
 # bootRun is invoked via pnpm nx from the worktree root.
+# Pass PATH explicitly so tmux inherits sdkman/nvm/asdf-managed runtimes.
 # ---------------------------------------------------------------------------
 ROOT_DIR="$(pwd)"
-tmux new-session -d -s "${SESSION_AGENTOS}" \
+tmux new-session -d -s "${SESSION_AGENTOS}" -e "PATH=${PATH}" \
   "cd '${ROOT_DIR}' && SERVER_PORT=${AGENTOS_PORT} pnpm nx bootRun agentos-service"
 tmux set-option -t "${SESSION_AGENTOS}" remain-on-exit on
 
@@ -141,14 +142,14 @@ tmux set-option -t "${SESSION_AGENTOS}" remain-on-exit on
 # PORT         — the port the Express server binds to
 # ANGULAR_CLIENT_PORT — tells the server where to proxy Angular HMR requests
 # ---------------------------------------------------------------------------
-tmux new-session -d -s "${SESSION_SERVER}" \
+tmux new-session -d -s "${SESSION_SERVER}" -e "PATH=${PATH}" \
   "AGENTOS_PORT=${AGENTOS_PORT} PORT=${SERVER_PORT} ANGULAR_CLIENT_PORT=${CLIENT_PORT} BUILD_ENV=development pnpm nx run server:serve"
 tmux set-option -t "${SESSION_SERVER}" remain-on-exit on
 
 # ---------------------------------------------------------------------------
 # Session: Angular dev server
 # ---------------------------------------------------------------------------
-tmux new-session -d -s "${SESSION_CLIENT}" \
+tmux new-session -d -s "${SESSION_CLIENT}" -e "PATH=${PATH}" \
   "pnpm nx run client:serve --port=${CLIENT_PORT}"
 tmux set-option -t "${SESSION_CLIENT}" remain-on-exit on
 
