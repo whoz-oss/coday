@@ -17,7 +17,8 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * parent key [UserRepository.USER_PARENT_KEY].
      */
     @Query(
-        $$"""MATCH (u:User)
+        """
+            MATCH (u:User)
             WHERE u.removed IS NULL OR u.removed = false
             RETURN u
             """,
@@ -29,7 +30,8 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * Replaces the O(n) filesystem scan with a direct property lookup.
      */
     @Query(
-        $$"""MATCH (u:User)
+        $$"""
+            MATCH (u:User)
             WHERE u.externalId = $externalId AND (u.removed IS NULL OR u.removed = false)
             RETURN u LIMIT 1
             """,

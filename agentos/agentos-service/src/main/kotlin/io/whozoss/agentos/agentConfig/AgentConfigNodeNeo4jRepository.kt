@@ -11,7 +11,8 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      * Find all non-removed agent configs belonging to a namespace, ordered by name.
      */
     @Query(
-        $"""MATCH (a:AgentConfig)
+        $$"""
+            MATCH (a:AgentConfig)
             WHERE a.namespaceId = $namespaceId AND (a.removed IS NULL OR a.removed = false)
             RETURN a ORDER BY a.name ASC
             """,

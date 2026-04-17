@@ -16,7 +16,8 @@ interface NamespaceNodeNeo4jRepository : Neo4jRepository<NamespaceNode, String> 
      * which passes a dummy parent (Unit — namespaces are root-level).
      */
     @Query(
-        $$"""MATCH (n:Namespace)
+        """
+            MATCH (n:Namespace)
             WHERE n.removed IS NULL OR n.removed = false
             RETURN n
             """,

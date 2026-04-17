@@ -11,7 +11,8 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
      * Find all non-removed AI provider configs scoped to a namespace, ordered by name.
      */
     @Query(
-        $"""MATCH (c:AiProvider)
+        $$"""
+            MATCH (c:AiProvider)
             WHERE c.namespaceId = $namespaceId AND (c.removed IS NULL OR c.removed = false)
             RETURN c ORDER BY c.name ASC
             """,
@@ -22,7 +23,8 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
      * Find all non-removed AI provider configs scoped to a user, ordered by name.
      */
     @Query(
-        $"""MATCH (c:AiProvider)
+        $$"""
+            MATCH (c:AiProvider)
             WHERE c.userId = $userId AND (c.removed IS NULL OR c.removed = false)
             RETURN c ORDER BY c.name ASC
             """,
