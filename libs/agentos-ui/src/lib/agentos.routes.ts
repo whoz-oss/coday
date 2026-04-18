@@ -39,7 +39,7 @@ export const AGENTOS_ROUTES: Route[] = [
           {
             path: ':namespaceId/cases',
             canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/case-list/case-list.component').then((m) => m.CaseListComponent),
+            loadComponent: () => import('./components/case-home/case-home.component').then((m) => m.CaseHomeComponent),
           },
           // --- Integrations ---
           {

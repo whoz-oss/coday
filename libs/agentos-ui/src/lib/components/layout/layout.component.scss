@@ -1,10 +1,14 @@
 .layout {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
 
   &__content {
     flex: 1;
-    overflow-y: auto;
+    overflow: hidden;
+    // Allow child components to use height: 100% for full-bleed layouts
+    // (e.g. CaseHomeComponent, CaseChatComponent)
+    display: flex;
+    flex-direction: column;
   }
 }

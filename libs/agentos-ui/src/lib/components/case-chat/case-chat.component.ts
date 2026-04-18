@@ -11,7 +11,7 @@ import {
   signal,
   ViewChild,
 } from '@angular/core'
-import { ActivatedRoute } from '@angular/router'
+import { ActivatedRoute, Router } from '@angular/router'
 import {
   CaseEvent,
   Configuration,
@@ -50,6 +50,7 @@ export type TimelineItem =
 })
 export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute)
+  private readonly router = inject(Router)
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
 
@@ -176,6 +177,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.connectSse()
+
+    // If a firstMessage was passed via router navigation state (from CaseHomeComponent),
+    // send it automatically once the SSE connection is established.
+    const nav = this.router.getCurrentNavigation()
+    const firstMessage =
+      (nav?.extras.state?.['firstMessage'] as string | undefined) ??
+      (history.state?.['firstMessage'] as string | undefined)
+    if (firstMessage?.trim()) {
+      // Defer to next tick so the component is fully initialised
+      queueMicrotask(() => this.submitFirstMessage(firstMessage.trim()))
+    }
   }
 
   ngOnDestroy(): void {
@@ -341,6 +353,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     if (!this.canSend) return
     const content = this.inputValue().trim()
     this.inputValue.set('')
+    this.sendMessage(content)
+  }
+
+  /**
+   * Send the initial message passed from CaseHomeComponent via router state.
+   * Called once on init when navigation state contains a `firstMessage`.
+   */
+  private submitFirstMessage(content: string): void {
+    this.sendMessage(content)
+  }
+
+  private sendMessage(content: string): void {
     this.isRunning.set(true)
     this.streamingText.set('')
 
