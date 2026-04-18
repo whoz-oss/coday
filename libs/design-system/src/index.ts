@@ -1,3 +1,4 @@
+export * from './lib/components/drawer/drawer.component'
 export * from './lib/components/icon-button/icon-button.component'
 export * from './lib/components/json-schema-form/json-schema-form.component'
 export * from './lib/components/json-schema-form/json-schema.model'
