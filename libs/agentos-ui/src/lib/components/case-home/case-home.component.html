@@ -1,64 +1,28 @@
-<div class="case-home" [class.case-home--drawer-open]="isDrawerOpen()">
-  <!-- Drawer overlay -->
-  @if (isDrawerOpen()) {
-    <button type="button" class="case-home__overlay" aria-label="Close drawer" (click)="toggleDrawer()"></button>
-  }
+<div class="case-home">
+  <div class="case-home__hero">
+    <h1 class="case-home__headline">What can I help you with?</h1>
 
-  <!-- Cases drawer -->
-  <aside class="case-home__drawer" [class.case-home__drawer--open]="isDrawerOpen()">
-    <div class="case-home__drawer-header">
-      <h3 class="case-home__drawer-title">Recent cases</h3>
-      <ds-icon-button icon="close" variant="default" title="Close" (action)="toggleDrawer()" />
-    </div>
-    <div class="case-home__drawer-list">
-      @if (cases$ | async; as cases) {
-        @if (cases.length === 0) {
-          <p class="case-home__drawer-empty">No cases yet.</p>
-        } @else {
-          @for (c of cases; track trackById($index, c)) {
-            <button type="button" class="case-home__drawer-item" (click)="openCase(c.id ?? '')">
-              <span class="case-home__drawer-item-id">{{ c.id }}</span>
-              <span class="case-home__drawer-item-status">{{ c.status }}</span>
-            </button>
-          }
-        }
-      }
-    </div>
-  </aside>
-
-  <!-- Main content -->
-  <main class="case-home__main">
-    <!-- Drawer toggle -->
-    <div class="case-home__topbar">
-      <ds-icon-button icon="menu" variant="default" title="Recent cases" (action)="toggleDrawer()" />
-    </div>
-
-    <!-- Hero area -->
-    <div class="case-home__hero">
-      <h1 class="case-home__headline">What can I help you with?</h1>
-
-      <div class="case-home__composer">
-        <textarea
-          class="case-home__input"
-          placeholder="Describe your task or ask a question…"
-          rows="4"
-          [value]="inputValue()"
-          [disabled]="isCreating()"
-          #composerInput
-          (input)="onInput($event)"
-          (keydown)="onKeydown($event)"
-        ></textarea>
-        <div class="case-home__composer-footer">
-          <span class="case-home__hint">Enter to send&nbsp;&nbsp;·&nbsp;&nbsp;Shift+Enter for new line</span>
-          <ds-icon-button
-            icon="send"
-            variant="primary"
-            title="Start case (Enter)"
-            [disabled]="!canSend"
-            (action)="submit()"
-          />
-        </div>
+    <div class="case-home__composer">
+      <textarea
+        #composerInput
+        class="case-home__input"
+        placeholder="Describe your task or ask a question…"
+        rows="4"
+        [value]="inputValue()"
+        [disabled]="isCreating()"
+        (input)="onInput($event)"
+        (keydown)="onKeydown($event)"
+      ></textarea>
+      <div class="case-home__composer-footer">
+        <span class="case-home__hint">Enter to send&nbsp;&nbsp;·&nbsp;&nbsp;Shift+Enter for new line</span>
+        <ds-icon-button
+          icon="send"
+          variant="primary"
+          title="Start case (Enter)"
+          [disabled]="!canSend"
+          (action)="submit()"
+        />
       </div>
     </div>
-  </main>
+  </div>
 </div>

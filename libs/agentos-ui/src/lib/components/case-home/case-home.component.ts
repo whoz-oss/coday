@@ -1,17 +1,15 @@
-import { AsyncPipe } from '@angular/common'
 import { HttpClient } from '@angular/common/http'
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, signal, ViewChild } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Case, CaseControllerService, Configuration } from '@whoz-oss/agentos-api-client'
+import { Case, Configuration } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, switchMap } from 'rxjs'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
  *
- * Displays a centered, inviting text area for starting a new case.
- * A side drawer lists existing cases for the namespace.
+ * Displays a centered, inviting text area to start a new case.
+ * The drawer (case list) is owned by the parent CaseShellComponent.
  *
  * Flow:
  * 1. User types a message and presses Enter (or clicks Send)
@@ -22,7 +20,7 @@ import { BehaviorSubject, switchMap } from 'rxjs'
 @Component({
   selector: 'agentos-case-home',
   standalone: true,
-  imports: [AsyncPipe, IconButtonComponent],
+  imports: [IconButtonComponent],
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
 })
@@ -31,12 +29,14 @@ export class CaseHomeComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly config = inject(Configuration)
-  private readonly caseController = inject(CaseControllerService)
   private readonly destroyRef = inject(DestroyRef)
 
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  protected readonly inputValue = signal('')
+  protected readonly isCreating = signal(false)
 
   constructor() {
     // Focus the textarea on first render — avoids the accessibility issues of the `autofocus` attribute
@@ -44,16 +44,6 @@ export class CaseHomeComponent {
       this.composerInput?.nativeElement.focus()
     })
   }
-
-  protected readonly inputValue = signal('')
-  protected readonly isCreating = signal(false)
-  protected readonly isDrawerOpen = signal(false)
-
-  private readonly refresh$ = new BehaviorSubject<void>(undefined)
-
-  protected readonly cases$ = this.refresh$.pipe(
-    switchMap(() => this.caseController.listByParentCase(this.namespaceId))
-  )
 
   protected get canSend(): boolean {
     return !!this.inputValue().trim() && !this.isCreating()
@@ -70,19 +60,6 @@ export class CaseHomeComponent {
     }
   }
 
-  protected toggleDrawer(): void {
-    const opening = !this.isDrawerOpen()
-    this.isDrawerOpen.set(opening)
-    if (opening) {
-      // Refresh the list when opening the drawer
-      this.refresh$.next()
-    }
-  }
-
-  protected openCase(caseId: string): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'cases', caseId])
-  }
-
   protected submit(): void {
     if (!this.canSend) return
     const firstMessage = this.inputValue().trim()
@@ -97,20 +74,16 @@ export class CaseHomeComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (createdCase) => {
-          this.router.navigate(['/agentos', this.namespaceId, 'cases', createdCase.id ?? ''], {
+          this.router.navigate([createdCase.id ?? ''], {
+            relativeTo: this.route,
             state: { firstMessage },
           })
         },
         error: (err) => {
           console.error('[CaseHome] Failed to create case', err)
           this.isCreating.set(false)
-          // Restore the message so the user can retry
           this.inputValue.set(firstMessage)
         },
       })
-  }
-
-  protected trackById(_index: number, c: Case): string {
-    return c.id ?? ''
   }
 }

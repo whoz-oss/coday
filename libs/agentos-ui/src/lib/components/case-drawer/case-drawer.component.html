@@ -1,0 +1,27 @@
+<ds-entity-list
+  title="Cases"
+  [items]="caseItems"
+  [itemTemplate]="caseItemTpl"
+  [showCreate]="true"
+  emptyMessage="No cases yet. Start one below."
+  searchPlaceholder="Filter cases…"
+  cardMinWidth="220px"
+  contentMaxWidth="100%"
+  (itemSelected)="onItemSelected($event)"
+  (createRequested)="onCreateRequested()"
+/>
+
+<!-- Minimal case item template: single-line row, active highlight -->
+<ng-template #caseItemTpl let-item>
+  <button
+    type="button"
+    class="case-drawer-item"
+    [class.case-drawer-item--active]="item.id === activeCaseId"
+    (click)="onItemSelected(item.id)"
+  >
+    <span class="case-drawer-item__name">{{ item.name }}</span>
+    @if (item.description) {
+      <span class="case-drawer-item__status">{{ item.description }}</span>
+    }
+  </button>
+</ng-template>

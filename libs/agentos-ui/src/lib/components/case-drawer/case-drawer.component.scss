@@ -1,0 +1,50 @@
+// Scoped styles for the case item row rendered inside ds-entity-list
+.case-drawer-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text, #1d1d1f);
+  transition: background 0.12s ease;
+  gap: 0.5rem;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+  }
+
+  &--active {
+    background: var(--color-primary, #007aff);
+    color: var(--color-text-inverse, #fff);
+
+    .case-drawer-item__status {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    &:hover {
+      background: var(--color-primary-hover, #0051d5);
+    }
+  }
+
+  &__name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  &__status {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary, #6e6e73);
+    font-weight: 400;
+  }
+}

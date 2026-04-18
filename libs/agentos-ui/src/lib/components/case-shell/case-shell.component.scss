@@ -1,0 +1,75 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.case-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  &__header {
+    flex-shrink: 0;
+  }
+
+  &__body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__sidenav {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  &__sidenav-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.5rem 0;
+    flex-shrink: 0;
+  }
+
+  &__content {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  // Floating toggle button visible when drawer is closed
+  &__toggle {
+    position: absolute;
+    top: 0.625rem;
+    left: 0.75rem;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text-secondary, #6e6e73);
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+
+    &:hover {
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+      color: var(--color-text, #1d1d1f);
+    }
+
+    .material-icons {
+      font-size: 20px;
+    }
+  }
+}

@@ -1,0 +1,15 @@
+<mat-sidenav-container class="ds-drawer">
+  <mat-sidenav
+    class="ds-drawer__sidenav"
+    [style.width]="drawerWidth"
+    [opened]="open"
+    mode="side"
+    (openedChange)="onOpenedChange($event)"
+  >
+    <ng-content select="[dsDrawerSide]" />
+  </mat-sidenav>
+
+  <mat-sidenav-content class="ds-drawer__content">
+    <ng-content select="[dsDrawerContent]" />
+  </mat-sidenav-content>
+</mat-sidenav-container>

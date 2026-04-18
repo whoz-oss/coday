@@ -1,143 +1,18 @@
 .case-home {
-  position: relative;
   display: flex;
+  flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  align-items: center;
+  justify-content: center;
 
-  // ── Overlay ────────────────────────────────────────────────────────────────
-  &__overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    background: rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(2px);
-    animation: fade-in 0.2s ease;
-    // Reset button defaults — this element is a full-screen overlay button
-    border: none;
-    padding: 0;
-    cursor: default;
-  }
-
-  // ── Drawer ─────────────────────────────────────────────────────────────────
-  &__drawer {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 320px;
-    z-index: 110;
-    background: var(--glass-bg, rgba(255, 255, 255, 0.92));
-    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-    -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-    border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    display: flex;
-    flex-direction: column;
-    transform: translateX(-100%);
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-
-    &--open {
-      transform: translateX(0);
-    }
-  }
-
-  &__drawer-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1.25rem 1rem 1rem;
-    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
-  }
-
-  &__drawer-title {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text, #1d1d1f);
-  }
-
-  &__drawer-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  &__drawer-empty {
-    margin: 1rem;
-    font-size: 0.875rem;
-    color: var(--color-text-secondary, #6e6e73);
-    text-align: center;
-  }
-
-  &__drawer-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 0.625rem 0.75rem;
-    border-radius: 8px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    text-align: left;
-    font-family: inherit;
-    font-size: 0.875rem;
-    color: var(--color-text, #1d1d1f);
-    transition: background 0.12s ease;
-
-    &:hover {
-      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-    }
-  }
-
-  &__drawer-item-id {
-    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
-    font-size: 0.8rem;
-    color: var(--color-text-secondary, #6e6e73);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 200px;
-  }
-
-  &__drawer-item-status {
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: 0.125rem 0.5rem;
-    border-radius: 999px;
-    background: var(--color-surface, rgba(0, 0, 0, 0.05));
-    color: var(--color-text-secondary, #6e6e73);
-    flex-shrink: 0;
-  }
-
-  // ── Main ───────────────────────────────────────────────────────────────────
-  &__main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  &__topbar {
-    display: flex;
-    align-items: center;
-    padding: 0.75rem 1rem;
-  }
-
-  // ── Hero ───────────────────────────────────────────────────────────────────
   &__hero {
-    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 2rem 1.5rem 4rem;
     gap: 2rem;
-    max-width: 720px;
+    padding: 2rem 1.5rem 4rem;
+    max-width: 680px;
     width: 100%;
-    margin: 0 auto;
   }
 
   &__headline {
@@ -149,12 +24,10 @@
     text-align: center;
   }
 
-  // ── Composer ───────────────────────────────────────────────────────────────
   &__composer {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 0;
     background: var(--glass-bg, rgba(255, 255, 255, 0.72));
     border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
     backdrop-filter: var(--glass-backdrop-blur, blur(20px));
@@ -162,7 +35,9 @@
     border-radius: 16px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
     overflow: hidden;
-    transition: box-shadow 0.2s ease;
+    transition:
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
 
     &:focus-within {
       box-shadow: 0 4px 32px rgba(0, 122, 255, 0.15);
@@ -204,14 +79,5 @@
     font-size: 0.75rem;
     color: var(--color-text-secondary, #6e6e73);
     opacity: 0.7;
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
   }
 }
