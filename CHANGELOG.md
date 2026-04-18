@@ -1,3 +1,15 @@
+## 0.122.0 (2026-04-18)
+
+### 🚀 Features
+
+- #764 local testing team — Chromay and Playwrighty agents ([#765](https://github.com/whoz-oss/coday/pull/765), [#764](https://github.com/whoz-oss/coday/issues/764))
+- #773 AgentOS admin view for user management ([#774](https://github.com/whoz-oss/coday/pull/774), [#773](https://github.com/whoz-oss/coday/issues/773))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.121.2 (2026-04-17)
 
 ### 🩹 Fixes
