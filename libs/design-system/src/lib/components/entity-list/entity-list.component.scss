@@ -33,8 +33,8 @@
   // Pushed to the right by margin-left: auto, capped at 240px, shrinks before title
   margin-left: auto;
   padding-left: 20px;
-  flex: 1 1 120px;
-  min-width: 40px;
+  flex: 0 1 240px;
+  min-width: 80px;
   // Compact height
   --mat-form-field-container-height: 36px;
   --mat-form-field-container-vertical-padding: 6px;
