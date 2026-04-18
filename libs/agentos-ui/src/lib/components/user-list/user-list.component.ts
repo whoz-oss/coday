@@ -53,6 +53,10 @@ export class UserListComponent implements OnInit {
     this.userAdminState.loadAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
   }
 
+  protected goBack(): void {
+    this.router.navigate(['/agentos'])
+  }
+
   protected navigateToCreate(): void {
     this.router.navigate(['/agentos/admin/users/new'])
   }

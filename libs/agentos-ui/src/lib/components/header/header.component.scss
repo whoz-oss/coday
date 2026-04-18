@@ -59,11 +59,6 @@
       background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
       border-color: var(--color-primary, #007aff);
     }
-
-    &--active {
-      background: var(--color-primary, #007aff);
-      border-color: var(--color-primary, #007aff);
-    }
   }
 
   &__admin-icon {

@@ -6,7 +6,9 @@
   cardMinWidth="320px"
   [itemTemplate]="userItemTpl"
   (createRequested)="navigateToCreate()"
-/>
+>
+  <button toolbar-start class="user-list__back" type="button" (click)="goBack()">&#8592; Admin</button>
+</ds-entity-list>
 
 <!-- Item template: renders UserItemComponent for each entity-list card slot -->
 <ng-template #userItemTpl let-item>
