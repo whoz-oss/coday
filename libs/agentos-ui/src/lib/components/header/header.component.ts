@@ -30,6 +30,18 @@ export class HeaderComponent implements OnInit {
 
   protected readonly currentUser = this.userState.currentUser
 
+  protected get isOnAdminPage(): boolean {
+    return this.router.url.startsWith('/agentos/admin')
+  }
+
+  protected navigateToAdmin(): void {
+    if (this.isOnAdminPage) {
+      this.router.navigate(['/agentos'])
+    } else {
+      this.router.navigate(['/agentos/admin/users'])
+    }
+  }
+
   ngOnInit(): void {
     if (!this.currentUser()) {
       this.userState.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()

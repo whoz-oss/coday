@@ -1,0 +1,92 @@
+<div class="user-form">
+  <header class="user-form__header">
+    <button class="user-form__back" type="button" (click)="cancel()" title="Back to users">
+      <span class="user-form__back-icon">&#8592;</span>
+      Users
+    </button>
+    <h1 class="user-form__title">{{ title }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="user-form__loading">Loading…</p>
+  } @else {
+    <form class="user-form__body" [formGroup]="form" (ngSubmit)="save()">
+      <div class="user-form__section">
+        <h2 class="user-form__section-title">Identity</h2>
+
+        <div class="user-form__field">
+          <label class="user-form__label" for="uf-email">Email <span class="user-form__required">*</span></label>
+          @if (isEditMode) {
+            <span class="user-form__value user-form__value--readonly">{{ form.controls.email.value }}</span>
+          } @else {
+            <input
+              id="uf-email"
+              class="user-form__input"
+              type="email"
+              placeholder="user@example.com"
+              formControlName="email"
+              autocomplete="email"
+            />
+          }
+        </div>
+
+        <div class="user-form__field">
+          <label class="user-form__label" for="uf-externalId">External ID</label>
+          <input
+            id="uf-externalId"
+            class="user-form__input"
+            type="text"
+            placeholder="External identifier"
+            formControlName="externalId"
+          />
+        </div>
+      </div>
+
+      <div class="user-form__section">
+        <h2 class="user-form__section-title">Profile</h2>
+
+        <div class="user-form__field">
+          <label class="user-form__label" for="uf-firstname">First name</label>
+          <input
+            id="uf-firstname"
+            class="user-form__input"
+            type="text"
+            placeholder="First name"
+            formControlName="firstname"
+            autocomplete="given-name"
+          />
+        </div>
+
+        <div class="user-form__field">
+          <label class="user-form__label" for="uf-lastname">Last name</label>
+          <input
+            id="uf-lastname"
+            class="user-form__input"
+            type="text"
+            placeholder="Last name"
+            formControlName="lastname"
+            autocomplete="family-name"
+          />
+        </div>
+
+        <div class="user-form__field user-form__field--bio">
+          <label class="user-form__label" for="uf-bio">Bio</label>
+          <textarea
+            id="uf-bio"
+            class="user-form__input user-form__input--textarea"
+            placeholder="A short description"
+            formControlName="bio"
+            rows="4"
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="user-form__actions">
+        <button class="user-form__btn user-form__btn--primary" type="submit" [disabled]="form.invalid || isSaving()">
+          {{ isSaving() ? 'Saving…' : isEditMode ? 'Save changes' : 'Create user' }}
+        </button>
+        <button class="user-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

@@ -1,0 +1,16 @@
+<ds-entity-list
+  title="Users"
+  [items]="userItems()"
+  [showCreate]="true"
+  emptyMessage="No users found."
+  cardMinWidth="320px"
+  [itemTemplate]="userItemTpl"
+  (createRequested)="navigateToCreate()"
+/>
+
+<!-- Item template: renders UserItemComponent for each entity-list card slot -->
+<ng-template #userItemTpl let-item>
+  @if (resolveUser(item.id); as user) {
+    <agentos-user-item [user]="user" (editRequested)="navigateToEdit($event)" (deleteRequested)="deleteUser($event)" />
+  }
+</ng-template>
