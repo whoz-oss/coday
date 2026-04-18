@@ -1,23 +1,36 @@
+:host {
+  // The host element must participate in flex layout and fill available height
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .ds-drawer {
   // Fill whatever space the host gives us
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 
   // Remove the default mat-sidenav-container background so the host theme shows through
   --mat-sidenav-container-background-color: transparent;
   --mat-sidenav-container-divider-color: var(--color-border, rgba(0, 0, 0, 0.1));
+
+  // mat-sidenav-container sets its own height via inline styles — override to fill parent
+  &.mat-drawer-container {
+    flex: 1;
+    min-height: 0;
+  }
 
   &__sidenav {
     background: var(--glass-bg, rgba(255, 255, 255, 0.92));
     backdrop-filter: var(--glass-backdrop-blur, blur(20px));
     -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
     border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    // Reset mat-sidenav shadow
     box-shadow: none;
   }
 
   &__content {
-    // mat-sidenav-content must fill its allocated space
     display: flex;
     flex-direction: column;
     height: 100%;

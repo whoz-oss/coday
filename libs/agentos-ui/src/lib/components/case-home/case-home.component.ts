@@ -4,18 +4,18 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, Configuration } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+import { map, switchMap } from 'rxjs'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
  *
- * Displays a centered, inviting text area to start a new case.
- * The drawer (case list) is owned by the parent CaseShellComponent.
- *
  * Flow:
  * 1. User types a message and presses Enter (or clicks Send)
- * 2. A new case is created implicitly via POST /api/cases
- * 3. The app navigates to the case chat, passing the first message
- *    via router navigation state so CaseChatComponent sends it immediately.
+ * 2. POST /api/cases creates the case
+ * 3. POST /api/cases/:id/messages sends the first message
+ * 4. Only then does the app navigate to the case chat
+ *
+ * The first message is never stored in router state to avoid re-sending on refresh.
  */
 @Component({
   selector: 'agentos-case-home',
@@ -39,7 +39,6 @@ export class CaseHomeComponent {
   protected readonly isCreating = signal(false)
 
   constructor() {
-    // Focus the textarea on first render — avoids the accessibility issues of the `autofocus` attribute
     afterNextRender(() => {
       this.composerInput?.nativeElement.focus()
     })
@@ -66,21 +65,31 @@ export class CaseHomeComponent {
     this.inputValue.set('')
     this.isCreating.set(true)
 
+    // Step 1: create the case
     this.http
       .post<Case>(`${this.config.basePath}/api/cases`, {
         namespaceId: this.namespaceId,
         metadata: {},
       })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        // Step 2: send the first message before navigating, carry the case id through
+        switchMap((createdCase) =>
+          this.http
+            .post(`${this.config.basePath}/api/cases/${createdCase.id}/messages`, {
+              content: firstMessage,
+              userId: 'default-user',
+            })
+            .pipe(map(() => createdCase))
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
       .subscribe({
         next: (createdCase) => {
-          this.router.navigate([createdCase.id ?? ''], {
-            relativeTo: this.route,
-            state: { firstMessage },
-          })
+          // Step 3: navigate — no firstMessage in state, the message is already posted
+          this.router.navigate([createdCase.id ?? ''], { relativeTo: this.route })
         },
         error: (err) => {
-          console.error('[CaseHome] Failed to create case', err)
+          console.error('[CaseHome] Failed to create case or send first message', err)
           this.isCreating.set(false)
           this.inputValue.set(firstMessage)
         },
