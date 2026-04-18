@@ -2,17 +2,15 @@
   <agentos-header class="case-shell__header" />
 
   <div class="case-shell__body">
-    <ds-drawer [(open)]="drawerOpen" drawerWidth="300px">
-      <!-- Sidenav: case list -->
+    <ds-drawer [(open)]="drawerOpen" drawerWidth="400px">
+      <!-- Sidenav: case list with close button injected into ds-entity-list toolbar -->
       <div dsDrawerSide class="case-shell__sidenav">
-        <div class="case-shell__sidenav-toolbar">
-          <ds-icon-button icon="chevron_left" variant="default" title="Close drawer" (action)="toggleDrawer()" />
-        </div>
         <agentos-case-drawer
           [cases]="cases()"
           [activeCaseId]="activeCaseId()"
           (caseSelected)="onCaseSelected($event)"
           (createRequested)="onCreateRequested()"
+          (closeRequested)="toggleDrawer()"
         />
       </div>
 

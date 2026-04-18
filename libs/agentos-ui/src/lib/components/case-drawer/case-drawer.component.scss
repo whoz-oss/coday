@@ -39,12 +39,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
-  }
-
-  &__status {
-    flex-shrink: 0;
-    font-size: 0.75rem;
-    color: var(--color-text-secondary, #6e6e73);
-    font-weight: 400;
+    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+    font-size: 0.8rem;
   }
 }

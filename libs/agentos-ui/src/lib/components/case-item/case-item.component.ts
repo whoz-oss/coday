@@ -21,9 +21,9 @@ export class CaseItemComponent {
   static toListItem(c: Case): EntityListItem {
     return {
       id: c.id ?? '',
-      // Cases don't have a user-facing name yet — display a short id slice
-      name: c.id ? c.id.slice(0, 8) + '…' : '—',
-      description: c.status ?? undefined,
+      // Cases don't have a user-facing name yet — display the full id
+      name: c.id ?? '—',
+      description: undefined,
     }
   }
 }

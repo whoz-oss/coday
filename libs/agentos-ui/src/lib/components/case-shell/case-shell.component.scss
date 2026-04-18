@@ -28,13 +28,6 @@
     overflow: hidden;
   }
 
-  &__sidenav-toolbar {
-    display: flex;
-    align-items: center;
-    padding: 0.5rem 0.5rem 0;
-    flex-shrink: 0;
-  }
-
   &__content {
     position: relative;
     flex: 1;
