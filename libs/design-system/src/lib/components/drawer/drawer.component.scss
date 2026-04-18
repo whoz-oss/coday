@@ -28,6 +28,9 @@
     -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
     border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
     box-shadow: none;
+    // Remove Material's default border-radius on the sidenav panel
+    --mat-sidenav-container-shape: 0;
+    border-radius: 0;
   }
 
   &__content {

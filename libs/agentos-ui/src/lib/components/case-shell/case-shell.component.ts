@@ -1,9 +1,9 @@
-import { Component, computed, inject, signal } from '@angular/core'
+import { Component, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { ActivatedRoute, Router, RouterOutlet } from '@angular/router'
+import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, switchMap } from 'rxjs'
+import { BehaviorSubject, filter, map, merge, of, switchMap } from 'rxjs'
 import { CaseDrawerComponent } from '../case-drawer/case-drawer.component'
 import { HeaderComponent } from '../header/header.component'
 
@@ -44,11 +44,34 @@ export class CaseShellComponent {
 
   protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
 
-  /** Active case id derived from the current child route. */
-  protected readonly activeCaseId = computed(() => {
-    // The child route snapshot holds the caseId param when on the chat view
-    return (this.route.firstChild?.snapshot.params['caseId'] as string | undefined) ?? null
-  })
+  /**
+   * Active case id — derived reactively from router NavigationEnd events.
+   *
+   * `computed()` on `route.firstChild?.snapshot` does not work because the snapshot
+   * is not a signal and won't trigger re-evaluation on navigation.
+   * Instead we listen to Router events and extract the caseId from the URL.
+   */
+  protected readonly activeCaseId = toSignal(
+    merge(
+      // Emit immediately for the current URL (handles component init and page refresh)
+      of(this.router.url),
+      // Then re-emit on every completed navigation
+      this.router.events.pipe(
+        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+        map((e) => e.urlAfterRedirects)
+      )
+    ).pipe(map((url) => this.extractCaseId(url))),
+    { initialValue: null as string | null }
+  )
+
+  /**
+   * Extract the caseId segment from the current URL.
+   * URL pattern: /agentos/:namespaceId/cases/:caseId
+   */
+  private extractCaseId(url: string): string | null {
+    const match = url.match(/\/cases\/([^/?#]+)/)
+    return match?.[1] ?? null
+  }
 
   protected toggleDrawer(): void {
     this.drawerOpen.update((v) => !v)
@@ -63,7 +86,7 @@ export class CaseShellComponent {
     this.router.navigate(['.'], { relativeTo: this.route })
   }
 
-  /** Called by CaseHomeComponent (via router event) after a case is created. */
+  /** Called after a case is created to refresh the drawer list. */
   refreshCases(): void {
     this.refresh$.next()
   }
