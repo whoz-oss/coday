@@ -1,31 +1,31 @@
 # Entity CRUD Pattern (agentos-ui)
 
-Pattern standard pour toute vue CRUD d'entité dans `libs/agentos-ui`. Appliqué de façon cohérente sur Namespace, Integration, AiProvider, AiModel, User.
+Standard pattern for any entity CRUD view in `libs/agentos-ui`. Consistently applied across Namespace, Integration, AiProvider, AiModel, User.
 
-## Fichiers à créer
+## Files to create
 
-Pour une entité `Foo` :
+For an entity `Foo`:
 
 ```
 libs/agentos-ui/src/lib/
   services/
-    foo-state.service.ts          # state service dédié (ou foo-admin-state si contexte admin)
+    foo-state.service.ts          # dedicated state service (or foo-admin-state if admin context)
   components/
     foo-list/
-      foo-list.component.ts       # container smart
+      foo-list.component.ts       # smart container
       foo-list.component.html
       foo-list.component.scss
     foo-item/
-      foo-item.component.ts       # card presentational
+      foo-item.component.ts       # presentational card
       foo-item.component.html
       foo-item.component.scss
     foo-form/
-      foo-form.component.ts       # formulaire create + edit
+      foo-form.component.ts       # create + edit form
       foo-form.component.html
       foo-form.component.scss
 ```
 
-Exporter les nouveaux composants dans `libs/agentos-ui/src/index.ts` si accès externe nécessaire (rare).
+Export new components from `libs/agentos-ui/src/index.ts` only if external access is needed (rare).
 
 ## Routes
 
@@ -35,40 +35,40 @@ Exporter les nouveaux composants dans `libs/agentos-ui/src/index.ts` si accès e
 { path: 'foos/:fooId/edit',  loadComponent: () => FooFormComponent }
 ```
 
-Toutes les routes portent `canActivate: [agentosReadyGuard]`.
+All routes carry `canActivate: [agentosReadyGuard]`.
 
-## Décisions de design
+## Design decisions
 
-**State service vs appel direct API**
-Les composants n'injectent jamais `*ControllerService` directement. Toujours passer par un state service. Si l'entité est liée au profil utilisateur courant, créer un service dédié séparé (ex: `UserStateService` ≠ `UserAdminStateService`).
+**State service vs direct API call**
+Components never inject `*ControllerService` directly. Always go through a state service. If an entity is tied to the current user profile, create a separate dedicated service (e.g. `UserStateService` ≠ `UserAdminStateService`).
 
-**`BehaviorSubject refresh$` vs `computed()` sur signals**
-Les listes existantes utilisent `BehaviorSubject<void>` + `switchMap` pour déclencher un rechargement après mutation (delete, create). C'est le pattern Observable dominant dans les containers existants. Les nouveaux containers peuvent utiliser des signals + `loadAll()` explicite si le state service expose déjà des signals — les deux coexistent.
+**`BehaviorSubject refresh$` vs `computed()` on signals**
+Existing list containers use `BehaviorSubject<void>` + `switchMap` to trigger a reload after mutations (delete, create). This is the dominant Observable pattern in existing containers. New containers may use signals + explicit `loadAll()` if the state service already exposes signals — both coexist.
 
 **`itemTemplate` vs default card**
-Toujours fournir un `[itemTemplate]` dès qu'on a des actions (edit, delete). Le default card de `ds-entity-list` n'a pas de slot d'actions — il convient uniquement pour les listes en lecture seule avec navigation au clic.
+Always provide an `[itemTemplate]` as soon as there are actions (edit, delete). The default card of `ds-entity-list` has no actions slot — it is only suitable for read-only lists with click navigation.
 
-**Confirmation avant delete**
-`confirm()` natif dans le composant item, avant d'émettre `deleteRequested`. La suppression effective est dans le container ou le state service.
+**Confirmation before delete**
+Native `confirm()` in the item component, before emitting `deleteRequested`. The actual deletion is performed in the container or state service.
 
-**Formulaire dual-mode**
-Un seul `FooFormComponent` pour create et edit. Le mode est déterminé par la présence de `:fooId` dans `ActivatedRoute.snapshot.params`. En edit, tenter de résoudre l'entité depuis le state déjà chargé avant de faire un appel HTTP.
+**Dual-mode form**
+A single `FooFormComponent` handles both create and edit. The mode is determined by the presence of `:fooId` in `ActivatedRoute.snapshot.params`. In edit mode, try to resolve the entity from already-loaded state before making an HTTP call.
 
-## Mapping vers `EntityListItem`
+## Mapping to `EntityListItem`
 
-`ds-entity-list` attend `{ id, name, description?, badges?, groupKey?, groupLabel? }`.
+`ds-entity-list` expects `{ id, name, description?, badges?, groupKey?, groupLabel? }`.
 
-| Champ `EntityListItem` | Quoi y mettre |
+| `EntityListItem` field | What to put there |
 |---|---|
-| `name` | Libellé principal affiché en gras — souvent `entity.name`, ou `firstname + lastname` pour un user |
-| `description` | Ligne secondaire — type, email, identifiant technique |
-| `badges` | Statuts ou catégories visuels (warning/info/success/error) — à utiliser avec parcimonie |
-| `groupKey` / `groupLabel` | Pour les listes groupées (ex: modèles groupés par provider). Omettre pour une liste plate |
+| `name` | Primary label displayed in bold — usually `entity.name`, or `firstname + lastname` for a user |
+| `description` | Secondary line — type, email, technical identifier |
+| `badges` | Status or category visuals (warning/info/success/error) — use sparingly |
+| `groupKey` / `groupLabel` | For grouped lists (e.g. models grouped by provider). Omit for a flat list |
 
-## Références
+## References
 
-- `libs/agentos-ui/src/lib/components/namespace-list/` — exemple de référence complet avec groupes et actions multiples
-- `libs/agentos-ui/src/lib/components/user-list/` — exemple avec state service signals
-- `libs/design-system/src/lib/components/entity-list/` — API complète de `ds-entity-list`
-- `libs/design-system/src/lib/components/entity-card/` — slot `dsCardActions` pour actions inline
-- `libs/design-system/src/lib/components/kebab-menu/` — `ds-kebab-menu` pour les menus d'actions
+- `libs/agentos-ui/src/lib/components/namespace-list/` — full reference example with groups and multiple actions
+- `libs/agentos-ui/src/lib/components/user-list/` — example with signal-based state service
+- `libs/design-system/src/lib/components/entity-list/` — full `ds-entity-list` API
+- `libs/design-system/src/lib/components/entity-card/` — `dsCardActions` slot for inline actions
+- `libs/design-system/src/lib/components/kebab-menu/` — `ds-kebab-menu` for action menus
