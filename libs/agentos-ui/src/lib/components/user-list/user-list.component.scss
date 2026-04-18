@@ -1,15 +1,1 @@
-.user-list__back {
-  background: none;
-  border: none;
-  padding: 0 0.5rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--color-primary, #007aff);
-  font-family: inherit;
-  white-space: nowrap;
-  flex-shrink: 0;
-
-  &:hover {
-    text-decoration: underline;
-  }
-}
+// No additional styles needed — ds-entity-list handles the layout.

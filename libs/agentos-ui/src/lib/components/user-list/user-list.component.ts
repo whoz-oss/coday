@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { User } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { computed } from '@angular/core'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
 import { UserItemComponent } from '../user-item/user-item.component'
@@ -21,7 +21,7 @@ import { UserItemComponent } from '../user-item/user-item.component'
 @Component({
   selector: 'agentos-user-list',
   standalone: true,
-  imports: [EntityListComponent, UserItemComponent],
+  imports: [EntityListComponent, UserItemComponent, IconButtonComponent],
   templateUrl: './user-list.component.html',
   styleUrl: './user-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
