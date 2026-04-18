@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiModel, AiProviderControllerService, AiModelControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, combineLatest, map, switchMap } from 'rxjs'
 import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 
@@ -24,7 +24,7 @@ import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 @Component({
   selector: 'agentos-namespace-ai-models',
   standalone: true,
-  imports: [AsyncPipe, EntityListComponent, AiModelItemComponent],
+  imports: [AsyncPipe, EntityListComponent, AiModelItemComponent, IconButtonComponent],
   templateUrl: './namespace-ai-models.component.html',
   styleUrl: './namespace-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
