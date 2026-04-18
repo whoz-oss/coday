@@ -1,6 +1,5 @@
-import { AsyncPipe } from '@angular/common'
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core'
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import { Component, computed, inject, signal } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router, RouterOutlet } from '@angular/router'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
@@ -25,7 +24,7 @@ import { HeaderComponent } from '../header/header.component'
 @Component({
   selector: 'agentos-case-shell',
   standalone: true,
-  imports: [RouterOutlet, DrawerComponent, CaseDrawerComponent, HeaderComponent, IconButtonComponent, AsyncPipe],
+  imports: [RouterOutlet, DrawerComponent, CaseDrawerComponent, HeaderComponent, IconButtonComponent],
   templateUrl: './case-shell.component.html',
   styleUrl: './case-shell.component.scss',
 })
@@ -33,7 +32,6 @@ export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly caseController = inject(CaseControllerService)
-  private readonly destroyRef = inject(DestroyRef)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
