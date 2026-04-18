@@ -30,6 +30,10 @@ export class HeaderComponent implements OnInit {
 
   protected readonly currentUser = this.userState.currentUser
 
+  protected navigateToAdmin(): void {
+    this.router.navigate(['/agentos/admin/users'])
+  }
+
   ngOnInit(): void {
     if (!this.currentUser()) {
       this.userState.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
