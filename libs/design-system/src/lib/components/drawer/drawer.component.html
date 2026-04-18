@@ -1,6 +1,7 @@
 <mat-sidenav-container class="ds-drawer" style="height: 100%">
   <mat-sidenav
     class="ds-drawer__sidenav"
+    [class.ds-drawer__sidenav--overlay]="isMobile()"
     [style.width]="drawerWidth"
     [opened]="open"
     [mode]="drawerMode()"
