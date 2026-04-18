@@ -1,3 +1,14 @@
+## 0.123.0 (2026-04-18)
+
+### 🚀 Features
+
+- #775 AgentOS case list — collapsible drawer with ds-entity-list ([#776](https://github.com/whoz-oss/coday/pull/776), [#775](https://github.com/whoz-oss/coday/issues/775))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.122.0 (2026-04-18)
 
 ### 🚀 Features
