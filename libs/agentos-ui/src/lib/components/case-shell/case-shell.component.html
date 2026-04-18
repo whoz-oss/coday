@@ -6,7 +6,7 @@
       <!-- Sidenav: case list -->
       <div dsDrawerSide class="case-shell__sidenav">
         <div class="case-shell__sidenav-toolbar">
-          <ds-icon-button icon="menu" variant="default" title="Close drawer" (action)="toggleDrawer()" />
+          <ds-icon-button icon="chevron_left" variant="default" title="Close drawer" (action)="toggleDrawer()" />
         </div>
         <agentos-case-drawer
           [cases]="cases()"
@@ -19,9 +19,9 @@
       <!-- Main content: routed child (CaseHomeComponent or CaseChatComponent) -->
       <div dsDrawerContent class="case-shell__content">
         @if (!drawerOpen()) {
-          <button type="button" class="case-shell__toggle" title="Open drawer" (click)="toggleDrawer()">
-            <span class="material-icons">menu</span>
-          </button>
+          <div class="case-shell__toggle">
+            <ds-icon-button icon="menu" variant="default" title="Open drawer" (action)="toggleDrawer()" />
+          </div>
         }
         <router-outlet />
       </div>
