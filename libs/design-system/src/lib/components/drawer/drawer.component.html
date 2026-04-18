@@ -3,7 +3,7 @@
     class="ds-drawer__sidenav"
     [style.width]="drawerWidth"
     [opened]="open"
-    mode="side"
+    [mode]="drawerMode()"
     (openedChange)="onOpenedChange($event)"
   >
     <ng-content select="[dsDrawerSide]" />
