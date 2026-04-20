@@ -171,6 +171,8 @@ export class ThreadService {
       parentEventId: thread.parentEventId,
       delegatedAgentName: thread.delegatedAgentName,
       delegatedTask: thread.delegatedTask,
+      worktreeProject: thread.worktreeProject,
+      closedByUser: thread.closedByUser || undefined,
     }
   }
 
@@ -253,7 +255,7 @@ export class ThreadService {
   async updateThread(
     projectName: string,
     threadId: string,
-    updates: { name?: string; summary?: string; users?: ThreadUser[] }
+    updates: { name?: string; summary?: string; users?: ThreadUser[]; closedByUser?: boolean }
   ): Promise<AiThread> {
     const repository = this.getThreadRepository(projectName)
 
@@ -297,6 +299,9 @@ export class ThreadService {
     }
     if (updates.users !== undefined) {
       thread.users = updates.users
+    }
+    if (updates.closedByUser !== undefined) {
+      thread.closedByUser = updates.closedByUser
     }
 
     const updatedThread = await repository.save(projectName, thread)

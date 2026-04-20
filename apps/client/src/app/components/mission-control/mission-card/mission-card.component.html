@@ -1,0 +1,89 @@
+<article
+  class="mission-card"
+  [class]="'status-' + mission().status"
+  [class.is-active]="mission().isActive"
+  (click)="navigate()"
+  role="button"
+  tabindex="0"
+  (keydown.enter)="navigate()"
+  (keydown.space)="navigate(); $event.preventDefault()"
+  [attr.aria-label]="'Open mission: ' + mission().name"
+>
+  <!-- Status badge -->
+  <div class="status-badge">
+    <mat-icon class="status-icon">{{ statusIcon() }}</mat-icon>
+    <span class="status-label">{{ statusLabel() }}</span>
+    @if (mission().status === 'waiting-you') {
+      <span class="pulse-ring" aria-hidden="true"></span>
+    }
+  </div>
+
+  <!-- Project label (global view only) -->
+  @if (showProject() && projectName()) {
+    <div class="mission-project">
+      <mat-icon class="project-icon">folder</mat-icon>
+      <span>{{ projectName() }}</span>
+    </div>
+  }
+
+  <!-- Mission name -->
+  <h3 class="mission-name">
+    {{ mission().name || 'Unnamed mission' }}
+  </h3>
+
+  <!-- Summary -->
+  @if (mission().summary) {
+    <p class="mission-summary">{{ mission().summary }}</p>
+  } @else {
+    <p class="mission-summary empty">No summary yet</p>
+  }
+
+  <!-- Footer: time + actions -->
+  <footer class="mission-footer">
+    <span class="mission-time">{{ formatRelativeTime(mission().modifiedDate) }}</span>
+
+    <div class="mission-actions">
+      @if (mission().status === 'in-progress') {
+        <button
+          mat-icon-button
+          class="action-btn stop-btn"
+          (click)="onStop($event)"
+          matTooltip="Stop agent"
+          aria-label="Stop agent"
+        >
+          <mat-icon>stop_circle</mat-icon>
+        </button>
+      }
+      <button
+        mat-icon-button
+        class="action-btn star-btn"
+        [class.starred]="mission().starring.length > 0"
+        (click)="onStarToggle($event)"
+        [matTooltip]="mission().starring.length > 0 ? 'Unstar' : 'Star'"
+        [attr.aria-label]="mission().starring.length > 0 ? 'Unstar mission' : 'Star mission'"
+      >
+        <mat-icon>{{ mission().starring.length > 0 ? 'star' : 'star_border' }}</mat-icon>
+      </button>
+      @if (isWorktree()) {
+        <button
+          mat-icon-button
+          class="action-btn close-mission-btn"
+          (click)="onCloseMission($event)"
+          matTooltip="Close mission (removes worktree)"
+          aria-label="Close mission"
+        >
+          <mat-icon>close_fullscreen</mat-icon>
+        </button>
+      }
+      <button
+        mat-icon-button
+        class="action-btn delete-btn"
+        (click)="onDelete($event)"
+        matTooltip="Delete mission"
+        aria-label="Delete mission"
+      >
+        <mat-icon>delete_outline</mat-icon>
+      </button>
+    </div>
+  </footer>
+</article>

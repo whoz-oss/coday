@@ -93,6 +93,11 @@ export class AiThread {
   parentEventId?: string
   delegatedAgentName?: string
   delegatedTask?: string
+  /** Worktree project name — set when this thread was created via the New Mission worktree flow */
+  worktreeProject?: string
+
+  /** True when the user has manually marked this thread as done */
+  closedByUser: boolean = false
 
   private parentThread: AiThread | undefined
 
@@ -124,6 +129,8 @@ export class AiThread {
     this.parentEventId = thread.parentEventId
     this.delegatedAgentName = thread.delegatedAgentName
     this.delegatedTask = thread.delegatedTask
+    this.worktreeProject = thread.worktreeProject
+    this.closedByUser = thread.closedByUser ?? false
 
     // Filter on type first, then build events
     // Ensure messages is always initialized as an array, even if empty
@@ -308,6 +315,13 @@ export class AiThread {
   }
 
   /**
+   * Mark this thread as done by the user.
+   */
+  markAsDone(): void {
+    this.closedByUser = true
+  }
+
+  /**
    * Resets the counters related to the run (all except price.thread)
    */
   resetUsageForRun(): void {
@@ -416,6 +430,16 @@ export class AiThread {
    */
   addAnswerEvent(answerEvent: AnswerEvent): void {
     this.add(answerEvent)
+    this.modifiedDate = new Date().toISOString()
+  }
+
+  /**
+   * Adds an invite or choice event to the thread.
+   * Used to persist queryUser questions so they survive reconnection and appear in history.
+   * @param questionEvent - The InviteEvent or ChoiceEvent to add
+   */
+  addInviteEvent(questionEvent: InviteEvent | ChoiceEvent): void {
+    this.add(questionEvent)
     this.modifiedDate = new Date().toISOString()
   }
 
@@ -682,6 +706,8 @@ export class AiThread {
       parentEventId: this.parentEventId,
       delegatedAgentName: this.delegatedAgentName,
       delegatedTask: this.delegatedTask,
+      worktreeProject: this.worktreeProject,
+      closedByUser: this.closedByUser || undefined,
       messages: this.messages,
     }
   }

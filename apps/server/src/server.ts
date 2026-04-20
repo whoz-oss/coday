@@ -302,7 +302,15 @@ registerPromptRoutes(app, promptService, getUsername)
 registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 
 // Register project management routes
-registerProjectRoutes(app, projectService)
+registerProjectRoutes(
+  app,
+  projectService,
+  threadCodayManager.projectEventManager,
+  threadService,
+  getUsername,
+  threadCodayManager,
+  codayOptions
+)
 
 // Register project preview routes
 registerProjectPreviewRoutes(app, projectService)

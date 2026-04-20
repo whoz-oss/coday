@@ -80,6 +80,14 @@ export class ThreadApiService {
   }
 
   /**
+   * List all threads across all accessible projects in a single call.
+   * Each thread carries a `projectId` field identifying its project.
+   */
+  listAllThreads(): Observable<ThreadSummary[]> {
+    return this.http.get<ThreadSummary[]>('/api/threads')
+  }
+
+  /**
    * Get details of a specific thread
    * @param threadId Thread identifier
    */

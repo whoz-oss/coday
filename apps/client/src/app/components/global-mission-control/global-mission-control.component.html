@@ -1,0 +1,120 @@
+<div class="gmc">
+  <!-- Header -->
+  <header class="gmc-header">
+    <div class="gmc-title-row">
+      <h2 class="gmc-title">
+        <mat-icon class="title-icon">hub</mat-icon>
+        Global Mission Control
+      </h2>
+      <div class="gmc-title-actions">
+        <button
+          mat-flat-button
+          class="new-mission-btn"
+          (click)="openNewMissionDialog()"
+          aria-label="Launch a new mission"
+        >
+          <mat-icon>rocket_launch</mat-icon>
+          New Mission
+        </button>
+        <button
+          mat-icon-button
+          (click)="refresh()"
+          [disabled]="isLoading()"
+          matTooltip="Refresh all missions"
+          aria-label="Refresh missions"
+        >
+          <mat-icon>refresh</mat-icon>
+        </button>
+      </div>
+    </div>
+
+    <!-- Project filter chips (only shown when there are multiple projects) -->
+    @if (projectSummaries().length > 1) {
+      <nav class="gmc-project-filters" aria-label="Filter by project">
+        <button class="project-chip" [class.active]="activeProject() === null" (click)="setProject(null)">
+          All projects
+          <span class="chip-count">{{ allMissions().length }}</span>
+        </button>
+        @for (proj of projectSummaries(); track proj.name) {
+          <button class="project-chip" [class.active]="activeProject() === proj.name" (click)="setProject(proj.name)">
+            {{ proj.name }}
+            <span class="chip-count">{{ proj.count }}</span>
+          </button>
+        }
+      </nav>
+    }
+
+    <!-- Status filter chips -->
+    <nav class="gmc-filters" role="tablist" aria-label="Filter by status">
+      @for (filter of filters; track filter.key) {
+        <button
+          class="filter-chip"
+          [class.active]="activeFilter() === filter.key"
+          (click)="setFilter(filter.key)"
+          role="tab"
+          [attr.aria-selected]="activeFilter() === filter.key"
+        >
+          <mat-icon class="filter-icon">{{ filter.icon }}</mat-icon>
+          <span>{{ filter.label }}</span>
+          @if (filterCounts()[filter.key] > 0) {
+            <span class="filter-badge">{{ filterCounts()[filter.key] }}</span>
+          }
+        </button>
+      }
+    </nav>
+  </header>
+
+  <!-- Content -->
+  <main class="gmc-content">
+    @if (isLoading()) {
+      <div class="gmc-loading">
+        <mat-spinner diameter="36"></mat-spinner>
+        <p>Loading missions from all projects&hellip;</p>
+      </div>
+    } @else if (filteredMissions().length === 0) {
+      <div class="gmc-empty">
+        <mat-icon class="empty-icon">hub</mat-icon>
+        <p>No active missions across all projects.</p>
+      </div>
+    } @else if (activeFilter() === 'all') {
+      <!-- Grouped by status -->
+      @for (group of missionGroups(); track group.status) {
+        <section class="gmc-group">
+          <h3 class="gmc-group-title">
+            <mat-icon class="group-icon">{{ group.icon }}</mat-icon>
+            {{ group.label }}
+            <span class="group-count">{{ group.missions.length }}</span>
+          </h3>
+          <div class="gmc-grid">
+            @for (mission of group.missions; track mission.id) {
+              <app-mission-card
+                [mission]="mission"
+                [projectNameOverride]="mission.projectId"
+                [showProject]="true"
+                (stopRequested)="onStopRequested($event, mission.projectId)"
+                (deleteRequested)="onDeleteRequested($event, mission.projectId)"
+                (starToggled)="onStarToggled($event, mission.projectId)"
+                (closeMissionRequested)="onCloseMissionRequested($event, mission.projectId)"
+              />
+            }
+          </div>
+        </section>
+      }
+    } @else {
+      <!-- Flat filtered view -->
+      <div class="gmc-grid">
+        @for (mission of filteredMissions(); track mission.id) {
+          <app-mission-card
+            [mission]="mission"
+            [projectNameOverride]="mission.projectId"
+            [showProject]="true"
+            (stopRequested)="onStopRequested($event, mission.projectId)"
+            (deleteRequested)="onDeleteRequested($event, mission.projectId)"
+            (starToggled)="onStarToggled($event, mission.projectId)"
+            (closeMissionRequested)="onCloseMissionRequested($event, mission.projectId)"
+          />
+        }
+      </div>
+    }
+  </main>
+</div>

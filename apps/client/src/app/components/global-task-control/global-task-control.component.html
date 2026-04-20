@@ -1,0 +1,143 @@
+<div class="gtc">
+  <!-- Toolbar -->
+  <header class="gtc-toolbar">
+    <div class="gtc-toolbar-left">
+      <mat-icon class="gtc-logo-icon">hub</mat-icon>
+      <h1 class="gtc-title">Global Task Control</h1>
+    </div>
+
+    <mat-form-field class="gtc-search" appearance="fill" subscriptSizing="dynamic">
+      <mat-icon matPrefix>search</mat-icon>
+      <input
+        matInput
+        type="search"
+        placeholder="Filter tasks…"
+        [value]="searchQuery()"
+        (input)="onSearchInput($event)"
+        (keydown.escape)="clearSearch()"
+        autocomplete="off"
+      />
+      @if (searchQuery()) {
+        <button matSuffix mat-icon-button aria-label="Clear" (click)="clearSearch()">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
+    </mat-form-field>
+
+    <div class="gtc-toolbar-actions">
+      <button
+        mat-icon-button
+        (click)="refresh()"
+        [disabled]="isLoading()"
+        matTooltip="Refresh all tasks"
+        aria-label="Refresh tasks"
+      >
+        <mat-icon>refresh</mat-icon>
+      </button>
+      <button mat-stroked-button routerLink="/projects" aria-label="Manage projects">
+        <mat-icon>settings</mat-icon>
+        Manage projects
+      </button>
+      <button mat-flat-button class="gtc-new-btn" (click)="openNewTaskDialog()" aria-label="New task">
+        <mat-icon>rocket_launch</mat-icon>
+        New Task
+      </button>
+    </div>
+  </header>
+
+  <!-- Filter bar -->
+  <div class="gtc-filter-bar">
+    <!-- Project filter chips (only when multiple projects) -->
+    @if (projectSummaries().length > 1) {
+      <nav class="gtc-project-filters" aria-label="Filter by project">
+        <button class="project-chip" [class.active]="activeProject() === null" (click)="setProject(null)">
+          All projects
+          <span class="chip-count">{{ allTasks().length }}</span>
+        </button>
+        @for (proj of projectSummaries(); track proj.name) {
+          <button class="project-chip" [class.active]="activeProject() === proj.name" (click)="setProject(proj.name)">
+            {{ proj.name }}
+            <span class="chip-count">{{ proj.count }}</span>
+          </button>
+        }
+      </nav>
+    }
+
+    <!-- Status filter chips -->
+    <nav class="gtc-filters" role="tablist" aria-label="Filter by status">
+      @for (filter of filters; track filter.key) {
+        <button
+          class="filter-chip"
+          [class.active]="activeFilter() === filter.key"
+          (click)="setFilter(filter.key)"
+          role="tab"
+          [attr.aria-selected]="activeFilter() === filter.key"
+        >
+          <mat-icon class="filter-icon">{{ filter.icon }}</mat-icon>
+          <span>{{ filter.label }}</span>
+          @if (filterCounts()[filter.key] > 0) {
+            <span class="filter-badge">{{ filterCounts()[filter.key] }}</span>
+          }
+        </button>
+      }
+    </nav>
+  </div>
+
+  <!-- Content -->
+  <main class="gtc-content">
+    @if (isLoading()) {
+      <div class="gtc-loading">
+        <mat-spinner diameter="36"></mat-spinner>
+        <p>Loading tasks from all projects&hellip;</p>
+      </div>
+    } @else if (displayedTasks().length === 0) {
+      <div class="gtc-empty">
+        <mat-icon class="empty-icon">hub</mat-icon>
+        <p>No tasks found.</p>
+      </div>
+    } @else if (activeFilter() === 'all' && !searchQuery()) {
+      <!-- Grouped by status -->
+      @for (group of taskGroups(); track group.status) {
+        <section class="gtc-group">
+          <h3 class="gtc-group-title">
+            <mat-icon class="group-icon">{{ group.icon }}</mat-icon>
+            {{ group.label }}
+            <span class="group-count">{{ group.tasks.length }}</span>
+          </h3>
+          <div class="gtc-grid">
+            @for (task of group.tasks; track task.id) {
+              <app-task-card
+                [task]="task"
+                [projectNameOverride]="task.projectId"
+                [showProject]="true"
+                (stopRequested)="onStopRequested($event, task.projectId)"
+                (deleteRequested)="onDeleteRequested($event, task.projectId)"
+                (starToggled)="onStarToggled($event, task.projectId)"
+                (closeTaskRequested)="onCloseTaskRequested($event, task.projectId)"
+                (markDoneRequested)="onMarkDoneRequested($event, task.projectId)"
+                (markActiveRequested)="onMarkActiveRequested($event, task.projectId)"
+              />
+            }
+          </div>
+        </section>
+      }
+    } @else {
+      <!-- Flat view (filtered or searching) -->
+      <div class="gtc-grid">
+        @for (task of displayedTasks(); track task.id) {
+          <app-task-card
+            [task]="task"
+            [projectNameOverride]="task.projectId"
+            [showProject]="true"
+            (stopRequested)="onStopRequested($event, task.projectId)"
+            (deleteRequested)="onDeleteRequested($event, task.projectId)"
+            (starToggled)="onStarToggled($event, task.projectId)"
+            (closeTaskRequested)="onCloseTaskRequested($event, task.projectId)"
+            (markDoneRequested)="onMarkDoneRequested($event, task.projectId)"
+            (markActiveRequested)="onMarkActiveRequested($event, task.projectId)"
+          />
+        }
+      </div>
+    }
+  </main>
+</div>

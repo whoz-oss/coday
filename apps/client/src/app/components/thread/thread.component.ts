@@ -35,7 +35,7 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
-import { ThreadDetails } from '../../core/services/thread-api.service'
+import { ThreadApiService, ThreadDetails } from '../../core/services/thread-api.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
 import { FirstMessageStateService } from '../../core/services/first-message-state.service'
@@ -144,6 +144,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private readonly elementRef = inject(ElementRef)
 
   private readonly threadState = inject(ThreadStateService)
+  private readonly threadApiService = inject(ThreadApiService)
   private readonly userService = inject(UserService)
   private readonly router = inject(Router)
   private readonly imageUploadService = inject(ImageUploadService)
@@ -281,6 +282,20 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     // Connect to the thread's event stream
     console.log('[THREAD] Connecting to thread event stream')
     this.codayService.connectToThread(this.projectName, this.threadId)
+
+    // Load message history from REST immediately so the user sees previous messages
+    // even when the backend Coday instance is cold (no SSE replay available).
+    // addMessage() deduplicates, so any SSE replay arriving later is safely ignored.
+    this.threadApiService
+      .getThreadMessages(this.threadId)
+      .pipe(takeUntil(this.connectionDestroy$))
+      .subscribe({
+        next: ({ messages }) => {
+          console.log('[THREAD] Loaded', messages.length, 'messages from REST history')
+          this.codayService.loadHistoryFromRest(messages)
+        },
+        error: (err) => console.warn('[THREAD] Could not load REST history:', err),
+      })
 
     // Check if we have a first message from the state service (implicit thread creation)
     const firstMessage = this.firstMessageState.consumePendingFirstMessage()
