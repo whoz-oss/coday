@@ -1,3 +1,27 @@
+## 0.124.0 (2026-04-20)
+
+### 🚀 Features
+
+- add mission control dashboards and worktree mission flow ([335ad02d](https://github.com/whoz-oss/coday/commit/335ad02d))
+- use backend pendingInvite for mission statuses ([475a9fc5](https://github.com/whoz-oss/coday/commit/475a9fc5))
+- fix confirm dialog template and close payload ([30bc9385](https://github.com/whoz-oss/coday/commit/30bc9385))
+- add FormsModule to confirm dialog imports ([7191703c](https://github.com/whoz-oss/coday/commit/7191703c))
+- extract confirm dialog template and styles ([0026b340](https://github.com/whoz-oss/coday/commit/0026b340))
+- delete associated branch when removing worktree ([1d2589f7](https://github.com/whoz-oss/coday/commit/1d2589f7))
+- add global SSE stream for Mission Control ([0182bda7](https://github.com/whoz-oss/coday/commit/0182bda7))
+- mission control renamed to task control, home page refactor ([cabefdb0](https://github.com/whoz-oss/coday/commit/cabefdb0))
+- add task reactivation and refine global task control ([a3ca8ed5](https://github.com/whoz-oss/coday/commit/a3ca8ed5))
+- issue global mission control ([#744](https://github.com/whoz-oss/coday/pull/744))
+
+### 🩹 Fixes
+
+- address PR review feedback on global task control ([4ead9fdf](https://github.com/whoz-oss/coday/commit/4ead9fdf))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.123.0 (2026-04-18)
 
 ### 🚀 Features
