@@ -2,7 +2,7 @@ import express from 'express'
 import { execFile } from 'child_process'
 import * as nodePath from 'path'
 import { debugLog } from './log'
-import { ProjectService } from '@coday/service'
+import { ProjectService, ThreadService } from '@coday/service'
 import { CodayOptions, ProjectLocalConfig } from '@coday/model'
 import { getParamAsString } from './route-helpers'
 import { ProjectEventManager } from './project-event-manager'
@@ -35,7 +35,7 @@ export function registerProjectRoutes(
   app: express.Application,
   projectService: ProjectService,
   projectEventManager?: ProjectEventManager,
-  threadService?: import('@coday/service').ThreadService,
+  threadService?: ThreadService,
   getUsernameFn?: (req: express.Request) => string,
   threadCodayManager?: ThreadCodayManager,
   codayOptions?: CodayOptions
