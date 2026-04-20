@@ -105,14 +105,7 @@ export class Coday {
       const answerEvent = this.pendingQuestionEvent.buildAnswer(message)
       answerEvent.name = username
 
-      // Persist the answer in the thread with its parentKey so it survives reconnection.
-      // The InviteEvent was already persisted when it was emitted (see subscriber above).
-      // InviteEventDefault is the main loop prompt — not a real question, skip it.
-      const thread = this.context?.aiThread
-      if (thread && this.pendingQuestionEvent.invite !== InviteEventDefault) {
-        thread.addAnswerEvent(answerEvent)
-      }
-
+      // Persistence is handled by agent.run() via Agent.run() — do NOT call addAnswerEvent here.
       this.interactor.sendEvent(answerEvent)
     } else {
       // Agent is running — queue the message for the next initCommand() iteration.
