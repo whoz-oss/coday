@@ -1,3 +1,14 @@
+## 0.124.2 (2026-04-21)
+
+### 🩹 Fixes
+
+- extend thread retention to 30d/90d and fix cleanup bugs ([#784](https://github.com/whoz-oss/coday/pull/784))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.124.1 (2026-04-21)
 
 ### 🩹 Fixes
