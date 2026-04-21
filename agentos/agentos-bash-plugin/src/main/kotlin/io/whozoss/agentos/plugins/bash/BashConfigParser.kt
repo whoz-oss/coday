@@ -86,7 +86,7 @@ object BashConfigParser {
                 "but command does not contain '$PARAMETERS_PLACEHOLDER'"
         }
 
-        val path = node.get("path")?.asText()?.trim()?.takeIf { it.isNotBlank() }
+        val path = node.get("path")?.takeIf { !it.isNull }?.asText()?.trim()?.takeIf { it.isNotBlank() }
         if (path != null) {
             validatePath(name, path, workingDirectory)
         }

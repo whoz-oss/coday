@@ -324,6 +324,22 @@ class BashConfigParserUnitSpec : StringSpec({
         ex.message shouldContain "relative"
     }
 
+    "tool with explicit JSON null path should be treated as absent" {
+        val config = json("""
+            {
+                "workingDirectory": "/tmp",
+                "tools": [{
+                    "name": "t",
+                    "description": "desc",
+                    "command": "ls",
+                    "path": null
+                }]
+            }
+        """)
+
+        BashConfigParser.parse(config).tools[0].path shouldBe null
+    }
+
     "tool with valid relative path should parse" {
         val config = json("""
             {
