@@ -6,9 +6,14 @@ import {
   CodayOptions,
   CodayLogger,
   HeartBeatEvent,
+  InviteEvent,
+  InviteEventDefault,
+  ChoiceEvent,
+  MessageEvent,
   ThreadUpdateEvent,
   OAuthCallbackEvent,
 } from '@coday/model'
+import { ProjectEventManager } from './project-event-manager'
 import {
   UserService,
   ProjectStateService,
@@ -34,6 +39,7 @@ class ThreadCodayInstance {
   private lastActivity: number = Date.now()
   private inactivityTimeout?: NodeJS.Timeout
   private isOneshot: boolean = false
+  private isReplaying: boolean = false
   coday?: Coday
 
   // Timeouts configuration
@@ -50,7 +56,10 @@ class ThreadCodayInstance {
     private readonly threadService: ThreadService,
     private readonly promptService: PromptService,
     private readonly mcpPool: McpInstancePool,
-    private readonly onTimeout: (threadId: string) => void
+    private readonly onTimeout: (threadId: string) => void,
+    private readonly projectEventManager: ProjectEventManager | undefined,
+    private readonly setPendingInviteCb: (threadId: string) => void,
+    private readonly hasPendingInviteCb: (threadId: string) => boolean
   ) {
     // Start inactivity timeout
     this.resetInactivityTimeout()
@@ -98,11 +107,30 @@ class ThreadCodayInstance {
       const messages = result.messages
       debugLog('THREAD_CODAY', `Replaying ${messages.length} messages for thread ${this.threadId}`)
 
-      // Send each message to the new connection
+      // Send each message to the new connection.
+      // Skip InviteEvent and ChoiceEvent — historical ones are already loaded via REST.
+      // The active pending invite (if any) is re-emitted separately below.
       for (const message of messages) {
+        if (message.type === 'invite' || message.type === 'choice') continue
         const data = `data: ${JSON.stringify(message)}\n\n`
         if (!response.writableEnded) {
           response.write(data)
+        }
+      }
+
+      // Re-emit the active pending invite/choice so the frontend knows the agent
+      // is waiting for a response. Only replay if the thread still has a pending invite
+      // (i.e. the user has not yet answered). This prevents stale invites from being
+      // shown after the user has already responded.
+      const hasPendingInvite = this.hasPendingInviteCb(this.threadId)
+      if (hasPendingInvite) {
+        // Replay the invite but suppress the SET in broadcastEvent —
+        // the registry already knows about this invite, we're just re-sending it to the new SSE client.
+        this.isReplaying = true
+        try {
+          this.coday.interactor.replayLastInvite()
+        } finally {
+          this.isReplaying = false
         }
       }
     } catch (error) {
@@ -240,6 +268,14 @@ class ThreadCodayInstance {
       return false
     }
 
+    // Only start run() if this is a freshly created instance.
+    // If the instance already existed (wasCreated=false), Coday is already running
+    // and we must NOT call run() again — doing so would replay the initial prompts.
+    if (!wasCreated) {
+      debugLog('THREAD_CODAY', `Instance already running for thread ${this.threadId}, skipping run()`)
+      return false
+    }
+
     // Start Coday run
     this.coday
       .run()
@@ -276,6 +312,37 @@ class ThreadCodayInstance {
    * @param event Event to broadcast
    */
   private broadcastEvent(event: any): void {
+    // Track pendingInvite flag: set when a real InviteEvent/ChoiceEvent is emitted.
+    // Uses in-memory registry (synchronous) — no disk write, no race conditions.
+    // Skip during replay — the registry already has the correct state; we're just re-sending to a new SSE client.
+    if (
+      !this.isReplaying &&
+      ((event instanceof InviteEvent && event.invite !== InviteEventDefault) || event instanceof ChoiceEvent)
+    ) {
+      this.setPendingInviteCb(this.threadId)
+      this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+    }
+
+    // Detect natural questions in assistant messages (no queryUser call needed).
+    // If the last sentence of the message contains a '?', treat it as a pending invite
+    // so Mission Control shows 'waiting-you' status.
+    // "Last sentence" = text after the last newline, or after the last '.'/  '!' that closes a block.
+    if (!this.isReplaying && event instanceof MessageEvent && event.role === 'assistant') {
+      const textContent = event.getTextContent().trim()
+      if (textContent) {
+        // Split on newlines first, then take the last non-empty line
+        const lines = textContent
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)
+        const lastLine = lines[lines.length - 1] ?? ''
+        if (lastLine.includes('?')) {
+          this.setPendingInviteCb(this.threadId)
+          this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+        }
+      }
+    }
+
     // If this is a ThreadUpdateEvent with a name, update the thread service cache
     if (event instanceof ThreadUpdateEvent && (event.name || event.summary)) {
       debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} name/summary`)
@@ -285,6 +352,17 @@ class ThreadCodayInstance {
         .catch((error) => {
           debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
         })
+      // Notify project-level SSE clients so Mission Control refreshes automatically
+      this.projectEventManager?.broadcast(this.projectName, event)
+    }
+
+    // Propagate InviteEvent (real user questions) and ChoiceEvent to the project-level SSE.
+    // InviteEventDefault is the main-loop prompt — skip it (not a real user question).
+    // ThinkingEvent is NOT propagated to project SSE: it would override waiting-you status.
+    if ((event instanceof InviteEvent && event.invite !== InviteEventDefault) || event instanceof ChoiceEvent) {
+      // Ensure the event carries the threadId so the frontend can map it back
+      const enriched = { ...event, threadId: this.threadId }
+      this.projectEventManager?.broadcast(this.projectName, enriched)
     }
 
     const data = `data: ${JSON.stringify(event)}\n\n`
@@ -392,6 +470,10 @@ class ThreadCodayInstance {
 export class ThreadCodayManager {
   private readonly instances: Map<string, ThreadCodayInstance> = new Map()
   private readonly heartbeatInterval: NodeJS.Timeout
+  readonly projectEventManager = new ProjectEventManager()
+
+  /** In-memory registry of threads with a pending (unanswered) InviteEvent or ChoiceEvent. */
+  private readonly pendingInvites = new Set<string>()
 
   static readonly HEARTBEAT_INTERVAL = 30_000 // 30 seconds
 
@@ -405,10 +487,70 @@ export class ThreadCodayManager {
     // Start global heartbeat mechanism
     this.heartbeatInterval = setInterval(() => this.sendHeartbeats(), ThreadCodayManager.HEARTBEAT_INTERVAL)
     debugLog('THREAD_CODAY_MANAGER', 'Heartbeat mechanism started')
+
+    // Replay active invite/thinking state when a new project-level SSE client connects
+    this.projectEventManager.onNewConnection = (projectName, res) => {
+      this.replayActiveStatusForProject(projectName, res)
+    }
+
+    // Replay active invite states for ALL projects when a new global SSE client connects
+    this.projectEventManager.onNewGlobalConnection = (res) => {
+      for (const instance of this.instances.values()) {
+        if (!this.pendingInvites.has(instance.threadId)) continue
+        const lastInvite = instance.coday?.interactor?.getLastInviteEvent()
+        if (lastInvite) {
+          const enriched = { ...lastInvite, threadId: instance.threadId, projectName: instance.projectName }
+          const data = `data: ${JSON.stringify(enriched)}\n\n`
+          try {
+            if (!res.writableEnded) res.write(data)
+          } catch {
+            // ignore write errors on the new connection
+          }
+        }
+      }
+    }
+  }
+
+  /** Mark a thread as having a pending invite (synchronous). */
+  setPendingInvite(threadId: string): void {
+    this.pendingInvites.add(threadId)
+  }
+
+  /** Clear the pending invite flag for a thread (synchronous). */
+  clearPendingInvite(threadId: string): void {
+    this.pendingInvites.delete(threadId)
+  }
+
+  /** Returns true if the thread has an unanswered pending invite. */
+  hasPendingInvite(threadId: string): boolean {
+    return this.pendingInvites.has(threadId)
   }
 
   /**
-   * Send heartbeats to all active instances with SSE connections
+   * Replay the last active InviteEvent (if any) for all running threads of a project
+   * to a newly connected project-level SSE client.
+   */
+  private replayActiveStatusForProject(projectName: string, res: Response): void {
+    for (const instance of this.instances.values()) {
+      if (instance.projectName !== projectName) continue
+      // Only replay if the registry confirms a pending invite (source of truth)
+      if (!this.pendingInvites.has(instance.threadId)) continue
+      const lastInvite = instance.coday?.interactor?.getLastInviteEvent()
+      if (lastInvite) {
+        const enriched = { ...lastInvite, threadId: instance.threadId }
+        const data = `data: ${JSON.stringify(enriched)}\n\n`
+        try {
+          if (!res.writableEnded) res.write(data)
+        } catch {
+          // ignore write errors on the new connection
+        }
+      }
+    }
+  }
+
+  /**
+   * Send heartbeats to all active instances with SSE connections,
+   * and to all global SSE connections.
    */
   private sendHeartbeats(): void {
     for (const instance of this.instances.values()) {
@@ -416,6 +558,8 @@ export class ThreadCodayManager {
         instance.sendHeartbeat()
       }
     }
+    // Also keep global SSE connections alive
+    this.projectEventManager.sendGlobalHeartbeat(new HeartBeatEvent({}))
   }
 
   /**
@@ -456,7 +600,10 @@ export class ThreadCodayManager {
         this.threadService,
         this.promptService,
         this.mcpPool,
-        this.handleInstanceTimeout
+        this.handleInstanceTimeout,
+        this.projectEventManager,
+        (id) => this.setPendingInvite(id),
+        (id) => this.hasPendingInvite(id)
       )
       this.instances.set(threadId, instance)
     } else {
@@ -498,7 +645,10 @@ export class ThreadCodayManager {
         this.threadService,
         this.promptService,
         this.mcpPool,
-        this.handleInstanceTimeout
+        this.handleInstanceTimeout,
+        this.projectEventManager,
+        (id) => this.setPendingInvite(id),
+        (id) => this.hasPendingInvite(id)
       )
       instance.markAsOneshot() // Mark as oneshot for shorter timeout
       this.instances.set(threadId, instance)
@@ -564,6 +714,7 @@ export class ThreadCodayManager {
       // (must be after instance cleanup to avoid race conditions with toolbox)
       await this.mcpPool.releaseThread(threadId)
 
+      this.pendingInvites.delete(threadId)
       this.instances.delete(threadId)
       debugLog('THREAD_CODAY', `Removed instance for thread ${threadId}`)
     }
@@ -620,9 +771,13 @@ export class ThreadCodayManager {
 
     await Promise.all(cleanupPromises)
     this.instances.clear()
+    this.pendingInvites.clear()
 
     // Final safety net: shutdown any remaining MCP instances
     await this.mcpPool.shutdown()
+
+    // Close project-level SSE connections
+    this.projectEventManager.shutdown()
 
     debugLog('THREAD_CODAY_MANAGER', 'All thread instances cleaned up')
   }

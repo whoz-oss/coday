@@ -1,6 +1,6 @@
 import { Component, computed, DestroyRef, inject } from '@angular/core'
 import { Router } from '@angular/router'
-import { filter, take } from 'rxjs'
+
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { EntityCardComponent, EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
@@ -14,6 +14,9 @@ import {
   ConfirmDialogResult,
 } from '../confirm-dialog/confirm-dialog.component'
 import { NotificationService } from '../../services/notification.service'
+// GlobalTaskControlComponent is now the home page (/) — no longer embedded here
+import { filter } from 'rxjs'
+import { RouterLink } from '@angular/router'
 
 /** Separator used in the worktree project naming convention: `parent__subProject` */
 const WORKTREE_SEPARATOR = '__'
@@ -30,7 +33,7 @@ const WORKTREE_SEPARATOR = '__'
 @Component({
   selector: 'app-project-selection',
   standalone: true,
-  imports: [EntityListComponent, EntityCardComponent, MatIconModule, MatIconButton],
+  imports: [EntityListComponent, EntityCardComponent, MatIconModule, MatIconButton, RouterLink],
   templateUrl: './project-list.component.html',
   styleUrl: './project-list.component.scss',
 })
@@ -134,19 +137,7 @@ export class ProjectListComponent {
 
   protected readonly showCreateButton = computed(() => !this.forcedProject())
 
-  constructor() {
-    // Auto-redirect when a project is already selected and we're on '/'
-    this.projectStateService.selectedProject$
-      .pipe(
-        takeUntilDestroyed(),
-        filter((selection) => !!selection),
-        filter(() => this.router.url.split('?')[0] === '/'),
-        take(1)
-      )
-      .subscribe((selection) => {
-        this.router.navigate(['project', selection.name])
-      })
-  }
+  constructor() {}
 
   protected onItemSelected(projectName: string): void {
     this.projectStateService.selectProject(projectName)

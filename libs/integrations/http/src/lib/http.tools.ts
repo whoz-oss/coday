@@ -94,9 +94,11 @@ export class HttpTools extends AssistantToolFactory {
       return []
     }
 
-    if (!oauth2Config.authorization_endpoint || !oauth2Config.token_endpoint) {
+    const hasDirectEndpoints = oauth2Config.authorization_endpoint && oauth2Config.token_endpoint
+    const hasDiscovery = oauth2Config.issuer || oauth2Config.discovery_url
+    if (!hasDirectEndpoints && !hasDiscovery) {
       this.interactor.debug(
-        `[HTTP:${this.name}] missing oauth2 endpoints: authorization_endpoint=${oauth2Config.authorization_endpoint}, token_endpoint=${oauth2Config.token_endpoint}`
+        `[HTTP:${this.name}] missing oauth2 endpoint configuration: provide authorization_endpoint + token_endpoint, or issuer, or discovery_url`
       )
       return []
     }
@@ -130,6 +132,8 @@ export class HttpTools extends AssistantToolFactory {
           redirectUri: oauth2Config.redirect_uri,
           authorizationEndpoint: oauth2Config.authorization_endpoint,
           tokenEndpoint: oauth2Config.token_endpoint,
+          issuer: oauth2Config.issuer,
+          discoveryUrl: oauth2Config.discovery_url,
           scope: oauth2Config.scope,
         },
         this.interactor,

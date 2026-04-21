@@ -1,3 +1,71 @@
+## 0.125.0 (2026-04-21)
+
+### 🚀 Features
+
+- #781 OAuth discovery support for HTTP integrations (RFC 8414 / OIDC) ([#783](https://github.com/whoz-oss/coday/pull/783), [#781](https://github.com/whoz-oss/coday/issues/781))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.124.2 (2026-04-21)
+
+### 🩹 Fixes
+
+- extend thread retention to 30d/90d and fix cleanup bugs ([#784](https://github.com/whoz-oss/coday/pull/784))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.124.1 (2026-04-21)
+
+### 🩹 Fixes
+
+- remove duplicate addAnswerEvent calls — persistence handled by agent.run() ([#780](https://github.com/whoz-oss/coday/pull/780))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.124.0 (2026-04-20)
+
+### 🚀 Features
+
+- add mission control dashboards and worktree mission flow ([335ad02d](https://github.com/whoz-oss/coday/commit/335ad02d))
+- use backend pendingInvite for mission statuses ([475a9fc5](https://github.com/whoz-oss/coday/commit/475a9fc5))
+- fix confirm dialog template and close payload ([30bc9385](https://github.com/whoz-oss/coday/commit/30bc9385))
+- add FormsModule to confirm dialog imports ([7191703c](https://github.com/whoz-oss/coday/commit/7191703c))
+- extract confirm dialog template and styles ([0026b340](https://github.com/whoz-oss/coday/commit/0026b340))
+- delete associated branch when removing worktree ([1d2589f7](https://github.com/whoz-oss/coday/commit/1d2589f7))
+- add global SSE stream for Mission Control ([0182bda7](https://github.com/whoz-oss/coday/commit/0182bda7))
+- mission control renamed to task control, home page refactor ([cabefdb0](https://github.com/whoz-oss/coday/commit/cabefdb0))
+- add task reactivation and refine global task control ([a3ca8ed5](https://github.com/whoz-oss/coday/commit/a3ca8ed5))
+- issue global mission control ([#744](https://github.com/whoz-oss/coday/pull/744))
+
+### 🩹 Fixes
+
+- address PR review feedback on global task control ([4ead9fdf](https://github.com/whoz-oss/coday/commit/4ead9fdf))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.123.0 (2026-04-18)
+
+### 🚀 Features
+
+- #775 AgentOS case list — collapsible drawer with ds-entity-list ([#776](https://github.com/whoz-oss/coday/pull/776), [#775](https://github.com/whoz-oss/coday/issues/775))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.122.0 (2026-04-18)
 
 ### 🚀 Features

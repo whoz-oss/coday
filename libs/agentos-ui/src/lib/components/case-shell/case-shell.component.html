@@ -1,0 +1,28 @@
+<div class="case-shell">
+  <agentos-header class="case-shell__header" />
+
+  <div class="case-shell__body">
+    <ds-drawer [(open)]="drawerOpen" drawerWidth="400px">
+      <!-- Sidenav: case list with close button injected into ds-entity-list toolbar -->
+      <div dsDrawerSide class="case-shell__sidenav">
+        <agentos-case-drawer
+          [cases]="cases()"
+          [activeCaseId]="activeCaseId()"
+          (caseSelected)="onCaseSelected($event)"
+          (createRequested)="onCreateRequested()"
+          (closeRequested)="toggleDrawer()"
+        />
+      </div>
+
+      <!-- Main content: routed child (CaseHomeComponent or CaseChatComponent) -->
+      <div dsDrawerContent class="case-shell__content">
+        @if (!drawerOpen()) {
+          <div class="case-shell__toggle">
+            <ds-icon-button icon="menu" variant="default" title="Open drawer" (action)="toggleDrawer()" />
+          </div>
+        }
+        <router-outlet />
+      </div>
+    </ds-drawer>
+  </div>
+</div>

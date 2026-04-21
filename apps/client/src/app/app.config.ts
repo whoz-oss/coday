@@ -1,15 +1,14 @@
 import {
   APP_INITIALIZER,
   ApplicationConfig,
-  importProvidersFrom,
   provideBrowserGlobalErrorListeners,
   provideZoneChangeDetection,
 } from '@angular/core'
 import { provideRouter } from '@angular/router'
 import { provideHttpClient } from '@angular/common/http'
 import { provideAnimations } from '@angular/platform-browser/animations'
-import { MatSnackBarModule } from '@angular/material/snack-bar'
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog'
+import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar'
 import { provideApi } from '@whoz-oss/agentos-api-client'
 import { appRoutes } from './app.routes'
 import { ProjectStateService } from './core/services/project-state.service'
@@ -42,7 +41,10 @@ export const appConfig: ApplicationConfig = {
     provideRouter(appRoutes),
     provideHttpClient(),
     provideAnimations(),
-    importProvidersFrom(MatSnackBarModule),
+    // MAT_SNACK_BAR_DEFAULT_OPTIONS registers the snackbar token without pulling
+    // the full MatSnackBarModule into the root bundle — components that use
+    // MatSnackBar will still get it via their own imports.
+    { provide: MAT_SNACK_BAR_DEFAULT_OPTIONS, useValue: { duration: 3000 } },
     {
       provide: APP_INITIALIZER,
       useFactory: initializeDefaultProject,

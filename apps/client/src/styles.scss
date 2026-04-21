@@ -289,7 +289,7 @@ app-main {
 /* Default dialog size */
 .cdk-overlay-pane {
   .mat-mdc-dialog-container {
-    height: 80vh;
+    max-height: 80vh;
   }
 }
 

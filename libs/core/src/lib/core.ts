@@ -78,6 +78,12 @@ export class Coday {
       .subscribe((e) => {
         if (e instanceof InviteEvent || e instanceof ChoiceEvent) {
           this.pendingQuestionEvent = e as QuestionEvent
+          // Persist the question immediately in the thread so it survives reconnection.
+          // InviteEventDefault is the main loop prompt — not a real question, skip it.
+          const thread = this.context?.aiThread
+          if (thread && e.invite !== InviteEventDefault) {
+            thread.addInviteEvent(e as InviteEvent | ChoiceEvent)
+          }
         } else if (e instanceof AnswerEvent) {
           if (this.pendingQuestionEvent && e.parentKey === this.pendingQuestionEvent.timestamp) {
             this.pendingQuestionEvent = null
@@ -98,6 +104,8 @@ export class Coday {
       // The AnswerEvent subscriber in the constructor will clear pendingQuestionEvent.
       const answerEvent = this.pendingQuestionEvent.buildAnswer(message)
       answerEvent.name = username
+
+      // Persistence is handled by agent.run() via Agent.run() — do NOT call addAnswerEvent here.
       this.interactor.sendEvent(answerEvent)
     } else {
       // Agent is running — queue the message for the next initCommand() iteration.
