@@ -159,10 +159,7 @@ export function registerMessageRoutes(
         // Handle legacy AnswerEvent flow (has type === 'answer')
         if (payload.type === 'answer') {
           const answerEvent = new AnswerEvent({ ...payload, name: username })
-          // Persist the answer in the thread so it survives reconnection.
-          // Without this, loadHistoryFromRest sees the InviteEvent without a matching
-          // AnswerEvent and treats the invite as still pending.
-          aiThread.addAnswerEvent(answerEvent)
+          // Persistence is handled by agent.run() via Agent.run() — do NOT call addAnswerEvent here.
           instance.coday.interactor.sendEvent(answerEvent)
           // Clear pendingInvite flag now that the user has answered (synchronous, in-memory)
           const tid = <string>threadId
