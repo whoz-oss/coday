@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
@@ -104,8 +105,10 @@ class FilesystemAgentConfigRepository(
  * Minimal YAML model for agent definition files read from the filesystem.
  *
  * Only the fields relevant to [AgentConfig] are mapped. Extra fields present in
- * Coday agent YAMLs (integrations, mandatoryDocs, etc.) are silently ignored.
+ * Coday agent YAMLs (integrations, mandatoryDocs, aiProvider, etc.) are silently
+ * ignored via [JsonIgnoreProperties].
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 private data class AgentConfigYamlModel(
     val name: String = "",
     val description: String? = null,
