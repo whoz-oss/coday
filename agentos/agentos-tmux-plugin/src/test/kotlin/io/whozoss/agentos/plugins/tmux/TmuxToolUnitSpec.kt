@@ -67,12 +67,13 @@ class TmuxToolUnitSpec :
             result shouldContain "Invalid session name"
         }
 
-        "execute should accept session names with hyphens and underscores" {
+        "execute should accept session names with hyphens and underscores without validation error" {
             val tool = TmuxTool()
-            // This will try to run tmux; on CI without tmux it returns stopped/error — just check no validation error
+            // Validation must pass — the session name is legal. Whether tmux is actually
+            // installed on this machine is irrelevant: the response will always be a valid
+            // JSON object with a 'success' key, never a validation error.
             val result = tool.execute(TmuxTool.Input(action = "status", session = "my-service_01"))
             result shouldContain "\"success\""
-            // Must NOT contain the validation error message
             result.contains("Invalid session name") shouldBe false
         }
 
@@ -141,12 +142,31 @@ class TmuxToolUnitSpec :
             result shouldContain "session is required"
         }
 
+        // ── window validation ─────────────────────────────────────────────────────────
+
+        "execute should return error for invalid window name" {
+            val tool = TmuxTool()
+            val result = tool.execute(TmuxTool.Input(action = "logs", session = "backend", window = "bad window!"))
+            result shouldContain "\"success\":false"
+            result shouldContain "Invalid window name"
+        }
+
+        "execute should accept window names with dots and hyphens without validation error" {
+            val tool = TmuxTool()
+            // Window name is valid — validation must pass. The tool may fail to reach tmux
+            // but must never emit a window-validation error for this input.
+            val result = tool.execute(TmuxTool.Input(action = "logs", session = "backend", window = "my.window-1"))
+            result.contains("Invalid window name") shouldBe false
+        }
+
         // ── list action (tmux may or may not be installed) ────────────────────────────
 
         "list should return a success response regardless of whether tmux is installed" {
             val tool = TmuxTool()
+            // executeList() catches all failures from runTmux (including IOException when
+            // tmux is not installed) and maps them to a success response with a fallback
+            // message. This test verifies that graceful fallback.
             val result = tool.execute(TmuxTool.Input(action = "list"))
-            // Whether tmux is present or not, the tool handles it gracefully
             result shouldContain "\"success\":true"
         }
     })
