@@ -1,0 +1,12 @@
+<div class="user-item" role="listitem">
+  <div class="user-item__body">
+    <span class="user-item__name">{{ displayName }}</span>
+    @if (subtitle) {
+      <span class="user-item__subtitle">{{ subtitle }}</span>
+    }
+  </div>
+
+  <div class="user-item__actions">
+    <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+  </div>
+</div>

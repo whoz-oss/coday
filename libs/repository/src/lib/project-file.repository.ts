@@ -1,6 +1,6 @@
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { existsSync, lstatSync, mkdirSync, readdirSync } from 'fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync } from 'fs'
 import { ProjectRepository, ProjectInfo } from './project.repository'
 import { ProjectLocalConfig } from '@coday/model'
 import { readYamlFile } from '@coday/utils'
@@ -25,7 +25,9 @@ export class ProjectFileRepository implements ProjectRepository {
 
   listProjects(): string[] {
     const dirs: string[] = readdirSync(this.projectsConfigPath)
-    return dirs.filter((dir) => lstatSync(path.join(this.projectsConfigPath, dir)).isDirectory())
+    return dirs.filter(
+      (dir) => !dir.startsWith('.') && lstatSync(path.join(this.projectsConfigPath, dir)).isDirectory()
+    )
   }
 
   getProjectInfo(name: string): ProjectInfo | null {
@@ -113,8 +115,13 @@ export class ProjectFileRepository implements ProjectRepository {
       return false
     }
 
-    // TODO: Implement safe deletion (maybe just rename with .deleted suffix?)
-    // For now, just return false to prevent accidental deletion
-    return false
+    const deletedDir = path.join(this.projectsConfigPath, '.deleted')
+    mkdirSync(deletedDir, { recursive: true })
+
+    const timestamp = new Date().toISOString().replace(/:/g, '-')
+    const destination = path.join(deletedDir, `${name}__${timestamp}`)
+    renameSync(projectInfo.configPath, destination)
+
+    return true
   }
 }

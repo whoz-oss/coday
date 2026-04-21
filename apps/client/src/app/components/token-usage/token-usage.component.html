@@ -2,8 +2,8 @@
   <!-- number pipe used below -->
   <header class="page__header">
     <div class="page__title-block">
-      <button class="page__logo-btn" type="button" (click)="navigateBackToProject()" title="Back to project">
-        <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="page__logo" />
+      <button mat-icon-button title="Back" (click)="navigateBack()">
+        <mat-icon>chevron_left</mat-icon>
       </button>
 
       <div>

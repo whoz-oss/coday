@@ -10,7 +10,7 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [Namespace].
  *
- * Stored as a (:Namespace) node. No parent relationship — namespaces are root-level.
+ * Stored as a `(:Namespace)` node. Namespaces are root-level — no parent relationship.
  *
  * Properties kept flat (no nested objects) to avoid SDN's limited support for
  * embedded value types in Community Edition.
@@ -19,8 +19,9 @@ import java.util.UUID
 data class NamespaceNode(
     @Id
     val id: String,
-    val name: String,
+    val name: String = "",
     val description: String? = null,
+    val configPath: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -41,6 +42,7 @@ data class NamespaceNode(
                 ),
             name = name,
             description = description,
+            configPath = configPath,
         )
 
     companion object {
@@ -49,6 +51,7 @@ data class NamespaceNode(
                 id = ns.id.toString(),
                 name = ns.name,
                 description = ns.description,
+                configPath = ns.configPath,
                 created = ns.metadata.created,
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,

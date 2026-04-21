@@ -2,7 +2,6 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
-import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -40,13 +39,12 @@ import java.util.UUID
  */
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
-    private val model: AiModel,
+    override val name: String,
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
     private val agentService: AgentService,
     private val maxIterations: Int = 20,
 ) : Agent {
-    override val name: String get() = model.name
 
     override fun run(
         events: List<CaseEvent>,

@@ -1,3 +1,228 @@
+## 0.124.1 (2026-04-21)
+
+### 🩹 Fixes
+
+- remove duplicate addAnswerEvent calls — persistence handled by agent.run() ([#780](https://github.com/whoz-oss/coday/pull/780))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.124.0 (2026-04-20)
+
+### 🚀 Features
+
+- add mission control dashboards and worktree mission flow ([335ad02d](https://github.com/whoz-oss/coday/commit/335ad02d))
+- use backend pendingInvite for mission statuses ([475a9fc5](https://github.com/whoz-oss/coday/commit/475a9fc5))
+- fix confirm dialog template and close payload ([30bc9385](https://github.com/whoz-oss/coday/commit/30bc9385))
+- add FormsModule to confirm dialog imports ([7191703c](https://github.com/whoz-oss/coday/commit/7191703c))
+- extract confirm dialog template and styles ([0026b340](https://github.com/whoz-oss/coday/commit/0026b340))
+- delete associated branch when removing worktree ([1d2589f7](https://github.com/whoz-oss/coday/commit/1d2589f7))
+- add global SSE stream for Mission Control ([0182bda7](https://github.com/whoz-oss/coday/commit/0182bda7))
+- mission control renamed to task control, home page refactor ([cabefdb0](https://github.com/whoz-oss/coday/commit/cabefdb0))
+- add task reactivation and refine global task control ([a3ca8ed5](https://github.com/whoz-oss/coday/commit/a3ca8ed5))
+- issue global mission control ([#744](https://github.com/whoz-oss/coday/pull/744))
+
+### 🩹 Fixes
+
+- address PR review feedback on global task control ([4ead9fdf](https://github.com/whoz-oss/coday/commit/4ead9fdf))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.123.0 (2026-04-18)
+
+### 🚀 Features
+
+- #775 AgentOS case list — collapsible drawer with ds-entity-list ([#776](https://github.com/whoz-oss/coday/pull/776), [#775](https://github.com/whoz-oss/coday/issues/775))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.122.0 (2026-04-18)
+
+### 🚀 Features
+
+- #764 local testing team — Chromay and Playwrighty agents ([#765](https://github.com/whoz-oss/coday/pull/765), [#764](https://github.com/whoz-oss/coday/issues/764))
+- #773 AgentOS admin view for user management ([#774](https://github.com/whoz-oss/coday/pull/774), [#773](https://github.com/whoz-oss/coday/issues/773))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.121.2 (2026-04-17)
+
+### 🩹 Fixes
+
+- remove 'push' from git danger keywords ([#772](https://github.com/whoz-oss/coday/pull/772))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.121.1 (2026-04-17)
+
+### 🩹 Fixes
+
+- #768 token-usage back button replaces logo with proper back navigation ([#768](https://github.com/whoz-oss/coday/issues/768))
+- #768 token-usage back button replaces logo with proper back navi… ([#769](https://github.com/whoz-oss/coday/pull/769), [#768](https://github.com/whoz-oss/coday/issues/768))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+- louis-alexandre.celton @la-celton-whoz
+
+## 0.121.0 (2026-04-17)
+
+### 🚀 Features
+
+- #31326 add AgentConfig entity with CRUD, Neo4j persistence and tests ([#762](https://github.com/whoz-oss/coday/pull/762), [#31326](https://github.com/whoz-oss/coday/issues/31326))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.120.0 (2026-04-17)
+
+### 🚀 Features
+
+- #31209 namespace-level LLM configuration (LlmConfig + LlmModelConfig entities) ([#746](https://github.com/whoz-oss/coday/pull/746), [#31209](https://github.com/whoz-oss/coday/issues/31209))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent.audibert
+
+## 0.119.0 (2026-04-17)
+
+### 🚀 Features
+
+- wz-28819: neo4j persistence doc ([303ef985](https://github.com/whoz-oss/coday/commit/303ef985))
+- wz-28819: Graph relationships added for Case, Namespace and IntegrationConfig ([8efc89a1](https://github.com/whoz-oss/coday/commit/8efc89a1))
+- wz-28819: use relations for queries and remove id property ([1dc97993](https://github.com/whoz-oss/coday/commit/1dc97993))
+- wz-28819: use relations for case events ([3d9e61fa](https://github.com/whoz-oss/coday/commit/3d9e61fa))
+- wz-28819: remove stubbing that was destroying properties on save of linked nodes ([dbd8ab22](https://github.com/whoz-oss/coday/commit/dbd8ab22))
+- #WZ-31326 add optional configPath to Namespace entity ([#757](https://github.com/whoz-oss/coday/pull/757))
+- **agentos-service:** add CREATED_BY link between case and user ([f0f2131b](https://github.com/whoz-oss/coday/commit/f0f2131b))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- thomas.martin @thomasmartin-whoz
+- vincent.audibert
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.118.2 (2026-04-16)
+
+### 🚀 Features
+
+- **agentos:** add file access plugin — ISO Coday TypeScript V1 ([#697](https://github.com/whoz-oss/coday/pull/697))
+
+### 🩹 Fixes
+
+- #655 scheduler threads crash on execution - addAnswerEvent on undefined context ([#763](https://github.com/whoz-oss/coday/pull/763), [#655](https://github.com/whoz-oss/coday/issues/655))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.118.1 (2026-04-16)
+
+### 🩹 Fixes
+
+- #760 basecamp oauth silent token refresh before full re-auth ([#761](https://github.com/whoz-oss/coday/pull/761), [#760](https://github.com/whoz-oss/coday/issues/760))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.118.0 (2026-04-16)
+
+### 🚀 Features
+
+- #31416 remove TextChunkEvents from saved case events ([#754](https://github.com/whoz-oss/coday/pull/754), [#31416](https://github.com/whoz-oss/coday/issues/31416))
+- #562 add Zendesk tools to browse categories, sections and articles ([#759](https://github.com/whoz-oss/coday/pull/759), [#562](https://github.com/whoz-oss/coday/issues/562))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.117.2 (2026-04-15)
+
+### 🩹 Fixes
+
+- #752 use chooseOption for tool confirmation prompt instead of promptText ([#753](https://github.com/whoz-oss/coday/pull/753), [#752](https://github.com/whoz-oss/coday/issues/752))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.117.1 (2026-04-13)
+
+### 🩹 Fixes
+
+- #715 deduplicate tools by name in Toolbox to prevent AI provider… ([#731](https://github.com/whoz-oss/coday/pull/731), [#715](https://github.com/whoz-oss/coday/issues/715), [#730](https://github.com/whoz-oss/coday/issues/730))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+
+## 0.117.0 (2026-04-13)
+
+### 🚀 Features
+
+- #31353 add description field to IntegrationConfig and inject into agent prompt ([#747](https://github.com/whoz-oss/coday/pull/747), [#31353](https://github.com/whoz-oss/coday/issues/31353))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.116.0 (2026-04-13)
+
+### 🚀 Features
+
+- #748 project deletion from the Projects view ([#749](https://github.com/whoz-oss/coday/pull/749), [#748](https://github.com/whoz-oss/coday/issues/748))
+
+### ❤️ Thank You
+
+- Louis-Alexandre Celton @la-celton-whoz
+
+## 0.115.3 (2026-04-12)
+
+### 🩹 Fixes
+
+- oauthRedirectUri for MCP Oauth ([728cb64e](https://github.com/whoz-oss/coday/commit/728cb64e))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.115.2 (2026-04-11)
+
+### 🩹 Fixes
+
+- desktop-twin package ([735040da](https://github.com/whoz-oss/coday/commit/735040da))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.115.1 (2026-04-09)
 
 ### 🩹 Fixes

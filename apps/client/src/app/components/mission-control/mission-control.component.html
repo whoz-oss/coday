@@ -1,0 +1,102 @@
+<app-sidenav>
+  <div class="mission-control">
+    <!-- Header -->
+    <header class="mc-header">
+      <div class="mc-title-row">
+        <h1 class="mc-title">
+          <mat-icon class="title-icon">rocket_launch</mat-icon>
+          Mission Control
+        </h1>
+        <button
+          mat-flat-button
+          class="new-mission-btn"
+          (click)="createMission()"
+          [disabled]="isCreating()"
+          aria-label="Start a new mission"
+        >
+          @if (isCreating()) {
+            <mat-spinner diameter="16"></mat-spinner>
+          } @else {
+            <mat-icon>add</mat-icon>
+          }
+          New Mission
+        </button>
+      </div>
+
+      <!-- Filter chips -->
+      <nav class="mc-filters" role="tablist" aria-label="Filter missions">
+        @for (filter of filters; track filter.key) {
+          <button
+            class="filter-chip"
+            [class.active]="activeFilter() === filter.key"
+            (click)="setFilter(filter.key)"
+            role="tab"
+            [attr.aria-selected]="activeFilter() === filter.key"
+          >
+            <mat-icon class="filter-icon">{{ filter.icon }}</mat-icon>
+            <span>{{ filter.label }}</span>
+            @if (filterCounts()[filter.key] > 0) {
+              <span class="filter-badge">{{ filterCounts()[filter.key] }}</span>
+            }
+          </button>
+        }
+      </nav>
+    </header>
+
+    <!-- Mission grid -->
+    <main class="mc-grid-wrapper">
+      @if (isLoadingList()) {
+        <div class="mc-loading">
+          <mat-spinner diameter="40"></mat-spinner>
+          <p>Loading missions&hellip;</p>
+        </div>
+      } @else if (filteredMissions().length === 0) {
+        <div class="mc-empty">
+          <mat-icon class="empty-icon">rocket_launch</mat-icon>
+          @if (activeFilter() === 'all') {
+            <p>No missions yet. Start your first one!</p>
+            <button mat-flat-button class="new-mission-btn" (click)="createMission()">
+              <mat-icon>add</mat-icon>
+              New Mission
+            </button>
+          } @else {
+            <p>No missions in this category.</p>
+          }
+        </div>
+      } @else if (activeFilter() === 'all') {
+        <!-- Grouped view by status -->
+        @for (group of missionGroups(); track group.status) {
+          <section class="mc-group">
+            <h2 class="mc-group-title">
+              <mat-icon class="group-icon">{{ group.icon }}</mat-icon>
+              {{ group.label }}
+              <span class="group-count">{{ group.missions.length }}</span>
+            </h2>
+            <div class="mc-grid">
+              @for (mission of group.missions; track mission.id) {
+                <app-mission-card
+                  [mission]="mission"
+                  (stopRequested)="onStopRequested($event)"
+                  (deleteRequested)="onDeleteRequested($event)"
+                  (starToggled)="onStarToggled($event)"
+                />
+              }
+            </div>
+          </section>
+        }
+      } @else {
+        <!-- Filtered flat view -->
+        <div class="mc-grid">
+          @for (mission of filteredMissions(); track mission.id) {
+            <app-mission-card
+              [mission]="mission"
+              (stopRequested)="onStopRequested($event)"
+              (deleteRequested)="onDeleteRequested($event)"
+              (starToggled)="onStarToggled($event)"
+            />
+          }
+        </div>
+      }
+    </main>
+  </div>
+</app-sidenav>

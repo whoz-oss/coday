@@ -175,7 +175,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
   openTokenUsage(): void {
     this.configErrorMessage = ''
     void this.router.navigate(['/token-usage'])
-    this.close()
   }
 
   openUserConfig(): void {
@@ -307,7 +306,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
     const projectName = this.selectedProjectName()
     this.router.navigate(['project', projectName, 'agents'])
-    this.close()
   }
 
   /**
@@ -319,7 +317,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
     const projectName = this.selectedProjectName()
     this.router.navigate(['project', projectName, 'prompts'])
-    this.close()
   }
 
   /**
@@ -331,7 +328,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
     const projectName = this.selectedProjectName()
     this.router.navigate(['project', projectName, 'schedulers'])
-    this.close()
   }
 
   /**
@@ -372,6 +368,16 @@ export class SidenavComponent implements OnInit, OnDestroy {
     // Clear project selection and navigate to home
     this.projectStateService.clearSelection()
     this.router.navigate(['/'])
+  }
+
+  /**
+   * Navigate to the Task Control view
+   */
+  openMissionControl(): void {
+    const projectName = this.selectedProjectName()
+    if (!projectName) return
+    void this.router.navigate(['project', projectName, 'tasks'])
+    this.close()
   }
 
   /**

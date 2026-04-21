@@ -1,5 +1,5 @@
+import { Location } from '@angular/common'
 import { Component, computed, inject, OnInit, signal } from '@angular/core'
-import { Router } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { MatSlideToggleModule } from '@angular/material/slide-toggle'
@@ -10,7 +10,6 @@ import { CardActionsDirective, EntityCardComponent, EntityListComponent, EntityL
 import { SchedulerApiService, SchedulerInfo } from '../../core/services/scheduler-api.service'
 import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
-import { ProjectStateService } from '../../core/services/project-state.service'
 import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/scheduler-form.component'
 
 /**
@@ -41,9 +40,8 @@ export class SchedulerListComponent implements OnInit {
   private readonly schedulerApi = inject(SchedulerApiService)
   private readonly promptApi = inject(PromptApiService)
   private readonly configApi = inject(ConfigApiService)
-  private readonly projectState = inject(ProjectStateService)
+  private readonly location = inject(Location)
   private readonly dialog = inject(MatDialog)
-  private readonly router = inject(Router)
 
   protected readonly schedulers = signal<SchedulerInfo[]>([])
   protected readonly prompts = signal<PromptInfo[]>([])
@@ -114,8 +112,7 @@ export class SchedulerListComponent implements OnInit {
   }
 
   protected onBack(): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    this.router.navigate(projectName ? ['project', projectName] : ['/'])
+    this.location.back()
   }
 
   protected onCreate(): void {

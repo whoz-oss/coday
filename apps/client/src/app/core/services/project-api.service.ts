@@ -95,6 +95,61 @@ export class ProjectApiService {
     return this.http.post<{ success: boolean; message: string }>(this.baseUrl, { name, path })
   }
 
+  // ── Git ──────────────────────────────────────────────────────────────────────────────
+
+  getGitBranches(projectName: string): Observable<{ branches: string[] }> {
+    return this.http.get<{ branches: string[] }>(`${this.baseUrl}/${projectName}/git/branches`)
+  }
+
+  // ── Tasks / Missions ─────────────────────────────────────────────────────────────────
+
+  createTask(
+    projectName: string,
+    agentName: string,
+    task: string,
+    mode: 'local' | 'worktree',
+    branch?: string,
+    issueNumber?: string,
+    branchType?: string
+  ): Observable<{ threadId: string; projectId: string }> {
+    return this.http.post<{ threadId: string; projectId: string }>(`${this.baseUrl}/${projectName}/missions`, {
+      agentName,
+      task,
+      mode,
+      branch,
+      issueNumber,
+      branchType,
+    })
+  }
+
+  closeTask(projectName: string, threadId: string): Observable<{ success: boolean }> {
+    return this.http.delete<{ success: boolean }>(`${this.baseUrl}/${projectName}/missions/${threadId}`)
+  }
+
+  markThreadDone(projectName: string, threadId: string): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/${projectName}/threads/${threadId}/done`, {})
+  }
+
+  markThreadActive(projectName: string, threadId: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${projectName}/threads/${threadId}/done`)
+  }
+
+  /**
+   * Delete a project
+   * @param projectName Project name
+   * @param removeGitWorktree If true, also remove the git worktree from disk (worktree projects only)
+   */
+  deleteProject(projectName: string, removeGitWorktree?: boolean): Observable<{ success: boolean; message: string }> {
+    const params: Record<string, string> = {}
+    if (removeGitWorktree) {
+      params['removeGitWorktree'] = 'true'
+    }
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${this.baseUrl}/${encodeURIComponent(projectName)}`,
+      { params }
+    )
+  }
+
   // ── Preview server ─────────────────────────────────────────────────────────────────
 
   getPreviewEntries(projectName: string): Observable<{ entries: PreviewEntryResponse[] }> {

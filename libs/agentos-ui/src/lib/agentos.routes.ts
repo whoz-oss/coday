@@ -7,10 +7,27 @@ export const AGENTOS_ROUTES: Route[] = [
     loadComponent: () =>
       import('./components/agentos-shell/agentos-shell.component').then((m) => m.AgentosShellComponent),
     children: [
+      // --- Cases (own full-height shell with header + drawer) ---
+      {
+        path: ':namespaceId/cases',
+        canActivate: [agentosReadyGuard],
+        loadComponent: () => import('./components/case-shell/case-shell.component').then((m) => m.CaseShellComponent),
+        children: [
+          {
+            path: '',
+            loadComponent: () => import('./components/case-home/case-home.component').then((m) => m.CaseHomeComponent),
+          },
+          {
+            path: ':caseId',
+            loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
+          },
+        ],
+      },
       {
         path: '',
         loadComponent: () => import('./components/layout/layout.component').then((m) => m.LayoutComponent),
         children: [
+          // --- Namespace CRUD ---
           {
             path: 'namespaces/new',
             canActivate: [agentosReadyGuard],
@@ -29,11 +46,7 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/namespace-list/namespace-list.component').then((m) => m.NamespaceListComponent),
           },
-          {
-            path: ':namespaceId/cases',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/case-list/case-list.component').then((m) => m.CaseListComponent),
-          },
+          // --- Integrations ---
           {
             path: ':namespaceId/integrations/new',
             canActivate: [agentosReadyGuard],
@@ -58,11 +71,65 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceIntegrationsComponent
               ),
           },
+          // --- AI Providers ---
           {
-            path: ':namespaceId/cases/:caseId',
+            path: ':namespaceId/ai-providers/new',
             canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
+            loadComponent: () =>
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
           },
+          {
+            path: ':namespaceId/ai-providers/:aiProviderId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
+          },
+          {
+            path: ':namespaceId/ai-providers',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-ai-providers/namespace-ai-providers.component').then(
+                (m) => m.NamespaceAiProvidersComponent
+              ),
+          },
+          // --- AI models ---
+          {
+            path: ':namespaceId/ai-models/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+          },
+          {
+            path: ':namespaceId/ai-models/:modelId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+          },
+          {
+            path: ':namespaceId/ai-models',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-ai-models/namespace-ai-models.component').then(
+                (m) => m.NamespaceAiModelsComponent
+              ),
+          },
+          // --- Admin ---
+          {
+            path: 'admin/users/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
+          },
+          {
+            path: 'admin/users/:userId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
+          },
+          {
+            path: 'admin/users',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-list/user-list.component').then((m) => m.UserListComponent),
+          },
+          // --- User profile ---
           {
             path: 'me',
             canActivate: [agentosReadyGuard],

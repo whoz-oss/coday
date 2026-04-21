@@ -193,7 +193,7 @@ export class ChoiceEvent extends QuestionEvent {
 
   constructor(event: Partial<ChoiceEvent>) {
     super(event, ChoiceEvent.type)
-    this.options = event.options!!
+    this.options = Array.isArray(event.options) ? event.options : []
     this.optionalQuestion = event.optionalQuestion
     this.allowFreeText = event.allowFreeText ?? false
   }

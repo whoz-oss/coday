@@ -278,20 +278,20 @@ export class PromptExecutionService {
       }
     } else {
       // Asynchronous mode: return immediately with thread ID
-      // Start Coday run in background
-      instance.coday!.run().catch((error: unknown) => {
-        console.error('[PROMPT_EXEC] Error during prompt Coday run:', error)
-      })
-
-      // Schedule cleanup after a reasonable timeout (e.g., 5 minutes)
-      setTimeout(
-        () => {
+      // Start Coday run in background and clean up the oneshot instance immediately after.
+      // This is critical: if the instance is left alive after run() completes, a subsequent
+      // SSE connection (user opening the thread) would find the exhausted Coday instance
+      // (context=null after cleanup) and re-run the prompts instead of replaying history.
+      instance
+        .coday!.run()
+        .catch((error: unknown) => {
+          console.error('[PROMPT_EXEC] Error during prompt Coday run:', error)
+        })
+        .finally(() => {
           this.threadCodayManager!.cleanup(threadId).catch((error: unknown) => {
-            console.error('[PROMPT_EXEC] Error cleaning up prompt thread after timeout:', error)
+            console.error('[PROMPT_EXEC] Error cleaning up prompt thread after run:', error)
           })
-        },
-        5 * 60 * 1000
-      ) // 5 minutes
+        })
 
       return { threadId }
     }

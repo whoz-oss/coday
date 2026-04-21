@@ -1,12 +1,11 @@
+import { Location } from '@angular/common'
 import { Component, computed, inject, OnInit, signal } from '@angular/core'
-import { Router } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { MatMenuModule } from '@angular/material/menu'
 import { MatDialog } from '@angular/material/dialog'
 import { CardActionsDirective, EntityCardComponent, EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { AgentCrudApiService, AgentSummaryWithMeta } from '../../core/services/agent-crud-api.service'
-import { ProjectStateService } from '../../core/services/project-state.service'
 import { AgentFormComponent, AgentFormData } from '../agent-form/agent-form.component'
 
 /**
@@ -32,9 +31,8 @@ import { AgentFormComponent, AgentFormData } from '../agent-form/agent-form.comp
 })
 export class AgentListComponent implements OnInit {
   private readonly agentCrudApi = inject(AgentCrudApiService)
-  private readonly projectState = inject(ProjectStateService)
+  private readonly location = inject(Location)
   private readonly dialog = inject(MatDialog)
-  private readonly router = inject(Router)
 
   protected readonly agents = signal<AgentSummaryWithMeta[]>([])
   protected readonly isLoading = signal(false)
@@ -71,8 +69,7 @@ export class AgentListComponent implements OnInit {
   }
 
   protected onBack(): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    this.router.navigate(projectName ? ['project', projectName] : ['/'])
+    this.location.back()
   }
 
   protected onCreate(): void {

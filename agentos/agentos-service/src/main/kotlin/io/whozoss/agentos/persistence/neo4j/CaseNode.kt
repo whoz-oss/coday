@@ -5,16 +5,13 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
+import org.springframework.data.neo4j.core.schema.Relationship
+import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [Case].
- *
- * Stored as a (:Case) node with a [namespaceId] property linking it to its parent
- * namespace. The relationship is represented as a property rather than an SDN
- * @Relationship to keep queries simple — full graph traversal between Namespace and
- * Case nodes is handled via Cypher in the repository when needed.
  */
 @Node("Case")
 data class CaseNode(
@@ -28,6 +25,8 @@ data class CaseNode(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
+    var namespace: NamespaceNode? = null,
 ) {
     fun toDomain(): Case =
         Case(

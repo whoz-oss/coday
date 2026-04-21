@@ -1,0 +1,83 @@
+.case-home {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+
+  &__hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    padding: 2rem 1.5rem 4rem;
+    max-width: 680px;
+    width: 100%;
+  }
+
+  &__headline {
+    margin: 0;
+    font-size: clamp(1.5rem, 4vw, 2.25rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--color-text, #1d1d1f);
+    text-align: center;
+  }
+
+  &__composer {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
+    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+    -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
+    overflow: hidden;
+    transition:
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+
+    &:focus-within {
+      box-shadow: 0 4px 32px rgba(0, 122, 255, 0.15);
+      border-color: var(--color-primary, #007aff);
+    }
+  }
+
+  &__input {
+    width: 100%;
+    resize: none;
+    padding: 1rem 1.25rem 0.5rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text, #1d1d1f);
+    font-size: 1rem;
+    font-family: inherit;
+    line-height: 1.6;
+    outline: none;
+    box-sizing: border-box;
+
+    &::placeholder {
+      color: var(--color-text-secondary, #6e6e73);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__composer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+  }
+
+  &__hint {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary, #6e6e73);
+    opacity: 0.7;
+  }
+}

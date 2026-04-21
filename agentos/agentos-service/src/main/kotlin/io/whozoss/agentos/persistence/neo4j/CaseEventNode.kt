@@ -2,6 +2,8 @@ package io.whozoss.agentos.persistence.neo4j
 
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
+import org.springframework.data.neo4j.core.schema.Relationship
+import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 
 /**
@@ -11,6 +13,14 @@ import java.time.Instant
  * audit/routing properties. Subclasses declare only their own subtype-specific
  * fields — they do NOT redeclare the shared properties, which would cause SDN
  * to report duplicate property definitions.
+ *
+ * Stored as a `(:CaseEvent)-[:BELONGS_TO]->(:Case)` edge. [caseId] is kept as a
+ * plain scalar property alongside the [case] relationship field: [findActiveByCaseId]
+ * filters on the scalar, while the graph edge is written on save and is available
+ * for traversal. [toDomain] reads from the scalar.
+ *
+ * [case] is a nullable `var` so SDN can call the primary constructor before
+ * injecting the @Relationship field via property injection.
  *
  * Sealed so [CaseEventNodeMapper] `when` expressions are exhaustive.
  * Node classes are pure data holders; all conversion is in [CaseEventNodeMapper].
@@ -26,7 +36,10 @@ sealed class CaseEventNode(
     open val modified: Instant = Instant.now(),
     open val modifiedBy: String? = null,
     open val removed: Boolean? = null,
-)
+) {
+    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
+    var case: CaseNode? = null
+}
 
 @Node("CaseStatusEvent")
 class CaseStatusEventNode(

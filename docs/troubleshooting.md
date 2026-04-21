@@ -156,5 +156,5 @@ When reporting issues, include:
 3. **Case sensitivity**: Agent names, provider names are case-sensitive
 4. **Path separators**: Use forward slashes (/) even on Windows
 5. **Environment variables**: Need to be set before starting Coday
-6. **LLM provider health**: if Anthropic/OpenAI is down, no agents...
+6. **AI provider health**: if Anthropic/OpenAI is down, no agents...
 7. **Network dependency**: Cloud AI providers require internet connection

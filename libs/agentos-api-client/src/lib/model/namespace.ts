@@ -12,4 +12,8 @@ export interface Namespace {
   id?: string
   name: string
   description?: string
+  /**
+   * Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.)
+   */
+  configPath?: string
 }

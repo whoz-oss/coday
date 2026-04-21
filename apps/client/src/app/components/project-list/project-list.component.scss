@@ -6,10 +6,60 @@
   overflow-y: auto;
 }
 
+.project-page-layout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
 .project-list__logo {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
   border-radius: 4px;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 1;
+  }
+
+  img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    border-radius: 4px;
+  }
+}
+
+.project-card-wrapper {
+  position: relative;
+
+  &__delete {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    color: var(--color-text-secondary, #6e6e73);
+
+    .mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+
+    &:hover {
+      color: var(--color-error, #ff3b30);
+    }
+  }
+
+  &:hover &__delete {
+    opacity: 1;
+  }
 }
