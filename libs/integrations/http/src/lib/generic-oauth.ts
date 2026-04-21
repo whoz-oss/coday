@@ -7,6 +7,12 @@
  *
  * Token storage follows the same pattern as BasecampOAuth:
  * userService.config.projects[projectName].integration[integrationName].oauth2.tokens
+ *
+ * Discovery support (RFC 8414 / OIDC):
+ * If authorizationEndpoint + tokenEndpoint are provided, they are used directly (existing behaviour).
+ * If issuer or discoveryUrl is provided instead, endpoints are resolved automatically via
+ * oauth4webapi's discoveryRequest() — trying OIDC (.well-known/openid-configuration) first,
+ * then RFC 8414 (.well-known/oauth-authorization-server) as fallback.
  */
 import * as oauth from 'oauth4webapi'
 import { Interactor } from '@coday/model'
@@ -18,8 +24,28 @@ export interface GenericOAuthConfig {
   clientId: string
   clientSecret: string
   redirectUri: string
-  authorizationEndpoint: string
-  tokenEndpoint: string
+  /**
+   * Direct authorization endpoint URL.
+   * Required unless issuer or discoveryUrl is provided.
+   */
+  authorizationEndpoint?: string
+  /**
+   * Direct token endpoint URL.
+   * Required unless issuer or discoveryUrl is provided.
+   */
+  tokenEndpoint?: string
+  /**
+   * OAuth2 / OIDC issuer URL (e.g. "https://accounts.google.com").
+   * When provided, endpoints are resolved automatically via RFC 8414 / OIDC discovery.
+   * Takes precedence over discoveryUrl; ignored when authorizationEndpoint + tokenEndpoint are set.
+   */
+  issuer?: string
+  /**
+   * Explicit discovery document URL.
+   * Used when the discovery URL does not follow the standard .well-known convention.
+   * Ignored when authorizationEndpoint + tokenEndpoint are set.
+   */
+  discoveryUrl?: string
   // Single string or array — joined with spaces per OAuth2 spec
   scope?: string | string[]
 }
@@ -31,7 +57,8 @@ export interface TokenData {
 }
 
 export class GenericOAuth {
-  private readonly as: oauth.AuthorizationServer
+  // Authorization server metadata — resolved lazily when discovery is needed
+  private as: oauth.AuthorizationServer | null = null
   private readonly client: oauth.Client
   private readonly clientAuth: oauth.ClientAuth
 
@@ -54,16 +81,92 @@ export class GenericOAuth {
     private readonly integrationName: string
   ) {
     this.resolvedProjectName = userService.resolveProjectName(projectName)
-    // Use the full authorization endpoint URL as issuer base — supports path-based issuers
-    // (e.g. Keycloak realms: https://auth.example.com/realms/myrealm)
-    const authUrl = new URL(config.authorizationEndpoint)
-    this.as = {
-      issuer: `${authUrl.origin}${authUrl.pathname.split('/').slice(0, -1).join('/')}`,
-      authorization_endpoint: config.authorizationEndpoint,
-      token_endpoint: config.tokenEndpoint,
+
+    // If both endpoints are provided directly, build the AuthorizationServer immediately
+    // (preserves the existing synchronous behaviour for configurations that don't need discovery)
+    if (config.authorizationEndpoint && config.tokenEndpoint) {
+      // Use the full authorization endpoint URL as issuer base — supports path-based issuers
+      // (e.g. Keycloak realms: https://auth.example.com/realms/myrealm)
+      const authUrl = new URL(config.authorizationEndpoint)
+      this.as = {
+        issuer: `${authUrl.origin}${authUrl.pathname.split('/').slice(0, -1).join('/')}`,
+        authorization_endpoint: config.authorizationEndpoint,
+        token_endpoint: config.tokenEndpoint,
+      }
     }
+    // Otherwise, `this.as` stays null and will be resolved lazily via discovery in resolveAuthorizationServer()
+
     this.client = { client_id: config.clientId }
     this.clientAuth = oauth.ClientSecretPost(config.clientSecret)
+  }
+
+  /**
+   * Resolves the authorization server metadata, performing discovery if needed.
+   * Cached after the first successful call.
+   *
+   * Discovery strategy:
+   * 1. If authorizationEndpoint + tokenEndpoint were already set → already resolved in constructor, noop.
+   * 2. If issuer is provided → use oauth4webapi discoveryRequest() (OIDC first, RFC 8414 fallback).
+   * 3. If discoveryUrl is provided → fetch the document directly.
+   * 4. Otherwise → throw a clear configuration error.
+   */
+  private async resolveAuthorizationServer(): Promise<oauth.AuthorizationServer> {
+    if (this.as) return this.as
+
+    const { issuer, discoveryUrl } = this.config
+
+    if (issuer) {
+      this.interactor.debug(`[OAuth:${this.integrationName}] resolving endpoints via discovery for issuer=${issuer}`)
+      const issuerUrl = new URL(issuer)
+      // oauth4webapi tries OIDC (.well-known/openid-configuration) by default;
+      // passing algorithm: 'oauth2' makes it try RFC 8414 (.well-known/oauth-authorization-server)
+      // We try OIDC first, then fall back to RFC 8414.
+      let discoveryResponse: Response
+      try {
+        discoveryResponse = await oauth.discoveryRequest(issuerUrl, { algorithm: 'oidc' })
+      } catch {
+        this.interactor.debug(
+          `[OAuth:${this.integrationName}] OIDC discovery failed, falling back to RFC 8414 for issuer=${issuer}`
+        )
+        discoveryResponse = await oauth.discoveryRequest(issuerUrl, { algorithm: 'oauth2' })
+      }
+      const server = await oauth.processDiscoveryResponse(issuerUrl, discoveryResponse)
+      this.interactor.debug(
+        `[OAuth:${this.integrationName}] discovery succeeded: authorization_endpoint=${server.authorization_endpoint}, token_endpoint=${server.token_endpoint}`
+      )
+      this.as = server
+      return this.as
+    }
+
+    if (discoveryUrl) {
+      this.interactor.debug(
+        `[OAuth:${this.integrationName}] fetching discovery document from explicit URL: ${discoveryUrl}`
+      )
+      const response = await fetch(discoveryUrl)
+      if (!response.ok) {
+        throw new Error(
+          `[OAuth:${this.integrationName}] failed to fetch discovery document from ${discoveryUrl}: HTTP ${response.status}`
+        )
+      }
+      const metadata = (await response.json()) as oauth.AuthorizationServer
+      if (!metadata.authorization_endpoint || !metadata.token_endpoint) {
+        throw new Error(
+          `[OAuth:${this.integrationName}] discovery document at ${discoveryUrl} is missing authorization_endpoint or token_endpoint`
+        )
+      }
+      // Derive the issuer from the discovery URL if not present in the document
+      const parsedDiscovery = new URL(discoveryUrl)
+      this.as = {
+        ...metadata,
+        issuer: metadata.issuer ?? parsedDiscovery.origin,
+      }
+      return this.as
+    }
+
+    throw new Error(
+      `[OAuth:${this.integrationName}] OAuth configuration error: provide either ` +
+        `authorizationEndpoint + tokenEndpoint, or issuer, or discoveryUrl`
+    )
   }
 
   /** True if we have a token in memory or storage (may be expired) */
@@ -165,6 +268,9 @@ export class GenericOAuth {
     this.clearTokensFromStorage()
     this.interactor.debug(`[OAuth:${this.integrationName}] starting fresh OAuth flow`)
 
+    // Resolve the authorization server (performs discovery if needed)
+    const as = await this.resolveAuthorizationServer()
+
     const state = oauth.generateRandomState()
     const codeVerifier = oauth.generateRandomCodeVerifier()
     const codeChallenge = await oauth.calculatePKCECodeChallenge(codeVerifier)
@@ -172,7 +278,7 @@ export class GenericOAuth {
     this.pendingState = state
     this.pendingCodeVerifier = codeVerifier
 
-    const authorizationUrl = new URL(this.as.authorization_endpoint!)
+    const authorizationUrl = new URL(as.authorization_endpoint!)
     authorizationUrl.searchParams.set('client_id', this.client.client_id)
     authorizationUrl.searchParams.set('redirect_uri', this.config.redirectUri)
     authorizationUrl.searchParams.set('response_type', 'code')
@@ -227,15 +333,18 @@ export class GenericOAuth {
       return
     }
 
+    // as is guaranteed to be set here: startAuthFlow() always calls resolveAuthorizationServer() first
+    const as = this.as!
+
     try {
       const callbackUrl = new URL(this.config.redirectUri)
       callbackUrl.searchParams.set('code', event.code)
       callbackUrl.searchParams.set('state', event.state)
 
-      const params = oauth.validateAuthResponse(this.as, this.client, callbackUrl, this.pendingState)
+      const params = oauth.validateAuthResponse(as, this.client, callbackUrl, this.pendingState)
 
       const response = await oauth.authorizationCodeGrantRequest(
-        this.as,
+        as,
         this.client,
         this.clientAuth,
         params,
@@ -243,7 +352,7 @@ export class GenericOAuth {
         this.pendingCodeVerifier
       )
 
-      const result = await oauth.processAuthorizationCodeResponse(this.as, this.client, response)
+      const result = await oauth.processAuthorizationCodeResponse(as, this.client, response)
 
       this.tokenData = {
         accessToken: result.access_token,
@@ -283,15 +392,18 @@ export class GenericOAuth {
       throw new Error('No refresh token available')
     }
 
+    // Ensure the authorization server is resolved before attempting refresh
+    const as = await this.resolveAuthorizationServer()
+
     try {
       const response = await oauth.refreshTokenGrantRequest(
-        this.as,
+        as,
         this.client,
         this.clientAuth,
         this.tokenData.refreshToken
       )
 
-      const result = await oauth.processRefreshTokenResponse(this.as, this.client, response)
+      const result = await oauth.processRefreshTokenResponse(as, this.client, response)
 
       this.tokenData = {
         accessToken: result.access_token,
