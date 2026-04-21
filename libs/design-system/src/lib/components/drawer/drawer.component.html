@@ -1,0 +1,16 @@
+<mat-sidenav-container class="ds-drawer" style="height: 100%">
+  <mat-sidenav
+    class="ds-drawer__sidenav"
+    [class.ds-drawer__sidenav--overlay]="isMobile()"
+    [style.width]="drawerWidth"
+    [opened]="open"
+    [mode]="drawerMode()"
+    (openedChange)="onOpenedChange($event)"
+  >
+    <ng-content select="[dsDrawerSide]" />
+  </mat-sidenav>
+
+  <mat-sidenav-content class="ds-drawer__content">
+    <ng-content select="[dsDrawerContent]" />
+  </mat-sidenav-content>
+</mat-sidenav-container>

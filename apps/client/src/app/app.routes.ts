@@ -1,20 +1,31 @@
 import { Route } from '@angular/router'
-import { ProjectListComponent } from './components/project-list/project-list.component'
-import { MainAppComponent } from './components/main-app/main-app.component'
-import { OAuthCallbackComponent } from './components/oauth-callback/oauth-callback.component'
 import { projectStateGuard } from './core/guards/project-state.guard'
 import { threadStateGuard } from './core/guards/thread-state.guard'
 
 export const appRoutes: Route[] = [
-  { path: '', component: ProjectListComponent },
-  { path: 'oauth/callback', component: OAuthCallbackComponent },
+  {
+    path: '',
+    loadComponent: () =>
+      import('./components/global-task-control/global-task-control.component').then(
+        (m) => m.GlobalTaskControlComponent
+      ),
+  },
+  {
+    path: 'projects',
+    loadComponent: () => import('./components/project-list/project-list.component').then((m) => m.ProjectListComponent),
+  },
+  {
+    path: 'oauth/callback',
+    loadComponent: () =>
+      import('./components/oauth-callback/oauth-callback.component').then((m) => m.OAuthCallbackComponent),
+  },
   {
     path: 'project/new',
     loadComponent: () => import('./components/project-new/project-new.component').then((m) => m.ProjectNewComponent),
   },
   {
     path: 'project/:projectName',
-    component: MainAppComponent,
+    loadComponent: () => import('./components/main-app/main-app.component').then((m) => m.MainAppComponent),
     canActivate: [projectStateGuard],
   },
   {
@@ -34,8 +45,18 @@ export const appRoutes: Route[] = [
     canActivate: [projectStateGuard],
   },
   {
+    path: 'project/:projectName/tasks',
+    loadComponent: () => import('./components/task-control/task-control.component').then((m) => m.TaskControlComponent),
+    canActivate: [projectStateGuard],
+  },
+  // Legacy redirect: /missions -> /tasks
+  {
+    path: 'project/:projectName/missions',
+    redirectTo: 'project/:projectName/tasks',
+  },
+  {
     path: 'project/:projectName/thread/:threadId',
-    component: MainAppComponent,
+    loadComponent: () => import('./components/main-app/main-app.component').then((m) => m.MainAppComponent),
     canActivate: [projectStateGuard, threadStateGuard],
   },
   {

@@ -7,6 +7,22 @@ export const AGENTOS_ROUTES: Route[] = [
     loadComponent: () =>
       import('./components/agentos-shell/agentos-shell.component').then((m) => m.AgentosShellComponent),
     children: [
+      // --- Cases (own full-height shell with header + drawer) ---
+      {
+        path: ':namespaceId/cases',
+        canActivate: [agentosReadyGuard],
+        loadComponent: () => import('./components/case-shell/case-shell.component').then((m) => m.CaseShellComponent),
+        children: [
+          {
+            path: '',
+            loadComponent: () => import('./components/case-home/case-home.component').then((m) => m.CaseHomeComponent),
+          },
+          {
+            path: ':caseId',
+            loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
+          },
+        ],
+      },
       {
         path: '',
         loadComponent: () => import('./components/layout/layout.component').then((m) => m.LayoutComponent),
@@ -29,17 +45,6 @@ export const AGENTOS_ROUTES: Route[] = [
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
               import('./components/namespace-list/namespace-list.component').then((m) => m.NamespaceListComponent),
-          },
-          // --- Cases ---
-          {
-            path: ':namespaceId/cases/:caseId',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
-          },
-          {
-            path: ':namespaceId/cases',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/case-list/case-list.component').then((m) => m.CaseListComponent),
           },
           // --- Integrations ---
           {
@@ -132,6 +137,22 @@ export const AGENTOS_ROUTES: Route[] = [
               import('./components/namespace-agent-configs/namespace-agent-configs.component').then(
                 (m) => m.NamespaceAgentConfigsComponent
               ),
+          },
+          // --- Admin ---
+          {
+            path: 'admin/users/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
+          },
+          {
+            path: 'admin/users/:userId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
+          },
+          {
+            path: 'admin/users',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-list/user-list.component').then((m) => m.UserListComponent),
           },
           // --- User profile ---
           {

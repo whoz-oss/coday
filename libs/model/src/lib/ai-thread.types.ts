@@ -57,10 +57,14 @@ export type ThreadSerialized = {
   price?: number // Total accumulated price for the thread
   starring?: string[] // List of usernames who starred this thread
   users?: ThreadUser[] // List of users who own and have full access to this thread
-  parentThreadId?: string // ID of the parent thread (undefined for root threads)
-  parentEventId?: string // Timestamp of the ToolRequestEvent that spawned this sub-thread
-  delegatedAgentName?: string // Agent name that was delegated to
-  delegatedTask?: string // Short task description for display
+  parentThreadId?: string
+  parentEventId?: string
+  delegatedAgentName?: string
+  delegatedTask?: string
+  /** Name of the worktree project created for this mission (worktree mode only) */
+  worktreeProject?: string
+  /** True when the user has manually marked this thread as done */
+  closedByUser?: boolean
 }
 
 export interface ThreadSummary {
@@ -75,10 +79,16 @@ export interface ThreadSummary {
   price: number
   starring: string[] // List of usernames who starred this thread
   users: ThreadUser[] // List of users who own and have full access to this thread
-  parentThreadId?: string // ID of the parent thread (undefined for root threads)
-  parentEventId?: string // Timestamp of the ToolRequestEvent that spawned this sub-thread
-  delegatedAgentName?: string // Agent name that was delegated to
-  delegatedTask?: string // Short task description for display
+  parentThreadId?: string
+  parentEventId?: string
+  delegatedAgentName?: string
+  delegatedTask?: string
+  /** Name of the worktree project created for this mission (worktree mode only) */
+  worktreeProject?: string
+  /** True when the user has manually marked this thread as done */
+  closedByUser?: boolean
+  /** True when a non-default InviteEvent is pending a user response */
+  pendingInvite?: boolean
 }
 
 /**

@@ -3,7 +3,7 @@ import { Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
@@ -21,7 +21,7 @@ import { IntegrationConfigItemComponent } from '../integration-config-item/integ
 @Component({
   selector: 'agentos-namespace-integrations',
   standalone: true,
-  imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent],
+  imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent, IconButtonComponent],
   templateUrl: './namespace-integrations.component.html',
   styleUrl: './namespace-integrations.component.scss',
 })

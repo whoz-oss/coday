@@ -39,6 +39,8 @@ export abstract class Interactor {
     try {
       const answerEvent = await firstValueFrom(answer)
       this.lastAnswerName = answerEvent.name
+      // Clear lastInviteEvent so reconnecting clients don't see a stale invite
+      this.lastInviteEvent = undefined
       return answerEvent.answer
     } catch (error: any) {
       throw new Error(`No answer received over invite ${inviteEvent.timestamp} : ${error.message}`)
@@ -87,7 +89,10 @@ export abstract class Interactor {
     )
     this.sendEvent(choiceEvent)
     try {
-      return await firstValueFrom(answer)
+      const result = await firstValueFrom(answer)
+      // Clear lastInviteEvent so reconnecting clients don't see a stale invite
+      this.lastInviteEvent = undefined
+      return result
     } catch (error: any) {
       throw new Error(`No answer received over choice ${choiceEvent.timestamp} : ${error.message}`)
     }
@@ -130,6 +135,14 @@ export abstract class Interactor {
     if (this.lastInviteEvent) {
       this.sendEvent(this.lastInviteEvent)
     }
+  }
+
+  /**
+   * Return the last pending invite event without re-emitting it.
+   * Used by project-level SSE to replay active status to new clients.
+   */
+  getLastInviteEvent(): InviteEvent | undefined {
+    return this.lastInviteEvent
   }
 
   kill() {

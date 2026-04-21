@@ -434,7 +434,8 @@ export class AnthropicClient extends AiClient {
         }
         // Handle ChoiceEvent - represent as assistant question with options
         else if (msg instanceof ChoiceEvent) {
-          const optionsText = msg.options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
+          const options = Array.isArray(msg.options) ? msg.options : []
+          const optionsText = options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
           const content = msg.optionalQuestion
             ? `${msg.optionalQuestion}\n${msg.invite}\n${optionsText}`
             : `${msg.invite}\n${optionsText}`
