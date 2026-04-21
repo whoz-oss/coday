@@ -51,6 +51,17 @@ kotlin {
     }
 }
 
+tasks.jar {
+    manifest {
+        attributes(
+            "Plugin-Id" to "agentos-bash-plugin",
+            "Plugin-Version" to version,
+            "Plugin-Provider" to "whoz-oss",
+            "Plugin-Class" to "io.whozoss.agentos.plugins.bash.BashPlugin",
+        )
+    }
+}
+
 tasks.withType<Test> {
     useJUnitPlatform()
 }
