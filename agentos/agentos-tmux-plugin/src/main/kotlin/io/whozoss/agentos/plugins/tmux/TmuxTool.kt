@@ -233,6 +233,9 @@ class TmuxTool(
                 process.destroyForcibly()
                 throw RuntimeException("tmux command timed out after ${TMUX_TIMEOUT_SECONDS}s")
             }
+            // Stream is fully available once waitFor() returns — safe to read before checking exit code.
+            // Reading here (rather than only on failure) avoids double-buffering: the same output
+            // string is used for both the success return and the error message.
             val output = process.inputStream.bufferedReader().readText()
             val exitCode = process.exitValue()
             if (exitCode != 0) throw RuntimeException(output.trim().ifBlank { "tmux exited with code $exitCode" })
