@@ -1,4 +1,4 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.caseEvent
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -17,25 +17,27 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
  * - Single [MessageContent]  — for [ToolResponseEventNode.outputJson]
  * - [List]<[String]>         — for [QuestionEventNode.options]
  */
-class MessageContentSerializer(private val mapper: ObjectMapper) {
+class MessageContentSerializer(
+    private val mapper: ObjectMapper,
+) {
     // Use a typed writer so Jackson emits the @JsonTypeInfo discriminator for each element.
     // Without this, elements are serialised as their concrete type and the 'type' property
     // is omitted, causing InvalidTypeIdException on deserialisation.
-    private val listWriter = mapper
-        .writerFor(mapper.typeFactory.constructCollectionType(List::class.java, MessageContent::class.java))
+    private val listWriter =
+        mapper
+            .writerFor(mapper.typeFactory.constructCollectionType(List::class.java, MessageContent::class.java))
 
     fun serialize(content: List<MessageContent>): String = listWriter.writeValueAsString(content)
 
-    fun deserialize(json: String): List<MessageContent> = mapper.readValue(
-        json,
-        mapper.typeFactory.constructCollectionType(List::class.java, MessageContent::class.java),
-    )
+    fun deserialize(json: String): List<MessageContent> =
+        mapper.readValue(
+            json,
+            mapper.typeFactory.constructCollectionType(List::class.java, MessageContent::class.java),
+        )
 
-    fun serializeSingle(content: MessageContent): String =
-        mapper.writerFor(MessageContent::class.java).writeValueAsString(content)
+    fun serializeSingle(content: MessageContent): String = mapper.writerFor(MessageContent::class.java).writeValueAsString(content)
 
-    fun deserializeSingle(json: String): MessageContent =
-        mapper.readValue(json, MessageContent::class.java)
+    fun deserializeSingle(json: String): MessageContent = mapper.readValue(json, MessageContent::class.java)
 
     fun serializeStringList(list: List<String>): String = mapper.writeValueAsString(list)
 

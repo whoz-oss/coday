@@ -29,6 +29,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         namespaceId: UUID = UUID.randomUUID(),
         name: String = "JIRA",
         integrationType: String = "JIRA",
+        description: String? = null,
         parametersJson: String? = null,
     ): IntegrationConfig =
         IntegrationConfig(
@@ -36,6 +37,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             namespaceId = namespaceId,
             name = name,
             integrationType = integrationType,
+            description = description,
             parameters = parametersJson?.let { mapper.readTree(it) },
         )
 
@@ -219,6 +221,26 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // Update
         // -------------------------------------------------------------------------
+
+        "description is preserved through create and findById" {
+            val service = newService()
+            val cfg = config(description = "My integration")
+            val saved = service.create(cfg)
+
+            val found = service.findById(saved.metadata.id)
+
+            found?.description shouldBe "My integration"
+        }
+
+        "description is preserved through update" {
+            val service = newService()
+            val original = service.create(config(description = "original"))
+
+            val updated = service.update(original.copy(description = "updated"))
+
+            updated.description shouldBe "updated"
+            service.findById(original.metadata.id)?.description shouldBe "updated"
+        }
 
         "update replaces the config" {
             val service = newService()

@@ -1,6 +1,6 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id

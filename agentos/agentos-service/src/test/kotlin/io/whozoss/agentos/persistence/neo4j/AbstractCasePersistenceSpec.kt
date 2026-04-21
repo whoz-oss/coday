@@ -24,7 +24,7 @@ import java.util.UUID
  * and inherit all test cases, ensuring both modes satisfy the same contract.
  *
  * A [Namespace] node must exist before [Case] nodes are saved because
- * [CaseNodeNeo4jRepository.findActiveByNamespaceId] traverses the BELONGS_TO
+ * [io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository.findActiveByNamespaceId] traverses the BELONGS_TO
  * edge to the Namespace node. [namespaceRepo] is used to pre-create namespaces.
  */
 abstract class AbstractCasePersistenceSpec : StringSpec() {

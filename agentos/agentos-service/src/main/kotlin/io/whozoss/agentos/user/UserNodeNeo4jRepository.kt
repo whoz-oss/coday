@@ -1,4 +1,4 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.user
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
@@ -14,10 +14,11 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     /**
      * Find all non-removed users.
      * Used by [Neo4jUserRepository.findByParent] which receives the fixed
-     * parent key [io.whozoss.agentos.user.UserRepository.USER_PARENT_KEY].
+     * parent key [UserRepository.USER_PARENT_KEY].
      */
     @Query(
-        $$"""MATCH (u:User)
+        """
+            MATCH (u:User)
             WHERE u.removed IS NULL OR u.removed = false
             RETURN u
             """,
@@ -29,7 +30,8 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * Replaces the O(n) filesystem scan with a direct property lookup.
      */
     @Query(
-        $$"""MATCH (u:User)
+        $$"""
+            MATCH (u:User)
             WHERE u.externalId = $externalId AND (u.removed IS NULL OR u.removed = false)
             RETURN u LIMIT 1
             """,

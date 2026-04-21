@@ -1,7 +1,5 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.caseFlow.Case
-import io.whozoss.agentos.caseFlow.CaseRepository
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional

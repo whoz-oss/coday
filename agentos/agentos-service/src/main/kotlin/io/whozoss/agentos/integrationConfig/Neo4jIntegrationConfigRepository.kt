@@ -1,8 +1,6 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.integrationConfig.IntegrationConfig
-import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
@@ -23,7 +21,11 @@ open class Neo4jIntegrationConfigRepository(
             .save(IntegrationConfigNode.fromDomain(entity, objectMapper))
             .also { neo4jRepository.linkConfigToNamespace(it.id, entity.namespaceId.toString()) }
             .toDomain(objectMapper)
-            .also { logger.debug { "[Neo4jIntegrationConfigRepository] Saved config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
+            .also {
+                logger.debug {
+                    "[Neo4jIntegrationConfigRepository] Saved config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}"
+                }
+            }
 
     override fun findByIds(ids: Collection<UUID>): List<IntegrationConfig> =
         neo4jRepository
