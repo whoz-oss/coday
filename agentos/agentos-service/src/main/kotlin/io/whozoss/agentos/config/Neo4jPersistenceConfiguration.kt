@@ -57,7 +57,6 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 )
 @EnableNeo4jRepositories(
     basePackages = [
-        "io.whozoss.agentos.persistence.neo4j",
         "io.whozoss.agentos.agentConfig",
         "io.whozoss.agentos.aiModel",
         "io.whozoss.agentos.aiProvider",
