@@ -1,0 +1,124 @@
+package io.whozoss.agentos.plugins.bash
+
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.sdk.tool.StandardTool
+import mu.KLogging
+import java.io.File
+
+/**
+ * A [StandardTool] that executes a configured bash command.
+ *
+ * Two modes depending on whether the command contains [PARAMETERS_PLACEHOLDER]:
+ *
+ * - **Fixed command** (`PARAMETERS` absent): the tool takes no input. The LLM calls it
+ *   with an empty object `{}`. The command runs as-is.
+ *
+ * - **Parameterised command** (`PARAMETERS` present): the tool exposes a single required
+ *   `parameters` string field. At runtime the literal string `PARAMETERS` in the command
+ *   is replaced by the value supplied by the LLM.
+ *
+ * The `inputSchema` is generated accordingly so the LLM sees the right contract.
+ */
+class BashTool(
+    private val toolConfig: BashToolConfig,
+    private val integrationConfig: BashIntegrationConfig,
+    configName: String? = null,
+) : StandardTool<BashTool.Input> {
+
+    companion object : KLogging() {
+        private val objectMapper = jacksonObjectMapper()
+    }
+
+    private val isParameterised: Boolean = toolConfig.command.contains(PARAMETERS_PLACEHOLDER)
+
+    override val name: String = if (configName != null) "${configName}__${toolConfig.name}" else toolConfig.name
+
+    override val description: String = buildString {
+        append(toolConfig.description)
+        if (isParameterised) {
+            append("\n\nParameters: ")
+            append(toolConfig.parametersDescription)
+        }
+    }
+
+    override val version: String = "1.0.0"
+
+    override val paramType: Class<Input> = Input::class.java
+
+    override val inputSchema: String = when {
+        isParameterised -> """
+            {
+                "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                    "parameters": {
+                        "type": "string",
+                        "description": ${objectMapper.writeValueAsString(toolConfig.parametersDescription)}
+                    }
+                },
+                "required": ["parameters"],
+                "additionalProperties": false
+            }
+        """.trimIndent()
+        else -> """
+            {
+                "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        """.trimIndent()
+    }
+
+    data class Input(
+        val parameters: String? = null,
+    )
+
+    override fun execute(input: Input?): String {
+        val resolvedCommand = when {
+            isParameterised -> {
+                val params = input?.parameters?.takeIf { it.isNotBlank() }
+                    ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"
+                toolConfig.command.replace(PARAMETERS_PLACEHOLDER, params)
+            }
+            else -> toolConfig.command
+        }
+
+        val workDir = resolveWorkingDirectory()
+        val timeout = toolConfig.timeoutSeconds ?: integrationConfig.defaultTimeoutSeconds
+
+        logger.debug { "Executing tool '${toolConfig.name}' in ${workDir.absolutePath} (timeout: ${timeout}s)" }
+
+        return when (val result = BashCommandExecutor.execute(resolvedCommand, workDir, timeout)) {
+            is BashExecutionResult.Completed -> formatCompleted(result)
+            is BashExecutionResult.Timeout -> "Error: command timed out after ${result.timeoutSeconds} seconds"
+            is BashExecutionResult.Error -> "Error: ${result.message}"
+        }
+    }
+
+    private fun resolveWorkingDirectory(): File {
+        val base = File(integrationConfig.workingDirectory)
+        return when {
+            toolConfig.path.isNullOrBlank() -> base
+            else -> File(base, toolConfig.path)
+        }
+    }
+
+    private fun formatCompleted(result: BashExecutionResult.Completed): String = buildString {
+        if (result.stdout.isNotBlank()) {
+            append(result.stdout)
+        }
+        if (result.stderr.isNotBlank()) {
+            if (isNotEmpty()) append("\n\n")
+            append("Stderr:\n")
+            append(result.stderr)
+        }
+        if (result.exitCode != 0) {
+            if (isNotEmpty()) append("\n\n")
+            append("Exit code: ${result.exitCode}")
+        }
+        if (isEmpty()) {
+            append("(no output)")
+        }
+    }
+}
