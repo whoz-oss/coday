@@ -279,6 +279,67 @@ class BashConfigParserUnitSpec : StringSpec({
         ex.message shouldContain "timeoutSeconds"
     }
 
+    // --- workingDirectory absolute path ---
+
+    "relative workingDirectory should throw" {
+        val config = json("""{"workingDirectory": "relative/path", "tools": []}""")
+
+        val ex = shouldThrow<IllegalArgumentException> { BashConfigParser.parse(config) }
+        ex.message shouldContain "absolute"
+    }
+
+    // --- path traversal validation ---
+
+    "tool path with traversal should throw" {
+        val config = json("""
+            {
+                "workingDirectory": "/tmp",
+                "tools": [{
+                    "name": "t",
+                    "description": "desc",
+                    "command": "ls",
+                    "path": "../../etc"
+                }]
+            }
+        """)
+
+        val ex = shouldThrow<IllegalArgumentException> { BashConfigParser.parse(config) }
+        ex.message shouldContain "escapes"
+    }
+
+    "tool with absolute path should throw" {
+        val config = json("""
+            {
+                "workingDirectory": "/tmp",
+                "tools": [{
+                    "name": "t",
+                    "description": "desc",
+                    "command": "ls",
+                    "path": "/etc"
+                }]
+            }
+        """)
+
+        val ex = shouldThrow<IllegalArgumentException> { BashConfigParser.parse(config) }
+        ex.message shouldContain "relative"
+    }
+
+    "tool with valid relative path should parse" {
+        val config = json("""
+            {
+                "workingDirectory": "/tmp",
+                "tools": [{
+                    "name": "t",
+                    "description": "desc",
+                    "command": "ls",
+                    "path": "subdir/nested"
+                }]
+            }
+        """)
+
+        BashConfigParser.parse(config).tools[0].path shouldBe "subdir/nested"
+    }
+
     "multiple valid tools should all be parsed" {
         val config = json("""
             {

@@ -75,14 +75,8 @@ class BashTool(
     )
 
     override fun execute(input: Input?): String {
-        val resolvedCommand = when {
-            isParameterised -> {
-                val params = input?.parameters?.takeIf { it.isNotBlank() }
-                    ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"
-                toolConfig.command.replace(PARAMETERS_PLACEHOLDER, params)
-            }
-            else -> toolConfig.command
-        }
+        val resolvedCommand = resolveCommand(input)
+            ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"
 
         val workDir = resolveWorkingDirectory()
         val timeout = toolConfig.timeoutSeconds ?: integrationConfig.defaultTimeoutSeconds
@@ -94,6 +88,16 @@ class BashTool(
             is BashExecutionResult.Timeout -> "Error: command timed out after ${result.timeoutSeconds} seconds"
             is BashExecutionResult.Error -> "Error: ${result.message}"
         }
+    }
+
+    /**
+     * Returns the final command string with [PARAMETERS_PLACEHOLDER] substituted,
+     * or null if the tool is parameterised but no valid parameters value was supplied.
+     */
+    private fun resolveCommand(input: Input?): String? = when {
+        !isParameterised -> toolConfig.command
+        else -> input?.parameters?.takeIf { it.isNotBlank() }
+            ?.let { toolConfig.command.replace(PARAMETERS_PLACEHOLDER, it) }
     }
 
     private fun resolveWorkingDirectory(): File {

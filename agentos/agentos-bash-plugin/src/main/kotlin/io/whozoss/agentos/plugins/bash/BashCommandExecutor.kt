@@ -4,7 +4,6 @@ import mu.KLogging
 import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 private const val DEFAULT_MAX_OUTPUT_CHARS = 100_000
 
@@ -13,8 +12,11 @@ private const val DEFAULT_MAX_OUTPUT_CHARS = 100_000
  *
  * Output (stdout + stderr) is capped at [maxOutputChars] to avoid overwhelming
  * the LLM context. The pattern mirrors the ripgrep execution in SearchFilesTool:
- * stdout is drained asynchronously to prevent the process from blocking on a
- * full pipe buffer before [waitFor] is called.
+ * stdout and stderr are drained asynchronously to prevent the process from
+ * blocking on a full pipe buffer before [waitFor] is called.
+ *
+ * [destroyForcibly] is called only on the timeout and error paths — not on
+ * successful completion, where the process has already exited cleanly.
  */
 object BashCommandExecutor : KLogging() {
 
@@ -26,43 +28,53 @@ object BashCommandExecutor : KLogging() {
     ): BashExecutionResult {
         logger.debug { "Running bash command in ${workingDirectory.absolutePath}: $command" }
 
-        var process: Process? = null
-        return try {
-            process = ProcessBuilder("/bin/bash", "-c", command)
+        val process = try {
+            ProcessBuilder("/bin/bash", "-c", command)
                 .directory(workingDirectory)
                 .redirectErrorStream(false)
                 .start()
-
-            // Drain stdout and stderr asynchronously — same anti-deadlock pattern as SearchFilesTool.
-            // If we read stdout synchronously after waitFor(), the process may never exit because
-            // it is blocked trying to write to a full pipe buffer.
-            val stdoutFuture = CompletableFuture.supplyAsync {
-                process!!.inputStream.bufferedReader().use { it.readText() }
-            }
-            val stderrFuture = CompletableFuture.supplyAsync {
-                process!!.errorStream.bufferedReader().use { it.readText() }
-            }
-
-            val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-            if (!completed) {
-                process.destroyForcibly()
-                return BashExecutionResult.Timeout(timeoutSeconds)
-            }
-
-            val stdout = stdoutFuture.get()
-            val stderr = stderrFuture.get()
-            val exitCode = process.exitValue()
-
-            BashExecutionResult.Completed(
-                exitCode = exitCode,
-                stdout = stdout.take(maxOutputChars),
-                stderr = stderr.take(maxOutputChars),
-            )
         } catch (e: Exception) {
-            logger.error(e) { "Unexpected error executing bash command: $command" }
-            BashExecutionResult.Error(e.message ?: e.javaClass.simpleName)
-        } finally {
-            process?.destroyForcibly()
+            logger.error(e) { "Failed to start process for command: $command" }
+            return BashExecutionResult.Error(e.message ?: e.javaClass.simpleName)
+        }
+
+        // Drain stdout and stderr asynchronously — same anti-deadlock pattern as SearchFilesTool.
+        // If we read stdout synchronously after waitFor(), the process may never exit because
+        // it is blocked trying to write to a full pipe buffer.
+        val stdoutFuture = CompletableFuture.supplyAsync {
+            process.inputStream.bufferedReader().use { it.readText() }
+        }
+        val stderrFuture = CompletableFuture.supplyAsync {
+            process.errorStream.bufferedReader().use { it.readText() }
+        }
+
+        val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+
+        return when {
+            !completed -> {
+                // Cancel the reader futures and forcibly terminate the process.
+                // The futures may still block on stream.read() until the streams
+                // are closed, which happens once destroyForcibly() kills the process.
+                stdoutFuture.cancel(true)
+                stderrFuture.cancel(true)
+                process.destroyForcibly()
+                BashExecutionResult.Timeout(timeoutSeconds)
+            }
+            else -> {
+                try {
+                    val stdout = stdoutFuture.get()
+                    val stderr = stderrFuture.get()
+                    BashExecutionResult.Completed(
+                        exitCode = process.exitValue(),
+                        stdout = stdout.take(maxOutputChars),
+                        stderr = stderr.take(maxOutputChars),
+                    )
+                } catch (e: Exception) {
+                    logger.error(e) { "Error reading process output for command: $command" }
+                    process.destroyForcibly()
+                    BashExecutionResult.Error(e.message ?: e.javaClass.simpleName)
+                }
+            }
         }
     }
 }

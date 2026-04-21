@@ -1,12 +1,13 @@
 package io.whozoss.agentos.plugins.bash
 
 import com.fasterxml.jackson.databind.JsonNode
+import java.io.File
 
 /**
  * Parses and validates a [JsonNode] config into a [BashIntegrationConfig].
  *
  * Validation rules:
- * - [BashIntegrationConfig.workingDirectory] must be present and non-blank.
+ * - [BashIntegrationConfig.workingDirectory] must be present, non-blank, and an absolute path.
  * - Each tool must have a non-blank [BashToolConfig.name] and [BashToolConfig.description].
  * - Each tool must have a non-blank [BashToolConfig.command].
  * - Tool names must be unique within the integration.
@@ -14,9 +15,11 @@ import com.fasterxml.jackson.databind.JsonNode
  *   must be provided and non-blank.
  * - If [BashToolConfig.parametersDescription] is set but the command does not contain
  *   [PARAMETERS_PLACEHOLDER], that is flagged as a configuration mistake.
+ * - [BashToolConfig.path], when set, must not escape [BashIntegrationConfig.workingDirectory]
+ *   (no path traversal).
  * - Timeouts, when provided, must be positive.
  *
- * Throws [BashConfigException] with a descriptive message on any violation.
+ * Throws [IllegalArgumentException] with a descriptive message on any violation.
  */
 object BashConfigParser {
 
@@ -24,6 +27,9 @@ object BashConfigParser {
         val workingDirectory = config.get("workingDirectory")?.asText()?.trim()
         require(!workingDirectory.isNullOrBlank()) {
             "BASH integration config: 'workingDirectory' is required and must not be blank"
+        }
+        require(File(workingDirectory).isAbsolute) {
+            "BASH integration config: 'workingDirectory' must be an absolute path, got: $workingDirectory"
         }
 
         val defaultTimeout = config.get("defaultTimeoutSeconds")?.asLong()?.also { timeout ->
@@ -33,14 +39,14 @@ object BashConfigParser {
         } ?: 30L
 
         val toolsNode = config.get("tools")
-        val tools = if (toolsNode == null || toolsNode.isNull || !toolsNode.isArray) {
-            emptyList()
-        } else {
-            toolsNode.mapIndexed { index, toolNode -> parseTool(toolNode, index) }
+        val tools = when {
+            toolsNode == null || toolsNode.isNull || !toolsNode.isArray -> emptyList()
+            else -> toolsNode.mapIndexed { index, toolNode ->
+                parseTool(toolNode, index, workingDirectory)
+            }
         }
 
-        val names = tools.map { it.name }
-        val duplicates = names.groupBy { it }.filter { it.value.size > 1 }.keys
+        val duplicates = tools.map { it.name }.groupBy { it }.filter { it.value.size > 1 }.keys
         require(duplicates.isEmpty()) {
             "BASH integration config: duplicate tool names: ${duplicates.joinToString()}"
         }
@@ -52,7 +58,7 @@ object BashConfigParser {
         )
     }
 
-    private fun parseTool(node: JsonNode, index: Int): BashToolConfig {
+    private fun parseTool(node: JsonNode, index: Int, workingDirectory: String): BashToolConfig {
         val name = node.get("name")?.asText()?.trim()
         require(!name.isNullOrBlank()) {
             "BASH integration config: tool[$index].name is required and must not be blank"
@@ -81,6 +87,9 @@ object BashConfigParser {
         }
 
         val path = node.get("path")?.asText()?.trim()?.takeIf { it.isNotBlank() }
+        if (path != null) {
+            validatePath(name, path, workingDirectory)
+        }
 
         val timeoutSeconds = node.get("timeoutSeconds")?.takeIf { !it.isNull }?.asLong()?.also { timeout ->
             require(timeout > 0) {
@@ -97,6 +106,26 @@ object BashConfigParser {
             timeoutSeconds = timeoutSeconds,
         )
     }
-}
 
-class BashConfigException(message: String) : IllegalArgumentException(message)
+    /**
+     * Validates that [path] does not escape [workingDirectory] via path traversal.
+     *
+     * We canonicalize the resolved path and check that it starts with the
+     * canonical working directory, which prevents `../../etc`-style escapes
+     * regardless of symlinks on the filesystem.
+     *
+     * Note: the working directory and subdirectory do not need to exist at
+     * config-parse time (the service may be configured before the directory
+     * is mounted). We therefore use string-based normalization only.
+     */
+    private fun validatePath(toolName: String, path: String, workingDirectory: String) {
+        require(!File(path).isAbsolute) {
+            "BASH integration config: tool '$toolName' path must be relative, got: $path"
+        }
+        val normalized = File(workingDirectory, path).canonicalPath
+        val base = File(workingDirectory).canonicalPath
+        require(normalized.startsWith(base + File.separator) || normalized == base) {
+            "BASH integration config: tool '$toolName' path escapes workingDirectory: $path"
+        }
+    }
+}
