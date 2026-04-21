@@ -1,3 +1,14 @@
+## 0.124.1 (2026-04-21)
+
+### 🩹 Fixes
+
+- remove duplicate addAnswerEvent calls — persistence handled by agent.run() ([#780](https://github.com/whoz-oss/coday/pull/780))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.124.0 (2026-04-20)
 
 ### 🚀 Features
