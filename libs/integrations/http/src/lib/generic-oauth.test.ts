@@ -653,6 +653,126 @@ describe('GenericOAuth', () => {
     })
   })
 
+  // ── Security: URL validation ────────────────────────────────────────────────
+
+  describe('security: validateDiscoveryUrl', () => {
+    let originalFetch: typeof global.fetch
+    const mockFetch = jest.fn()
+
+    beforeEach(() => {
+      originalFetch = global.fetch
+      global.fetch = mockFetch
+    })
+
+    afterEach(() => {
+      global.fetch = originalFetch
+    })
+
+    const makeInstanceWithIssuer = (issuer: string) =>
+      new GenericOAuth(
+        { clientId: 'id', clientSecret: 'secret', redirectUri: 'https://app.example.com/callback', issuer },
+        makeInteractor(),
+        makeUserService(),
+        'testProject',
+        'testIntegration'
+      )
+
+    const makeInstanceWithDiscoveryUrl = (discoveryUrl: string) =>
+      new GenericOAuth(
+        { clientId: 'id', clientSecret: 'secret', redirectUri: 'https://app.example.com/callback', discoveryUrl },
+        makeInteractor(),
+        makeUserService(),
+        'testProject',
+        'testIntegration'
+      )
+
+    it('should reject issuer with http:// scheme (SSRF prevention)', async () => {
+      const instance = makeInstanceWithIssuer('http://accounts.example.com')
+      await expect(instance.authenticate()).rejects.toThrow('must use HTTPS')
+    })
+
+    it('should reject discoveryUrl with http:// scheme (SSRF prevention)', async () => {
+      const instance = makeInstanceWithDiscoveryUrl('http://accounts.example.com/.well-known/openid-configuration')
+      await expect(instance.authenticate()).rejects.toThrow('must use HTTPS')
+    })
+
+    it('should reject issuer pointing to localhost', async () => {
+      const instance = makeInstanceWithIssuer('https://localhost/auth')
+      await expect(instance.authenticate()).rejects.toThrow('private/loopback')
+    })
+
+    it('should reject discoveryUrl pointing to 127.0.0.1', async () => {
+      const instance = makeInstanceWithDiscoveryUrl('https://127.0.0.1/.well-known/openid-configuration')
+      await expect(instance.authenticate()).rejects.toThrow('private/loopback')
+    })
+
+    it('should reject discoveryUrl pointing to a private 10.x.x.x address', async () => {
+      const instance = makeInstanceWithDiscoveryUrl('https://10.0.0.1/.well-known/openid-configuration')
+      await expect(instance.authenticate()).rejects.toThrow('private/loopback')
+    })
+
+    it('should reject discoveryUrl pointing to 169.254.x.x (cloud metadata)', async () => {
+      const instance = makeInstanceWithDiscoveryUrl('https://169.254.169.254/latest/meta-data/')
+      await expect(instance.authenticate()).rejects.toThrow('private/loopback')
+    })
+
+    it('should reject when authorization_endpoint has a different origin than discoveryUrl', async () => {
+      const instance = makeInstanceWithDiscoveryUrl('https://legit.example.com/.well-known/openid-configuration')
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          issuer: 'https://legit.example.com',
+          authorization_endpoint: 'https://attacker.example.com/oauth/authorize',
+          token_endpoint: 'https://legit.example.com/oauth/token',
+        }),
+      } as any)
+      await expect(instance.authenticate()).rejects.toThrow('does not share the same origin as the discovery URL')
+    })
+
+    it('should reject when token_endpoint has a different origin than discoveryUrl', async () => {
+      const instance = makeInstanceWithDiscoveryUrl('https://legit.example.com/.well-known/openid-configuration')
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          issuer: 'https://legit.example.com',
+          authorization_endpoint: 'https://legit.example.com/oauth/authorize',
+          token_endpoint: 'https://attacker.example.com/oauth/token',
+        }),
+      } as any)
+      await expect(instance.authenticate()).rejects.toThrow('does not share the same origin as the discovery URL')
+    })
+
+    it('should accept a valid discoveryUrl with matching origins', async () => {
+      const interactor = makeInteractor()
+      const instance = new GenericOAuth(
+        {
+          clientId: 'id',
+          clientSecret: 'secret',
+          redirectUri: 'https://app.example.com/callback',
+          discoveryUrl: 'https://legit.example.com/.well-known/openid-configuration',
+        },
+        interactor,
+        makeUserService(),
+        'testProject',
+        'testIntegration'
+      )
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          issuer: 'https://legit.example.com',
+          authorization_endpoint: 'https://legit.example.com/oauth/authorize',
+          token_endpoint: 'https://legit.example.com/oauth/token',
+        }),
+      } as any)
+
+      instance.authenticate().catch(() => {})
+      await waitFor(() => interactor.sendEvent.mock.calls.length > 0)
+
+      const emittedEvent = interactor.sendEvent.mock.calls[0][0]
+      expect(emittedEvent.authUrl).toContain('https://legit.example.com/oauth/authorize')
+    })
+  })
+
   describe('discovery — configuration error', () => {
     it('should reject when no endpoint source is configured', async () => {
       const interactor = makeInteractor()

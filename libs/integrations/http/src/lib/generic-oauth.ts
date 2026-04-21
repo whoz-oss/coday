@@ -101,6 +101,43 @@ export class GenericOAuth {
   }
 
   /**
+   * Validates a discovery URL before making any network call.
+   * Enforces HTTPS scheme and rejects private/loopback hostnames to prevent SSRF.
+   */
+  private validateDiscoveryUrl(rawUrl: string, fieldName: string): URL {
+    let parsed: URL
+    try {
+      parsed = new URL(rawUrl)
+    } catch {
+      throw new Error(`[OAuth:${this.integrationName}] ${fieldName} is not a valid URL: ${rawUrl}`)
+    }
+    if (parsed.protocol !== 'https:') {
+      throw new Error(
+        `[OAuth:${this.integrationName}] ${fieldName} must use HTTPS (got "${parsed.protocol}"): ${rawUrl}`
+      )
+    }
+    const hostname = parsed.hostname
+    // Reject loopback and private network ranges to prevent SSRF
+    const privatePatterns = [
+      /^localhost$/i,
+      /^127\./,
+      /^10\./,
+      /^172\.(1[6-9]|2[0-9]|3[01])\./,
+      /^192\.168\./,
+      /^169\.254\./,
+      /^\[?::1\]?$/, // IPv6 loopback
+      /^\[?fc00:/i, // IPv6 unique local
+      /^\[?fd[0-9a-f]{2}:/i, // IPv6 unique local
+    ]
+    if (privatePatterns.some((re) => re.test(hostname))) {
+      throw new Error(
+        `[OAuth:${this.integrationName}] ${fieldName} resolves to a private/loopback address and is not allowed: ${rawUrl}`
+      )
+    }
+    return parsed
+  }
+
+  /**
    * Resolves the authorization server metadata, performing discovery if needed.
    * Cached after the first successful call.
    *
@@ -116,6 +153,8 @@ export class GenericOAuth {
     const { issuer, discoveryUrl } = this.config
 
     if (issuer) {
+      // Validate the issuer URL before making any network call (SSRF prevention)
+      this.validateDiscoveryUrl(issuer, 'issuer')
       this.interactor.debug(`[OAuth:${this.integrationName}] resolving endpoints via discovery for issuer=${issuer}`)
       const issuerUrl = new URL(issuer)
       // oauth4webapi tries OIDC (.well-known/openid-configuration) by default;
@@ -139,6 +178,8 @@ export class GenericOAuth {
     }
 
     if (discoveryUrl) {
+      // Validate the discovery URL before making any network call (SSRF prevention)
+      const parsedDiscovery = this.validateDiscoveryUrl(discoveryUrl, 'discoveryUrl')
       this.interactor.debug(
         `[OAuth:${this.integrationName}] fetching discovery document from explicit URL: ${discoveryUrl}`
       )
@@ -154,8 +195,30 @@ export class GenericOAuth {
           `[OAuth:${this.integrationName}] discovery document at ${discoveryUrl} is missing authorization_endpoint or token_endpoint`
         )
       }
+      // Validate that authorization_endpoint and token_endpoint share the same origin as the
+      // discovery URL to prevent open-redirect attacks via tampered discovery documents.
+      const discoveryOrigin = parsedDiscovery.origin
+      for (const [field, value] of [
+        ['authorization_endpoint', metadata.authorization_endpoint],
+        ['token_endpoint', metadata.token_endpoint],
+      ] as const) {
+        let endpointOrigin: string
+        try {
+          endpointOrigin = new URL(value).origin
+        } catch {
+          throw new Error(
+            `[OAuth:${this.integrationName}] discovery document field "${field}" is not a valid URL: ${value}`
+          )
+        }
+        if (endpointOrigin !== discoveryOrigin) {
+          throw new Error(
+            `[OAuth:${this.integrationName}] discovery document field "${field}" (${value}) ` +
+              `does not share the same origin as the discovery URL (${discoveryOrigin}). ` +
+              `This may indicate a tampered or malicious discovery document.`
+          )
+        }
+      }
       // Derive the issuer from the discovery URL if not present in the document
-      const parsedDiscovery = new URL(discoveryUrl)
       this.as = {
         ...metadata,
         issuer: metadata.issuer ?? parsedDiscovery.origin,
