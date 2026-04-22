@@ -1,4 +1,4 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.caseEvent
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
@@ -25,7 +25,7 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
      * Creates the `BELONGS_TO` relationship from a CaseEvent node to its Case node.
      *
      * Called after saving a new event. Using an explicit query avoids SDN writing
-     * stub [CaseNode] properties (empty status/title) onto the existing Case node
+     * stub [io.whozoss.agentos.caseFlow.CaseNode] properties (empty status/title) onto the existing Case node
      * when the relationship is expressed via the @Relationship field.
      */
     @Query(

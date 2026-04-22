@@ -16,8 +16,28 @@ export type OAuth2Config = {
   client_id: string
   client_secret: string
   redirect_uri: string
+  /**
+   * Direct authorization endpoint URL.
+   * Required unless issuer or discovery_url is provided.
+   */
   authorization_endpoint?: string
+  /**
+   * Direct token endpoint URL.
+   * Required unless issuer or discovery_url is provided.
+   */
   token_endpoint?: string
+  /**
+   * OAuth2 / OIDC issuer URL (e.g. "https://accounts.google.com").
+   * When provided, endpoints are resolved automatically via RFC 8414 / OIDC discovery.
+   * Takes precedence over discovery_url; ignored when authorization_endpoint + token_endpoint are set.
+   */
+  issuer?: string
+  /**
+   * Explicit discovery document URL.
+   * Used when the discovery URL does not follow the standard .well-known convention.
+   * Ignored when authorization_endpoint + token_endpoint are set.
+   */
+  discovery_url?: string
   // Single string ("openid email") or array joined with spaces at runtime
   scope?: string | string[]
   tokens?: OAuth2Tokens // Stored tokens (user-level only)

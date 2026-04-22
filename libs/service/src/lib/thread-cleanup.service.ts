@@ -15,8 +15,8 @@ const BATCH_SIZE = 100
 
 // Retention periods based on user message count
 const RETENTION_RULES = {
-  SHORT_THREADS: 7, // 3 or fewer user messages: 7 days
-  LONG_THREADS: 30, // 4 or more user messages: 30 days
+  SHORT_THREADS: 30, // 3 or fewer user messages: 30 days
+  LONG_THREADS: 90, // 4 or more user messages: 90 days
 }
 
 export class ThreadCleanupService {
@@ -203,8 +203,9 @@ export class ThreadCleanupService {
           const content = await fs.readFile(filePath, 'utf-8')
           threadData = yaml.parse(content)
         } catch (error) {
-          await fs.unlink(filePath)
+          errors++
           this.logError(`Error processing file ${file} in project ${projectName}: ${error}`)
+          return
         }
 
         if (!threadData || !threadData.modifiedDate) {
@@ -250,10 +251,10 @@ export class ThreadCleanupService {
       return false // Skip invalid threads
     }
 
-    // Count user messages
+    // Count user messages (type 'message' with role 'user', matching MessageEvent serialization)
     const userMessageCount = this.countUserMessages(threadData.messages || [])
 
-    // Determine retention period: 7 days for short threads, 30 days for longer ones
+    // Determine retention period: 30 days for short threads (≤3 user messages), 90 days for longer ones
     const retentionDays = userMessageCount <= 3 ? RETENTION_RULES.SHORT_THREADS : RETENTION_RULES.LONG_THREADS
 
     // Check if thread has exceeded its retention period
@@ -262,10 +263,13 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Counts user messages in thread data
+   * Counts user messages in thread data.
+   * Matches both MessageEvent (type='message', role='user') and AnswerEvent (type='answer'),
+   * consistent with AiThread.getUserMessageCount().
    */
   private countUserMessages(messages: any[]): number {
-    return messages.filter((msg) => msg && msg.type === 'message' && msg.role === 'user').length
+    return messages.filter((msg) => msg && ((msg.type === 'message' && msg.role === 'user') || msg.type === 'answer'))
+      .length
   }
 
   /**

@@ -1,4 +1,4 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.integrationConfig
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
@@ -16,7 +16,8 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
      * [IntegrationConfigNode.namespace] @Relationship field.
      */
     @Query(
-        $$"""MATCH (c:IntegrationConfig)-[r:BELONGS_TO]->(ns:Namespace)
+        $$"""
+            MATCH (c:IntegrationConfig)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false)
             RETURN c, r, ns ORDER BY c.name ASC
             """,
@@ -27,14 +28,18 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
      * Creates the `BELONGS_TO` relationship from an IntegrationConfig node to its Namespace node.
      *
      * Called after saving a config. Using an explicit query avoids SDN writing
-     * stub [NamespaceNode] properties (empty name/description) onto the existing
+     * stub [io.whozoss.agentos.namespace.NamespaceNode] properties (empty name/description) onto the existing
      * Namespace node when the relationship is expressed via the @Relationship field.
      */
     @Query(
-        $$"""MATCH (c:IntegrationConfig {id: $configId})
+        $$"""
+            MATCH (c:IntegrationConfig {id: $configId})
             MATCH (ns:Namespace {id: $namespaceId})
             MERGE (c)-[:BELONGS_TO]->(ns)
             """,
     )
-    fun linkConfigToNamespace(configId: String, namespaceId: String)
+    fun linkConfigToNamespace(
+        configId: String,
+        namespaceId: String,
+    )
 }
