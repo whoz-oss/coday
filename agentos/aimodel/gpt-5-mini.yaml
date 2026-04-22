@@ -1,5 +1,7 @@
-alias: gpt-5-mini
-apiName: gpt-5-mini
+apiModelName: gpt-5-mini
 providerName: openai
+description: "the default model for testing: has tools, can think, costs not much."
+alias: default
+priority: 1
 temperature: 1.0
 maxTokens: 8000

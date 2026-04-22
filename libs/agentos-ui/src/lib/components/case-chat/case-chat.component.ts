@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http'
 import {
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -11,6 +12,7 @@ import {
   signal,
   ViewChild,
 } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import {
   CaseEvent,
@@ -52,9 +54,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute)
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
+  private readonly destroyRef = inject(DestroyRef)
 
   private readonly config = inject(Configuration)
-  private readonly caseId = this.route.snapshot.params['caseId'] as string
+
+  // Read from snapshot initially; updated reactively in ngOnInit via route.params
+  private caseId = this.route.snapshot.params['caseId'] as string
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   /** Display name used for the streaming assistant bubble (before final MessageEvent arrives). */
@@ -176,6 +181,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.connectSse()
+
+    // Re-initialise when navigating between cases (same component instance reused by the router)
+    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const newCaseId = params['caseId'] as string
+      if (newCaseId && newCaseId !== this.caseId) {
+        this.caseId = newCaseId
+        this.reinitialise()
+      }
+    })
   }
 
   ngOnDestroy(): void {
@@ -337,10 +351,30 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Reset all state and reconnect SSE for a new caseId.
+   * Called when the router reuses this component instance for a different case.
+   */
+  private reinitialise(): void {
+    this.eventSource?.close()
+    this.eventSource = null
+    this.events.set([])
+    this.inputValue.set('')
+    this.isRunning.set(false)
+    this.isTerminal.set(false)
+    this.streamingText.set('')
+    this.collapsedTools.set(new Set())
+    this.connectSse()
+  }
+
   protected submit(): void {
     if (!this.canSend) return
     const content = this.inputValue().trim()
     this.inputValue.set('')
+    this.sendMessage(content)
+  }
+
+  private sendMessage(content: string): void {
     this.isRunning.set(true)
     this.streamingText.set('')
 
@@ -403,6 +437,4 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isToolCallExpanded(requestId: string): boolean {
     return this.collapsedTools().has(requestId)
   }
-
-  protected readonly _namespaceId = this.namespaceId
 }

@@ -1,0 +1,106 @@
+<app-sidenav>
+  <div class="task-control">
+    <!-- Header -->
+    <header class="tc-header">
+      <div class="tc-title-row">
+        <h1 class="tc-title">
+          <mat-icon class="title-icon">rocket_launch</mat-icon>
+          Task Control
+        </h1>
+        <button
+          mat-flat-button
+          class="new-task-btn"
+          (click)="createTask()"
+          [disabled]="isCreating()"
+          aria-label="Start a new task"
+        >
+          @if (isCreating()) {
+            <mat-spinner diameter="16"></mat-spinner>
+          } @else {
+            <mat-icon>add</mat-icon>
+          }
+          New Task
+        </button>
+      </div>
+
+      <!-- Filter chips -->
+      <nav class="tc-filters" role="tablist" aria-label="Filter tasks">
+        @for (filter of filters; track filter.key) {
+          <button
+            class="filter-chip"
+            [class.active]="activeFilter() === filter.key"
+            (click)="setFilter(filter.key)"
+            role="tab"
+            [attr.aria-selected]="activeFilter() === filter.key"
+          >
+            <mat-icon class="filter-icon">{{ filter.icon }}</mat-icon>
+            <span>{{ filter.label }}</span>
+            @if (filterCounts()[filter.key] > 0) {
+              <span class="filter-badge">{{ filterCounts()[filter.key] }}</span>
+            }
+          </button>
+        }
+      </nav>
+    </header>
+
+    <!-- Task grid -->
+    <main class="tc-grid-wrapper">
+      @if (isLoadingList()) {
+        <div class="tc-loading">
+          <mat-spinner diameter="40"></mat-spinner>
+          <p>Loading tasks&hellip;</p>
+        </div>
+      } @else if (filteredTasks().length === 0) {
+        <div class="tc-empty">
+          <mat-icon class="empty-icon">rocket_launch</mat-icon>
+          @if (activeFilter() === 'all') {
+            <p>No tasks yet. Start your first one!</p>
+            <button mat-flat-button class="new-task-btn" (click)="createTask()">
+              <mat-icon>add</mat-icon>
+              New Task
+            </button>
+          } @else {
+            <p>No tasks in this category.</p>
+          }
+        </div>
+      } @else if (activeFilter() === 'all') {
+        <!-- Grouped view by status -->
+        @for (group of taskGroups(); track group.status) {
+          <section class="tc-group">
+            <h2 class="tc-group-title">
+              <mat-icon class="group-icon">{{ group.icon }}</mat-icon>
+              {{ group.label }}
+              <span class="group-count">{{ group.tasks.length }}</span>
+            </h2>
+            <div class="tc-grid">
+              @for (task of group.tasks; track task.id) {
+                <app-task-card
+                  [task]="task"
+                  (stopRequested)="onStopRequested($event)"
+                  (deleteRequested)="onDeleteRequested($event)"
+                  (starToggled)="onStarToggled($event)"
+                  (markDoneRequested)="onMarkDoneRequested($event)"
+                  (markActiveRequested)="onMarkActiveRequested($event)"
+                />
+              }
+            </div>
+          </section>
+        }
+      } @else {
+        <!-- Filtered flat view -->
+        <div class="tc-grid">
+          @for (task of filteredTasks(); track task.id) {
+            <app-task-card
+              [task]="task"
+              (stopRequested)="onStopRequested($event)"
+              (deleteRequested)="onDeleteRequested($event)"
+              (starToggled)="onStarToggled($event)"
+              (markDoneRequested)="onMarkDoneRequested($event)"
+              (markActiveRequested)="onMarkActiveRequested($event)"
+            />
+          }
+        </div>
+      }
+    </main>
+  </div>
+</app-sidenav>

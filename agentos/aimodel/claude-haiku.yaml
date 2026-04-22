@@ -1,5 +1,7 @@
-alias: claude-haiku
-apiName: claude-haiku-4-5
+apiModelName: claude-haiku-4-5
 providerName: anthropic
+description: "another small model, fast and with tools."
+alias: default
+priority: 0
 temperature: 0.5
 maxTokens: 4000

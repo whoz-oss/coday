@@ -1,0 +1,110 @@
+<article
+  class="task-card"
+  [class]="'status-' + task().status"
+  [class.is-active]="task().isActive"
+  (click)="navigate()"
+  role="button"
+  tabindex="0"
+  (keydown.enter)="navigate()"
+  (keydown.space)="navigate(); $event.preventDefault()"
+  [attr.aria-label]="'Open task: ' + task().name"
+>
+  <!-- Status badge -->
+  <div class="status-badge">
+    <mat-icon class="status-icon">{{ statusIcon() }}</mat-icon>
+    <span class="status-label">{{ statusLabel() }}</span>
+    @if (task().status === 'waiting-you') {
+      <span class="pulse-ring" aria-hidden="true"></span>
+    }
+  </div>
+
+  <!-- Project label (global view only) -->
+  @if (showProject() && projectName()) {
+    <div class="task-project">
+      <mat-icon class="project-icon">folder</mat-icon>
+      <span>{{ projectName() }}</span>
+    </div>
+  }
+
+  <!-- Task name -->
+  <h3 class="task-name">
+    {{ task().name || 'Unnamed task' }}
+  </h3>
+
+  <!-- Summary -->
+  @if (task().summary) {
+    <p class="task-summary">{{ task().summary }}</p>
+  } @else {
+    <p class="task-summary empty">No summary yet</p>
+  }
+
+  <!-- Footer: time + actions -->
+  <footer class="task-footer">
+    <span class="task-time">{{ formatRelativeTime(task().modifiedDate) }}</span>
+
+    <div class="task-actions">
+      @if (task().status === 'in-progress') {
+        <button
+          mat-icon-button
+          class="action-btn stop-btn"
+          (click)="onStop($event)"
+          matTooltip="Stop agent"
+          aria-label="Stop agent"
+        >
+          <mat-icon>stop_circle</mat-icon>
+        </button>
+      }
+      @if (task().status !== 'done') {
+        <button
+          mat-icon-button
+          class="action-btn mark-done-btn"
+          (click)="onMarkDone($event)"
+          matTooltip="Mark as done"
+          aria-label="Mark as done"
+        >
+          <mat-icon>check_circle_outline</mat-icon>
+        </button>
+      } @else {
+        <button
+          mat-icon-button
+          class="action-btn mark-active-btn"
+          (click)="onMarkActive($event)"
+          matTooltip="Mark as active"
+          aria-label="Mark as active"
+        >
+          <mat-icon>replay</mat-icon>
+        </button>
+      }
+      <button
+        mat-icon-button
+        class="action-btn star-btn"
+        [class.starred]="task().starring.length > 0"
+        (click)="onStarToggle($event)"
+        [matTooltip]="task().starring.length > 0 ? 'Unstar' : 'Star'"
+        [attr.aria-label]="task().starring.length > 0 ? 'Unstar task' : 'Star task'"
+      >
+        <mat-icon>{{ task().starring.length > 0 ? 'star' : 'star_border' }}</mat-icon>
+      </button>
+      @if (isWorktree()) {
+        <button
+          mat-icon-button
+          class="action-btn close-task-btn"
+          (click)="onCloseTask($event)"
+          matTooltip="Close task (removes worktree)"
+          aria-label="Close task"
+        >
+          <mat-icon>close_fullscreen</mat-icon>
+        </button>
+      }
+      <button
+        mat-icon-button
+        class="action-btn delete-btn"
+        (click)="onDelete($event)"
+        matTooltip="Delete task"
+        aria-label="Delete task"
+      >
+        <mat-icon>delete_outline</mat-icon>
+      </button>
+    </div>
+  </footer>
+</article>

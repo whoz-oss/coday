@@ -371,6 +371,16 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Navigate to the Task Control view
+   */
+  openMissionControl(): void {
+    const projectName = this.selectedProjectName()
+    if (!projectName) return
+    void this.router.navigate(['project', projectName, 'tasks'])
+    this.close()
+  }
+
+  /**
    * Create a new thread - Navigate to welcome view
    */
   createNewThread(): void {

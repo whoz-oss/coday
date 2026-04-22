@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Primary
 import org.springframework.context.annotation.Profile
 
 /**
- * Test-only Spring configuration that replaces [EmbeddedNeo4jConfiguration] for
+ * Test-only Spring configuration that replaces [io.whozoss.agentos.config.EmbeddedNeo4jConfiguration] for
  * the `embedded-neo4j` profile in tests.
  *
  * Uses the Neo4j test harness ([org.neo4j.harness.Neo4j]) instead of the full
@@ -32,7 +32,8 @@ class EmbeddedNeo4jTestConfiguration {
     @Bean(destroyMethod = "close")
     fun neo4jHarness(): Neo4j {
         logger.info { "[EmbeddedNeo4j-Test] Starting Neo4j harness" }
-        return Neo4jBuilders.newInProcessBuilder()
+        return Neo4jBuilders
+            .newInProcessBuilder()
             .withDisabledServer() // no HTTP server — Bolt only; remove this line temporarily to enable Neo4j Browser for debugging
             .build()
             .also { logger.info { "[EmbeddedNeo4j-Test] Harness Bolt URI: ${it.boltURI()}" } }

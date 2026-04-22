@@ -1,0 +1,52 @@
+:host {
+  // The host element must participate in flex layout and fill available height
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ds-drawer {
+  // Fill whatever space the host gives us
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+
+  // Remove the default mat-sidenav-container background so the host theme shows through
+  --mat-sidenav-container-background-color: transparent;
+  --mat-sidenav-container-divider-color: var(--color-border, rgba(0, 0, 0, 0.1));
+  // In overlay mode, Material adds a scrim over the content — keep it subtle
+  --mat-sidenav-scrim-color: rgba(0, 0, 0, 0.2);
+
+  // mat-sidenav-container sets its own height via inline styles — override to fill parent
+  &.mat-drawer-container {
+    flex: 1;
+    min-height: 0;
+  }
+
+  &__sidenav {
+    background: var(--glass-bg, rgba(255, 255, 255, 0.92));
+    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+    -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+    border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    box-shadow: none;
+    // Remove Material's default border-radius on the sidenav panel
+    --mat-sidenav-container-shape: 0;
+    border-radius: 0;
+
+    // In overlay mode the sidenav floats above content — semi-transparent glass would
+    // pick up the scrim colour behind it and appear grey. Force a solid background instead.
+    &--overlay {
+      background: var(--color-bg, #ffffff);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+}

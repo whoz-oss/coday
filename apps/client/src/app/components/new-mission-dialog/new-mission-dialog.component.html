@@ -1,0 +1,145 @@
+<h2 mat-dialog-title>
+  <mat-icon>rocket_launch</mat-icon>
+  New Mission
+</h2>
+
+<mat-dialog-content class="nmd-content">
+  <!-- Project -->
+  <mat-form-field appearance="outline" class="nmd-field">
+    <mat-label>Project</mat-label>
+    <input
+      matInput
+      #projectTrigger="matAutocompleteTrigger"
+      [value]="projectSearch()"
+      (input)="onProjectSearchInput($any($event.target).value)"
+      (focus)="openPanel(projectTrigger)"
+      [matAutocomplete]="projectAuto"
+      placeholder="Search project..."
+    />
+    <mat-autocomplete #projectAuto (optionSelected)="selectProject($event.option.value)">
+      @for (p of filteredProjects(); track p) {
+        <mat-option [value]="p">{{ p }}</mat-option>
+      }
+    </mat-autocomplete>
+  </mat-form-field>
+
+  <!-- Agent -->
+  <mat-form-field appearance="outline" class="nmd-field">
+    <mat-label>Agent</mat-label>
+    <input
+      matInput
+      #agentTrigger="matAutocompleteTrigger"
+      [value]="agentSearch()"
+      (input)="onAgentSearchInput($any($event.target).value)"
+      (focus)="openPanel(agentTrigger)"
+      [matAutocomplete]="agentAuto"
+      [disabled]="!selectedProject() || isLoadingAgents()"
+      placeholder="Search agent..."
+    />
+    @if (isLoadingAgents()) {
+      <mat-spinner matSuffix diameter="16" />
+    }
+    <mat-autocomplete #agentAuto (optionSelected)="selectAgent($event.option.value)">
+      @for (agent of filteredAgents(); track agent.name) {
+        <mat-option [value]="agent.name">
+          <span class="nmd-agent-name">{{ agent.name }}</span>
+          @if (agent.description) {
+            <span class="nmd-agent-desc">{{ agent.description }}</span>
+          }
+        </mat-option>
+      }
+    </mat-autocomplete>
+  </mat-form-field>
+
+  <!-- Mode -->
+  <div class="nmd-radio-group">
+    <button type="button" class="nmd-mode-btn" [class.active]="mode() === 'local'" (click)="onModeChange('local')">
+      <mat-icon>folder_open</mat-icon>
+      <span class="nmd-radio-label">Local</span>
+      <span class="nmd-radio-hint">Work directly on the current branch</span>
+    </button>
+    <button
+      type="button"
+      class="nmd-mode-btn"
+      [class.active]="mode() === 'worktree'"
+      (click)="onModeChange('worktree')"
+    >
+      <mat-icon>account_tree</mat-icon>
+      <span class="nmd-radio-label">Worktree</span>
+      <span class="nmd-radio-hint">Create an isolated worktree from a branch</span>
+    </button>
+  </div>
+
+  <!-- Issue number + branch type (worktree only) -->
+  @if (isWorktree()) {
+    <div class="nmd-row">
+      <mat-form-field appearance="outline" class="nmd-field">
+        <mat-label>Jira ticket</mat-label>
+        <input
+          matInput
+          type="text"
+          [value]="issueNumber()"
+          (input)="issueNumber.set($any($event.target).value)"
+          placeholder="WZ-585"
+        />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="nmd-field nmd-field--small">
+        <mat-label>Type</mat-label>
+        <mat-select [value]="branchType()" (selectionChange)="branchType.set($event.value)">
+          @for (t of branchTypes; track t) {
+            <mat-option [value]="t">{{ t }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+  }
+
+  <!-- Branch (worktree only) -->
+  @if (isWorktree()) {
+    <mat-form-field appearance="outline" class="nmd-field">
+      <mat-label>Branch</mat-label>
+      <input
+        matInput
+        #branchTrigger="matAutocompleteTrigger"
+        [value]="branchSearch()"
+        (input)="onBranchSearchInput($any($event.target).value)"
+        (focus)="openPanel(branchTrigger)"
+        [matAutocomplete]="branchAuto"
+        [disabled]="isLoadingBranches()"
+        placeholder="Search branch..."
+      />
+      @if (isLoadingBranches()) {
+        <mat-spinner matSuffix diameter="16" />
+      }
+      <mat-autocomplete #branchAuto (optionSelected)="selectBranch($event.option.value)">
+        @for (branch of filteredBranches(); track branch) {
+          <mat-option [value]="branch">{{ branch }}</mat-option>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+  }
+
+  <!-- Task -->
+  <mat-form-field appearance="outline" class="nmd-field">
+    <mat-label>Mission</mat-label>
+    <textarea
+      matInput
+      [value]="task()"
+      (input)="task.set($any($event.target).value)"
+      placeholder="Describe what the agent should accomplish..."
+      rows="4"
+    ></textarea>
+  </mat-form-field>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()" [disabled]="isSubmitting()">Cancel</button>
+  <button mat-flat-button (click)="submit()" [disabled]="!isValid() || isSubmitting()" class="nmd-launch-btn">
+    @if (isSubmitting()) {
+      <mat-spinner diameter="16" />
+    } @else {
+      <mat-icon>rocket_launch</mat-icon>
+    }
+    Launch
+  </button>
+</mat-dialog-actions>
