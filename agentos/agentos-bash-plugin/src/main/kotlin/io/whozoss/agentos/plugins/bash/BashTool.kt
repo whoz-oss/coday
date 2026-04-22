@@ -24,27 +24,29 @@ class BashTool(
     private val integrationConfig: BashIntegrationConfig,
     configName: String? = null,
 ) : StandardTool<BashTool.Input> {
-
     private val isParameterised: Boolean = toolConfig.command.contains(PARAMETERS_PLACEHOLDER)
 
     override val name: String = if (configName != null) "${configName}__${toolConfig.name}" else toolConfig.name
 
-    override val description: String = buildString {
-        append(toolConfig.description)
-        if (isParameterised) {
-            append("\n\nParameters: ")
-            append(toolConfig.parametersDescription)
+    override val description: String =
+        buildString {
+            append(toolConfig.description)
+            if (isParameterised) {
+                append("\n\nParameters: ")
+                append(toolConfig.parametersDescription)
+            }
         }
-    }
 
     override val version: String = "1.0.0"
 
     override val paramType: Class<Input> = Input::class.java
 
-    override val inputSchema: String = when {
-        isParameterised -> """
+    override val inputSchema: String =
+        when {
+            isParameterised ->
+                $$"""
             {
-                "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
                     "parameters": {
@@ -55,16 +57,17 @@ class BashTool(
                 "required": ["parameters"],
                 "additionalProperties": false
             }
-        """.trimIndent()
-        else -> """
+                """.trimIndent()
+            else ->
+                $$"""
             {
-                "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {},
                 "additionalProperties": false
             }
-        """.trimIndent()
-    }
+                """.trimIndent()
+        }
 
     data class Input(
         val parameters: String? = null,
@@ -75,8 +78,9 @@ class BashTool(
     }
 
     override fun execute(input: Input?): String {
-        val resolvedCommand = resolveCommand(input)
-            ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"
+        val resolvedCommand =
+            resolveCommand(input)
+                ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"
 
         val workDir = resolveWorkingDirectory()
         val timeout = toolConfig.timeoutSeconds ?: integrationConfig.defaultTimeoutSeconds
@@ -94,11 +98,15 @@ class BashTool(
      * Returns the final command string with [PARAMETERS_PLACEHOLDER] substituted,
      * or null if the tool is parameterised but no valid parameters value was supplied.
      */
-    private fun resolveCommand(input: Input?): String? = when {
-        !isParameterised -> toolConfig.command
-        else -> input?.parameters?.takeIf { it.isNotBlank() }
-            ?.let { toolConfig.command.replace(PARAMETERS_PLACEHOLDER, it) }
-    }
+    private fun resolveCommand(input: Input?): String? =
+        when {
+            !isParameterised -> toolConfig.command
+            else ->
+                input
+                    ?.parameters
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { toolConfig.command.replace(PARAMETERS_PLACEHOLDER, it) }
+        }
 
     private fun resolveWorkingDirectory(): File {
         val base = File(integrationConfig.workingDirectory)
@@ -108,21 +116,22 @@ class BashTool(
         }
     }
 
-    private fun formatCompleted(result: BashExecutionResult.Completed): String = buildString {
-        if (result.stdout.isNotBlank()) {
-            append(result.stdout)
+    private fun formatCompleted(result: BashExecutionResult.Completed): String =
+        buildString {
+            if (result.stdout.isNotBlank()) {
+                append(result.stdout)
+            }
+            if (result.stderr.isNotBlank()) {
+                if (isNotEmpty()) append("\n\n")
+                append("Stderr:\n")
+                append(result.stderr)
+            }
+            if (result.exitCode != 0) {
+                if (isNotEmpty()) append("\n\n")
+                append("Exit code: ${result.exitCode}")
+            }
+            if (isEmpty()) {
+                append("(no output)")
+            }
         }
-        if (result.stderr.isNotBlank()) {
-            if (isNotEmpty()) append("\n\n")
-            append("Stderr:\n")
-            append(result.stderr)
-        }
-        if (result.exitCode != 0) {
-            if (isNotEmpty()) append("\n\n")
-            append("Exit code: ${result.exitCode}")
-        }
-        if (isEmpty()) {
-            append("(no output)")
-        }
-    }
 }
