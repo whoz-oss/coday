@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "whoz-oss.agentos"
-version = System.getenv("SDK_VERSION") ?: libs.versions.agentosSdk.get()
+version = libs.versions.agentosSdk.get()
 description = "AgentOS SDK - Plugin interfaces and extension points"
 
 java {

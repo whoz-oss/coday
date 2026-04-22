@@ -2,8 +2,9 @@ import { releaseChangelog, releasePublish, releaseVersion } from 'nx/release'
 import { readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { join } from 'path'
+import { updateTomlVersion } from './utils/update-toml-version'
 
-;(async () => {
+async function main(): Promise<void> {
   // Step 1: Determine new version and update package.json files
   const { workspaceVersion, projectsVersionData, releaseGraph } = await releaseVersion({
     dryRun: false,
@@ -23,7 +24,7 @@ import { join } from 'path'
   const tomlRelativePath = 'agentos/gradle/libs.versions.toml'
   const tomlPath = join(__dirname, '..', tomlRelativePath)
   const tomlContent = readFileSync(tomlPath, 'utf-8')
-  const updatedToml = tomlContent.replace(/^(agentosSdk\s*=\s*").*(")$/m, `$1${workspaceVersion}$2`)
+  const updatedToml = updateTomlVersion(tomlContent, 'agentosSdk', workspaceVersion)
   writeFileSync(tomlPath, updatedToml, 'utf-8')
   console.log(`Updated libs.versions.toml agentosSdk to ${workspaceVersion}`)
 
@@ -49,4 +50,6 @@ import { join } from 'path'
   })
 
   process.exit(Object.values(publishResults).every((result) => result.code === 0) ? 0 : 1)
-})()
+}
+
+void main()

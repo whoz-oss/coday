@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "module": "CommonJS",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["jest", "node"]
+  },
+  "exclude": ["node_modules"],
+  "include": ["**/*.ts"]
+}

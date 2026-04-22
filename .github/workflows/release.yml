@@ -274,5 +274,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          SDK_VERSION: ${{ needs.release.outputs.new_version }}
         run: pnpm nx publish agentos-sdk
