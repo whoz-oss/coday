@@ -13,7 +13,7 @@ import java.util.UUID
  * primary scope for this ticket. [findByUserId] will be the primary path once
  * user-scoped configs are introduced (WZ-31210).
  */
-open class Neo4JAiProviderRepository(
+open class Neo4jAiProviderRepository(
     private val neo4jRepository: AiProviderNodeNeo4jRepository,
 ) : AiProviderRepository {
     override fun save(entity: AiProvider): AiProvider =

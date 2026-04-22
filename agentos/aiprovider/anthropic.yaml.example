@@ -1,6 +1,5 @@
 name: anthropic
 apiType: Anthropic
+description: "The official Anthropic API"
 baseUrl: "https://api.anthropic.com"
-defaultApiKey: "****"
-temperature: 0.8
-maxTokens: 4000
+apiKey: "****"

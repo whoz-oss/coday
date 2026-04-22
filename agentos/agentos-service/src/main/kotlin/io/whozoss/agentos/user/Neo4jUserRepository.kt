@@ -1,7 +1,5 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.user
 
-import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserRepository.Companion.USER_PARENT_KEY
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull

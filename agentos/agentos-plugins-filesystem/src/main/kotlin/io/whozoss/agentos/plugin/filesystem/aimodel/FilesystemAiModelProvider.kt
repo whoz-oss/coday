@@ -86,7 +86,7 @@ class FilesystemAiModelProvider : AiModelPlugin {
         return AiModel(
             metadata = EntityMetadata(),
             aiProviderId = FilesystemAIProviderProvider.deterministicId(yaml.providerName),
-            apiModelName = yaml.apiName,
+            apiModelName = yaml.apiModelName,
             description = yaml.description,
             alias = yaml.alias,
             priority = yaml.priority,

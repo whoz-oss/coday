@@ -1,4 +1,4 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.caseFlow
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
@@ -27,7 +27,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * Creates the `BELONGS_TO` relationship from a Case node to its Namespace node.
      *
      * Called after saving a Case. Using an explicit query avoids SDN writing
-     * stub [NamespaceNode] properties (empty name/description) onto the existing
+     * stub [io.whozoss.agentos.namespace.NamespaceNode] properties (empty name/description) onto the existing
      * Namespace node when the relationship is expressed via the @Relationship field.
      */
     @Query(

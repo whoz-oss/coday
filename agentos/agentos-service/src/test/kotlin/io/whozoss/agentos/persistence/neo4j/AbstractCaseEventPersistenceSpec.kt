@@ -33,7 +33,7 @@ import java.util.UUID
  * and inherit all test cases, ensuring both modes satisfy the same contract.
  *
  * A [Case] node must exist before events are saved because
- * [CaseEventNodeNeo4jRepository.linkEventToCase] does a MATCH on the Case node
+ * [io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository.linkEventToCase] does a MATCH on the Case node
  * to create the BELONGS_TO edge. [caseRepo] and [namespaceRepo] are used to
  * pre-create the required parent nodes.
  */
@@ -54,8 +54,7 @@ abstract class AbstractCaseEventPersistenceSpec : StringSpec() {
 
     fun namespace() = Namespace(metadata = EntityMetadata(), name = "test-ns")
 
-    fun case(namespaceId: UUID) =
-        Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.PENDING)
+    fun case(namespaceId: UUID) = Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.PENDING)
 
     fun msgEvent(
         caseId: UUID,

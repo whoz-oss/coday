@@ -1,3 +1,48 @@
+## 0.125.2 (2026-04-22)
+
+### 🩹 Fixes
+
+- #0789 replace GqlParams.StringParam.alias with plain $alias in Cypher query ([#790](https://github.com/whoz-oss/coday/pull/790), [#0789](https://github.com/whoz-oss/coday/issues/0789))
+- #792 case list does not scroll in its drawer ([#793](https://github.com/whoz-oss/coday/pull/793), [#792](https://github.com/whoz-oss/coday/issues/792))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.125.1 (2026-04-22)
+
+### 🩹 Fixes
+
+- #788 case-chat vertical scroll with magnetic auto-scroll and floating button ([#791](https://github.com/whoz-oss/coday/pull/791), [#788](https://github.com/whoz-oss/coday/issues/788))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.125.0 (2026-04-21)
+
+### 🚀 Features
+
+- #781 OAuth discovery support for HTTP integrations (RFC 8414 / OIDC) ([#783](https://github.com/whoz-oss/coday/pull/783), [#781](https://github.com/whoz-oss/coday/issues/781))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.124.2 (2026-04-21)
+
+### 🩹 Fixes
+
+- extend thread retention to 30d/90d and fix cleanup bugs ([#784](https://github.com/whoz-oss/coday/pull/784))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.124.1 (2026-04-21)
 
 ### 🩹 Fixes

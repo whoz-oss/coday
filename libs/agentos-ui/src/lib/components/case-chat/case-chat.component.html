@@ -1,5 +1,5 @@
 <div class="case-chat">
-  <div class="case-chat__messages">
+  <div #messagesContainer class="case-chat__messages">
     @if (timeline().length === 0) {
       <div class="case-chat__empty">
         <p>No messages yet.</p>
@@ -84,6 +84,18 @@
       </div>
     }
   </div>
+
+  <!-- Floating scroll-to-bottom button — visible when not at the bottom -->
+  @if (!isAtBottom()) {
+    <div class="case-chat__scroll-anchor">
+      <ds-icon-button
+        icon="keyboard_arrow_down"
+        variant="default"
+        title="Scroll to bottom"
+        (action)="onScrollToBottomClick()"
+      />
+    </div>
+  }
 
   <div class="case-chat__composer">
     <textarea

@@ -1,6 +1,5 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.config
 
-import io.whozoss.agentos.config.PersistenceConfigProperties
 import mu.KLogging
 import org.neo4j.configuration.GraphDatabaseSettings
 import org.neo4j.configuration.connectors.BoltConnector
@@ -24,14 +23,14 @@ import javax.annotation.PreDestroy
 
 /**
  * Starts an embedded Neo4j Community Edition instance and registers a
- * [Driver] bean pointing at it over Bolt (loopback, random port).
+ * [org.neo4j.driver.Driver] bean pointing at it over Bolt (loopback, random port).
  *
  * Active only when `agentos.persistence.mode=embedded-neo4j`.
  *
  * ## Why this works with Spring Data Neo4j
- * SDN connects exclusively through the Bolt protocol via the [Driver] bean.
+ * SDN connects exclusively through the Bolt protocol via the [org.neo4j.driver.Driver] bean.
  * By starting the embedded engine with Bolt enabled on a loopback socket and
- * registering the resulting [Driver] as a Spring bean, SDN is unaware that it
+ * registering the resulting [org.neo4j.driver.Driver] as a Spring bean, SDN is unaware that it
  * is talking to an in-process engine rather than a standalone server.
  * All repository operations, transactions, and Cypher queries work identically.
  *
@@ -48,7 +47,7 @@ import javax.annotation.PreDestroy
  * the JVM working directory.
  *
  * ## Lifecycle
- * The [DatabaseManagementService] is shut down gracefully via [stopEmbeddedNeo4j],
+ * The [org.neo4j.dbms.api.DatabaseManagementService] is shut down gracefully via [stopEmbeddedNeo4j],
  * which is registered as a [jakarta.annotation.PreDestroy] callback.
  *
  * ## Docker prerequisite
@@ -69,13 +68,13 @@ class EmbeddedNeo4jConfiguration(
     private var managementService: DatabaseManagementService? = null
 
     /**
-     * Starts the embedded Neo4j engine and returns a [Driver] connected to it
+     * Starts the embedded Neo4j engine and returns a [org.neo4j.driver.Driver] connected to it
      * over a loopback Bolt connection.
      *
      * The Bolt connector is bound to `localhost:0` so the OS assigns a free port,
      * avoiding conflicts with any existing Neo4j installation on the machine.
      *
-     * Spring Data Neo4j's auto-configuration detects this [Driver] bean and uses
+     * Spring Data Neo4j's auto-configuration detects this [org.neo4j.driver.Driver] bean and uses
      * it for all repository operations — no `spring.neo4j.uri` property needed.
      */
     @Bean(destroyMethod = "close")
@@ -93,15 +92,19 @@ class EmbeddedNeo4jConfiguration(
             DatabaseManagementServiceBuilder(dbDir)
                 .setConfig(BoltConnector.enabled, true)
                 .setConfig(BoltConnector.listen_address, SocketAddress(props.embeddedBoltHost, props.embeddedBoltPort))
-                .setConfig(BoltConnector.advertised_address, SocketAddress(props.embeddedBoltHost, props.embeddedBoltPort))
-                .setConfig(GraphDatabaseSettings.transaction_timeout, Duration.ofSeconds(props.embeddedTransactionTimeoutSeconds))
+                .setConfig(
+                    BoltConnector.advertised_address,
+                    SocketAddress(props.embeddedBoltHost, props.embeddedBoltPort),
+                ).setConfig(GraphDatabaseSettings.transaction_timeout, Duration.ofSeconds(props.embeddedTransactionTimeoutSeconds))
                 .build()
 
         managementService = service
-        Runtime.getRuntime().addShutdownHook(Thread {
-            logger.info { "[EmbeddedNeo4j] JVM shutdown hook triggered" }
-            service.shutdown()
-        })
+        Runtime.getRuntime().addShutdownHook(
+            Thread {
+                logger.info { "[EmbeddedNeo4j] JVM shutdown hook triggered" }
+                service.shutdown()
+            },
+        )
 
         val boltPort = resolveBoltPort(service)
         val boltUri = "bolt://${props.embeddedBoltHost}:$boltPort"
@@ -124,7 +127,7 @@ class EmbeddedNeo4jConfiguration(
 
     /**
      * Resolves the actual Bolt port assigned by the OS after the embedded
-     * instance starts, using the public [ConnectorPortRegister] API.
+     * instance starts, using the public [org.neo4j.configuration.connectors.ConnectorPortRegister] API.
      */
     private fun resolveBoltPort(service: DatabaseManagementService): Int {
         val graphDb = service.database(GraphDatabaseSettings.DEFAULT_DATABASE_NAME)

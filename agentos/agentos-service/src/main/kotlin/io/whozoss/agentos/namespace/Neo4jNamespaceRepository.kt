@@ -1,7 +1,5 @@
-package io.whozoss.agentos.persistence.neo4j
+package io.whozoss.agentos.namespace
 
-import io.whozoss.agentos.namespace.Namespace
-import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository.Companion.NAMESPACE_PARENT_KEY
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull

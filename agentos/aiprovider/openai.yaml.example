@@ -1,5 +1,5 @@
 name: openai
 apiType: OpenAI
 baseUrl: "https://api.openai.com"
-defaultApiKey: "****"
-temperature: 0.8
+apiKey: "****"
+

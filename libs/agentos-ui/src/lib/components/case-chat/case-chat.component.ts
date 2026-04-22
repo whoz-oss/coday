@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http'
 import {
+  afterNextRender,
   Component,
   computed,
   DestroyRef,
@@ -36,12 +37,22 @@ export type TimelineItem =
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming'; text: string }
 
+/** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
+const SCROLL_BOTTOM_THRESHOLD = 64
+
 /**
  * CaseChatComponent — real-time chat view for an active case.
  *
  * Connexion SSE directe sur /api/agentos/api/cases/:caseId/events.
  * Accumule tous les CaseEvent reçus, affiche les MessageEvent
  * et les ToolRequestEvent/ToolResponseEvent intercalés chronologiquement.
+ *
+ * Scroll behaviour:
+ * - The messages area fills available height and scrolls independently.
+ * - The composer (input + actions) is always visible at the bottom.
+ * - "Magnetic" auto-scroll: while the user is at the bottom, new content
+ *   automatically scrolls the view down. Scrolling up breaks the magnet.
+ * - A floating "scroll to bottom" button appears when not at the bottom.
  */
 @Component({
   selector: 'agentos-case-chat',
@@ -87,6 +98,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private eventSource: EventSource | null = null
 
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
+  @ViewChild('messagesContainer') private messagesContainer?: ElementRef<HTMLDivElement>
 
   protected readonly events = signal<CaseEvent[]>([])
   protected inputValue = signal('')
@@ -99,12 +111,39 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
 
+  /**
+   * Whether the user is currently scrolled to (or near) the bottom of the messages area.
+   * When true, new content triggers automatic scroll-to-bottom (magnetic behaviour).
+   * Flips to false as soon as the user scrolls up past the threshold.
+   */
+  protected readonly isAtBottom = signal(true)
+
+  /** Listener cleanup function registered on the messages container. */
+  private scrollListenerCleanup: (() => void) | null = null
+
   constructor() {
     // Restore focus to the composer whenever we return to an interactive state.
-    // (Agent turn finished → AgentFinishedEvent, or status becomes IDLE.)
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
       queueMicrotask(() => this.composerInput?.nativeElement.focus())
+    })
+
+    // Auto-scroll to bottom whenever the timeline or streaming text changes,
+    // but only when the user is already at the bottom (magnetic behaviour).
+    effect(() => {
+      // Depend on timeline and streamingText so the effect re-runs on content changes.
+      this.timeline()
+      this.streamingText()
+
+      if (this.isAtBottom()) {
+        // Defer to next microtask so the DOM has updated before we measure.
+        queueMicrotask(() => this.scrollToBottom())
+      }
+    })
+
+    // Register scroll listener after the first render so the ViewChild is available.
+    afterNextRender(() => {
+      this.attachScrollListener()
     })
   }
 
@@ -194,7 +233,48 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.eventSource?.close()
+    this.scrollListenerCleanup?.()
   }
+
+  // ---------------------------------------------------------------------------
+  // Scroll management
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Attach a scroll listener to the messages container.
+   * Updates `isAtBottom` as the user scrolls.
+   * Called once after the first render.
+   */
+  private attachScrollListener(): void {
+    const el = this.messagesContainer?.nativeElement
+    if (!el) return
+
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      this.isAtBottom.set(distanceFromBottom <= SCROLL_BOTTOM_THRESHOLD)
+    }
+
+    el.addEventListener('scroll', onScroll, { passive: true })
+    this.scrollListenerCleanup = () => el.removeEventListener('scroll', onScroll)
+  }
+
+  /** Programmatically scroll the messages container to the very bottom. */
+  protected scrollToBottom(): void {
+    const el = this.messagesContainer?.nativeElement
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }
+
+  /**
+   * Called by the floating "scroll to bottom" button.
+   * Re-enables the magnetic behaviour and scrolls down.
+   */
+  protected onScrollToBottomClick(): void {
+    this.isAtBottom.set(true)
+    this.scrollToBottom()
+  }
+
+  // ---------------------------------------------------------------------------
 
   private connectSse(): void {
     const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
@@ -364,6 +444,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.isTerminal.set(false)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
+    this.isAtBottom.set(true)
     this.connectSse()
   }
 

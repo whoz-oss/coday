@@ -270,7 +270,7 @@ export class HttpConfigTools extends AssistantToolFactory {
       function: {
         name: `${this.name}__upsert_http_integration`,
         description:
-          'Create or update an HTTP integration at project level. Only non-sensitive fields are accepted: baseUrl, oauth2 public fields (client_id, redirect_uri, authorization_endpoint, token_endpoint, scope). Sensitive fields (client_secret, tokens, apiKey) are silently ignored. Existing endpoints are always preserved.',
+          'Create or update an HTTP integration at project level. Only non-sensitive fields are accepted: baseUrl, oauth2 public fields (client_id, redirect_uri, authorization_endpoint, token_endpoint, issuer, discovery_url, scope). Sensitive fields (client_secret, tokens, apiKey) are silently ignored. Existing endpoints are always preserved.',
         parameters: {
           type: 'object',
           properties: {
@@ -287,6 +287,16 @@ export class HttpConfigTools extends AssistantToolFactory {
                 redirect_uri: { type: 'string' },
                 authorization_endpoint: { type: 'string' },
                 token_endpoint: { type: 'string' },
+                issuer: {
+                  type: 'string',
+                  description:
+                    'OAuth2/OIDC issuer URL for automatic endpoint discovery (RFC 8414 / OIDC). Alternative to providing authorization_endpoint + token_endpoint explicitly.',
+                },
+                discovery_url: {
+                  type: 'string',
+                  description:
+                    'Explicit discovery document URL when the discovery endpoint is non-standard (alternative to issuer).',
+                },
                 scope: { type: 'string', description: 'Space-separated scopes or array of scope strings' },
               },
             },
