@@ -1,3 +1,14 @@
+## 0.125.1 (2026-04-22)
+
+### 🩹 Fixes
+
+- #788 case-chat vertical scroll with magnetic auto-scroll and floating button ([#791](https://github.com/whoz-oss/coday/pull/791), [#788](https://github.com/whoz-oss/coday/issues/788))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.125.0 (2026-04-21)
 
 ### 🚀 Features
