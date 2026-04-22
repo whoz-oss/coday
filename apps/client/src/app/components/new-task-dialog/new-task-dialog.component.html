@@ -51,8 +51,8 @@
     </mat-autocomplete>
   </mat-form-field>
 
-  <!-- Worktree section: only shown if project has git integration -->
-  @if (hasGit()) {
+  <!-- Worktree section: only shown if project has git integration AND no forced project -->
+  @if (hasGit() && !forcedProject()) {
     <!-- Mode -->
     <div class="ntd-radio-group">
       <button type="button" class="ntd-mode-btn" [class.active]="mode() === 'local'" (click)="onModeChange('local')">
