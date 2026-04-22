@@ -45,27 +45,27 @@ class BashTool(
         when {
             isParameterised ->
                 $$"""
-            {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                    "parameters": {
-                        "type": "string",
-                        "description": ${objectMapper.writeValueAsString(toolConfig.parametersDescription)}
-                    }
-                },
-                "required": ["parameters"],
-                "additionalProperties": false
-            }
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                        "parameters": {
+                            "type": "string",
+                            "description": $${objectMapper.writeValueAsString(toolConfig.parametersDescription)}
+                        }
+                    },
+                    "required": ["parameters"],
+                    "additionalProperties": false
+                }
                 """.trimIndent()
             else ->
                 $$"""
-            {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-            }
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                }
                 """.trimIndent()
         }
 
