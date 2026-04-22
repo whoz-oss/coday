@@ -25,6 +25,8 @@ data class BashToolConfig(
 
 const val PARAMETERS_PLACEHOLDER = "PARAMETERS"
 
+const val DEFAULT_TIMEOUT_SECONDS = 30L
+
 /**
  * Top-level configuration for the BASH integration.
  *
@@ -35,6 +37,6 @@ const val PARAMETERS_PLACEHOLDER = "PARAMETERS"
  */
 data class BashIntegrationConfig(
     val workingDirectory: String,
-    val defaultTimeoutSeconds: Long = 30L,
+    val defaultTimeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
     val tools: List<BashToolConfig> = emptyList(),
 )

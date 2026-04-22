@@ -36,7 +36,7 @@ object BashConfigParser {
             require(timeout > 0) {
                 "BASH integration config: 'defaultTimeoutSeconds' must be positive, got $timeout"
             }
-        } ?: 30L
+        } ?: DEFAULT_TIMEOUT_SECONDS
 
         val toolsNode = config.get("tools")
         val tools = when {

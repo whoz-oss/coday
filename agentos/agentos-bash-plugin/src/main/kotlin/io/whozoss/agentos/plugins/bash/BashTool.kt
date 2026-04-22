@@ -25,10 +25,6 @@ class BashTool(
     configName: String? = null,
 ) : StandardTool<BashTool.Input> {
 
-    companion object : KLogging() {
-        private val objectMapper = jacksonObjectMapper()
-    }
-
     private val isParameterised: Boolean = toolConfig.command.contains(PARAMETERS_PLACEHOLDER)
 
     override val name: String = if (configName != null) "${configName}__${toolConfig.name}" else toolConfig.name
@@ -73,6 +69,10 @@ class BashTool(
     data class Input(
         val parameters: String? = null,
     )
+
+    companion object : KLogging() {
+        private val objectMapper = jacksonObjectMapper()
+    }
 
     override fun execute(input: Input?): String {
         val resolvedCommand = resolveCommand(input)
