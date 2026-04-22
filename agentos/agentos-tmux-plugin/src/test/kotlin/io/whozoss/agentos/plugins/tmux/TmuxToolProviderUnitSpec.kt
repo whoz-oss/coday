@@ -14,10 +14,11 @@ class TmuxToolProviderUnitSpec :
 
         // ── provideTools — config shapes ─────────────────────────────────────────────
 
-        "provideTools should return exactly one TmuxTool" {
+        "provideTools should return exactly two tools: TmuxTool and WaitTool" {
             val result = TmuxToolProvider().provideTools(null)
-            result shouldHaveSize 1
-            result.first().shouldBeInstanceOf<TmuxTool>()
+            result shouldHaveSize 2
+            result[0].shouldBeInstanceOf<TmuxTool>()
+            result[1].shouldBeInstanceOf<WaitTool>()
         }
 
         "provideTools with null config should produce tool with null workingDirectory" {
@@ -49,14 +50,24 @@ class TmuxToolProviderUnitSpec :
             tool.shouldBeInstanceOf<TmuxTool>()
         }
 
-        "provideTools with configName should prefix the tool name" {
+        "provideTools with configName should prefix TmuxTool name" {
             val tool = TmuxToolProvider().provideTools(null, configName = "DEVBOX").first()
             tool.name shouldBe "DEVBOX__Tmux"
         }
 
-        "provideTools with null configName should use the default tool name" {
+        "provideTools with configName should prefix WaitTool name" {
+            val tool = TmuxToolProvider().provideTools(null, configName = "DEVBOX")[1]
+            tool.name shouldBe "DEVBOX__Wait"
+        }
+
+        "provideTools with null configName should use default TmuxTool name" {
             val tool = TmuxToolProvider().provideTools(null, configName = null).first()
             tool.name shouldBe "Tmux"
+        }
+
+        "provideTools with null configName should use default WaitTool name" {
+            val tool = TmuxToolProvider().provideTools(null, configName = null)[1]
+            tool.name shouldBe "Wait"
         }
 
         // ── configSchema validation ───────────────────────────────────────────────────

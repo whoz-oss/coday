@@ -31,7 +31,7 @@ class TmuxToolUnitSpec :
 
         "inputSchema should list all valid action enum values" {
             val tool = TmuxTool()
-            listOf("list", "status", "start", "logs", "send", "stop").forEach { action ->
+            listOf("list", "status", "start", "stop", "new-window", "close-window", "send", "logs").forEach { action ->
                 tool.inputSchema shouldContain "\"$action\""
             }
         }

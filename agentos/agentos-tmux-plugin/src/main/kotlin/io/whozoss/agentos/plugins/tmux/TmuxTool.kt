@@ -39,17 +39,28 @@ class TmuxTool(
         Manage long-running processes in persistent tmux sessions.
         Sessions survive across agent interactions and can be inspected at any time.
 
-        Actions:
-        - list: show all active tmux sessions
-        - status <session>: check if a specific session is running ("running" or "stopped")
-        - start <session> <command>: launch a command in a named session (creates session if needed)
-        - logs <session>: read recent output from a session (last ~200 lines)
-        - send <session> <command>: send a command to an already running session
-        - stop <session>: kill a session and its processes
+        SESSION-LEVEL ACTIONS (operate on the whole session):
+        - list: show all active tmux sessions with their windows
+        - status <session>: check if a specific session exists ("running" or "stopped")
+        - start <session> <command>: create a new session and run a command in its first window
+        - stop <session>: kill an entire session and all its windows/processes
 
-        The optional 'window' parameter targets a specific window within a session (0-based index or name).
+        WINDOW-LEVEL ACTIONS (operate on a specific window within a session):
+        - new-window <session> <command>: create a new window in an existing session and run a command in it
+          Use the optional 'window' parameter to give the new window a name.
+        - close-window <session> <window>: close a specific window within a session (window param required)
+        - send <session> <command>: send a command to a running window (defaults to active window)
+        - logs <session>: read recent output from a window (defaults to active window, last ~200 lines)
+
+        The optional 'window' parameter targets a specific window within a session.
+        It accepts either a 0-based index ("0", "1", ...) or a window name.
         When omitted, the currently active window is used.
-        Use it when a session has multiple windows and you need to interact with a specific one.
+
+        TYPICAL WORKFLOW:
+          1. start "myapp" "./gradlew bootRun"   -> creates session with window 0
+          2. new-window "myapp" "./npm run dev"   -> adds window 1 to the same session
+          3. logs "myapp" window="1"              -> reads output of window 1
+          4. stop "myapp"                         -> kills the entire session
 
         Use clear, stable session names matching the application role, e.g. "backend", "frontend", "worker".
         New sessions always start from the configured working directory.
@@ -69,8 +80,8 @@ class TmuxTool(
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["list", "status", "start", "logs", "send", "stop"],
-                    "description": "The tmux action to perform."
+                    "enum": ["list", "status", "start", "stop", "new-window", "close-window", "send", "logs"],
+                    "description": "The tmux action to perform. Session-level: list, status, start, stop. Window-level: new-window, close-window, send, logs."
                 },
                 "session": {
                     "type": "string",
@@ -78,11 +89,11 @@ class TmuxTool(
                 },
                 "window": {
                     "type": "string",
-                    "description": "Optional window index (0-based) or window name within the session. When omitted, the currently active window is used. Relevant for logs, send, and start actions."
+                    "description": "Window index (0-based) or window name within the session. Required for close-window. Optional for send, logs, and new-window (used as the new window name when provided). When omitted, the currently active window is used."
                 },
                 "command": {
                     "type": "string",
-                    "description": "Command to run (required for start and send actions)."
+                    "description": "Command to run (required for start, new-window, and send actions)."
                 }
             },
             "additionalProperties": false
@@ -129,11 +140,62 @@ class TmuxTool(
                             }
                         // Ignore error: session may already exist
                         tool.runTmux(*newSessionArgs.toTypedArray())
-                        val target = tool.buildTarget(input.session, input.window)
-                        tool.runTmux("send-keys", "-t", target, input.command, "Enter")
+                        tool.runTmux("send-keys", "-t", "${input.session}:0", input.command, "Enter")
                             .fold(
-                                onSuccess = { tool.createSuccessResponse("Session '${input.session}' started") },
+                                onSuccess = { tool.createSuccessResponse("Session '${input.session}' started with window 0") },
                                 onFailure = { e -> tool.createErrorResponse("Failed to start session '${input.session}': ${e.message}") },
+                            )
+                    }
+                }
+        },
+        STOP {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when (val session = input.session) {
+                    null -> tool.createErrorResponse("session is required for action 'stop'")
+                    else -> tool.runTmux("kill-session", "-t", session)
+                        .fold(
+                            onSuccess = { tool.createSuccessResponse("Session '$session' killed") },
+                            onFailure = { tool.createErrorResponse("Session '$session' not found") },
+                        )
+                }
+        },
+        NEW_WINDOW {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when {
+                    input.session == null -> tool.createErrorResponse("session is required for action 'new-window'")
+                    input.command == null -> tool.createErrorResponse("command is required for action 'new-window'")
+                    else -> {
+                        val args = buildList {
+                            addAll(listOf("new-window", "-t", input.session))
+                            if (input.window != null) addAll(listOf("-n", input.window))
+                            if (tool.workingDirectory != null) addAll(listOf("-c", tool.workingDirectory))
+                        }
+                        val createResult = tool.runTmux(*args.toTypedArray())
+                        val windowDesc = if (input.window != null) "'${input.window}'" else "a new window"
+                        when {
+                            createResult.isFailure ->
+                                tool.createErrorResponse("Failed to create window in session '${input.session}': ${createResult.exceptionOrNull()?.message}")
+                            else ->
+                                tool.runTmux("send-keys", "-t", tool.buildTarget(input.session, input.window), input.command, "Enter")
+                                    .fold(
+                                        onSuccess = { tool.createSuccessResponse("Created $windowDesc in session '${input.session}'") },
+                                        onFailure = { e -> tool.createErrorResponse("Failed to create window in session '${input.session}': ${e.message}") },
+                                    )
+                        }
+                    }
+                }
+        },
+        CLOSE_WINDOW {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when {
+                    input.session == null -> tool.createErrorResponse("session is required for action 'close-window'")
+                    input.window == null -> tool.createErrorResponse("window is required for action 'close-window'")
+                    else -> {
+                        val target = tool.buildTarget(input.session, input.window)
+                        tool.runTmux("kill-window", "-t", target)
+                            .fold(
+                                onSuccess = { tool.createSuccessResponse("Window '${input.window}' in session '${input.session}' closed") },
+                                onFailure = { e -> tool.createErrorResponse("Failed to close window '${input.window}' in session '${input.session}': ${e.message}") },
                             )
                     }
                 }
@@ -166,24 +228,13 @@ class TmuxTool(
                             )
                     }
                 }
-        },
-        STOP {
-            override fun execute(input: Input, tool: TmuxTool): String =
-                when (val session = input.session) {
-                    null -> tool.createErrorResponse("session is required for action 'stop'")
-                    else -> tool.runTmux("kill-session", "-t", session)
-                        .fold(
-                            onSuccess = { tool.createSuccessResponse("Session '$session' killed") },
-                            onFailure = { tool.createErrorResponse("Session '$session' not found") },
-                        )
-                }
         };
 
         abstract fun execute(input: Input, tool: TmuxTool): String
 
         companion object {
             fun fromString(value: String): Action? =
-                entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                entries.firstOrNull { it.name.replace('_', '-').equals(value, ignoreCase = true) }
         }
     }
 

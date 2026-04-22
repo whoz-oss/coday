@@ -43,7 +43,10 @@ class TmuxToolProvider : ToolPlugin {
                 ?.get("workingDirectory")
                 ?.asText()
                 ?.takeIf { it.isNotBlank() }
-        return listOf(TmuxTool(workingDirectory = workingDirectory, configName = configName))
+        return listOf(
+            TmuxTool(workingDirectory = workingDirectory, configName = configName),
+            WaitTool(configName = configName),
+        )
     }
 
     companion object : KLogging() {
