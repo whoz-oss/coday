@@ -49,8 +49,8 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
      * Find the first non-removed model config under [aiProviderId] whose alias matches exactly.
      */
     @Query(
-        $$"""MATCH (m:AiModel)
-            WHERE m.aiProviderId = $aiProviderId AND m.alias = ${GqlParams.StringParam.alias}
+        $"""MATCH (m:AiModel)
+            WHERE m.aiProviderId = $aiProviderId AND m.alias = $alias
             AND (m.removed IS NULL OR m.removed = false)
             RETURN m LIMIT 1
             """,
