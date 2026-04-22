@@ -1,3 +1,15 @@
+## 0.125.2 (2026-04-22)
+
+### 🩹 Fixes
+
+- #0789 replace GqlParams.StringParam.alias with plain $alias in Cypher query ([#790](https://github.com/whoz-oss/coday/pull/790), [#0789](https://github.com/whoz-oss/coday/issues/0789))
+- #792 case list does not scroll in its drawer ([#793](https://github.com/whoz-oss/coday/pull/793), [#792](https://github.com/whoz-oss/coday/issues/792))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.125.1 (2026-04-22)
 
 ### 🩹 Fixes
