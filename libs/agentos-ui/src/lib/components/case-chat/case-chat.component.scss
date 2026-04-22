@@ -61,6 +61,9 @@
   }
 
   &__tool-call {
+    // flex-shrink: 0 prevents the flex container from compressing tool call cards
+    // to zero height when the messages area has min-height: 0.
+    flex-shrink: 0;
     border-radius: 8px;
     border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
     background: var(--glass-bg, rgba(255, 255, 255, 0.72));
@@ -174,7 +177,14 @@
   }
 
   // Thinking indicator (three bouncing dots)
+  // Messages and thinking indicator are also direct flex items of __messages:
+  // flex-shrink: 0 prevents them from being crushed in the scroll container.
+  &__message {
+    flex-shrink: 0;
+  }
+
   &__thinking {
+    flex-shrink: 0;
     display: flex;
     gap: 0.3rem;
     padding: 0.75rem 1rem;
