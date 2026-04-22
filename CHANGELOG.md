@@ -1,3 +1,15 @@
+## 0.125.3 (2026-04-22)
+
+### 🩹 Fixes
+
+- #794 allow home navigation and hide worktree for forced projects ([#794](https://github.com/whoz-oss/coday/issues/794))
+- #794 allow home navigation and hide worktree for forced projects ([#795](https://github.com/whoz-oss/coday/pull/795), [#794](https://github.com/whoz-oss/coday/issues/794))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.125.2 (2026-04-22)
 
 ### 🩹 Fixes
