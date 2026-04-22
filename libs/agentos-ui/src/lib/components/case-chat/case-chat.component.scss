@@ -1,19 +1,42 @@
+:host {
+  // Ensure the component fills the router-outlet container and participates
+  // in the flex column chain that constrains height to the viewport.
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .case-chat {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  // Fill the :host — which is already sized by the parent flex container.
+  flex: 1;
+  min-height: 0;
   max-width: 800px;
+  width: 100%;
   margin: 0 auto;
   padding: 1.5rem;
   gap: 1rem;
+  // Needed so the floating scroll button is positioned relative to this container.
+  position: relative;
 
   &__messages {
+    // Flex-grow to fill available height, flex-shrink + min-height so it
+    // actually shrinks when the composer is present (avoids overflow on :host).
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     padding-bottom: 0.5rem;
+    // Smooth momentum scrolling on iOS.
+    -webkit-overflow-scrolling: touch;
+    // Thin scrollbar on supporting browsers.
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border, rgba(0, 0, 0, 0.15)) transparent;
   }
 
   &__empty {
@@ -163,7 +186,29 @@
     opacity: 0.95;
   }
 
+  // Floating "scroll to bottom" button — sits just above the composer.
+  &__scroll-anchor {
+    position: absolute;
+    // Sit just above the composer. The composer has ~80px height + 1rem gap.
+    // We use bottom so it stays anchored regardless of composer size.
+    bottom: calc(1.5rem + 80px + 0.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: var(--glass-bg, rgba(255, 255, 255, 0.88));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.3));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 50%;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    // Fade in/out animation handled by @if in the template.
+    animation: scroll-anchor-in 0.15s ease;
+  }
+
   &__composer {
+    // flex-shrink: 0 ensures the composer is never compressed — it always
+    // stays fully visible at the bottom while the messages area shrinks.
+    flex-shrink: 0;
     display: flex;
     align-items: flex-end;
     gap: 0.5rem;
@@ -231,5 +276,16 @@
   40% {
     transform: translateY(-6px);
     opacity: 1;
+  }
+}
+
+@keyframes scroll-anchor-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
   }
 }
