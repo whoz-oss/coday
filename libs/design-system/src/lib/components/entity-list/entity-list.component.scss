@@ -1,6 +1,8 @@
 .entity-list {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   box-sizing: border-box;
 }
@@ -70,6 +72,9 @@
 // ── Content (max-width constrained) ─────────────────────────────────────
 
 .entity-list__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   width: 100%;
   max-width: 900px; // overridden at runtime via [style.max-width]
   margin: 0 auto;
