@@ -22,7 +22,7 @@ private const val TMUX_TIMEOUT_SECONDS = 30L
  * when null the user's home directory is used (tmux default).
  */
 class TmuxTool(
-    private val workingDirectory: String? = null,
+    internal val workingDirectory: String? = null,
     configName: String? = null,
 ) : StandardTool<TmuxTool.Input> {
     companion object {
@@ -96,6 +96,97 @@ class TmuxTool(
         val command: String? = null,
     )
 
+    private enum class Action {
+        LIST {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                tool.runTmux("list-sessions")
+                    .fold(
+                        onSuccess = { output -> tool.createSuccessResponse(output.ifBlank { "No tmux sessions running" }) },
+                        onFailure = { tool.createSuccessResponse("No tmux sessions running") },
+                    )
+        },
+        STATUS {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when (val session = input.session) {
+                    null -> tool.createErrorResponse("session is required for action 'status'")
+                    else -> tool.runTmux("has-session", "-t", session)
+                        .fold(
+                            onSuccess = { tool.createSuccessResponse("running") },
+                            onFailure = { tool.createSuccessResponse("stopped") },
+                        )
+                }
+        },
+        START {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when {
+                    input.session == null -> tool.createErrorResponse("session is required for action 'start'")
+                    input.command == null -> tool.createErrorResponse("command is required for action 'start'")
+                    else -> {
+                        val newSessionArgs =
+                            buildList {
+                                addAll(listOf("new-session", "-d", "-s", input.session, "-x", "220", "-y", "50"))
+                                if (tool.workingDirectory != null) addAll(listOf("-c", tool.workingDirectory))
+                            }
+                        // Ignore error: session may already exist
+                        tool.runTmux(*newSessionArgs.toTypedArray())
+                        val target = tool.buildTarget(input.session, input.window)
+                        tool.runTmux("send-keys", "-t", target, input.command, "Enter")
+                            .fold(
+                                onSuccess = { tool.createSuccessResponse("Session '${input.session}' started") },
+                                onFailure = { e -> tool.createErrorResponse("Failed to start session '${input.session}': ${e.message}") },
+                            )
+                    }
+                }
+        },
+        LOGS {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when (val session = input.session) {
+                    null -> tool.createErrorResponse("session is required for action 'logs'")
+                    else -> {
+                        val target = tool.buildTarget(session, input.window)
+                        tool.runTmux("capture-pane", "-t", target, "-p", "-S", "-200")
+                            .fold(
+                                onSuccess = { output -> tool.createSuccessResponse(output) },
+                                onFailure = { tool.createErrorResponse("Session '$session' not found") },
+                            )
+                    }
+                }
+        },
+        SEND {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when {
+                    input.session == null -> tool.createErrorResponse("session is required for action 'send'")
+                    input.command == null -> tool.createErrorResponse("command is required for action 'send'")
+                    else -> {
+                        val target = tool.buildTarget(input.session, input.window)
+                        tool.runTmux("send-keys", "-t", target, input.command, "Enter")
+                            .fold(
+                                onSuccess = { tool.createSuccessResponse("Command sent to session '${input.session}'") },
+                                onFailure = { tool.createErrorResponse("Session '${input.session}' not found") },
+                            )
+                    }
+                }
+        },
+        STOP {
+            override fun execute(input: Input, tool: TmuxTool): String =
+                when (val session = input.session) {
+                    null -> tool.createErrorResponse("session is required for action 'stop'")
+                    else -> tool.runTmux("kill-session", "-t", session)
+                        .fold(
+                            onSuccess = { tool.createSuccessResponse("Session '$session' killed") },
+                            onFailure = { tool.createErrorResponse("Session '$session' not found") },
+                        )
+                }
+        };
+
+        abstract fun execute(input: Input, tool: TmuxTool): String
+
+        companion object {
+            fun fromString(value: String): Action? =
+                entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+        }
+    }
+
     override fun execute(input: Input?): String {
         val validationError = when {
             input == null -> "Input is required"
@@ -105,111 +196,17 @@ class TmuxTool(
                 "Invalid window name '${input.window}'. Only alphanumeric characters, hyphens, underscores, dots and plus signs are allowed."
             else -> null
         }
-        return when (validationError) {
-            null -> when (input!!.action) {
-                "list" -> executeList()
-                "status" -> executeStatus(input.session)
-                "start" -> executeStart(input.session, input.window, input.command)
-                "logs" -> executeLogs(input.session, input.window)
-                "send" -> executeSend(input.session, input.window, input.command)
-                "stop" -> executeStop(input.session)
-                else -> createErrorResponse("Unknown action: ${input.action}")
-            }
-            else -> createErrorResponse(validationError)
-        }
+        if (validationError != null) return createErrorResponse(validationError)
+        val action = Action.fromString(input!!.action)
+            ?: return createErrorResponse("Unknown action: ${input.action}")
+        return action.execute(input, this)
     }
-
-    private fun executeList(): String =
-        runTmux("list-sessions")
-            .fold(
-                onSuccess = { output -> createSuccessResponse(output.ifBlank { "No tmux sessions running" }) },
-                onFailure = { createSuccessResponse("No tmux sessions running") },
-            )
-
-    private fun executeStatus(session: String?): String =
-        when (session) {
-            null -> createErrorResponse("session is required for action 'status'")
-            else -> runTmux("has-session", "-t", session)
-                .fold(
-                    onSuccess = { createSuccessResponse("running") },
-                    onFailure = { createSuccessResponse("stopped") },
-                )
-        }
-
-    private fun executeStart(
-        session: String?,
-        window: String?,
-        command: String?,
-    ): String =
-        when {
-            session == null -> createErrorResponse("session is required for action 'start'")
-            command == null -> createErrorResponse("command is required for action 'start'")
-            else -> {
-                val newSessionArgs =
-                    buildList {
-                        addAll(listOf("new-session", "-d", "-s", session, "-x", "220", "-y", "50"))
-                        if (workingDirectory != null) addAll(listOf("-c", workingDirectory))
-                    }
-                // Ignore error: session may already exist
-                runTmux(*newSessionArgs.toTypedArray())
-                val target = buildTarget(session, window)
-                runTmux("send-keys", "-t", target, command, "Enter")
-                    .fold(
-                        onSuccess = { createSuccessResponse("Session '$session' started") },
-                        onFailure = { e -> createErrorResponse("Failed to start session '$session': ${e.message}") },
-                    )
-            }
-        }
-
-    private fun executeLogs(
-        session: String?,
-        window: String?,
-    ): String =
-        when (session) {
-            null -> createErrorResponse("session is required for action 'logs'")
-            else -> {
-                val target = buildTarget(session, window)
-                runTmux("capture-pane", "-t", target, "-p", "-S", "-200")
-                    .fold(
-                        onSuccess = { output -> createSuccessResponse(output) },
-                        onFailure = { createErrorResponse("Session '$session' not found") },
-                    )
-            }
-        }
-
-    private fun executeSend(
-        session: String?,
-        window: String?,
-        command: String?,
-    ): String =
-        when {
-            session == null -> createErrorResponse("session is required for action 'send'")
-            command == null -> createErrorResponse("command is required for action 'send'")
-            else -> {
-                val target = buildTarget(session, window)
-                runTmux("send-keys", "-t", target, command, "Enter")
-                    .fold(
-                        onSuccess = { createSuccessResponse("Command sent to session '$session'") },
-                        onFailure = { createErrorResponse("Session '$session' not found") },
-                    )
-            }
-        }
-
-    private fun executeStop(session: String?): String =
-        when (session) {
-            null -> createErrorResponse("session is required for action 'stop'")
-            else -> runTmux("kill-session", "-t", session)
-                .fold(
-                    onSuccess = { createSuccessResponse("Session '$session' killed") },
-                    onFailure = { createErrorResponse("Session '$session' not found") },
-                )
-        }
 
     /**
      * Builds a tmux target string: `session` when window is null, `session:window` otherwise.
      * tmux accepts both window index ("0", "1") and window name as the window part.
      */
-    private fun buildTarget(
+    internal fun buildTarget(
         session: String,
         window: String?,
     ): String = when (window) {
@@ -222,7 +219,7 @@ class TmuxTool(
      * Uses [ProcessBuilder] to avoid shell injection.
      * Enforces a [TMUX_TIMEOUT_SECONDS]-second timeout; kills the process forcibly on expiry.
      */
-    private fun runTmux(vararg args: String): Result<String> =
+    internal fun runTmux(vararg args: String): Result<String> =
         runCatching {
             val process =
                 ProcessBuilder("tmux", *args)
@@ -242,7 +239,7 @@ class TmuxTool(
             output
         }
 
-    private fun createSuccessResponse(output: String): String =
+    internal fun createSuccessResponse(output: String): String =
         objectMapper.writeValueAsString(
             mapOf(
                 "success" to true,
@@ -250,7 +247,7 @@ class TmuxTool(
             ),
         )
 
-    private fun createErrorResponse(message: String): String =
+    internal fun createErrorResponse(message: String): String =
         objectMapper.writeValueAsString(
             mapOf(
                 "success" to false,
