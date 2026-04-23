@@ -38,6 +38,7 @@ class ChatModelFactory {
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
                 )
             }
 
@@ -56,6 +57,7 @@ class ChatModelFactory {
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
                 )
             }
         }
@@ -66,6 +68,7 @@ class ChatModelFactory {
         apiKey: String,
         model: String,
         temp: Double,
+        maxTokens: Int? = null,
     ): ChatModel {
         val api =
             OpenAiApi
@@ -74,12 +77,15 @@ class ChatModelFactory {
                 .apiKey(apiKey)
                 .build()
 
-        val options =
+        val optionsBuilder =
             OpenAiChatOptions
                 .builder()
                 .temperature(temp)
                 .model(model)
-                .build()
+        if (maxTokens != null) {
+            optionsBuilder.maxTokens(maxTokens)
+        }
+        val options = optionsBuilder.build()
 
         return OpenAiChatModel(
             api,
@@ -128,15 +134,19 @@ class ChatModelFactory {
         apiKey: String,
         model: String,
         temp: Double,
+        maxTokens: Int? = null,
     ): ChatModel {
         val api = Client.builder().apiKey(apiKey).build()
 
-        val options =
+        val optionsBuilder =
             GoogleGenAiChatOptions
                 .builder()
                 .model(model)
                 .temperature(temp)
-                .build()
+        if (maxTokens != null) {
+            optionsBuilder.maxOutputTokens(maxTokens)
+        }
+        val options = optionsBuilder.build()
 
         return GoogleGenAiChatModel(
             api,

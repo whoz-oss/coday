@@ -24,12 +24,9 @@ class AiModelServiceImpl(
     private val aiProviderService: AiProviderService,
 ) : AiModelService {
     override fun create(entity: AiModel): AiModel {
-        findByAiProviderAndApiName(entity.aiProviderId, entity.apiModelName)?.let {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "A model config for apiName '${entity.apiModelName}' already exists in AiProvider ${entity.aiProviderId}",
-            )
-        }
+        // Uniqueness is enforced on alias only — two configs may share the same
+        // apiModelName under the same provider (e.g. same model with different
+        // temperature or maxTokens), as long as their aliases are distinct.
         entity.alias?.let { alias ->
             findByAiProviderAndAlias(entity.aiProviderId, alias)?.let {
                 throw ResponseStatusException(
@@ -48,14 +45,7 @@ class AiModelServiceImpl(
     }
 
     override fun update(entity: AiModel): AiModel {
-        findByAiProviderAndApiName(entity.aiProviderId, entity.apiModelName)
-            ?.takeIf { it.id != entity.id }
-            ?.let {
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "A model config for apiName '${entity.apiModelName}' already exists in AiProvider ${entity.aiProviderId}",
-                )
-            }
+        // Same uniqueness rule as create: only alias must be unique per provider.
         entity.alias?.let { alias ->
             findByAiProviderAndAlias(entity.aiProviderId, alias)
                 ?.takeIf { it.id != entity.id }
