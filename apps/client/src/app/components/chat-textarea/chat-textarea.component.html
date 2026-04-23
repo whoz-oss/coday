@@ -5,6 +5,12 @@
       Recording... Click mic to stop
     </div>
   }
+  @if (isTranscribing) {
+    <div class="recording-indicator transcribing-indicator">
+      <span class="transcribing-dot"></span>
+      Transcribing...
+    </div>
+  }
 
   <!-- Autocomplete popup - appears above textarea -->
   @if (autocompleteVisible) {
@@ -99,7 +105,10 @@
             variant="default"
             [class.recording]="isRecording"
             [class.hidden]="message.trim()"
-            [title]="isRecording ? 'Click to stop recording' : 'Click to start recording'"
+            [disabled]="isTranscribing"
+            [title]="
+              isRecording ? 'Click to stop recording' : isTranscribing ? 'Transcribing...' : 'Click to start recording'
+            "
             (action)="toggleRecording()"
           />
         }

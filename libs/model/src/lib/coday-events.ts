@@ -14,7 +14,15 @@ export type ImageContent = {
   height?: number
 }
 
-export type MessageContent = TextContent | ImageContent
+export type AudioContent = {
+  type: 'audio'
+  content: string // base64-encoded audio data
+  mimeType: string // e.g., 'audio/webm'
+  duration?: number // duration in seconds (for UI display)
+  transcription?: string // Whisper transcription text (for AI context)
+}
+
+export type MessageContent = TextContent | ImageContent | AudioContent
 
 /**
  * Helper function to truncate text for display
@@ -330,6 +338,10 @@ export class MessageEvent extends CodayEvent {
         if (content.type === 'image') {
           const tokens = ((content.width || 0) * (content.height || 0)) / 750
           return tokens ? tokens * 3.5 : content.content.length
+        }
+        if (content.type === 'audio') {
+          // Use transcription length for token estimation, or a reasonable default
+          return content.transcription?.length ?? 100
         }
         return 0
       })
