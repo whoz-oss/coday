@@ -35,13 +35,11 @@
       <img
         [attr.src]="'CODAY-Logo.png'"
         alt="coday"
-        [class.sidenav-logo]="true"
-        [class.clickable]="!forcedProject()"
-        [class.disabled]="forcedProject()"
+        class="sidenav-logo clickable"
         (click)="navigateToHome(); $event.stopPropagation()"
-        [title]="forcedProject() ? 'Project selection disabled' : 'Go to project selection'"
-        [attr.role]="forcedProject() ? null : 'button'"
-        [attr.tabindex]="forcedProject() ? null : '0'"
+        title="Go to project selection"
+        role="button"
+        tabindex="0"
         (keydown.enter)="navigateToHome(); $event.preventDefault(); $event.stopPropagation()"
         (keydown.space)="navigateToHome(); $event.preventDefault(); $event.stopPropagation()"
       />

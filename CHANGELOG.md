@@ -1,3 +1,38 @@
+## 0.125.3 (2026-04-22)
+
+### 🩹 Fixes
+
+- #794 allow home navigation and hide worktree for forced projects ([#794](https://github.com/whoz-oss/coday/issues/794))
+- #794 allow home navigation and hide worktree for forced projects ([#795](https://github.com/whoz-oss/coday/pull/795), [#794](https://github.com/whoz-oss/coday/issues/794))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.125.2 (2026-04-22)
+
+### 🩹 Fixes
+
+- #0789 replace GqlParams.StringParam.alias with plain $alias in Cypher query ([#790](https://github.com/whoz-oss/coday/pull/790), [#0789](https://github.com/whoz-oss/coday/issues/0789))
+- #792 case list does not scroll in its drawer ([#793](https://github.com/whoz-oss/coday/pull/793), [#792](https://github.com/whoz-oss/coday/issues/792))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.125.1 (2026-04-22)
+
+### 🩹 Fixes
+
+- #788 case-chat vertical scroll with magnetic auto-scroll and floating button ([#791](https://github.com/whoz-oss/coday/pull/791), [#788](https://github.com/whoz-oss/coday/issues/788))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.125.0 (2026-04-21)
 
 ### 🚀 Features

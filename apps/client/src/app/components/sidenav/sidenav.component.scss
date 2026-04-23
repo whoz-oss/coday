@@ -193,12 +193,6 @@ $section-toggle-height: 50px;
         outline-offset: 2px;
       }
     }
-
-    &.disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      pointer-events: none;
-    }
   }
 
   .header-title-section {
