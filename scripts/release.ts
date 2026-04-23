@@ -2,7 +2,10 @@ import { releaseChangelog, releasePublish, releaseVersion } from 'nx/release'
 import { readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import { updateTomlVersion } from './utils/update-toml-version'
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 async function main(): Promise<void> {
   // Step 1: Determine new version and update package.json files

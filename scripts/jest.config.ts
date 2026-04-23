@@ -4,7 +4,7 @@ export default {
   testEnvironment: 'node',
   testMatch: ['**/?(*.)+(spec|test).+(ts|js)'],
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
   },
   verbose: true,
 }

@@ -1,12 +1,15 @@
 {
   "compilerOptions": {
-    "esModuleInterop": true,
-    "module": "CommonJS",
-    "skipLibCheck": true,
-    "strict": true,
-    "target": "ES2022",
-    "types": ["jest", "node"]
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "types": ["node"]
   },
   "exclude": ["node_modules"],
-  "include": ["**/*.ts"]
+  "extends": "../tsconfig.base.json",
+  "include": ["**/*.ts"],
+  "references": [
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ]
 }

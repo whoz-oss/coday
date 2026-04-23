@@ -71,6 +71,7 @@ jobs:
       id-token: write
     outputs:
       new_version: ${{ steps.release.outputs.new_version }}
+      release_sha: ${{ steps.release_sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,6 +116,10 @@ jobs:
           NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Capture release commit SHA
+        id: release_sha
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
   # Job 3: Build and upload desktop apps (Coday + Coday Twin)
   desktop-release:
     runs-on: macos-latest
@@ -125,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: master
+          ref: ${{ needs.release.outputs.release_sha }}
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
@@ -244,7 +249,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: master
+          ref: ${{ needs.release.outputs.release_sha }}
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4
