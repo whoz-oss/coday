@@ -68,7 +68,7 @@ class ChatModelFactory {
         apiKey: String,
         model: String,
         temp: Double,
-        maxTokens: Int? = null,
+        maxTokens: Int?,
     ): ChatModel {
         val api =
             OpenAiApi
@@ -134,7 +134,7 @@ class ChatModelFactory {
         apiKey: String,
         model: String,
         temp: Double,
-        maxTokens: Int? = null,
+        maxTokens: Int?,
     ): ChatModel {
         val api = Client.builder().apiKey(apiKey).build()
 

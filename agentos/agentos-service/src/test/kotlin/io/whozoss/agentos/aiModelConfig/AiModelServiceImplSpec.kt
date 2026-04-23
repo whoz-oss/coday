@@ -348,11 +348,11 @@ class AiModelServiceImplSpec : StringSpec() {
             service.findById(original.metadata.id)?.alias shouldBe "SMALL"
         }
 
-        "update does not conflict with itself on apiName" {
+        "update does not conflict with itself when changing inference parameters" {
             val (service, aiProviderId) = newService()
             val original = service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5"))
 
-            // updating temperature on same entity must not trigger a self-conflict
+            // updating temperature on the same entity must not trigger a self-conflict on alias
             val updated = service.update(original.copy(temperature = 0.7))
             updated.temperature shouldBe 0.7
         }
