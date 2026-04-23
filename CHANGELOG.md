@@ -1,3 +1,25 @@
+## 0.125.4 (2026-04-23)
+
+### 🚀 Features
+
+- #31170 bash plugin - exposes configured bash commands as tools ([#786](https://github.com/whoz-oss/coday/pull/786), [#31170](https://github.com/whoz-oss/coday/issues/31170))
+- #WZ-31170 port tmux tools as agentos-tmux-plugin ([#785](https://github.com/whoz-oss/coday/pull/785))
+- unified npm & JAR release pipeline via Nx ([#796](https://github.com/whoz-oss/coday/pull/796))
+
+### 🩹 Fixes
+
+- move release git config to version and changelog subcommands ([3df26ec4](https://github.com/whoz-oss/coday/commit/3df26ec4))
+- move release git config to version and changelog subcommands ([#798](https://github.com/whoz-oss/coday/pull/798))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Vincent Palita @vincent-palita-whoz
+- vincent.audibert
+
 ## 0.125.3 (2026-04-22)
 
 ### 🩹 Fixes
