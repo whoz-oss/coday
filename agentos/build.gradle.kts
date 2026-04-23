@@ -25,7 +25,13 @@ tasks.named("build") {
 // Plugin deployment
 // ========================================
 
-val pluginBuilds = listOf("agentos-plugins-filesystem", "agentos-datetime-plugin", "agentos-file-plugin", "agentos-bash-plugin")
+val pluginBuilds = listOf(
+    "agentos-plugins-filesystem",
+    "agentos-datetime-plugin",
+    "agentos-tmux-plugin",
+    "agentos-bash-plugin",
+    "agentos-file-plugin"
+)
 
 // Resolve all paths at configuration time into plain File values
 // so that doLast closures are configuration-cache compatible.
