@@ -73,14 +73,14 @@
   "release": {
     "projects": ["server", "client", "web", "desktop", "desktop-twin"],
     "releaseTagPattern": "release/{version}",
-    "git": {
-      "commitMessage": "chore(release): {version}",
-      "tag": true
-    },
     "changelog": {
       "workspaceChangelog": {
         "file": "CHANGELOG.md",
         "createRelease": "github"
+      },
+      "git": {
+        "commitMessage": "chore(release): {version}",
+        "tag": true
       }
     },
     "version": {
@@ -88,6 +88,10 @@
       "manifestRootsToUpdate": ["apps/{projectName}"],
       "versionActionsOptions": {
         "skipLockFileUpdate": true
+      },
+      "git": {
+        "commit": false,
+        "tag": false
       }
     }
   },
