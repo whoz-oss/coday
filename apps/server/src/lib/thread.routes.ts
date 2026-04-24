@@ -993,7 +993,12 @@ export function registerThreadRoutes(
           transcription,
         }
 
+        // Upload the audio content so it appears in the thread history
         instance.coday.upload([audioContent])
+
+        // Trigger the agent with the transcription as a user instruction,
+        // exactly as if the user had typed and submitted the text.
+        instance.coday.addUserMessage(username, transcription)
 
         res.status(200).json({ success: true, type: 'voice-message', transcription })
       } catch (error) {

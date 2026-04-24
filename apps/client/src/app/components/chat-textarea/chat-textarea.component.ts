@@ -23,6 +23,7 @@ import { PromptApiService, PromptAutocomplete } from '../../core/services/prompt
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { HighlightPipe } from '../../pipes/highlight.pipe'
 import { AudioApiService } from '../../core/services/audio-api.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
 
 @Component({
   selector: 'app-chat-textarea',
@@ -96,6 +97,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private readonly promptApiService = inject(PromptApiService)
   private readonly projectStateService = inject(ProjectStateService)
   private readonly audioApiService = inject(AudioApiService)
+  private readonly threadStateService = inject(ThreadStateService)
 
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -456,7 +458,26 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       const language = voiceLang.split('-')[0]
 
       if (this.voiceInputMode === 'voice-message') {
-        // Voice message mode: send audio as a message to the thread
+        if (!this.threadStateService.getSelectedThreadId()) {
+          // No thread yet: transcribe and emit as a regular message submission so the
+          // parent component (main-app) can create a thread and send it as an instruction.
+          console.log('[WHISPER] No thread selected — transcribing and submitting as text message')
+          this.audioApiService.transcribeAudio(base64, mimeType, language).subscribe({
+            next: (response) => {
+              this.isTranscribing = false
+              if (response.text) {
+                this.messageSubmitted.emit(response.text.trim())
+              }
+            },
+            error: (error) => {
+              console.error('[WHISPER] Transcription error (no-thread fallback):', error)
+              this.isTranscribing = false
+            },
+          })
+          return
+        }
+        // Voice message mode: send audio to the active thread; the backend will
+        // transcribe it, store the audio content, and trigger the agent.
         this.audioApiService.sendVoiceMessage(base64, mimeType, language).subscribe({
           next: (response) => {
             this.isTranscribing = false
