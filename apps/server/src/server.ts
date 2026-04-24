@@ -424,7 +424,7 @@ PORT_PROMISE.then(async (PORT) => {
     debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
 
