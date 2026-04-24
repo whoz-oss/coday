@@ -302,18 +302,30 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     // Check if we have a pending voice message from the state service (implicit thread creation)
     const pendingVoice = this.firstMessageState.consumePendingVoiceMessage()
     if (pendingVoice) {
-      console.log('[THREAD] Pending voice message found, sending as voice message')
+      console.log('[THREAD] Pending voice message found, waiting for InviteEvent before sending')
       this.codayService.setThinkingForPendingMessage()
-      this.audioApiService
-        .sendVoiceMessage(pendingVoice.base64, pendingVoice.mimeType, pendingVoice.language)
-        .subscribe({
-          next: (response) => {
-            console.log('[THREAD] First voice message sent, transcription:', response.transcription?.substring(0, 50))
-          },
-          error: (error) => {
-            console.error('[THREAD] Failed to send first voice message:', error)
-          },
+      // Wait for the backend Coday instance to be ready (signalled by the first InviteEvent)
+      // before sending the voice message — same pattern as text first messages.
+      this.subscriptions.push(
+        this.codayService.currentInviteEvent$.subscribe((inviteEvent) => {
+          if (inviteEvent) {
+            console.log('[THREAD] InviteEvent received, sending pending voice message')
+            this.audioApiService
+              .sendVoiceMessage(pendingVoice.base64, pendingVoice.mimeType, pendingVoice.language)
+              .subscribe({
+                next: (response) => {
+                  console.log(
+                    '[THREAD] First voice message sent, transcription:',
+                    response.transcription?.substring(0, 50)
+                  )
+                },
+                error: (error) => {
+                  console.error('[THREAD] Failed to send first voice message:', error)
+                },
+              })
+          }
         })
+      )
       return
     }
 

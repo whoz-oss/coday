@@ -136,6 +136,11 @@ export class AnswerEvent extends CodayEvent {
   invite: string | undefined
   /** Name of the human who sent this answer */
   name: string | undefined
+  /**
+   * When true, the frontend should not render this answer as a chat message.
+   * Used when the answer is already represented by another message (e.g. audio upload).
+   */
+  silent: boolean | undefined
   static override type = 'answer'
 
   constructor(event: Partial<AnswerEvent>) {
@@ -143,6 +148,7 @@ export class AnswerEvent extends CodayEvent {
     this.answer = event.answer ?? 'No answer'
     this.invite = event.invite
     this.name = event.name
+    this.silent = event.silent
   }
 }
 

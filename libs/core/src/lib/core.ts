@@ -129,6 +129,7 @@ export class Coday {
     if (this.pendingQuestionEvent) {
       const answerEvent = this.pendingQuestionEvent.buildAnswer(message)
       answerEvent.name = username
+      answerEvent.silent = true
       this.interactor.sendEvent(answerEvent)
     } else {
       this.messageQueue.push({ username, message })
