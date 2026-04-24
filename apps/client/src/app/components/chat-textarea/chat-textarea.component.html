@@ -56,7 +56,7 @@
             (action)="onStopClick()"
           />
         }
-        @if ((!isThinking || message.trim()) && !isRecording) {
+        @if ((!isThinking || message.trim()) && !isRecording && !isTranscribing) {
           <ds-icon-button
             class="send-btn"
             icon="send"
@@ -69,7 +69,7 @@
           />
         }
         @if (!isThinking) {
-          @if (!showWelcome && !isRecording) {
+          @if (!showWelcome && !isRecording && !isTranscribing) {
             <ds-icon-button
               class="upload-btn"
               icon="attach_file"
