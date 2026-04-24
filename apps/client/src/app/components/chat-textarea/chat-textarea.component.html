@@ -1,11 +1,4 @@
 <div class="chat-input-container">
-  @if (isTranscribing) {
-    <div class="recording-indicator transcribing-indicator">
-      <span class="transcribing-dot"></span>
-      Transcribing...
-    </div>
-  }
-
   <!-- Autocomplete popup - appears above textarea -->
   @if (autocompleteVisible) {
     <div class="autocomplete-popup">
@@ -39,7 +32,7 @@
     [class.focused]="isFocused"
     [class.welcome-mode]="showWelcome"
     [class.is-thinking]="isThinking"
-    [class.is-listening]="isRecording"
+    [class.is-listening]="isRecording || isTranscribing"
   >
     <textarea
       #messageInput
@@ -48,7 +41,7 @@
       [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
-      [disabled]="isDisabled || isRecording"
+      [disabled]="isDisabled || isRecording || isTranscribing"
       (focus)="isFocused = true; textareaFocused.emit()"
       (blur)="isFocused = false"
     ></textarea>
@@ -98,11 +91,11 @@
             class="voice-btn"
             icon="mic"
             variant="default"
-            [class.recording]="isRecording"
-            [class.hidden]="message.trim() && !isRecording"
+            [class.recording]="isRecording || isTranscribing"
+            [class.hidden]="message.trim() && !isRecording && !isTranscribing"
             [disabled]="isTranscribing"
             [title]="
-              isRecording ? 'Click to stop recording' : isTranscribing ? 'Transcribing...' : 'Click to start recording'
+              isRecording ? 'Click to stop recording' : isTranscribing ? 'Uploading...' : 'Click to start recording'
             "
             (action)="toggleRecording()"
           />

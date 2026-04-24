@@ -755,6 +755,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       }
       // Show "Starting..." for first message, then rotate phrases
       return this.isStarting ? 'Processing request...' : this.currentThinkingPhrase
+    } else if (this.isTranscribing) {
+      return 'Uploading...'
     } else if (this.isRecording) {
       return 'Listening...'
     } else if (this.showWelcome) {
