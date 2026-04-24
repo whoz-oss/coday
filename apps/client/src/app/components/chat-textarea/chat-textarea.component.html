@@ -1,10 +1,4 @@
 <div class="chat-input-container">
-  @if (isRecording) {
-    <div class="recording-indicator">
-      <span class="recording-dot"></span>
-      Recording... Click mic to stop
-    </div>
-  }
   @if (isTranscribing) {
     <div class="recording-indicator transcribing-indicator">
       <span class="transcribing-dot"></span>
@@ -69,7 +63,7 @@
             (action)="onStopClick()"
           />
         }
-        @if (!isThinking || message.trim()) {
+        @if ((!isThinking || message.trim()) && !isRecording) {
           <ds-icon-button
             class="send-btn"
             icon="send"
@@ -82,7 +76,7 @@
           />
         }
         @if (!isThinking) {
-          @if (!showWelcome) {
+          @if (!showWelcome && !isRecording) {
             <ds-icon-button
               class="upload-btn"
               icon="attach_file"
@@ -102,10 +96,10 @@
           }
           <ds-icon-button
             class="voice-btn"
-            [icon]="isRecording ? 'fiber_manual_record' : 'mic'"
+            icon="mic"
             variant="default"
             [class.recording]="isRecording"
-            [class.hidden]="message.trim()"
+            [class.hidden]="message.trim() && !isRecording"
             [disabled]="isTranscribing"
             [title]="
               isRecording ? 'Click to stop recording' : isTranscribing ? 'Transcribing...' : 'Click to start recording'
