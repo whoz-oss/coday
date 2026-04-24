@@ -9,17 +9,17 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 async function main(): Promise<void> {
   // Step 1: Determine new version and update package.json files
-  const { workspaceVersion, projectsVersionData, releaseGraph } = await releaseVersion({
-    dryRun: false,
-    verbose: false,
-  })
+  const { projectsVersionData, releaseGraph } = await releaseVersion({ dryRun: false, verbose: false })
 
-  if (!workspaceVersion) {
+  // workspaceVersion (from releaseVersion) is undefined when there are multiple release groups — derive from projectsVersionData instead
+  const newVersion = Object.values(projectsVersionData).find((v) => v.newVersion)?.newVersion
+
+  if (!newVersion) {
     console.log('No version bump needed')
     process.exit(0)
   }
 
-  console.log(`New version: ${workspaceVersion}`)
+  console.log(`New version: ${newVersion}`)
 
   // Step 2: Update Gradle version catalog to match the new release version.
   // This must happen AFTER releaseVersion (which determines the new version)
@@ -27,9 +27,9 @@ async function main(): Promise<void> {
   const tomlRelativePath = 'agentos/gradle/libs.versions.toml'
   const tomlPath = join(__dirname, '..', tomlRelativePath)
   const tomlContent = readFileSync(tomlPath, 'utf-8')
-  const updatedToml = updateTomlVersion(tomlContent, 'agentosSdk', workspaceVersion)
+  const updatedToml = updateTomlVersion(tomlContent, 'agentosSdk', newVersion)
   writeFileSync(tomlPath, updatedToml, 'utf-8')
-  console.log(`Updated libs.versions.toml agentosSdk to ${workspaceVersion}`)
+  console.log(`Updated libs.versions.toml agentosSdk to ${newVersion}`)
 
   // Explicitly stage the toml file so it's included in the release commit.
   // Nx's releaseChangelog only stages files it knows about (package.json, CHANGELOG.md),
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   await releaseChangelog({
     releaseGraph,
     versionData: projectsVersionData,
-    version: workspaceVersion,
+    version: newVersion,
     dryRun: false,
     verbose: false,
   })
