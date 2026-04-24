@@ -66,6 +66,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private mediaRecorder: MediaRecorder | null = null
   private audioChunks: Blob[] = []
   private voiceInputMode: 'browser' | 'whisper' | 'voice-message' = 'browser'
+
+  get isVoiceMessageMode(): boolean {
+    return this.voiceInputMode === 'voice-message'
+  }
   private sessionHadTranscript: boolean = false
   private pendingLineBreaksTimeout: number | null = null
   // Index of the last processed final result — guards against Chrome mobile replaying all results
@@ -755,9 +759,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       }
       // Show "Starting..." for first message, then rotate phrases
       return this.isStarting ? 'Processing request...' : this.currentThinkingPhrase
-    } else if (this.isTranscribing) {
+    } else if (this.isVoiceMessageMode && this.isTranscribing) {
       return 'Uploading...'
-    } else if (this.isRecording) {
+    } else if (this.isVoiceMessageMode && this.isRecording) {
       return 'Listening...'
     } else if (this.showWelcome) {
       return 'How can I help you today?'

@@ -32,7 +32,7 @@
     [class.focused]="isFocused"
     [class.welcome-mode]="showWelcome"
     [class.is-thinking]="isThinking"
-    [class.is-listening]="isRecording || isTranscribing"
+    [class.is-listening]="isVoiceMessageMode && (isRecording || isTranscribing)"
   >
     <textarea
       #messageInput
@@ -41,7 +41,7 @@
       [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
-      [disabled]="isDisabled || isRecording || isTranscribing"
+      [disabled]="isDisabled || (isVoiceMessageMode && (isRecording || isTranscribing))"
       (focus)="isFocused = true; textareaFocused.emit()"
       (blur)="isFocused = false"
     ></textarea>
@@ -56,7 +56,7 @@
             (action)="onStopClick()"
           />
         }
-        @if ((!isThinking || message.trim()) && !isRecording && !isTranscribing) {
+        @if ((!isThinking || message.trim()) && !(isVoiceMessageMode && (isRecording || isTranscribing))) {
           <ds-icon-button
             class="send-btn"
             icon="send"
@@ -69,7 +69,7 @@
           />
         }
         @if (!isThinking) {
-          @if (!showWelcome && !isRecording && !isTranscribing) {
+          @if (!showWelcome && !(isVoiceMessageMode && (isRecording || isTranscribing))) {
             <ds-icon-button
               class="upload-btn"
               icon="attach_file"
@@ -90,9 +90,9 @@
           <ds-icon-button
             class="voice-btn"
             icon="mic"
-            [variant]="isRecording || isTranscribing ? 'danger' : 'default'"
+            [variant]="isVoiceMessageMode && (isRecording || isTranscribing) ? 'danger' : 'default'"
             [class.hidden]="message.trim() && !isRecording && !isTranscribing"
-            [disabled]="isTranscribing"
+            [disabled]="isVoiceMessageMode && isTranscribing"
             [title]="
               isRecording ? 'Click to stop recording' : isTranscribing ? 'Uploading...' : 'Click to start recording'
             "
