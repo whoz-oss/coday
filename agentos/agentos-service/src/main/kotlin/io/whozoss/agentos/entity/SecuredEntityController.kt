@@ -195,10 +195,8 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
      * @throws ResponseStatusException avec status 403 si l'utilisateur n'a pas la permission
      */
     protected open fun checkCreatePermission(userId: String, entity: EntityType) {
-        // Par défaut, pas de vérification. Les sous-classes doivent override si nécessaire.
-        // Exemple pour une entité avec namespace parent :
-        // if (!permissionService.hasPermission(userId, "Namespace", entity.namespaceId, Action.WRITE)) {
-        //     throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
-        // }
+        // Fail-closed: deny creation by default. Subclasses must explicitly override
+        // with their own logic to allow creation (e.g., check WRITE on parent namespace).
+        throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
     }
 }

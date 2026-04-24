@@ -153,7 +153,8 @@ class UserController(
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
         }
 
-        val created = service.create(toDomain(resource))
+        val newUser = toDomain(resource).copy(isAdmin = false)  // Never allow isAdmin from request body
+        val created = service.create(newUser)
         logger.info { "Super-admin ${currentUser.id} created user ${created.id}" }
         return toResource(created)
     }

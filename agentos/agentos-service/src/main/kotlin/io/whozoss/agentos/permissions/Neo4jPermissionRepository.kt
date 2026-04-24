@@ -90,12 +90,18 @@ class Neo4jPermissionRepository(
         relation: PermissionRelation
     ) = withContext(Dispatchers.IO) {
         try {
-            permissionNodeRepository.createPermission(
-                userId = userId,
-                entityId = entityId,
-                entityLabel = entityType,
-                relation = relation.name
-            )
+            when (relation) {
+                PermissionRelation.ADMIN -> permissionNodeRepository.createAdminPermission(
+                    userId = userId,
+                    entityId = entityId,
+                    entityLabel = entityType
+                )
+                PermissionRelation.MEMBER -> permissionNodeRepository.createMemberPermission(
+                    userId = userId,
+                    entityId = entityId,
+                    entityLabel = entityType
+                )
+            }
             logger.info { "Granted $relation permission to user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
             logger.error(e) { "Error granting permission for user=$userId, entity=$entityType:$entityId, relation=$relation" }
@@ -110,12 +116,18 @@ class Neo4jPermissionRepository(
         relation: PermissionRelation
     ) = withContext(Dispatchers.IO) {
         try {
-            permissionNodeRepository.deletePermission(
-                userId = userId,
-                entityId = entityId,
-                entityLabel = entityType,
-                relation = relation.name
-            )
+            when (relation) {
+                PermissionRelation.ADMIN -> permissionNodeRepository.deleteAdminPermission(
+                    userId = userId,
+                    entityId = entityId,
+                    entityLabel = entityType
+                )
+                PermissionRelation.MEMBER -> permissionNodeRepository.deleteMemberPermission(
+                    userId = userId,
+                    entityId = entityId,
+                    entityLabel = entityType
+                )
+            }
             logger.info { "Revoked $relation permission from user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
             logger.error(e) { "Error revoking permission for user=$userId, entity=$entityType:$entityId, relation=$relation" }
@@ -129,11 +141,20 @@ class Neo4jPermissionRepository(
         relation: PermissionRelation?
     ): List<String> = withContext(Dispatchers.IO) {
         try {
-            permissionNodeRepository.findUsersWithPermission(
-                entityId = entityId,
-                entityLabel = entityType,
-                relation = relation?.name
-            )
+            when (relation) {
+                PermissionRelation.ADMIN -> permissionNodeRepository.findUsersWithAdminPermission(
+                    entityId = entityId,
+                    entityLabel = entityType
+                )
+                PermissionRelation.MEMBER -> permissionNodeRepository.findUsersWithMemberPermission(
+                    entityId = entityId,
+                    entityLabel = entityType
+                )
+                null -> permissionNodeRepository.findUsersWithAnyPermission(
+                    entityId = entityId,
+                    entityLabel = entityType
+                )
+            }
         } catch (e: Exception) {
             logger.error(e) { "Error listing users with permission on $entityType:$entityId, relation=$relation" }
             emptyList() // Fail-closed: return empty list on error

@@ -28,6 +28,8 @@ class UserServiceImpl(
 
     override fun findAll(): List<User> = userRepository.findByParent(UserRepository.USER_PARENT_KEY)
 
+    override fun count(): Long = userRepository.count()
+
     override fun findByExternalId(externalId: String): User? = userRepository.findByExternalId(externalId)
 
     override fun resolveOrCreateByExternalId(externalId: String): User =

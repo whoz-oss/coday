@@ -65,7 +65,7 @@ class BootstrapServiceImpl(
      * @return true si au moins un utilisateur existe, false sinon
      */
     override fun isBootstrapped(): Boolean {
-        val userCount = userService.findAll().size
+        val userCount = userService.count()
         logger.debug { "[Bootstrap] Current user count: $userCount" }
         return userCount > 0
     }

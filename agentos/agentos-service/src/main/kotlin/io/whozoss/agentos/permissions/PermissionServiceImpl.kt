@@ -90,23 +90,9 @@ class PermissionServiceImpl(
             return true
         }
 
-        // For ADMIN-only actions, also check if user has direct ADMIN permission
-        if (action != Action.READ &&
-            permissionRepository.hasDirectPermission(userId, entityType, entityId, PermissionRelation.ADMIN)) {
-            logger.debug { "Direct ADMIN permission granted: user=$userId, entity=$entityType:$entityId, action=$action" }
-            return true
-        }
-
         // Check transitive permission through namespace hierarchy
         if (permissionRepository.hasTransitivePermission(userId, entityType, entityId, requiredRelation)) {
             logger.debug { "Transitive permission granted: user=$userId, entity=$entityType:$entityId, action=$action" }
-            return true
-        }
-
-        // For ADMIN-only actions, also check transitive ADMIN permission
-        if (action != Action.READ &&
-            permissionRepository.hasTransitivePermission(userId, entityType, entityId, PermissionRelation.ADMIN)) {
-            logger.debug { "Transitive ADMIN permission granted: user=$userId, entity=$entityType:$entityId, action=$action" }
             return true
         }
 

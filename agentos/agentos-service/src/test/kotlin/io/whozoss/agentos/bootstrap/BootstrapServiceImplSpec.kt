@@ -3,7 +3,6 @@ package io.whozoss.agentos.bootstrap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.*
-import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.boot.ApplicationArguments
 
@@ -22,44 +21,42 @@ class BootstrapServiceImplSpec : StringSpec({
 
     "should execute bootstrap on application startup" {
         // Given
-        every { mockUserService.findAll() } returns emptyList()
+        every { mockUserService.count() } returns 0L
 
         // When
         bootstrapService.run(mockApplicationArguments)
 
         // Then
-        verify { mockUserService.findAll() }
+        verify { mockUserService.count() }
     }
 
     "should log and skip bootstrap when users already exist" {
         // Given
-        val existingUser = mockk<User>()
-        every { mockUserService.findAll() } returns listOf(existingUser)
+        every { mockUserService.count() } returns 1L
 
         // When
         bootstrapService.bootstrap()
 
         // Then
-        verify { mockUserService.findAll() }
+        verify { mockUserService.count() }
         // Le bootstrap devrait s'arrêter ici sans autres actions
     }
 
     "should log first user will be auto-promoted when no users exist" {
         // Given
-        every { mockUserService.findAll() } returns emptyList()
+        every { mockUserService.count() } returns 0L
 
         // When
         bootstrapService.bootstrap()
 
         // Then
-        verify { mockUserService.findAll() }
+        verify { mockUserService.count() }
         // Le log indiquera que le premier user sera auto-promu
     }
 
     "isBootstrapped should return true when users exist" {
         // Given
-        val existingUser = mockk<User>()
-        every { mockUserService.findAll() } returns listOf(existingUser)
+        every { mockUserService.count() } returns 1L
 
         // When
         val result = bootstrapService.isBootstrapped()
@@ -70,7 +67,7 @@ class BootstrapServiceImplSpec : StringSpec({
 
     "isBootstrapped should return false when no users exist" {
         // Given
-        every { mockUserService.findAll() } returns emptyList()
+        every { mockUserService.count() } returns 0L
 
         // When
         val result = bootstrapService.isBootstrapped()
@@ -81,8 +78,7 @@ class BootstrapServiceImplSpec : StringSpec({
 
     "bootstrap should be idempotent - safe to call multiple times" {
         // Given
-        val existingUser = mockk<User>()
-        every { mockUserService.findAll() } returns listOf(existingUser)
+        every { mockUserService.count() } returns 1L
 
         // When - appelé plusieurs fois
         bootstrapService.bootstrap()
@@ -90,6 +86,6 @@ class BootstrapServiceImplSpec : StringSpec({
         bootstrapService.bootstrap()
 
         // Then - seulement vérifié, pas de modifications
-        verify(exactly = 3) { mockUserService.findAll() }
+        verify(exactly = 3) { mockUserService.count() }
     }
 })
