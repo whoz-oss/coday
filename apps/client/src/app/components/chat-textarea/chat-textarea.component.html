@@ -45,6 +45,7 @@
     [class.focused]="isFocused"
     [class.welcome-mode]="showWelcome"
     [class.is-thinking]="isThinking"
+    [class.is-listening]="isRecording"
   >
     <textarea
       #messageInput
@@ -53,7 +54,7 @@
       [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
-      [disabled]="isDisabled"
+      [disabled]="isDisabled || isRecording"
       (focus)="isFocused = true; textareaFocused.emit()"
       (blur)="isFocused = false"
     ></textarea>
