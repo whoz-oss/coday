@@ -121,6 +121,21 @@ export class Coday {
   }
 
   /**
+   * Trigger agent processing with a message without emitting a UI MessageEvent.
+   * Use this when the message is already displayed via another mechanism (e.g. audio upload)
+   * and only the agent trigger is needed.
+   */
+  triggerWithMessage(username: string, message: string): void {
+    if (this.pendingQuestionEvent) {
+      const answerEvent = this.pendingQuestionEvent.buildAnswer(message)
+      answerEvent.name = username
+      this.interactor.sendEvent(answerEvent)
+    } else {
+      this.messageQueue.push({ username, message })
+    }
+  }
+
+  /**
    * Replay the current thread's messages.
    * Useful for reconnection scenarios.
    */
