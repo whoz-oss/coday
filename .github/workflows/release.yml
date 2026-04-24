@@ -112,9 +112,16 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
         run: |
           npx tsx scripts/release.ts
-          # Capture the new version for desktop build from client package.json
-          NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          # Capture new version only if a release commit was just made
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
+          LATEST_TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
+          HEAD_COMMIT=$(git rev-parse HEAD)
+          if [ "$LATEST_TAG_COMMIT" = "$HEAD_COMMIT" ]; then
+            NEW_VERSION=${LATEST_TAG#release/}
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "new_version=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Capture release commit SHA
         id: release_sha
