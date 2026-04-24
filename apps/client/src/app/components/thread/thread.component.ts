@@ -39,6 +39,7 @@ import { ThreadApiService, ThreadDetails } from '../../core/services/thread-api.
 import { ImageUploadService } from '../../services/image-upload.service'
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
 import { FirstMessageStateService } from '../../core/services/first-message-state.service'
+import { AudioApiService } from '../../core/services/audio-api.service'
 import { UserService } from '../../core/services/user.service'
 import { Router } from '@angular/router'
 
@@ -150,6 +151,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private readonly imageUploadService = inject(ImageUploadService)
   private readonly fileExchangeState = inject(FileExchangeStateService)
   private readonly firstMessageState = inject(FirstMessageStateService)
+  private readonly audioApiService = inject(AudioApiService)
 
   ngOnInit(): void {
     console.log('[THREAD] Initializing with project:', this.projectName, 'thread:', this.threadId)
@@ -297,7 +299,25 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
         error: (err) => console.warn('[THREAD] Could not load REST history:', err),
       })
 
-    // Check if we have a first message from the state service (implicit thread creation)
+    // Check if we have a pending voice message from the state service (implicit thread creation)
+    const pendingVoice = this.firstMessageState.consumePendingVoiceMessage()
+    if (pendingVoice) {
+      console.log('[THREAD] Pending voice message found, sending as voice message')
+      this.codayService.setThinkingForPendingMessage()
+      this.audioApiService
+        .sendVoiceMessage(pendingVoice.base64, pendingVoice.mimeType, pendingVoice.language)
+        .subscribe({
+          next: (response) => {
+            console.log('[THREAD] First voice message sent, transcription:', response.transcription?.substring(0, 50))
+          },
+          error: (error) => {
+            console.error('[THREAD] Failed to send first voice message:', error)
+          },
+        })
+      return
+    }
+
+    // Check if we have a first text message from the state service (implicit thread creation)
     const firstMessage = this.firstMessageState.consumePendingFirstMessage()
 
     // If we have a first message, wait for the first InviteEvent before sending it

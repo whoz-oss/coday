@@ -24,6 +24,7 @@ import { ProjectStateService } from '../../core/services/project-state.service'
 import { HighlightPipe } from '../../pipes/highlight.pipe'
 import { AudioApiService } from '../../core/services/audio-api.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
+import { PendingVoiceMessage } from '../../core/services/first-message-state.service'
 
 @Component({
   selector: 'app-chat-textarea',
@@ -43,6 +44,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   isStopping: boolean = false
   @Output() filesPasted = new EventEmitter<File[]>()
   @Output() messageSubmitted = new EventEmitter<string>()
+  @Output() voiceMessageReady = new EventEmitter<PendingVoiceMessage>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
   @Output() stopRequested = new EventEmitter<void>()
@@ -459,21 +461,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
       if (this.voiceInputMode === 'voice-message') {
         if (!this.threadStateService.getSelectedThreadId()) {
-          // No thread yet: transcribe and emit as a regular message submission so the
-          // parent component (main-app) can create a thread and send it as an instruction.
-          console.log('[WHISPER] No thread selected — transcribing and submitting as text message')
-          this.audioApiService.transcribeAudio(base64, mimeType, language).subscribe({
-            next: (response) => {
-              this.isTranscribing = false
-              if (response.text) {
-                this.messageSubmitted.emit(response.text.trim())
-              }
-            },
-            error: (error) => {
-              console.error('[WHISPER] Transcription error (no-thread fallback):', error)
-              this.isTranscribing = false
-            },
-          })
+          // No thread yet: emit the raw audio so the parent (main-app) can create a
+          // thread and send it as a voice message, preserving the audio content.
+          console.log('[WHISPER] No thread selected — emitting voiceMessageReady for thread creation')
+          this.isTranscribing = false
+          this.voiceMessageReady.emit({ base64, mimeType, language })
           return
         }
         // Voice message mode: send audio to the active thread; the backend will
