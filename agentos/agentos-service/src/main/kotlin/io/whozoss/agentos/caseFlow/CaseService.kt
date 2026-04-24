@@ -24,6 +24,20 @@ import java.util.UUID
  */
 interface CaseService : EntityService<Case, UUID> {
     // ========================================
+    // Permission-filtered listing (Story 3.3)
+    // ========================================
+
+    /**
+     * List cases in [namespaceId] that [userId] is permitted to see.
+     *
+     * Delegates to [CaseRepository.findAccessibleByUserInNamespace]. Callers that
+     * already know the user holds namespace ADMIN (or super-admin) should prefer
+     * [findByParent] to skip the permission filter — the controller does this in
+     * [io.whozoss.agentos.caseFlow.CaseController.listByParent].
+     */
+    fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+
+    // ========================================
     // Runtime Instance Management
     // ========================================
 
