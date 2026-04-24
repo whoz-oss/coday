@@ -1,18 +1,23 @@
 package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.entity.SecuredEntityController
+import io.whozoss.agentos.entity.UnsecuredEndpoint
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.BlockingPermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @RestController
@@ -22,8 +27,18 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-    private val userService: UserService,
-) : EntityController<Case, UUID, CaseResource>(caseService) {
+    userService: UserService,
+    permissionService: BlockingPermissionService,
+) : SecuredEntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
+
+    override fun getEntityType(): String = "Case"
+
+    override fun checkCreatePermission(userId: String, entity: Case) {
+        // Pour créer un Case, l'utilisateur doit avoir la permission WRITE sur le namespace parent
+        if (!permissionService.hasPermission(userId, "Namespace", entity.namespaceId.toString(), Action.WRITE)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied - no write permission on namespace")
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Mapping between domain entity and HTTP resource
@@ -55,8 +70,15 @@ class CaseController(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
     ) {
-        logger.info { "Adding message to case: $caseId" }
+        // Vérifier que l'utilisateur a la permission WRITE sur le case
         val user = userService.getCurrentUser()
+        val userId = user.id.toString()
+
+        if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.WRITE)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        }
+
+        logger.info { "Adding message to case: $caseId" }
         val displayName = listOfNotNull(user.firstname, user.lastname)
             .joinToString(" ")
             .ifBlank { user.metadata.id.toString() }
@@ -81,6 +103,12 @@ class CaseController(
     fun interruptCase(
         @PathVariable caseId: UUID,
     ) {
+        // Vérifier que l'utilisateur a la permission WRITE sur le case
+        val userId = userService.getCurrentUser().id.toString()
+        if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.WRITE)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        }
+
         logger.info { "Interrupting case: $caseId" }
         caseService.interruptCase(caseId)
         logger.info { "Case interrupted: $caseId" }
@@ -91,6 +119,12 @@ class CaseController(
     fun killCase(
         @PathVariable caseId: UUID,
     ) {
+        // Vérifier que l'utilisateur a la permission DELETE sur le case
+        val userId = userService.getCurrentUser().id.toString()
+        if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.DELETE)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        }
+
         logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }

@@ -3,14 +3,15 @@ package io.whozoss.agentos.user
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.BlockingPermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.ResponseStatus
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -38,6 +39,7 @@ import java.util.UUID
 )
 class UserController(
     private val userService: UserService,
+    private val permissionService: BlockingPermissionService,
 ) : EntityController<User, String, UserResource>(userService) {
 
     // -------------------------------------------------------------------------
@@ -52,6 +54,7 @@ class UserController(
             firstname = entity.firstname,
             lastname = entity.lastname,
             bio = entity.bio,
+            isAdmin = entity.isAdmin,
         )
 
     override fun toDomain(resource: UserResource): User =
@@ -62,6 +65,7 @@ class UserController(
             firstname = resource.firstname,
             lastname = resource.lastname,
             bio = resource.bio,
+            isAdmin = resource.isAdmin,
         )
 
     /**
@@ -70,11 +74,20 @@ class UserController(
      * Overrides [EntityController.update] to preserve [User.externalId] from the
      * persisted entity. The externalId is an IdP key that is set once at creation
      * and must never be overwritten by a client-supplied value.
+     *
+     * Only super-admins or the user themselves can update profiles.
      */
     override fun update(
         id: UUID,
         resource: UserResource,
     ): UserResource {
+        val currentUser = userService.getCurrentUser()
+        val isOwnProfile = currentUser.id == id
+
+        if (!isOwnProfile && !currentUser.isAdmin) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        }
+
         val existing =
             userService.findById(id)
                 ?: throw ResourceNotFoundException("Entity not found: $id")
@@ -82,8 +95,91 @@ class UserController(
             toDomain(resource).copy(
                 metadata = existing.metadata,
                 externalId = existing.externalId,
+                isAdmin = existing.isAdmin,  // preserve isAdmin - only system/bootstrap can set this
             )
+
+        logger.info { "User ${currentUser.id} updated user profile $id" }
         return toResource(userService.update(updated))
+    }
+
+    // -------------------------------------------------------------------------
+    // Override base CRUD methods to add permission checks
+    // -------------------------------------------------------------------------
+
+    /**
+     * GET /{id} — get a user by ID.
+     * Only super-admins or the user themselves can access.
+     */
+    override fun getById(@PathVariable id: UUID): UserResource {
+        val currentUser = userService.getCurrentUser()
+        val isOwnProfile = currentUser.id == id
+
+        if (!isOwnProfile && !currentUser.isAdmin) {
+            throw ResourceNotFoundException("Entity not found: $id")
+        }
+
+        val entity = service.findById(id)
+            ?: throw ResourceNotFoundException("Entity not found: $id")
+
+        logger.debug { "User ${currentUser.id} accessed user profile $id" }
+        return toResource(entity)
+    }
+
+    /**
+     * POST /by-ids — get multiple users by IDs.
+     * Only super-admins can access.
+     */
+    override fun getByIds(@RequestBody ids: List<UUID>): List<UserResource> {
+        val currentUser = userService.getCurrentUser()
+
+        if (!currentUser.isAdmin) {
+            logger.warn { "Non-admin user ${currentUser.id} attempted to batch fetch users" }
+            return emptyList()
+        }
+
+        return service.findByIds(ids).map { toResource(it) }
+    }
+
+    /**
+     * POST — create a new user.
+     * Only super-admins can create users (normal users are auto-created via auth).
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    override fun create(@Valid @RequestBody resource: UserResource): UserResource {
+        val currentUser = userService.getCurrentUser()
+
+        if (!currentUser.isAdmin) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        }
+
+        val created = service.create(toDomain(resource))
+        logger.info { "Super-admin ${currentUser.id} created user ${created.id}" }
+        return toResource(created)
+    }
+
+    /**
+     * DELETE /{id} — delete a user.
+     * Only super-admins can delete users.
+     */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    override fun delete(@PathVariable id: UUID) {
+        val currentUser = userService.getCurrentUser()
+
+        if (!currentUser.isAdmin) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        }
+
+        val exists = service.findById(id) != null
+        if (!exists) {
+            throw ResourceNotFoundException("Entity not found: $id")
+        }
+
+        val deleted = service.delete(id)
+        if (deleted) {
+            logger.info { "Super-admin ${currentUser.id} deleted user $id" }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -92,11 +188,18 @@ class UserController(
 
     /**
      * GET /api/users — list all users.
+     * Only super-admins can list all users.
      */
     @GetMapping
     @ResponseStatus(HttpStatus.OK)
     fun listAll(): List<UserResource> {
-        logger.info { "listing all users" }
+        val currentUser = userService.getCurrentUser()
+
+        if (!currentUser.isAdmin) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
+        }
+
+        logger.info { "Super-admin ${currentUser.id} listing all users" }
         return userService.findAll().map { toResource(it) }
     }
 

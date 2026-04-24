@@ -22,6 +22,7 @@ class UserServiceImplSpec : StringSpec({
     fun makeUser(externalId: String) = User(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         externalId = externalId,
+        isAdmin = false,
     )
 
     // -------------------------------------------------------------------------
@@ -51,6 +52,7 @@ class UserServiceImplSpec : StringSpec({
         val userRepository = mockk<UserRepository>()
         every { securityService.resolveCurrentIdentity() } returns identity
         every { userRepository.findByExternalId(identity) } returns null
+        every { userRepository.count() } returns 1L // Not the first user
         every { userRepository.save(any()) } returns createdUser
 
         val service = UserServiceImpl(userRepository, securityService)
@@ -82,13 +84,14 @@ class UserServiceImplSpec : StringSpec({
         val createdUser = makeUser(externalId)
         val userRepository = mockk<UserRepository>()
         every { userRepository.findByExternalId(externalId) } returns null
+        every { userRepository.count() } returns 1L // Not the first user
         every { userRepository.save(any()) } returns createdUser
 
         val service = UserServiceImpl(userRepository, mockk())
         val result = service.resolveOrCreateByExternalId(externalId)
 
         result shouldBe createdUser
-        // email and firstname are no longer seeded from externalId at creation time
-        verify(exactly = 1) { userRepository.save(match { it.externalId == externalId && it.email == "" }) }
+        // email is extracted from externalId if it contains @
+        verify(exactly = 1) { userRepository.save(match { it.externalId == externalId && it.email == externalId && it.isAdmin == false }) }
     }
 })

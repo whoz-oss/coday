@@ -58,6 +58,13 @@ agentos:
     #        to x-forwarded-email; requires the User to be pre-registered.
     # Override with env var: AGENTOS_SECURITY_MODE
     mode: local
+  bootstrap:
+    # Enable bootstrap service to run on startup
+    # Override with env var: AGENTOS_BOOTSTRAP_ENABLED
+    enabled: true
+    # Auto-create the first user as super-admin
+    # Override with env var: AGENTOS_BOOTSTRAP_AUTO_CREATE_SUPER_ADMIN
+    autoCreateSuperAdmin: true
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR

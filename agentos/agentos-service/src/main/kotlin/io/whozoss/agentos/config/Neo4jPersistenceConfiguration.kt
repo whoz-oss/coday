@@ -24,6 +24,9 @@ import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
+import io.whozoss.agentos.permissions.Neo4jPermissionRepository
+import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
+import io.whozoss.agentos.permissions.PermissionRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -65,6 +68,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
         "io.whozoss.agentos.integrationConfig",
+        "io.whozoss.agentos.permissions",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -100,6 +104,12 @@ class Neo4jPersistenceConfiguration {
     fun neo4jUserRepository(userNodeNeo4jRepository: UserNodeNeo4jRepository): UserRepository {
         logger.info { "[Persistence] Neo4jUserRepository active" }
         return Neo4jUserRepository(userNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jPermissionRepository(permissionNodeNeo4jRepository: PermissionNodeNeo4jRepository): PermissionRepository {
+        logger.info { "[Persistence] Neo4jPermissionRepository active" }
+        return Neo4jPermissionRepository(permissionNodeNeo4jRepository)
     }
 
     @Bean

@@ -25,7 +25,8 @@ class UserControllerSpec : StringSpec({
     timeout = 5000
 
     val userService = mockk<UserService>()
-    val controller = UserController(userService)
+    val permissionService = mockk<io.whozoss.agentos.permissions.BlockingPermissionService>()
+    val controller = UserController(userService, permissionService)
 
     fun user(
         id: UUID = UUID.randomUUID(),
@@ -34,6 +35,7 @@ class UserControllerSpec : StringSpec({
         firstname: String? = "Alice",
         lastname: String? = "Smith",
         bio: String? = null,
+        isAdmin: Boolean = false,
     ) = User(
         metadata = EntityMetadata(id = id),
         externalId = externalId,
@@ -41,6 +43,7 @@ class UserControllerSpec : StringSpec({
         firstname = firstname,
         lastname = lastname,
         bio = bio,
+        isAdmin = isAdmin,
     )
 
     fun resource(
@@ -49,12 +52,14 @@ class UserControllerSpec : StringSpec({
         firstname: String? = "Alice",
         lastname: String? = "Smith",
         bio: String? = null,
+        isAdmin: Boolean = false,
     ) = UserResource(
         id = id,
         email = email,
         firstname = firstname,
         lastname = lastname,
         bio = bio,
+        isAdmin = isAdmin,
     )
 
     // -------------------------------------------------------------------------
@@ -108,8 +113,10 @@ class UserControllerSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "listAll returns all users mapped to UserResource" {
+        val adminUser = user(email = "admin@example.com", isAdmin = true)
         val u1 = user(email = "alice@example.com")
         val u2 = user(email = "bob@example.com")
+        every { userService.getCurrentUser() } returns adminUser
         every { userService.findAll() } returns listOf(u1, u2)
 
         val result = controller.listAll()
@@ -119,6 +126,8 @@ class UserControllerSpec : StringSpec({
     }
 
     "listAll returns empty list when no users exist" {
+        val adminUser = user(email = "admin@example.com", isAdmin = true)
+        every { userService.getCurrentUser() } returns adminUser
         every { userService.findAll() } returns emptyList()
 
         controller.listAll() shouldBe emptyList()
@@ -142,8 +151,9 @@ class UserControllerSpec : StringSpec({
     // getById (inherited from EntityController)
     // -------------------------------------------------------------------------
 
-    "getById returns a UserResource when user is found" {
+    "getById returns a UserResource when user is found (accessing own profile)" {
         val u = user()
+        every { userService.getCurrentUser() } returns u
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
         every { userService.findById(u.id) } returns u
 
@@ -153,7 +163,9 @@ class UserControllerSpec : StringSpec({
     }
 
     "getById throws 404 when user not found" {
+        val currentUser = user()
         val id = UUID.randomUUID()
+        every { userService.getCurrentUser() } returns currentUser
         every { userService.findByIds(listOf(id)) } returns emptyList()
         every { userService.findById(id) } returns null
 
@@ -166,9 +178,11 @@ class UserControllerSpec : StringSpec({
     // getByIds (inherited from EntityController)
     // -------------------------------------------------------------------------
 
-    "getByIds returns matching users mapped to UserResource" {
+    "getByIds returns matching users mapped to UserResource (admin)" {
+        val adminUser = user(isAdmin = true)
         val u1 = user(email = "a@x.com")
         val u2 = user(email = "b@x.com")
+        every { userService.getCurrentUser() } returns adminUser
         every { userService.findByIds(listOf(u1.id, u2.id)) } returns listOf(u1, u2)
 
         val result = controller.getByIds(listOf(u1.id, u2.id))
@@ -180,10 +194,12 @@ class UserControllerSpec : StringSpec({
     // create (inherited from EntityController)
     // -------------------------------------------------------------------------
 
-    "create converts resource to domain, delegates to service, and returns mapped resource" {
+    "create converts resource to domain, delegates to service, and returns mapped resource (admin)" {
+        val adminUser = user(isAdmin = true)
         val r = resource(id = null, email = "new@example.com")
         val domain = controller.toDomain(r)
         val saved = domain.copy(metadata = domain.metadata)
+        every { userService.getCurrentUser() } returns adminUser
         every { userService.create(any()) } returns saved
 
         val result = controller.create(r)
@@ -203,7 +219,9 @@ class UserControllerSpec : StringSpec({
         val updatedDomain = controller.toDomain(updatedResource).copy(
             metadata = u.metadata,
             externalId = u.externalId,
+            isAdmin = u.isAdmin,
         )
+        every { userService.getCurrentUser() } returns u
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
         every { userService.findById(u.id) } returns u
         every { userService.update(any()) } returns updatedDomain
@@ -216,7 +234,9 @@ class UserControllerSpec : StringSpec({
 
     "update throws 404 when user not found" {
         val id = UUID.randomUUID()
+        val currentUser = user(id = id)  // Current user is updating their own profile
         val r = resource(id = id)
+        every { userService.getCurrentUser() } returns currentUser
         every { userService.findByIds(listOf(id)) } returns emptyList()
         every { userService.findById(id) } returns null
 
@@ -229,8 +249,11 @@ class UserControllerSpec : StringSpec({
     // delete (inherited from EntityController)
     // -------------------------------------------------------------------------
 
-    "delete succeeds when user exists" {
+    "delete succeeds when user exists (admin)" {
+        val adminUser = user(isAdmin = true)
         val id = UUID.randomUUID()
+        every { userService.getCurrentUser() } returns adminUser
+        every { userService.findById(id) } returns user(id = id)
         every { userService.delete(id) } returns true
 
         controller.delete(id)
@@ -239,7 +262,10 @@ class UserControllerSpec : StringSpec({
     }
 
     "delete throws 404 when service returns false" {
+        val adminUser = user(isAdmin = true)
         val id = UUID.randomUUID()
+        every { userService.getCurrentUser() } returns adminUser
+        every { userService.findById(id) } returns null
         every { userService.delete(id) } returns false
 
         val ex = runCatching { controller.delete(id) }.exceptionOrNull()

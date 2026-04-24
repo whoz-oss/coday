@@ -1,0 +1,197 @@
+package io.whozoss.agentos.permissions
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import mu.KLogging
+
+/**
+ * Neo4j implementation of PermissionRepository using the Spring Data Neo4j pattern.
+ * This acts as a bridge to the PermissionNodeNeo4jRepository, handling the coroutine
+ * context switching and error handling according to the fail-closed security model.
+ *
+ * IMPORTANT: This implementation follows the correct Spring Data Neo4j pattern,
+ * NOT using Driver.session() directly. All Neo4j operations go through the
+ * PermissionNodeNeo4jRepository with its @Query annotations.
+ */
+class Neo4jPermissionRepository(
+    private val permissionNodeRepository: PermissionNodeNeo4jRepository
+) : PermissionRepository {
+
+    companion object : KLogging()
+
+    override suspend fun hasDirectPermission(
+        userId: String,
+        entityType: String,
+        entityId: String,
+        relation: PermissionRelation
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            when (relation) {
+                PermissionRelation.ADMIN -> {
+                    permissionNodeRepository.hasAdminPermission(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType
+                    )
+                }
+                PermissionRelation.MEMBER -> {
+                    permissionNodeRepository.hasMemberOrAdminPermission(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Error checking direct permission for user=$userId, entity=$entityType:$entityId, relation=$relation" }
+            false // Fail-closed: any error returns false
+        }
+    }
+
+    override suspend fun hasTransitivePermission(
+        userId: String,
+        entityType: String,
+        entityId: String,
+        relation: PermissionRelation
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Only check transitive permissions for namespace child entities
+            if (!isNamespaceChildEntity(entityType)) {
+                return@withContext false
+            }
+
+            when (relation) {
+                PermissionRelation.ADMIN -> {
+                    permissionNodeRepository.hasAdminAccessViaNamespace(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType
+                    )
+                }
+                PermissionRelation.MEMBER -> {
+                    // MEMBER relation allows READ access transitively
+                    permissionNodeRepository.hasReadAccessViaNamespace(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Error checking transitive permission for user=$userId, entity=$entityType:$entityId, relation=$relation" }
+            false // Fail-closed: any error returns false
+        }
+    }
+
+    override suspend fun grantPermission(
+        userId: String,
+        entityType: String,
+        entityId: String,
+        relation: PermissionRelation
+    ) = withContext(Dispatchers.IO) {
+        try {
+            permissionNodeRepository.createPermission(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType,
+                relation = relation.name
+            )
+            logger.info { "Granted $relation permission to user=$userId on $entityType:$entityId" }
+        } catch (e: Exception) {
+            logger.error(e) { "Error granting permission for user=$userId, entity=$entityType:$entityId, relation=$relation" }
+            throw e
+        }
+    }
+
+    override suspend fun revokePermission(
+        userId: String,
+        entityType: String,
+        entityId: String,
+        relation: PermissionRelation
+    ) = withContext(Dispatchers.IO) {
+        try {
+            permissionNodeRepository.deletePermission(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType,
+                relation = relation.name
+            )
+            logger.info { "Revoked $relation permission from user=$userId on $entityType:$entityId" }
+        } catch (e: Exception) {
+            logger.error(e) { "Error revoking permission for user=$userId, entity=$entityType:$entityId, relation=$relation" }
+            throw e
+        }
+    }
+
+    override suspend fun listUsersWithPermission(
+        entityType: String,
+        entityId: String,
+        relation: PermissionRelation?
+    ): List<String> = withContext(Dispatchers.IO) {
+        try {
+            permissionNodeRepository.findUsersWithPermission(
+                entityId = entityId,
+                entityLabel = entityType,
+                relation = relation?.name
+            )
+        } catch (e: Exception) {
+            logger.error(e) { "Error listing users with permission on $entityType:$entityId, relation=$relation" }
+            emptyList() // Fail-closed: return empty list on error
+        }
+    }
+
+    override suspend fun listEntitiesForUser(
+        userId: String,
+        entityType: String,
+        relation: PermissionRelation
+    ): List<String> = withContext(Dispatchers.IO) {
+        try {
+            // Include both direct and transitive permissions
+            when (relation) {
+                PermissionRelation.ADMIN -> {
+                    if (isNamespaceChildEntity(entityType)) {
+                        permissionNodeRepository.findEntitiesWhereUserIsAdminTransitive(
+                            userId = userId,
+                            entityLabel = entityType
+                        )
+                    } else {
+                        permissionNodeRepository.findEntitiesWhereUserIsAdmin(
+                            userId = userId,
+                            entityLabel = entityType
+                        )
+                    }
+                }
+                PermissionRelation.MEMBER -> {
+                    if (isNamespaceChildEntity(entityType)) {
+                        permissionNodeRepository.findEntitiesWhereUserHasAccessTransitive(
+                            userId = userId,
+                            entityLabel = entityType
+                        )
+                    } else {
+                        permissionNodeRepository.findEntitiesWhereUserHasAccess(
+                            userId = userId,
+                            entityLabel = entityType
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Error listing entities for user=$userId, type=$entityType, relation=$relation" }
+            emptyList() // Fail-closed: return empty list on error
+        }
+    }
+
+    /**
+     * Checks if the entity type is a child of Namespace in the hierarchy.
+     * These entities support transitive permissions through their parent namespace.
+     */
+    private fun isNamespaceChildEntity(entityType: String): Boolean {
+        return entityType in setOf(
+            "Case",
+            "AgentConfig",
+            "IntegrationConfig",
+            "AiProvider",
+            "AiModel"
+        )
+    }
+}

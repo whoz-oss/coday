@@ -40,6 +40,8 @@ open class Neo4jUserRepository(
 
     override fun findByExternalId(externalId: String): User? = userNodeNeo4jRepository.findActiveByExternalId(externalId)?.toDomain()
 
+    override fun count(): Long = userNodeNeo4jRepository.countActive()
+
     override fun delete(id: UUID): Boolean =
         userNodeNeo4jRepository
             .findByIdOrNull(id.toString())

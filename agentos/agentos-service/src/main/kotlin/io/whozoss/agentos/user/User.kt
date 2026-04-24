@@ -23,4 +23,5 @@ data class User(
     val firstname: String? = null,
     val lastname: String? = null,
     val bio: String? = null,
+    val isAdmin: Boolean = false,
 ) : Entity
