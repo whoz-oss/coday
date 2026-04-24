@@ -1,13 +1,11 @@
 package io.whozoss.agentos.permissions
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import mu.KLogging
 
 /**
  * Neo4j implementation of PermissionRepository using the Spring Data Neo4j pattern.
- * This acts as a bridge to the PermissionNodeNeo4jRepository, handling the coroutine
- * context switching and error handling according to the fail-closed security model.
+ * This acts as a bridge to the PermissionNodeNeo4jRepository, handling
+ * error handling according to the fail-closed security model.
  *
  * IMPORTANT: This implementation follows the correct Spring Data Neo4j pattern,
  * NOT using Driver.session() directly. All Neo4j operations go through the
@@ -19,13 +17,13 @@ class Neo4jPermissionRepository(
 
     companion object : KLogging()
 
-    override suspend fun hasDirectPermission(
+    override fun hasDirectPermission(
         userId: String,
         entityType: String,
         entityId: String,
         relation: PermissionRelation
-    ): Boolean = withContext(Dispatchers.IO) {
-        try {
+    ): Boolean {
+        return try {
             when (relation) {
                 PermissionRelation.ADMIN -> {
                     permissionNodeRepository.hasAdminPermission(
@@ -48,16 +46,16 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override suspend fun hasTransitivePermission(
+    override fun hasTransitivePermission(
         userId: String,
         entityType: String,
         entityId: String,
         relation: PermissionRelation
-    ): Boolean = withContext(Dispatchers.IO) {
-        try {
+    ): Boolean {
+        return try {
             // Only check transitive permissions for namespace child entities
             if (!isNamespaceChildEntity(entityType)) {
-                return@withContext false
+                return false
             }
 
             when (relation) {
@@ -83,12 +81,12 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override suspend fun grantPermission(
+    override fun grantPermission(
         userId: String,
         entityType: String,
         entityId: String,
         relation: PermissionRelation
-    ) = withContext(Dispatchers.IO) {
+    ) {
         try {
             when (relation) {
                 PermissionRelation.ADMIN -> permissionNodeRepository.createAdminPermission(
@@ -109,12 +107,12 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override suspend fun revokePermission(
+    override fun revokePermission(
         userId: String,
         entityType: String,
         entityId: String,
         relation: PermissionRelation
-    ) = withContext(Dispatchers.IO) {
+    ) {
         try {
             when (relation) {
                 PermissionRelation.ADMIN -> permissionNodeRepository.deleteAdminPermission(
@@ -135,12 +133,12 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override suspend fun listUsersWithPermission(
+    override fun listUsersWithPermission(
         entityType: String,
         entityId: String,
         relation: PermissionRelation?
-    ): List<String> = withContext(Dispatchers.IO) {
-        try {
+    ): List<String> {
+        return try {
             when (relation) {
                 PermissionRelation.ADMIN -> permissionNodeRepository.findUsersWithAdminPermission(
                     entityId = entityId,
@@ -161,12 +159,12 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override suspend fun listEntitiesForUser(
+    override fun listEntitiesForUser(
         userId: String,
         entityType: String,
         relation: PermissionRelation
-    ): List<String> = withContext(Dispatchers.IO) {
-        try {
+    ): List<String> {
+        return try {
             // Include both direct and transitive permissions
             when (relation) {
                 PermissionRelation.ADMIN -> {

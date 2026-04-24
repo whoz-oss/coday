@@ -17,7 +17,7 @@ interface PermissionRepository {
      * @param relation The permission relationship to check (ADMIN or MEMBER)
      * @return true if the direct relationship exists, false otherwise
      */
-    suspend fun hasDirectPermission(
+    fun hasDirectPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -33,7 +33,7 @@ interface PermissionRepository {
      * @param relation The permission relationship to check
      * @return true if transitive permission exists, false otherwise
      */
-    suspend fun hasTransitivePermission(
+    fun hasTransitivePermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -48,7 +48,7 @@ interface PermissionRepository {
      * @param entityId The ID of the entity
      * @param relation The permission relationship to grant
      */
-    suspend fun grantPermission(
+    fun grantPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -63,7 +63,7 @@ interface PermissionRepository {
      * @param entityId The ID of the entity
      * @param relation The permission relationship to revoke
      */
-    suspend fun revokePermission(
+    fun revokePermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -78,7 +78,7 @@ interface PermissionRepository {
      * @param relation Optional filter for specific relationship type
      * @return List of user IDs with the specified relationship
      */
-    suspend fun listUsersWithPermission(
+    fun listUsersWithPermission(
         entityType: String,
         entityId: String,
         relation: PermissionRelation? = null
@@ -93,7 +93,7 @@ interface PermissionRepository {
      * @param relation The permission relationship to check
      * @return List of entity IDs the user has the specified relationship with
      */
-    suspend fun listEntitiesForUser(
+    fun listEntitiesForUser(
         userId: String,
         entityType: String,
         relation: PermissionRelation

@@ -10,7 +10,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.BlockingPermissionService
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.persistence.neo4j.Neo4jContainerSpec
@@ -66,7 +66,7 @@ class Neo4jSecuredEntityControllerSpec : StringSpec() {
     lateinit var permissionNodeRepository: PermissionNodeNeo4jRepository
 
     @Autowired
-    lateinit var permissionService: BlockingPermissionService
+    lateinit var permissionService: PermissionService
 
     @Autowired
     lateinit var driver: Driver

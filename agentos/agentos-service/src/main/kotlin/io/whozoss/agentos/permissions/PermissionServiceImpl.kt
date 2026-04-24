@@ -30,7 +30,7 @@ class PermissionServiceImpl(
 
     companion object : KLogging()
 
-    override suspend fun hasPermission(
+    override fun hasPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -72,7 +72,7 @@ class PermissionServiceImpl(
     /**
      * Evaluates permission through direct and transitive checks.
      */
-    private suspend fun evaluatePermission(
+    private fun evaluatePermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -100,7 +100,7 @@ class PermissionServiceImpl(
         return false
     }
 
-    override suspend fun grantPermission(
+    override fun grantPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -108,8 +108,8 @@ class PermissionServiceImpl(
     ) {
         try {
             permissionRepository.grantPermission(userId, entityType, entityId, relation)
-            // Invalidate cache for this user to ensure fresh permission checks
-            permissionCache.invalidateUser(userId)
+            // Invalidate entire cache: transitive permissions can affect any user in the namespace
+            permissionCache.clear()
             logger.info { "Granted $relation permission to user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to grant permission: user=$userId, entity=$entityType:$entityId, relation=$relation" }
@@ -117,7 +117,7 @@ class PermissionServiceImpl(
         }
     }
 
-    override suspend fun revokePermission(
+    override fun revokePermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -125,8 +125,8 @@ class PermissionServiceImpl(
     ) {
         try {
             permissionRepository.revokePermission(userId, entityType, entityId, relation)
-            // Invalidate cache for this user
-            permissionCache.invalidateUser(userId)
+            // Invalidate entire cache: transitive permissions can affect any user in the namespace
+            permissionCache.clear()
             logger.info { "Revoked $relation permission from user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to revoke permission: user=$userId, entity=$entityType:$entityId, relation=$relation" }
@@ -134,7 +134,7 @@ class PermissionServiceImpl(
         }
     }
 
-    override suspend fun listUsersWithPermission(
+    override fun listUsersWithPermission(
         entityType: String,
         entityId: String,
         relation: PermissionRelation?
@@ -147,7 +147,7 @@ class PermissionServiceImpl(
         }
     }
 
-    override suspend fun listEntitiesForUser(
+    override fun listEntitiesForUser(
         userId: String,
         entityType: String,
         action: Action
@@ -162,8 +162,11 @@ class PermissionServiceImpl(
             }
             if (user?.isAdmin == true) {
                 logger.debug { "Super-admin listing all $entityType entities" }
-                // TODO: Implement a method to list all entities of a type
-                return emptyList() // For now, return empty until entity listing is implemented
+                // Super-admin bypasses per-entity checks in hasPermission(), so controllers
+                // (e.g. SecuredEntityController.listByParent) never reach this code path for
+                // super-admins. Return empty list as a safe fallback — callers that need "all
+                // entities" should query the entity service directly.
+                return emptyList()
             }
 
             // Determine required relation based on action
@@ -179,7 +182,7 @@ class PermissionServiceImpl(
         }
     }
 
-    override suspend fun clearUserCache(userId: String) {
+    override fun clearUserCache(userId: String) {
         try {
             permissionCache.invalidateUser(userId)
             logger.info { "Cleared permission cache for user: $userId" }

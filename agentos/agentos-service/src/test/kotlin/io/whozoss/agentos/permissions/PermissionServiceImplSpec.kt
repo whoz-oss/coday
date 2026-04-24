@@ -7,7 +7,6 @@ import io.mockk.*
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import kotlinx.coroutines.runBlocking
 import java.util.UUID
 
 class PermissionServiceImplSpec : StringSpec({
@@ -41,14 +40,12 @@ class PermissionServiceImplSpec : StringSpec({
         every { mockUserService.findById(UUID.fromString(userId)) } returns adminUser
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.DELETE)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.DELETE)
 
         // Then
         result shouldBe true
         verify(exactly = 0) { mockPermissionCache.get(any<String>()) }
-        verify(exactly = 0) { runBlocking { mockPermissionRepository.hasDirectPermission(any(), any(), any(), any()) } }
+        verify(exactly = 0) { mockPermissionRepository.hasDirectPermission(any(), any(), any(), any()) }
     }
 
     "should return cached result when available" {
@@ -67,13 +64,11 @@ class PermissionServiceImplSpec : StringSpec({
         } returns true
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.READ)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.READ)
 
         // Then
         result shouldBe true
-        verify(exactly = 0) { runBlocking { mockPermissionRepository.hasDirectPermission(any(), any(), any(), any()) } }
+        verify(exactly = 0) { mockPermissionRepository.hasDirectPermission(any(), any(), any(), any()) }
     }
 
     "should check direct permissions when not cached" {
@@ -87,17 +82,15 @@ class PermissionServiceImplSpec : StringSpec({
         every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         every { mockPermissionCache.get(any<String>()) } returns null
         every { mockPermissionCache.put(any(), any()) } just Runs
-        coEvery {
+        every {
             mockPermissionRepository.hasDirectPermission(userId, entityType, entityId, PermissionRelation.MEMBER)
         } returns true
-        coEvery {
+        every {
             mockPermissionRepository.hasTransitivePermission(any(), any(), any(), any())
         } returns false
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.READ)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.READ)
 
         // Then
         result shouldBe true
@@ -115,17 +108,15 @@ class PermissionServiceImplSpec : StringSpec({
         every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         every { mockPermissionCache.get(any<String>()) } returns null
         every { mockPermissionCache.put(any(), any()) } just Runs
-        coEvery {
+        every {
             mockPermissionRepository.hasDirectPermission(any(), any(), any(), any())
         } returns false
-        coEvery {
+        every {
             mockPermissionRepository.hasTransitivePermission(userId, entityType, entityId, PermissionRelation.ADMIN)
         } returns true
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.WRITE)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.WRITE)
 
         // Then
         result shouldBe true
@@ -137,17 +128,15 @@ class PermissionServiceImplSpec : StringSpec({
         every { mockUserService.findById(UUID.fromString(userId)) } returns null
         every { mockPermissionCache.get(any<String>()) } returns null
         every { mockPermissionCache.put(any(), any()) } just Runs
-        coEvery {
+        every {
             mockPermissionRepository.hasDirectPermission(any(), any(), any(), any())
         } returns false
-        coEvery {
+        every {
             mockPermissionRepository.hasTransitivePermission(any(), any(), any(), any())
         } returns false
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.READ)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.READ)
 
         // Then
         result shouldBe false
@@ -158,9 +147,7 @@ class PermissionServiceImplSpec : StringSpec({
         val invalidUserId = "not-a-uuid"
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(invalidUserId, entityType, entityId, Action.READ)
-        }
+        val result = permissionService.hasPermission(invalidUserId, entityType, entityId, Action.READ)
 
         // Then
         result shouldBe false
@@ -171,46 +158,40 @@ class PermissionServiceImplSpec : StringSpec({
         every { mockUserService.findById(any()) } throws RuntimeException("Database error")
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.READ)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.READ)
 
         // Then
         result shouldBe false
     }
 
-    "should invalidate user cache when granting permission" {
+    "should invalidate entire cache when granting permission" {
         // Given
-        coEvery {
+        every {
             mockPermissionRepository.grantPermission(userId, entityType, entityId, PermissionRelation.ADMIN)
         } just Runs
-        every { mockPermissionCache.invalidateUser(userId) } just Runs
+        every { mockPermissionCache.clear() } just Runs
 
         // When
-        runBlocking {
-            permissionService.grantPermission(userId, entityType, entityId, PermissionRelation.ADMIN)
-        }
+        permissionService.grantPermission(userId, entityType, entityId, PermissionRelation.ADMIN)
 
         // Then
-        verify { mockPermissionCache.invalidateUser(userId) }
-        coVerify { mockPermissionRepository.grantPermission(userId, entityType, entityId, PermissionRelation.ADMIN) }
+        verify { mockPermissionCache.clear() }
+        verify { mockPermissionRepository.grantPermission(userId, entityType, entityId, PermissionRelation.ADMIN) }
     }
 
-    "should invalidate user cache when revoking permission" {
+    "should invalidate entire cache when revoking permission" {
         // Given
-        coEvery {
+        every {
             mockPermissionRepository.revokePermission(userId, entityType, entityId, PermissionRelation.MEMBER)
         } just Runs
-        every { mockPermissionCache.invalidateUser(userId) } just Runs
+        every { mockPermissionCache.clear() } just Runs
 
         // When
-        runBlocking {
-            permissionService.revokePermission(userId, entityType, entityId, PermissionRelation.MEMBER)
-        }
+        permissionService.revokePermission(userId, entityType, entityId, PermissionRelation.MEMBER)
 
         // Then
-        verify { mockPermissionCache.invalidateUser(userId) }
-        coVerify { mockPermissionRepository.revokePermission(userId, entityType, entityId, PermissionRelation.MEMBER) }
+        verify { mockPermissionCache.clear() }
+        verify { mockPermissionRepository.revokePermission(userId, entityType, entityId, PermissionRelation.MEMBER) }
     }
 
     "READ action should accept MEMBER or ADMIN permission" {
@@ -224,14 +205,12 @@ class PermissionServiceImplSpec : StringSpec({
         every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         every { mockPermissionCache.get(any<String>()) } returns null
         every { mockPermissionCache.put(any(), any()) } just Runs
-        coEvery {
+        every {
             mockPermissionRepository.hasDirectPermission(userId, entityType, entityId, PermissionRelation.MEMBER)
         } returns true
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.READ)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.READ)
 
         // Then
         result shouldBe true
@@ -248,17 +227,15 @@ class PermissionServiceImplSpec : StringSpec({
         every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         every { mockPermissionCache.get(any<String>()) } returns null
         every { mockPermissionCache.put(any(), any()) } just Runs
-        coEvery {
+        every {
             mockPermissionRepository.hasDirectPermission(userId, entityType, entityId, PermissionRelation.ADMIN)
         } returns false
-        coEvery {
+        every {
             mockPermissionRepository.hasTransitivePermission(any(), any(), any(), any())
         } returns false
 
         // When
-        val result = runBlocking {
-            permissionService.hasPermission(userId, entityType, entityId, Action.WRITE)
-        }
+        val result = permissionService.hasPermission(userId, entityType, entityId, Action.WRITE)
 
         // Then
         result shouldBe false
@@ -273,14 +250,12 @@ class PermissionServiceImplSpec : StringSpec({
             isAdmin = false
         )
         every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
-        coEvery {
+        every {
             mockPermissionRepository.listEntitiesForUser(any(), any(), any())
         } throws RuntimeException("Database error")
 
         // When
-        val result = runBlocking {
-            permissionService.listEntitiesForUser(userId, entityType, Action.READ)
-        }
+        val result = permissionService.listEntitiesForUser(userId, entityType, Action.READ)
 
         // Then
         result shouldBe emptyList()

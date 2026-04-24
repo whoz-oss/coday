@@ -26,7 +26,7 @@ interface PermissionService {
      * @param action The action to perform (READ, WRITE, DELETE)
      * @return true if permission is granted, false otherwise (fail-closed)
      */
-    suspend fun hasPermission(
+    fun hasPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -41,7 +41,7 @@ interface PermissionService {
      * @param entityId The ID of the entity
      * @param relation The type of relationship (ADMIN or MEMBER)
      */
-    suspend fun grantPermission(
+    fun grantPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -56,7 +56,7 @@ interface PermissionService {
      * @param entityId The ID of the entity
      * @param relation The type of relationship to revoke
      */
-    suspend fun revokePermission(
+    fun revokePermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -71,7 +71,7 @@ interface PermissionService {
      * @param relation The type of relationship to filter by (optional)
      * @return List of user IDs with the specified relationship
      */
-    suspend fun listUsersWithPermission(
+    fun listUsersWithPermission(
         entityType: String,
         entityId: String,
         relation: PermissionRelation? = null
@@ -85,7 +85,7 @@ interface PermissionService {
      * @param action The action to check permissions for
      * @return List of entity IDs the user has permission to perform the action on
      */
-    suspend fun listEntitiesForUser(
+    fun listEntitiesForUser(
         userId: String,
         entityType: String,
         action: Action
@@ -97,5 +97,5 @@ interface PermissionService {
      *
      * @param userId The ID of the user to clear cache for
      */
-    suspend fun clearUserCache(userId: String)
+    fun clearUserCache(userId: String)
 }

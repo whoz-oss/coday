@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.BlockingPermissionService
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.validation.Valid
 import mu.KLogging
@@ -17,8 +17,15 @@ import java.util.UUID
 /**
  * REST API for managing Users.
  *
- * Extends [EntityController] with [UserResource] as the HTTP DTO, keeping the
- * [User] domain entity decoupled from the API contract.
+ * This controller does NOT extend SecuredEntityController because User has special
+ * access rules: users can always access and update their own profile. The standard
+ * SecuredEntityController pattern (check permission per entity) doesn't fit this
+ * model. Instead, permission checks are inline:
+ * - Own-profile access is always allowed
+ * - Admin operations (list all, create, delete other users) require super-admin
+ *
+ * The super-admin check uses [User.isAdmin] directly, which is consistent with
+ * [PermissionService]'s own super-admin bypass logic.
  *
  * Standard CRUD endpoints (inherited):
  *   GET    /api/users/{id}
@@ -39,7 +46,7 @@ import java.util.UUID
 )
 class UserController(
     private val userService: UserService,
-    private val permissionService: BlockingPermissionService,
+    private val permissionService: PermissionService,
 ) : EntityController<User, String, UserResource>(userService) {
 
     // -------------------------------------------------------------------------

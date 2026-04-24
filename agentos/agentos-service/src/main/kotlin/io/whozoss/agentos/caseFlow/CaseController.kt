@@ -1,9 +1,8 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.SecuredEntityController
-import io.whozoss.agentos.entity.UnsecuredEndpoint
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.BlockingPermissionService
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -28,13 +27,13 @@ import java.util.UUID
 class CaseController(
     private val caseService: CaseService,
     userService: UserService,
-    permissionService: BlockingPermissionService,
+    permissionService: PermissionService,
 ) : SecuredEntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
 
     override fun getEntityType(): String = "Case"
 
     override fun checkCreatePermission(userId: String, entity: Case) {
-        // Pour créer un Case, l'utilisateur doit avoir la permission WRITE sur le namespace parent
+        // To create a Case, the user must have WRITE permission on the parent namespace
         if (!permissionService.hasPermission(userId, "Namespace", entity.namespaceId.toString(), Action.WRITE)) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied - no write permission on namespace")
         }
@@ -70,7 +69,7 @@ class CaseController(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
     ) {
-        // Vérifier que l'utilisateur a la permission WRITE sur le case
+        // Check that the user has WRITE permission on the case
         val user = userService.getCurrentUser()
         val userId = user.id.toString()
 
@@ -103,7 +102,7 @@ class CaseController(
     fun interruptCase(
         @PathVariable caseId: UUID,
     ) {
-        // Vérifier que l'utilisateur a la permission WRITE sur le case
+        // Check that the user has WRITE permission on the case
         val userId = userService.getCurrentUser().id.toString()
         if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.WRITE)) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
@@ -119,7 +118,7 @@ class CaseController(
     fun killCase(
         @PathVariable caseId: UUID,
     ) {
-        // Vérifier que l'utilisateur a la permission DELETE sur le case
+        // Check that the user has DELETE permission on the case
         val userId = userService.getCurrentUser().id.toString()
         if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.DELETE)) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")

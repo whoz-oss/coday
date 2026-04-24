@@ -8,16 +8,16 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 
 /**
- * Implémentation du service de bootstrap qui s'exécute au démarrage de l'application.
+ * Bootstrap service implementation that runs at application startup.
  *
- * Ce service implémente ApplicationRunner pour s'exécuter automatiquement après
- * le démarrage du contexte Spring mais avant que l'application n'accepte des requêtes.
+ * Implements ApplicationRunner to execute automatically after the Spring context
+ * starts but before the application begins accepting requests.
  *
- * Le principal rôle est de s'assurer que le système a au moins un super-admin.
- * Le premier utilisateur qui se connecte devient automatiquement super-admin,
- * ce qui est géré par UserService lors de la création.
+ * Its primary role is to ensure the system has at least one super-admin.
+ * The first user to connect is automatically promoted to super-admin,
+ * which is handled by UserService during user creation.
  *
- * @property userService Service pour gérer les utilisateurs
+ * @property userService Service for managing users
  */
 @Service
 @ConditionalOnProperty(
@@ -33,19 +33,19 @@ class BootstrapServiceImpl(
     companion object : KLogging()
 
     /**
-     * Méthode appelée automatiquement par Spring Boot au démarrage.
-     * Délègue à la méthode bootstrap() pour l'exécution réelle.
+     * Called automatically by Spring Boot at startup.
+     * Delegates to bootstrap() for the actual execution.
      */
     override fun run(args: ApplicationArguments) {
         bootstrap()
     }
 
     /**
-     * Exécute les opérations de bootstrap.
+     * Runs the bootstrap operations.
      *
-     * Vérifie si des utilisateurs existent déjà dans le système.
-     * Si aucun utilisateur n'existe, le prochain utilisateur créé
-     * sera automatiquement promu super-admin par UserService.
+     * Checks if users already exist in the system.
+     * If no users exist, the next user created will be
+     * automatically promoted to super-admin by UserService.
      */
     override fun bootstrap() {
         logger.info { "[Bootstrap] Starting bootstrap process..." }
@@ -60,9 +60,9 @@ class BootstrapServiceImpl(
     }
 
     /**
-     * Vérifie si le système a déjà été initialisé.
+     * Checks if the system has already been initialized.
      *
-     * @return true si au moins un utilisateur existe, false sinon
+     * @return true if at least one user exists, false otherwise
      */
     override fun isBootstrapped(): Boolean {
         val userCount = userService.count()

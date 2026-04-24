@@ -6,7 +6,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.*
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.BlockingPermissionService
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
@@ -35,7 +35,7 @@ class SecuredEntityControllerSpec : StringSpec({
     class TestSecuredController(
         service: EntityService<TestEntity, UUID>,
         userService: UserService,
-        permissionService: BlockingPermissionService,
+        permissionService: PermissionService,
         private val entityType: String = "TestEntity"
     ) : SecuredEntityController<TestEntity, UUID, TestResource>(service, userService, permissionService) {
 
@@ -54,7 +54,7 @@ class SecuredEntityControllerSpec : StringSpec({
 
     val mockService = mockk<EntityService<TestEntity, UUID>>()
     val mockUserService = mockk<UserService>()
-    val mockPermissionService = mockk<BlockingPermissionService>()
+    val mockPermissionService = mockk<PermissionService>()
 
     val currentUser = User(
         metadata = EntityMetadata(id = UUID.randomUUID()),

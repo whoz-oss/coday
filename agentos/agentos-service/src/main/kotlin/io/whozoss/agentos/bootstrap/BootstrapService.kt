@@ -1,34 +1,32 @@
 package io.whozoss.agentos.bootstrap
 
 /**
- * Service pour les opérations d'initialisation au démarrage de l'application.
+ * Service for application startup initialization operations.
  *
- * Cette interface définit les opérations de bootstrap qui doivent être exécutées
- * une seule fois au démarrage de l'application, notamment pour s'assurer qu'un
- * super-admin existe dans le système.
+ * Defines bootstrap operations that must run once at application startup,
+ * primarily to ensure a super-admin exists in the system.
  *
- * L'implémentation doit être idempotente - elle peut être appelée plusieurs fois
- * sans effets secondaires indésirables.
+ * The implementation must be idempotent — it can be called multiple times
+ * without undesirable side effects.
  */
 interface BootstrapService {
     /**
-     * Exécute les opérations de bootstrap.
+     * Runs the bootstrap operations.
      *
-     * Cette méthode est appelée automatiquement au démarrage de l'application.
-     * Elle vérifie si des utilisateurs existent déjà et configure le système
-     * en conséquence.
+     * Called automatically at application startup. Checks if users already exist
+     * and configures the system accordingly.
      *
-     * Les opérations typiques incluent :
-     * - Vérifier si le système a déjà des utilisateurs
-     * - S'assurer que le premier utilisateur devient super-admin
-     * - Initialiser d'autres ressources système si nécessaire
+     * Typical operations include:
+     * - Checking if the system already has users
+     * - Ensuring the first user becomes super-admin
+     * - Initializing other system resources if necessary
      */
     fun bootstrap()
 
     /**
-     * Vérifie si le bootstrap a déjà été effectué.
+     * Checks if bootstrap has already been performed.
      *
-     * @return true si le système a déjà au moins un utilisateur, false sinon
+     * @return true if the system already has at least one user, false otherwise
      */
     fun isBootstrapped(): Boolean
 }

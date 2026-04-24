@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -25,7 +26,7 @@ class UserControllerSpec : StringSpec({
     timeout = 5000
 
     val userService = mockk<UserService>()
-    val permissionService = mockk<io.whozoss.agentos.permissions.BlockingPermissionService>()
+    val permissionService = mockk<PermissionService>()
     val controller = UserController(userService, permissionService)
 
     fun user(

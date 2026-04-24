@@ -2,7 +2,7 @@ package io.whozoss.agentos.entity
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.BlockingPermissionService
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
@@ -13,44 +13,43 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * Controller sécurisé abstrait pour les endpoints d'entités avec vérification automatique des permissions.
+ * Abstract secured controller for entity endpoints with automatic permission checks.
  *
- * Cette classe étend EntityController en ajoutant des vérifications de permissions sur toutes
- * les opérations CRUD. Les permissions sont vérifiées via PermissionService avant d'exécuter
- * toute opération.
+ * Extends EntityController by adding permission checks on all CRUD operations.
+ * Permissions are verified via PermissionService before executing any operation.
  *
- * Principes de sécurité appliqués :
- * - 404 Not Found pour les opérations READ quand l'utilisateur n'a pas la permission (cache l'existence)
- * - 403 Forbidden pour les opérations WRITE/DELETE quand l'utilisateur n'a pas la permission
- * - Filtrage automatique des listes pour ne retourner que les entités autorisées
- * - Support du bypass super-admin (géré par PermissionService)
+ * Security principles:
+ * - 404 Not Found for READ operations when the user lacks permission (hides entity existence)
+ * - 403 Forbidden for WRITE/DELETE operations when the user lacks permission
+ * - Automatic list filtering to return only authorized entities
+ * - Super-admin bypass support (handled by PermissionService)
  *
- * @param EntityType Le type d'entité du domaine (doit implémenter Entity)
- * @param ParentIdentifier Le type d'identifiant parent (typiquement UUID)
- * @param ResourceType Le type de ressource/DTO HTTP retourné et consommé par les endpoints
- * @property service Le service d'entité pour les opérations CRUD
- * @property userService Le service utilisateur pour obtenir l'utilisateur courant
- * @property permissionService Le service de permissions pour les vérifications d'accès
+ * @param EntityType The domain entity type (must implement Entity)
+ * @param ParentIdentifier The parent identifier type (typically UUID)
+ * @param ResourceType The HTTP resource/DTO type returned and consumed by endpoints
+ * @property service The entity service for CRUD operations
+ * @property userService The user service to resolve the current user
+ * @property permissionService The permission service for access checks
  */
 abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, ResourceType>(
     service: EntityService<EntityType, ParentIdentifier>,
     protected val userService: UserService,
-    protected val permissionService: BlockingPermissionService
+    protected val permissionService: PermissionService
 ) : EntityController<EntityType, ParentIdentifier, ResourceType>(service) {
 
     companion object : KLogging()
 
     /**
-     * Retourne le type d'entité pour les vérifications de permissions.
-     * Doit correspondre au label Neo4j de l'entité (ex: "Case", "Namespace", "AgentConfig").
+     * Returns the entity type for permission checks.
+     * Must match the Neo4j label of the entity (e.g., "Case", "Namespace", "AgentConfig").
      *
-     * @return Le nom du type d'entité
+     * @return The entity type name
      */
     abstract fun getEntityType(): String
 
     /**
-     * GET /{id} — obtenir une seule entité par son ID.
-     * Vérifie la permission READ et retourne 404 si l'utilisateur n'a pas accès.
+     * GET /{id} — get a single entity by its ID.
+     * Checks READ permission and returns 404 if the user lacks access.
      */
     override fun getById(@PathVariable id: UUID): ResourceType {
         val entity = service.findById(id)
@@ -58,7 +57,7 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
 
         val userId = userService.getCurrentUser().id.toString()
         if (!permissionService.hasPermission(userId, getEntityType(), id.toString(), Action.READ)) {
-            // 404 pour cacher l'existence de l'entité
+            // Return 404 to hide entity existence
             throw ResourceNotFoundException("Entity not found: $id")
         }
 
@@ -67,8 +66,8 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
     }
 
     /**
-     * POST /by-ids — obtenir plusieurs entités par leurs IDs.
-     * Filtre les résultats pour ne retourner que les entités avec permission READ.
+     * POST /by-ids — get multiple entities by their IDs.
+     * Filters results to return only entities with READ permission.
      */
     override fun getByIds(@RequestBody ids: List<UUID>): List<ResourceType> {
         val userId = userService.getCurrentUser().id.toString()
@@ -91,8 +90,8 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
     }
 
     /**
-     * GET /by-parentId/{parentId} — lister toutes les entités appartenant à un parent.
-     * Filtre les résultats pour ne retourner que les entités avec permission READ.
+     * GET /by-parentId/{parentId} — list all entities belonging to a parent.
+     * Filters results to return only entities with READ permission.
      */
     override fun listByParent(@PathVariable parentId: ParentIdentifier): List<ResourceType> {
         val userId = userService.getCurrentUser().id.toString()
@@ -115,17 +114,15 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
     }
 
     /**
-     * POST — créer une nouvelle entité.
-     * Vérifie la permission WRITE sur le parent (si applicable).
+     * POST — create a new entity.
+     * Checks WRITE permission on the parent (if applicable).
      */
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
     override fun create(@Valid @RequestBody resource: ResourceType): ResourceType {
         val userId = userService.getCurrentUser().id.toString()
         val domainEntity = toDomain(resource)
 
-        // Pour la création, on vérifie généralement la permission sur le parent
-        // Les sous-classes peuvent override cette méthode pour une logique spécifique
+        // For creation, permission is typically checked on the parent entity.
+        // Subclasses can override checkCreatePermission for specific logic.
         checkCreatePermission(userId, domainEntity)
 
         val created = service.create(domainEntity)
@@ -135,8 +132,8 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
     }
 
     /**
-     * PUT /{id} — mettre à jour une entité existante.
-     * Vérifie la permission WRITE sur l'entité.
+     * PUT /{id} — update an existing entity.
+     * Checks WRITE permission on the entity.
      */
     override fun update(
         @PathVariable id: UUID,
@@ -144,11 +141,11 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
     ): ResourceType {
         val userId = userService.getCurrentUser().id.toString()
 
-        // Vérifier que l'entité existe
+        // Verify the entity exists
         service.findById(id)
             ?: throw ResourceNotFoundException("Entity not found: $id")
 
-        // Vérifier la permission WRITE
+        // Check WRITE permission
         if (!permissionService.hasPermission(userId, getEntityType(), id.toString(), Action.WRITE)) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
         }
@@ -160,21 +157,19 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
     }
 
     /**
-     * DELETE /{id} — supprimer (soft-delete) une seule entité.
-     * Vérifie la permission DELETE sur l'entité.
+     * DELETE /{id} — soft-delete a single entity.
+     * Checks DELETE permission on the entity.
      */
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(@PathVariable id: UUID) {
         val userId = userService.getCurrentUser().id.toString()
 
-        // Vérifier que l'entité existe
+        // Verify the entity exists
         val exists = service.findById(id) != null
         if (!exists) {
             throw ResourceNotFoundException("Entity not found: $id")
         }
 
-        // Vérifier la permission DELETE
+        // Check DELETE permission
         if (!permissionService.hasPermission(userId, getEntityType(), id.toString(), Action.DELETE)) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
         }
@@ -186,13 +181,13 @@ abstract class SecuredEntityController<EntityType : Entity, ParentIdentifier, Re
     }
 
     /**
-     * Vérifie les permissions pour la création d'une entité.
-     * Par défaut, cette méthode ne fait rien. Les sous-classes doivent l'override
-     * pour implémenter leur logique spécifique (ex: vérifier WRITE sur le namespace parent).
+     * Checks permissions for entity creation.
+     * By default, this method denies creation (fail-closed). Subclasses must override
+     * with their own logic (e.g., check WRITE on the parent namespace).
      *
-     * @param userId L'ID de l'utilisateur créant l'entité
-     * @param entity L'entité à créer
-     * @throws ResponseStatusException avec status 403 si l'utilisateur n'a pas la permission
+     * @param userId The ID of the user creating the entity
+     * @param entity The entity to be created
+     * @throws ResponseStatusException with status 403 if the user lacks permission
      */
     protected open fun checkCreatePermission(userId: String, entity: EntityType) {
         // Fail-closed: deny creation by default. Subclasses must explicitly override

@@ -14,7 +14,6 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
-import kotlinx.coroutines.runBlocking
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -94,25 +93,19 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             )
 
             // Verify transitive READ on child Case
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.READ
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.READ
+            ).shouldBeTrue()
 
             // Verify transitive WRITE on child Case
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.WRITE
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+            ).shouldBeTrue()
 
             // Verify transitive DELETE on child Case
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.DELETE
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.DELETE
+            ).shouldBeTrue()
         }
 
         "MEMBER on namespace grants READ on child Case" {
@@ -128,11 +121,9 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             )
 
             // MEMBER should grant READ
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.READ
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.READ
+            ).shouldBeTrue()
         }
 
         "MEMBER on namespace denies WRITE on child Case" {
@@ -148,11 +139,9 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             )
 
             // MEMBER should NOT grant WRITE
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.WRITE
-                )
-            }.shouldBeFalse()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+            ).shouldBeFalse()
         }
 
         "MEMBER on namespace denies DELETE on child Case" {
@@ -168,11 +157,9 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             )
 
             // MEMBER should NOT grant DELETE
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.DELETE
-                )
-            }.shouldBeFalse()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.DELETE
+            ).shouldBeFalse()
         }
 
         "direct permission takes precedence over transitive permission" {
@@ -195,11 +182,9 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             )
 
             // Direct ADMIN should grant WRITE even though namespace is only MEMBER
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.WRITE
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+            ).shouldBeTrue()
         }
 
         "no permission on namespace denies all actions on child Case" {
@@ -208,23 +193,17 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val case = createCase(namespace.id)
 
             // No permission granted - should deny all actions (fail-closed)
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.READ
-                )
-            }.shouldBeFalse()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.READ
+            ).shouldBeFalse()
 
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.WRITE
-                )
-            }.shouldBeFalse()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+            ).shouldBeFalse()
 
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Case", case.id.toString(), Action.DELETE
-                )
-            }.shouldBeFalse()
+            permissionService.hasPermission(
+                user.id.toString(), "Case", case.id.toString(), Action.DELETE
+            ).shouldBeFalse()
         }
 
         "super-admin bypass works with real Neo4j" {
@@ -233,23 +212,17 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val case = createCase(namespace.id)
 
             // No permission relations - super-admin should bypass all checks
-            runBlocking {
-                permissionService.hasPermission(
-                    superAdmin.id.toString(), "Case", case.id.toString(), Action.READ
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                superAdmin.id.toString(), "Case", case.id.toString(), Action.READ
+            ).shouldBeTrue()
 
-            runBlocking {
-                permissionService.hasPermission(
-                    superAdmin.id.toString(), "Case", case.id.toString(), Action.WRITE
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                superAdmin.id.toString(), "Case", case.id.toString(), Action.WRITE
+            ).shouldBeTrue()
 
-            runBlocking {
-                permissionService.hasPermission(
-                    superAdmin.id.toString(), "Case", case.id.toString(), Action.DELETE
-                )
-            }.shouldBeTrue()
+            permissionService.hasPermission(
+                superAdmin.id.toString(), "Case", case.id.toString(), Action.DELETE
+            ).shouldBeTrue()
         }
 
         "hasPermission returns false when no relation exists (fail-closed)" {
@@ -257,11 +230,9 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val namespace = createNamespace()
 
             // No relation exists at all
-            runBlocking {
-                permissionService.hasPermission(
-                    user.id.toString(), "Namespace", namespace.id.toString(), Action.READ
-                )
-            }.shouldBeFalse()
+            permissionService.hasPermission(
+                user.id.toString(), "Namespace", namespace.id.toString(), Action.READ
+            ).shouldBeFalse()
         }
     }
 }

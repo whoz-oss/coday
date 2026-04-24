@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service
  */
 @Service
 @Primary
-@ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory", matchIfMissing = true)
+@ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory", matchIfMissing = false)
 class InMemoryPermissionServiceImpl : PermissionService {
 
     companion object : KLogging() {
@@ -23,7 +23,7 @@ class InMemoryPermissionServiceImpl : PermissionService {
         }
     }
 
-    override suspend fun hasPermission(
+    override fun hasPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -33,7 +33,7 @@ class InMemoryPermissionServiceImpl : PermissionService {
         return true
     }
 
-    override suspend fun grantPermission(
+    override fun grantPermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -42,7 +42,7 @@ class InMemoryPermissionServiceImpl : PermissionService {
         logger.debug { "In-memory mode: grant permission called (no-op)" }
     }
 
-    override suspend fun revokePermission(
+    override fun revokePermission(
         userId: String,
         entityType: String,
         entityId: String,
@@ -51,19 +51,19 @@ class InMemoryPermissionServiceImpl : PermissionService {
         logger.debug { "In-memory mode: revoke permission called (no-op)" }
     }
 
-    override suspend fun listUsersWithPermission(
+    override fun listUsersWithPermission(
         entityType: String,
         entityId: String,
         relation: PermissionRelation?
     ): List<String> = emptyList()
 
-    override suspend fun listEntitiesForUser(
+    override fun listEntitiesForUser(
         userId: String,
         entityType: String,
         action: Action
     ): List<String> = emptyList()
 
-    override suspend fun clearUserCache(userId: String) {
+    override fun clearUserCache(userId: String) {
         // No-op in in-memory mode
     }
 }
