@@ -90,8 +90,7 @@
           <ds-icon-button
             class="voice-btn"
             icon="mic"
-            variant="default"
-            [class.recording]="isRecording || isTranscribing"
+            [variant]="isRecording || isTranscribing ? 'danger' : 'default'"
             [class.hidden]="message.trim() && !isRecording && !isTranscribing"
             [disabled]="isTranscribing"
             [title]="

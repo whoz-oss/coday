@@ -182,11 +182,6 @@
   justify-content: center;
 }
 
-// Recording/uploading state: solid red mic, no pulse
-.voice-btn.recording button {
-  color: var(--color-error);
-}
-
 // Send button: slide-in/out animation + gradient hover
 // These are contextual behaviors that stay in chat-textarea, not in the design system
 .send-btn {
