@@ -15,7 +15,19 @@ class Neo4jPermissionRepository(
     private val permissionNodeRepository: PermissionNodeNeo4jRepository
 ) : PermissionRepository {
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Entity types where a namespace MEMBER does NOT gain transitive READ
+         * through the parent namespace — only via a direct relation on the
+         * entity itself, or through namespace ADMIN transitivity.
+         *
+         * Rationale (Story 3.3, FR15): these entities are "owner-private" — each
+         * one has a creator who is auto-granted ADMIN on creation (Story 3.1).
+         * Letting every namespace MEMBER see every owner-private entity would
+         * break content isolation.
+         */
+        private val OWNER_PRIVATE_ENTITY_TYPES: Set<String> = setOf("Case")
+    }
 
     override fun hasDirectPermission(
         userId: String,
@@ -67,12 +79,26 @@ class Neo4jPermissionRepository(
                     )
                 }
                 PermissionRelation.MEMBER -> {
-                    // MEMBER relation allows READ access transitively
-                    permissionNodeRepository.hasReadAccessViaNamespace(
-                        userId = userId,
-                        entityId = entityId,
-                        entityLabel = entityType
-                    )
+                    if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
+                        // Owner-private entities (e.g. Case, FR15): a namespace MEMBER
+                        // does NOT get transitive READ on children — only a namespace
+                        // ADMIN does, or the user with a direct relation on the entity
+                        // (handled in hasDirectPermission upstream).
+                        permissionNodeRepository.hasAdminAccessViaNamespace(
+                            userId = userId,
+                            entityId = entityId,
+                            entityLabel = entityType
+                        )
+                    } else {
+                        // Shared entities (AgentConfig, IntegrationConfig, AiProvider,
+                        // AiModel): namespace MEMBERs legitimately inherit READ through
+                        // the namespace (FR21, FR27, FR32, FR35).
+                        permissionNodeRepository.hasReadAccessViaNamespace(
+                            userId = userId,
+                            entityId = entityId,
+                            entityLabel = entityType
+                        )
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -181,7 +207,16 @@ class Neo4jPermissionRepository(
                     }
                 }
                 PermissionRelation.MEMBER -> {
-                    if (isNamespaceChildEntity(entityType)) {
+                    if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
+                        // Owner-private entities: MEMBER transitivity via namespace-MEMBER
+                        // is forbidden (FR15). Use the admin-transitive query which gives
+                        // direct ADMIN on entity + transitive via namespace ADMIN — the
+                        // exact set a user is allowed to "see".
+                        permissionNodeRepository.findEntitiesWhereUserIsAdminTransitive(
+                            userId = userId,
+                            entityLabel = entityType
+                        )
+                    } else if (isNamespaceChildEntity(entityType)) {
                         permissionNodeRepository.findEntitiesWhereUserHasAccessTransitive(
                             userId = userId,
                             entityLabel = entityType
