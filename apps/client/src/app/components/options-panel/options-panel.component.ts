@@ -5,6 +5,7 @@ import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from '../../services/preferences.service'
 import { VoiceSynthesisService, VoiceInfo } from '../../services/voice-synthesis.service'
 import { ThemeService, ThemeMode } from '../../core/services/theme.service'
+import { PushNotificationService } from '../../services/push-notification.service'
 import { MatIcon } from '@angular/material/icon'
 import { MatSlideToggle } from '@angular/material/slide-toggle'
 
@@ -42,6 +43,10 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   browserNotificationEnabled = false
   browserNotificationDenied = false
 
+  pushNotificationEnabled = false
+  pushNotificationSupported = false
+  pushNotificationLoading = false
+
   availableVoices: VoiceInfo[] = []
   selectedVoiceId: string | null = null
   loadingVoices = false
@@ -65,6 +70,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   private preferencesService = inject(PreferencesService)
   private voiceSynthesisService = inject(VoiceSynthesisService)
   private themeService = inject(ThemeService)
+  private pushService = inject(PushNotificationService)
 
   ngOnInit(): void {
     this.selectedTheme = this.themeService.getCurrentTheme()
@@ -82,6 +88,9 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.agentNotificationEnabled = this.preferencesService.getAgentNotificationEnabled()
     this.notificationSoundEnabled = this.preferencesService.getNotificationSoundEnabled()
     this.browserNotificationEnabled = this.preferencesService.getBrowserNotificationEnabled()
+
+    this.pushNotificationSupported = this.pushService.isSupported()
+    this.checkPushSubscriptionStatus()
 
     this.loadAvailableVoices()
 
@@ -263,6 +272,41 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     if ('Notification' in window) {
       this.browserNotificationDenied = Notification.permission === 'denied'
       console.log('[OPTIONS] Notification permission status:', Notification.permission)
+    }
+  }
+
+  /**
+   * Check if already subscribed to push notifications.
+   * Uses a timeout to avoid blocking if the service worker is not registered.
+   */
+  private async checkPushSubscriptionStatus(): Promise<void> {
+    if (!this.pushNotificationSupported) return
+    try {
+      const readyWithTimeout = Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('SW timeout')), 3000)),
+      ])
+      const registration = await readyWithTimeout
+      const subscription = await (registration as ServiceWorkerRegistration).pushManager.getSubscription()
+      this.pushNotificationEnabled = !!subscription
+    } catch {
+      this.pushNotificationEnabled = false
+    }
+  }
+
+  async onPushNotificationChange(): Promise<void> {
+    this.pushNotificationLoading = true
+    try {
+      if (this.pushNotificationEnabled) {
+        const success = await this.pushService.subscribe()
+        if (!success) {
+          this.pushNotificationEnabled = false
+        }
+      } else {
+        await this.pushService.unsubscribe()
+      }
+    } finally {
+      this.pushNotificationLoading = false
     }
   }
 }

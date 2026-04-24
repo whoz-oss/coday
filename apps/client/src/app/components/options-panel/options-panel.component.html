@@ -125,6 +125,20 @@
       </div>
     </div>
 
+    @if (pushNotificationSupported) {
+      <div class="option-group">
+        <div class="toggle-option">
+          <span class="option-label">Mobile push notifications</span>
+          <mat-slide-toggle
+            [(ngModel)]="pushNotificationEnabled"
+            (change)="onPushNotificationChange()"
+            [disabled]="pushNotificationLoading"
+            color="primary"
+          ></mat-slide-toggle>
+        </div>
+      </div>
+    }
+
     <div class="option-group">
       <div class="toggle-option">
         <span class="option-label">Browser notification</span>

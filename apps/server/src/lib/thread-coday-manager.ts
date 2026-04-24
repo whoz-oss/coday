@@ -29,6 +29,7 @@ import { ThreadPostProcessor } from './thread-post-processor'
 import { debugLog } from './log'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
+import { PushNotificationService } from './push-notification.service'
 
 /**
  * Represents a Coday instance associated with a specific thread.
@@ -59,7 +60,8 @@ class ThreadCodayInstance {
     private readonly onTimeout: (threadId: string) => void,
     private readonly projectEventManager: ProjectEventManager | undefined,
     private readonly setPendingInviteCb: (threadId: string) => void,
-    private readonly hasPendingInviteCb: (threadId: string) => boolean
+    private readonly hasPendingInviteCb: (threadId: string) => boolean,
+    private readonly pushService?: PushNotificationService
   ) {
     // Start inactivity timeout
     this.resetInactivityTimeout()
@@ -321,6 +323,8 @@ class ThreadCodayInstance {
     ) {
       this.setPendingInviteCb(this.threadId)
       this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+      // Send push notification — same trigger as waiting-you status
+      this.sendPushNotification(event)
     }
 
     // Detect natural questions in assistant messages (no queryUser call needed).
@@ -339,6 +343,8 @@ class ThreadCodayInstance {
         if (lastLine.includes('?')) {
           this.setPendingInviteCb(this.threadId)
           this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+          // Send push notification — same trigger as waiting-you status
+          this.sendPushNotification(event)
         }
       }
     }
@@ -381,6 +387,28 @@ class ThreadCodayInstance {
         this.connections.delete(connection)
       }
     }
+  }
+
+  /**
+   * Send a push notification to the thread owner.
+   * Extracts a short body from the event for the notification text.
+   */
+  private sendPushNotification(event: any): void {
+    if (!this.pushService) return
+
+    let body = ''
+    if (event instanceof InviteEvent) {
+      body = event.invite.substring(0, 100)
+    } else if (event instanceof ChoiceEvent) {
+      body = event.invite?.substring(0, 100) || 'Choose an option'
+    } else if (event instanceof MessageEvent) {
+      body = event.getTextContent().trim().substring(0, 100)
+    }
+
+    const url = `/project/${this.projectName}/thread/${this.threadId}`
+    this.pushService
+      .sendNotification(this.username, 'Coday needs your attention', body, url)
+      .catch((err) => debugLog('PUSH', 'Failed to send push notification:', err))
   }
 
   /**
@@ -482,7 +510,8 @@ export class ThreadCodayManager {
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
     private readonly promptService: PromptService,
-    private readonly mcpPool: McpInstancePool
+    private readonly mcpPool: McpInstancePool,
+    private readonly pushService?: PushNotificationService
   ) {
     // Start global heartbeat mechanism
     this.heartbeatInterval = setInterval(() => this.sendHeartbeats(), ThreadCodayManager.HEARTBEAT_INTERVAL)
@@ -603,7 +632,8 @@ export class ThreadCodayManager {
         this.handleInstanceTimeout,
         this.projectEventManager,
         (id) => this.setPendingInvite(id),
-        (id) => this.hasPendingInvite(id)
+        (id) => this.hasPendingInvite(id),
+        this.pushService
       )
       this.instances.set(threadId, instance)
     } else {
@@ -648,7 +678,8 @@ export class ThreadCodayManager {
         this.handleInstanceTimeout,
         this.projectEventManager,
         (id) => this.setPendingInvite(id),
-        (id) => this.hasPendingInvite(id)
+        (id) => this.hasPendingInvite(id),
+        this.pushService
       )
       instance.markAsOneshot() // Mark as oneshot for shorter timeout
       this.instances.set(threadId, instance)

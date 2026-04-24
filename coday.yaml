@@ -194,6 +194,7 @@ agents:
     integrations:
       CORE:
       DELEGATE:
+      FIGMA :
       SLACK:
       BASECAMP:
       MEMORY: [readMemories, memorizeUser, deleteMemory]

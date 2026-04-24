@@ -12,11 +12,13 @@
     "express": "catalog:",
     "rxjs": "catalog:",
     "sharp": "catalog:",
+    "web-push": "catalog:",
     "yargs": "catalog:"
   },
   "devDependencies": {
     "@types/express": "catalog:dev",
     "@types/node": "catalog:dev",
+    "@types/web-push": "catalog:dev",
     "@types/yargs": "catalog:dev",
     "http-proxy-middleware": "catalog:dev",
     "typescript": "catalog:dev"

@@ -29,6 +29,8 @@ import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
 import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
+import { registerPushRoutes } from './lib/push.routes'
+import { PushNotificationService } from './lib/push-notification.service'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
@@ -217,8 +219,19 @@ const threadService = new ThreadService(projectRepository, projectsDir, threadFi
 const mcpPool = new McpInstancePool()
 debugLog('INIT', 'MCP instance pool initialized')
 
+// Initialize push notification service
+const pushService = new PushNotificationService(codayOptions.configDir)
+debugLog('INIT', 'Push notification service initialized')
+
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, promptService, mcpPool)
+const threadCodayManager = new ThreadCodayManager(
+  logger,
+  projectService,
+  threadService,
+  promptService,
+  mcpPool,
+  pushService
+)
 
 // Initialize prompt execution dependencies now that thread manager is ready
 promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
@@ -285,6 +298,9 @@ function getUsername(req: express.Request): string {
 
   return username
 }
+
+// Register push notification routes
+registerPushRoutes(app, pushService, getUsername)
 
 // Register user information routes
 registerUserRoutes(app, getUsername, codayOptions.configDir, !!codayOptions.auth)

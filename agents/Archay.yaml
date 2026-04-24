@@ -16,6 +16,7 @@ integrations:
     - pull_request_review_write
     - update_pull_request
   GIT:
+  FIGMA:
   DELEGATE:
     - Sway
     - Octopuss
