@@ -134,7 +134,7 @@ export class Coday {
 
     // After replay, if not oneshot and thread is not running, re-emit last invite
     if (!this.options.oneshot && thread.runStatus !== RunStatus.RUNNING) {
-      this.interactor.replayLastInvite()
+      this.interactor.replayLastQuestion()
     }
   }
 
