@@ -170,6 +170,50 @@ class Neo4jPermissionRelationsSpec : StringSpec() {
             ).shouldBeFalse()
         }
 
+        "delete MEMBER relation preserves a pre-existing ADMIN relation for the same user (Story 2.3 AC3)" {
+            val user = createUser()
+            val namespace = createNamespace()
+
+            // Grant both roles to the same user on the same namespace
+            permissionNodeRepository.createAdminPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            )
+            permissionNodeRepository.createMemberPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            )
+
+            // Revoke only MEMBER
+            permissionNodeRepository.deleteMemberPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            )
+
+            // ADMIN must remain — higher privilege retained
+            permissionNodeRepository.hasAdminPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            ).shouldBeTrue()
+
+            // Proof that MEMBER was actually removed (not a no-op):
+            // after deleting ADMIN, no permission relation of any kind should remain.
+            permissionNodeRepository.deleteAdminPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            )
+            permissionNodeRepository.hasMemberOrAdminPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            ).shouldBeFalse()
+        }
+
         "hasAdminPermission returns false when no relation exists" {
             val user = createUser()
             val namespace = createNamespace()
