@@ -1,4 +1,16 @@
 <div class="chat-input-container">
+  @if (!isVoiceMessageMode && isRecording) {
+    <div class="recording-indicator">
+      <span class="recording-dot"></span>
+      Recording... Click mic to stop
+    </div>
+  }
+  @if (!isVoiceMessageMode && isTranscribing) {
+    <div class="recording-indicator">
+      <span class="transcribing-dot"></span>
+      Transcribing...
+    </div>
+  }
   <!-- Autocomplete popup - appears above textarea -->
   @if (autocompleteVisible) {
     <div class="autocomplete-popup">
