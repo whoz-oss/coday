@@ -71,7 +71,6 @@
     }
   ],
   "release": {
-    "projects": ["server", "client", "web", "desktop", "desktop-twin"],
     "releaseTagPattern": "release/{version}",
     "changelog": {
       "workspaceChangelog": {
@@ -85,13 +84,26 @@
     },
     "version": {
       "conventionalCommits": true,
-      "manifestRootsToUpdate": ["apps/{projectName}"],
       "versionActionsOptions": {
         "skipLockFileUpdate": true
       },
       "git": {
         "commit": false,
         "tag": false
+      }
+    },
+    "groups": {
+      "npm": {
+        "projects": ["server", "client", "web", "desktop", "desktop-twin"],
+        "version": {
+          "manifestRootsToUpdate": ["apps/{projectName}"]
+        }
+      },
+      "jvm": {
+        "projects": ["tag:platform:jvm"],
+        "version": {
+          "manifestRootsToUpdate": []
+        }
       }
     }
   },
