@@ -239,6 +239,43 @@
   }
 }
 
+@media (max-width: 600px) {
+  .gmc {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .gmc-title {
+    font-size: 1rem;
+  }
+
+  .btn-label {
+    display: none;
+  }
+
+  .gmc-title-actions {
+    button:not(mat-icon-button):not([mat-icon-button]) {
+      --mdc-text-button-container-height: 36px;
+      --mdc-filled-button-container-height: 36px;
+      --mdc-outlined-button-container-height: 36px;
+      min-width: 36px;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 50% !important;
+
+      .mat-mdc-button-touch-target {
+        width: 36px;
+        height: 36px;
+      }
+
+      mat-icon {
+        margin: 0 !important;
+      }
+    }
+  }
+}
+
 // ── Loading & empty ───────────────────────────────────────────────────────────
 
 .gmc-loading,
