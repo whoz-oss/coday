@@ -14,7 +14,7 @@ import {
 } from '@angular/core'
 
 import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
+import { filter, take, takeUntil } from 'rxjs/operators'
 
 import { ChatHistoryComponent } from '../chat-history/chat-history.component'
 import { ChatMessage } from '../chat-message/chat-message.component'
@@ -306,9 +306,14 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       this.codayService.setThinkingForPendingMessage()
       // Wait for the backend Coday instance to be ready (signalled by the first InviteEvent)
       // before sending the voice message — same pattern as text first messages.
+      // Use filter+take(1) to fire exactly once and auto-unsubscribe.
       this.subscriptions.push(
-        this.codayService.currentInviteEvent$.subscribe((inviteEvent) => {
-          if (inviteEvent) {
+        this.codayService.currentInviteEvent$
+          .pipe(
+            filter((inviteEvent) => !!inviteEvent),
+            take(1)
+          )
+          .subscribe(() => {
             console.log('[THREAD] InviteEvent received, sending pending voice message')
             this.audioApiService
               .sendVoiceMessage(pendingVoice.base64, pendingVoice.mimeType, pendingVoice.language)
@@ -323,8 +328,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
                   console.error('[THREAD] Failed to send first voice message:', error)
                 },
               })
-          }
-        })
+          })
       )
       return
     }
