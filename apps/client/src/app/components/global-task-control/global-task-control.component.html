@@ -34,13 +34,19 @@
       >
         <mat-icon>refresh</mat-icon>
       </button>
-      <button mat-stroked-button routerLink="/projects" aria-label="Manage projects">
+      <button mat-stroked-button routerLink="/projects" aria-label="Manage projects" matTooltip="Manage projects">
         <mat-icon>settings</mat-icon>
-        Manage projects
+        <span class="btn-label">Manage projects</span>
       </button>
-      <button mat-flat-button class="gtc-new-btn" (click)="openNewTaskDialog()" aria-label="New task">
+      <button
+        mat-flat-button
+        class="gtc-new-btn"
+        (click)="openNewTaskDialog()"
+        aria-label="New task"
+        matTooltip="New Task"
+      >
         <mat-icon>rocket_launch</mat-icon>
-        New Task
+        <span class="btn-label">New Task</span>
       </button>
     </div>
   </header>
