@@ -48,7 +48,7 @@ export class PushNotificationService {
     return this.vapidKeys.publicKey
   }
 
-  saveSubscription(username: string, subscription: PushSubscriptionData): void {
+  async saveSubscription(username: string, subscription: PushSubscriptionData): Promise<void> {
     if (!this.subscriptions[username]) {
       this.subscriptions[username] = []
     }
@@ -61,14 +61,14 @@ export class PushNotificationService {
       this.subscriptions[username].push(subscription)
     }
 
-    this.persistSubscriptions()
+    await this.persistSubscriptions()
     debugLog('PUSH', `Subscription saved for ${username}`)
   }
 
-  removeSubscription(username: string, endpoint: string): void {
+  async removeSubscription(username: string, endpoint: string): Promise<void> {
     if (this.subscriptions[username]) {
       this.subscriptions[username] = this.subscriptions[username].filter((s) => s.endpoint !== endpoint)
-      this.persistSubscriptions()
+      await this.persistSubscriptions()
     }
     debugLog('PUSH', `Subscription removed for ${username}`)
   }
@@ -99,8 +99,8 @@ export class PushNotificationService {
     }
 
     // Clean up expired subscriptions
-    if (expiredEndpoints.length > 0) {
-      expiredEndpoints.forEach((ep) => this.removeSubscription(username, ep))
+    for (const ep of expiredEndpoints) {
+      await this.removeSubscription(username, ep)
     }
   }
 
@@ -134,7 +134,7 @@ export class PushNotificationService {
     return {}
   }
 
-  private persistSubscriptions(): void {
-    fs.writeFileSync(this.subscriptionsPath, JSON.stringify(this.subscriptions, null, 2))
+  private async persistSubscriptions(): Promise<void> {
+    await fs.promises.writeFile(this.subscriptionsPath, JSON.stringify(this.subscriptions, null, 2))
   }
 }

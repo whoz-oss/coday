@@ -1,4 +1,4 @@
-// Minimal service worker for push notifications only.
+// sw.js v1 — push notifications only. Bump version to force update.
 // No caching, no offline — just push + notification click.
 
 self.addEventListener('push', (event) => {

@@ -23,7 +23,7 @@ export function registerPushRoutes(
     }
   })
 
-  app.post('/api/push/subscribe', (req: express.Request, res: express.Response) => {
+  app.post('/api/push/subscribe', async (req: express.Request, res: express.Response) => {
     try {
       const username = getUsernameFn(req)
       const subscription = req.body as PushSubscriptionData
@@ -33,7 +33,7 @@ export function registerPushRoutes(
         return
       }
 
-      pushService.saveSubscription(username, subscription)
+      await pushService.saveSubscription(username, subscription)
       debugLog('PUSH', `Subscription registered for ${username}`)
       res.status(201).json({ success: true })
     } catch (error) {
@@ -42,7 +42,7 @@ export function registerPushRoutes(
     }
   })
 
-  app.delete('/api/push/unsubscribe', (req: express.Request, res: express.Response) => {
+  app.delete('/api/push/unsubscribe', async (req: express.Request, res: express.Response) => {
     try {
       const username = getUsernameFn(req)
       const { endpoint } = req.body as { endpoint: string }
@@ -52,7 +52,7 @@ export function registerPushRoutes(
         return
       }
 
-      pushService.removeSubscription(username, endpoint)
+      await pushService.removeSubscription(username, endpoint)
       res.status(200).json({ success: true })
     } catch (error) {
       console.error('[PUSH] Error removing subscription:', error)

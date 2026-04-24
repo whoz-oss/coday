@@ -5,6 +5,7 @@ import {
   ServerInteractor,
   CodayOptions,
   CodayLogger,
+  CodayEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
@@ -313,7 +314,7 @@ class ThreadCodayInstance {
    * Broadcast an event to all connected SSE clients
    * @param event Event to broadcast
    */
-  private broadcastEvent(event: any): void {
+  private broadcastEvent(event: CodayEvent): void {
     // Track pendingInvite flag: set when a real InviteEvent/ChoiceEvent is emitted.
     // Uses in-memory registry (synchronous) — no disk write, no race conditions.
     // Skip during replay — the registry already has the correct state; we're just re-sending to a new SSE client.
@@ -393,16 +394,22 @@ class ThreadCodayInstance {
    * Send a push notification to the thread owner.
    * Extracts a short body from the event for the notification text.
    */
-  private sendPushNotification(event: any): void {
+  private sendPushNotification(event: InviteEvent | ChoiceEvent | MessageEvent): void {
     if (!this.pushService) return
 
     let body = ''
     if (event instanceof InviteEvent) {
-      body = event.invite.substring(0, 100)
+      body = event.invite.substring(0, 200)
     } else if (event instanceof ChoiceEvent) {
-      body = event.invite?.substring(0, 100) || 'Choose an option'
+      body = event.invite?.substring(0, 200) || 'Choose an option'
     } else if (event instanceof MessageEvent) {
-      body = event.getTextContent().trim().substring(0, 100)
+      // Extract only the last line (the question) — not the full message text
+      const textContent = event.getTextContent().trim()
+      const lines = textContent
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+      body = (lines[lines.length - 1] ?? '').substring(0, 200)
     }
 
     const url = `/project/${this.projectName}/thread/${this.threadId}`

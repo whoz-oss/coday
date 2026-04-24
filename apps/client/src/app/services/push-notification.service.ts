@@ -1,17 +1,17 @@
 import { inject, Injectable } from '@angular/core'
-import { HttpClient } from '@angular/common/http'
 import { firstValueFrom } from 'rxjs'
+import { PushApiService } from '../core/services/push-api.service'
 
 /**
  * Service managing Web Push notification subscriptions.
  * Registers the service worker, subscribes to push notifications
- * and syncs the subscription with the Coday server.
+ * and syncs the subscription with the Coday server via PushApiService.
  */
 @Injectable({
   providedIn: 'root',
 })
 export class PushNotificationService {
-  http = inject(HttpClient)
+  private readonly pushApi = inject(PushApiService)
 
   /**
    * Returns true if push notifications are supported in this browser.
@@ -43,7 +43,7 @@ export class PushNotificationService {
       await navigator.serviceWorker.register('/sw.js')
 
       // Get VAPID public key from server
-      const { publicKey } = await firstValueFrom(this.http.get<{ publicKey: string }>('/api/push/vapid-public-key'))
+      const { publicKey } = await firstValueFrom(this.pushApi.getVapidPublicKey())
 
       // Wait for the service worker to be ready
       const registration = await navigator.serviceWorker.ready
@@ -55,7 +55,7 @@ export class PushNotificationService {
       })
 
       // Send subscription to server
-      await firstValueFrom(this.http.post('/api/push/subscribe', subscription.toJSON()))
+      await firstValueFrom(this.pushApi.subscribe(subscription.toJSON()))
 
       console.log('[PUSH] Subscribed successfully')
       return true
@@ -74,7 +74,7 @@ export class PushNotificationService {
       const subscription = await registration.pushManager.getSubscription()
 
       if (subscription) {
-        await firstValueFrom(this.http.delete('/api/push/unsubscribe', { body: { endpoint: subscription.endpoint } }))
+        await firstValueFrom(this.pushApi.unsubscribe(subscription.endpoint))
         await subscription.unsubscribe()
         console.log('[PUSH] Unsubscribed successfully')
       }
