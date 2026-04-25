@@ -1,0 +1,27 @@
+<div class="schedule-item" role="listitem">
+  <div class="schedule-item__body">
+    <span class="schedule-item__message">{{ schedule.message }}</span>
+
+    <div class="schedule-item__meta">
+      @if (schedule.agentName) {
+        <span class="schedule-item__agent">{{ schedule.agentName }}</span>
+      }
+      <span class="schedule-item__type" [class.schedule-item__type--disabled]="!schedule.enabled">
+        {{ schedule.enabled ? scheduleTypeLabel : 'Disabled' }}
+      </span>
+      @if (nextTriggerDisplay) {
+        <span class="schedule-item__next">Next: {{ nextTriggerDisplay }}</span>
+      }
+    </div>
+  </div>
+
+  <div class="schedule-item__actions">
+    @if (pendingDelete()) {
+      <span class="schedule-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    }
+  </div>
+</div>

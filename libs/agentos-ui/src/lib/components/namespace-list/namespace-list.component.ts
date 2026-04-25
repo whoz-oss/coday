@@ -83,6 +83,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'ai-models'])
   }
 
+  protected openSchedules(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'schedules'])
+  }
+
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {

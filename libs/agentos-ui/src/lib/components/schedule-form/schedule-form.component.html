@@ -1,0 +1,126 @@
+<div class="schedule-form">
+  <header class="schedule-form__header">
+    <button class="schedule-form__back" type="button" (click)="cancel()" title="Back to schedules">
+      <span class="schedule-form__back-icon">&#8592;</span>
+      Schedules
+    </button>
+    <h1 class="schedule-form__title">{{ isEditMode() ? 'Edit schedule' : 'New schedule' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="schedule-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="schedule-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <!-- Message -->
+      <div class="schedule-form__field">
+        <label class="schedule-form__label" for="sched-message">Message <span aria-hidden="true">*</span></label>
+        <textarea
+          id="sched-message"
+          class="schedule-form__textarea"
+          rows="3"
+          placeholder="Message to send to the agent when triggered"
+          [formControl]="messageControl"
+          autocomplete="off"
+        ></textarea>
+      </div>
+
+      <!-- Agent name -->
+      <div class="schedule-form__field">
+        <label class="schedule-form__label" for="sched-agent">Agent name</label>
+        <input
+          id="sched-agent"
+          class="schedule-form__input"
+          type="text"
+          placeholder="Optional — leave empty to use namespace default"
+          [formControl]="agentNameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <!-- Case ID -->
+      <div class="schedule-form__field">
+        <label class="schedule-form__label" for="sched-case">Case ID</label>
+        <input
+          id="sched-case"
+          class="schedule-form__input"
+          type="text"
+          placeholder="Optional — attach to an existing case"
+          [formControl]="caseIdControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <!-- Enabled toggle -->
+      <div class="schedule-form__field schedule-form__field--inline">
+        <input id="sched-enabled" class="schedule-form__checkbox" type="checkbox" [formControl]="enabledControl" />
+        <label class="schedule-form__label" for="sched-enabled">Enabled</label>
+      </div>
+
+      <!-- Schedule type -->
+      <fieldset class="schedule-form__fieldset">
+        <legend class="schedule-form__legend">Schedule type</legend>
+        <div class="schedule-form__radio-group">
+          <label class="schedule-form__radio-label">
+            <input type="radio" [formControl]="scheduleTypeControl" value="oneShot" />
+            One-shot
+          </label>
+          <label class="schedule-form__radio-label">
+            <input type="radio" [formControl]="scheduleTypeControl" value="recurring" />
+            Recurring
+          </label>
+        </div>
+      </fieldset>
+
+      <!-- One-shot: triggerAt -->
+      @if (scheduleTypeControl.value === 'oneShot') {
+        <div class="schedule-form__field">
+          <label class="schedule-form__label" for="sched-trigger">Trigger at <span aria-hidden="true">*</span></label>
+          <input
+            id="sched-trigger"
+            class="schedule-form__input"
+            type="datetime-local"
+            [formControl]="triggerAtControl"
+          />
+        </div>
+      }
+
+      <!-- Recurring: interval fields -->
+      @if (scheduleTypeControl.value === 'recurring') {
+        <div class="schedule-form__field">
+          <label class="schedule-form__label" for="sched-interval-start"
+            >Start at <span aria-hidden="true">*</span></label
+          >
+          <input
+            id="sched-interval-start"
+            class="schedule-form__input"
+            type="datetime-local"
+            [formControl]="intervalStartControl"
+          />
+        </div>
+        <div class="schedule-form__field">
+          <label class="schedule-form__label" for="sched-interval">Interval <span aria-hidden="true">*</span></label>
+          <input
+            id="sched-interval"
+            class="schedule-form__input"
+            type="text"
+            placeholder="ISO 8601 duration, e.g. PT1H, P1D, P1W"
+            [formControl]="intervalDurationControl"
+            autocomplete="off"
+          />
+          <span class="schedule-form__hint">Examples: PT30M (30 min), PT1H (1 hour), P1D (1 day), P1W (1 week)</span>
+        </div>
+      }
+
+      <div class="schedule-form__actions">
+        <button
+          class="schedule-form__btn schedule-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="schedule-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>
