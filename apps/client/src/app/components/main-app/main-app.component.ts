@@ -14,7 +14,7 @@ import { TabTitleService } from '../../services/tab-title.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
 import { AgentNotificationService } from '../../services/agent-notification.service'
-import { FirstMessageStateService } from '../../core/services/first-message-state.service'
+import { FirstMessageStateService, PendingVoiceMessage } from '../../core/services/first-message-state.service'
 
 @Component({
   selector: 'app-main',
@@ -155,7 +155,30 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   onVoiceToggled(isRecording: boolean): void {
     console.log('[VOICE] Recording in welcome view:', isRecording)
-    // TODO: Implement speech-to-text for welcome view
+  }
+
+  /**
+   * Handle voice message from welcome view (implicit thread creation with audio)
+   */
+  onVoiceMessageReady(payload: PendingVoiceMessage): void {
+    console.log('[MAIN-APP] Voice message ready from welcome view')
+
+    this.isSessionInitializing = true
+    this.isStartingFirstMessage = true
+
+    this.threadApiService.createThread().subscribe({
+      next: (response) => {
+        console.log('[MAIN-APP] Thread created for voice message:', response.thread.id)
+        this.firstMessageState.setPendingVoiceMessage(payload)
+        this.router.navigate(['project', this.projectName, 'thread', response.thread.id])
+      },
+      error: (error) => {
+        console.error('[MAIN-APP] Failed to create thread for voice message:', error)
+        this.isSessionInitializing = false
+        this.isStartingFirstMessage = false
+        alert('Failed to create conversation: ' + (error.message || 'Unknown error'))
+      },
+    })
   }
 
   /**

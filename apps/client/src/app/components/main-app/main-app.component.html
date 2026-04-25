@@ -27,6 +27,7 @@
               [isThinking]="false"
               [isStarting]="isStartingFirstMessage"
               (messageSubmitted)="onMessageSubmitted($event)"
+              (voiceMessageReady)="onVoiceMessageReady($event)"
               (voiceRecordingToggled)="onVoiceToggled($event)"
               (heightChanged)="onInputHeightChanged($event)"
               (textareaFocused)="onChatFocusedOnMobile()"

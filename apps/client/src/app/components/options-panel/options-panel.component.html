@@ -155,6 +155,20 @@
     </div>
 
     <div class="option-group">
+      <label for="voice-input-mode-select" class="option-label">Voice input method:</label>
+      <select
+        id="voice-input-mode-select"
+        class="option-select"
+        [value]="voiceInputMode"
+        (change)="onVoiceInputModeChange($event)"
+      >
+        <option value="browser">Browser (real-time)</option>
+        <option value="whisper">Whisper (higher accuracy)</option>
+        <option value="voice-message">Voice message (send audio)</option>
+      </select>
+    </div>
+
+    <div class="option-group">
       <label for="voice-language-select" class="option-label">Voice recognition language:</label>
       <select
         id="voice-language-select"

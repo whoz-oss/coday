@@ -31,6 +31,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   showTechnicalMessages = true
   showWarningMessages = true
 
+  voiceInputMode: 'browser' | 'whisper' | 'voice-message' = 'browser'
   voiceAnnounceEnabled = false
   voiceMode: 'speech' | 'notification' = 'speech'
   voiceReadFullText = false
@@ -73,6 +74,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
     this.showTechnicalMessages = !this.preferencesService.getHideTechnicalMessages()
     this.showWarningMessages = !this.preferencesService.getHideWarningMessages()
+    this.voiceInputMode = this.preferencesService.getVoiceInputMode()
     this.voiceAnnounceEnabled = this.preferencesService.getVoiceAnnounceEnabled()
     this.voiceMode = this.preferencesService.getVoiceMode()
     this.voiceReadFullText = this.preferencesService.getVoiceReadFullText()
@@ -109,6 +111,10 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
 
     this.preferencesService.hideWarningMessages$.pipe(takeUntil(this.destroy$)).subscribe((hideWarningMessages) => {
       this.showWarningMessages = !hideWarningMessages
+    })
+
+    this.preferencesService.voiceInputMode$.pipe(takeUntil(this.destroy$)).subscribe((mode) => {
+      this.voiceInputMode = mode as 'browser' | 'whisper' | 'voice-message'
     })
 
     this.preferencesService.voiceAnnounceEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
@@ -189,6 +195,12 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     const hideValue = !this.showWarningMessages
     console.log('[OPTIONS] Show warning messages changed to:', this.showWarningMessages, '(hide:', hideValue, ')')
     this.preferencesService.setHideWarningMessages(hideValue)
+  }
+
+  onVoiceInputModeChange(event: Event): void {
+    const mode = (event.target as HTMLSelectElement).value as 'browser' | 'whisper' | 'voice-message'
+    console.log('[OPTIONS] Voice input mode changed to:', mode)
+    this.preferencesService.setVoiceInputMode(mode)
   }
 
   onVoiceAnnounceEnabledChange(): void {
