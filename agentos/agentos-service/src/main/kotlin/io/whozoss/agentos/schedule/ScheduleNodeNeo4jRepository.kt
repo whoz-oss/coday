@@ -23,4 +23,24 @@ interface ScheduleNodeNeo4jRepository : Neo4jRepository<ScheduleNode, String> {
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<ScheduleNode>
+
+    /**
+     * Find all enabled, non-removed schedules whose nextTriggerAt is at or
+     * before [now], ordered by nextTriggerAt ascending.
+     *
+     * [now] is passed as an ISO-8601 string (e.g. [Instant.toString]) because
+     * Spring Data Neo4j maps Instant parameters to strings in Cypher queries.
+     */
+    @Query(
+        $$"""
+            MATCH (s:Schedule)
+            WHERE s.enabled = true
+              AND (s.removed IS NULL OR s.removed = false)
+              AND s.nextTriggerAt IS NOT NULL
+              AND s.nextTriggerAt <= $now
+            RETURN s
+            ORDER BY s.nextTriggerAt ASC
+            """,
+    )
+    fun findDueByNow(now: String): List<ScheduleNode>
 }

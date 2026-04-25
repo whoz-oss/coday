@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.schedule.IntervalSchedule
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -49,6 +50,11 @@ open class Neo4jScheduleRepository(
                 logger.debug { "[Neo4jScheduleRepository] Soft-deleted schedule $id" }
                 true
             } ?: false
+
+    override fun findDueSchedules(now: Instant): List<Schedule> =
+        neo4jRepository
+            .findDueByNow(now.toString())
+            .map { it.toDomainWithMapper() }
 
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {

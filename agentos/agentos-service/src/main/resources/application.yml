@@ -58,6 +58,14 @@ agentos:
     #        to x-forwarded-email; requires the User to be pre-registered.
     # Override with env var: AGENTOS_SECURITY_MODE
     mode: local
+  scheduler:
+    # Set to false to disable the schedule polling loop entirely.
+    enabled: true
+    # How often to poll for due schedules (in seconds). Default: 60.
+    poll-interval-seconds: 60
+    # How to handle missed occurrences after downtime.
+    # Options: ALL | FIRST | LAST | NONE. Default: LAST.
+    catch-up-policy: LAST
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
