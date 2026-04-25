@@ -59,4 +59,21 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
         aiProviderId: String,
         alias: String,
     ): AiModelNode?
+
+    /**
+     * Creates the `BELONGS_TO` relationship from an AiModel node to its parent
+     * Namespace node (Story 4.4). Called after every save of a namespace-scoped
+     * model. An explicit query avoids SDN writing stub NamespaceNode properties
+     * back onto the existing Namespace node.
+     */
+    @Query(
+        $$"""MATCH (m:AiModel {id: $aiModelId})
+            MATCH (ns:Namespace {id: $namespaceId})
+            MERGE (m)-[:BELONGS_TO]->(ns)
+            """,
+    )
+    fun linkAiModelToNamespace(
+        aiModelId: String,
+        namespaceId: String,
+    )
 }
