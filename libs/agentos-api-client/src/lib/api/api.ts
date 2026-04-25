@@ -16,6 +16,8 @@ export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
 export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
+export * from './schedule-controller.service'
+import { ScheduleControllerService } from './schedule-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-controller.service'
@@ -30,6 +32,7 @@ export const APIS = [
   IntegrationTypeControllerService,
   NamespaceControllerService,
   PluginControllerService,
+  ScheduleControllerService,
   SseService,
   UserControllerService,
 ]
