@@ -1,18 +1,24 @@
 package io.whozoss.agentos.aiModel
 
+import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
+import org.springframework.data.neo4j.core.schema.Relationship
+import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [AiModel].
  *
- * Stored as a (:AiModel) node. Parent relationships are represented as
- * plain string properties (not SDN @Relationship), consistent with the pattern
- * used throughout this codebase.
+ * Stored as `(:AiModel)-[:BELONGS_TO]->(:Namespace)` (Story 4.4). The
+ * [namespaceId] property is kept for direct namespace-scoped queries, while
+ * the [namespace] @Relationship is required by the transitive permission
+ * Cypher (`hasAdminAccessViaNamespace` / `hasReadAccessViaNamespace`). The
+ * edge is only created for namespace-scoped models — user-scoped legacy
+ * models stay off the permission graph (see issue #809).
  *
  * [namespaceId] and [userId] are denormalised from the parent [io.whozoss.agentos.aiProvider.AiProviderNode] at
  * creation time so that namespace-scoped queries can be served with a single
@@ -37,6 +43,8 @@ data class AiModelNode(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
+    val namespace: NamespaceNode? = null,
 ) {
     fun toDomain(): AiModel =
         AiModel(

@@ -17,6 +17,11 @@ open class Neo4JAiModelRepository(
     override fun save(entity: AiModel): AiModel =
         neo4jRepository
             .save(AiModelNode.fromDomain(entity))
+            .also { savedNode ->
+                entity.namespaceId?.let { nsId ->
+                    neo4jRepository.linkAiModelToNamespace(savedNode.id, nsId.toString())
+                }
+            }
             .toDomain()
             .also {
                 logger.debug {
