@@ -19,6 +19,13 @@ open class Neo4jAiProviderRepository(
     override fun save(entity: AiProvider): AiProvider =
         neo4jRepository
             .save(AiProviderNode.fromDomain(entity))
+            .also { savedNode ->
+                // Only link namespace-scoped providers (Story 4.3). User-scoped
+                // providers skip this step — they remain legacy (issue #809).
+                entity.namespaceId?.let { nsId ->
+                    neo4jRepository.linkAiProviderToNamespace(savedNode.id, nsId.toString())
+                }
+            }
             .toDomain()
             .also { logger.debug { "[Neo4jAiProviderRepository] Saved AiProvider ${it.id} ('${entity.name}')" } }
 
