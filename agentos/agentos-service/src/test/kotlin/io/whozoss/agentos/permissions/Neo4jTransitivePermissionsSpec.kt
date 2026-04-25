@@ -6,6 +6,8 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.Namespace
@@ -55,6 +57,9 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
     @Autowired
     lateinit var caseRepository: CaseRepository
+
+    @Autowired
+    lateinit var agentConfigRepository: AgentConfigRepository
 
     @Autowired
     lateinit var driver: Driver
@@ -206,6 +211,58 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
                 entityLabel = "Case"
+            ).shouldBeTrue()
+        }
+
+        /**
+         * Story 4.1 AC3: AgentConfig relies on transitive permissions via the
+         * `[:BELONGS_TO]` relation. Unlike Case (owner-private), AgentConfig is
+         * a shared configuration — namespace MEMBERs must gain transitive READ
+         * on all configs (FR21), and namespace ADMINs must gain transitive
+         * WRITE/DELETE (FR17/18/19).
+         */
+        "AgentConfig gets transitive permissions from its parent namespace (Story 4.1 AC3)" {
+            val member = createUser("member@example.com")
+            val admin = createUser("admin@example.com")
+            val namespace = createNamespace()
+            val config = agentConfigRepository.save(
+                AgentConfig(
+                    metadata = EntityMetadata(),
+                    namespaceId = namespace.id,
+                    name = "shared-agent",
+                ),
+            )
+
+            // member gets MEMBER on namespace → should READ transitively but NOT WRITE/DELETE
+            permissionNodeRepository.createMemberPermission(
+                userId = member.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace",
+            )
+            permissionService.hasPermission(
+                member.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.READ,
+            ).shouldBeTrue()
+            permissionService.hasPermission(
+                member.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.WRITE,
+            ).shouldBeFalse()
+            permissionService.hasPermission(
+                member.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.DELETE,
+            ).shouldBeFalse()
+
+            // admin gets ADMIN on namespace → full transitive CRUD
+            permissionNodeRepository.createAdminPermission(
+                userId = admin.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace",
+            )
+            permissionService.hasPermission(
+                admin.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.READ,
+            ).shouldBeTrue()
+            permissionService.hasPermission(
+                admin.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.WRITE,
+            ).shouldBeTrue()
+            permissionService.hasPermission(
+                admin.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.DELETE,
             ).shouldBeTrue()
         }
 

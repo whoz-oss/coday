@@ -9,8 +9,10 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
@@ -117,6 +119,24 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                         }
                     """.trimIndent())
             ).andExpect(status().isOk)
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/agent-configs/by-parentId/{namespaceId} (Story 4.1)
+        // -------------------------------------------------------------------------
+
+        "GET /api/agent-configs/by-parentId/{namespaceId} returns configs for a super-admin caller" {
+            val listNamespaceId = UUID.randomUUID()
+            agentConfigService.create(
+                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "agent-a"),
+            )
+            agentConfigService.create(
+                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "agent-b"),
+            )
+
+            mockMvc.perform(get("/api/agent-configs/by-parentId/$listNamespaceId"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
         }
     }
 }
