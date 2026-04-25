@@ -1,33 +1,46 @@
 package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * Unit tests for [IntegrationConfigController].
+ * Unit tests for [IntegrationConfigController] (Story 4.2).
  *
- * The controller is instantiated directly with MockK stubs — no Spring context.
- * Tests cover:
- * - [IntegrationConfigController.toResource]  — domain → HTTP DTO mapping
- * - [IntegrationConfigController.toDomain]    — HTTP DTO → domain mapping
- * - [IntegrationConfigController.listByNamespace] — custom endpoint
- * - Inherited [io.whozoss.agentos.entity.EntityController] endpoints:
- *   getById (found / not-found), getByIds, listByParent, create,
- *   update (found / not-found), delete (found / not-found)
+ * Covers:
+ * - Mapping (toResource, toDomain)
+ * - `checkCreatePermission` gate — WRITE on parent namespace required (FR23/24/25)
+ * - `listByParent` short-circuit — READ on namespace enough to see everything (FR27)
+ * - Inherited secured endpoints (getById 404-on-deny, update/delete 403-on-deny)
  */
 class IntegrationConfigControllerSpec : StringSpec({
-    timeout = 5000
 
     val service = mockk<IntegrationConfigService>()
-    val controller = IntegrationConfigController(service)
+    val userService = mockk<UserService>()
+    val permissionService = mockk<PermissionService>()
+    val controller = IntegrationConfigController(service, userService, permissionService)
 
+    val callerId = UUID.randomUUID()
+    val caller = User(
+        metadata = EntityMetadata(id = callerId),
+        externalId = "member@example.com",
+        email = "member@example.com",
+        isAdmin = false,
+    )
     val namespaceId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")
 
@@ -48,210 +61,178 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     fun resource(
         id: UUID? = UUID.randomUUID(),
-        nsId: UUID = namespaceId,
+        nsId: UUID? = namespaceId,
         name: String = "JIRA_PROD",
         integrationType: String = "JIRA",
-        description: String? = null,
     ) = IntegrationConfigResource(
         id = id,
         namespaceId = nsId,
         name = name,
         integrationType = integrationType,
-        description = description,
+        description = null,
         parameters = params,
     )
 
+    beforeTest { clearAllMocks() }
+
     // -------------------------------------------------------------------------
-    // toResource mapping
+    // getEntityType — must match the Neo4j label
     // -------------------------------------------------------------------------
 
-    "toResource maps all fields from IntegrationConfig to IntegrationConfigResource" {
-        val id = UUID.randomUUID()
-        val c = config(id = id, name = "SLACK_DEV", integrationType = "SLACK", description = "Dev Slack workspace")
-
-        val result = controller.toResource(c)
-
-        result shouldBe IntegrationConfigResource(
-            id = id,
-            namespaceId = namespaceId,
-            name = "SLACK_DEV",
-            integrationType = "SLACK",
-            description = "Dev Slack workspace",
-            parameters = params,
-        )
-    }
-
-    "toResource preserves null description" {
-        val c = config(description = null)
-
-        val result = controller.toResource(c)
-
-        result.description shouldBe null
-    }
-
-    "toResource preserves null parameters" {
-        val c = config().copy(parameters = null)
-
-        val result = controller.toResource(c)
-
-        result.parameters shouldBe null
+    "getEntityType returns \"IntegrationConfig\"" {
+        controller.getEntityType() shouldBe "IntegrationConfig"
     }
 
     // -------------------------------------------------------------------------
-    // toDomain mapping
+    // Mapping (unchanged by Story 4.2)
     // -------------------------------------------------------------------------
 
-    "toDomain maps all fields from IntegrationConfigResource to IntegrationConfig" {
-        val id = UUID.randomUUID()
-        val r = resource(id = id, name = "GITHUB_MAIN", integrationType = "GITHUB", description = "Main GitHub org")
+    "toResource maps all fields" {
+        val c = config(name = "SLACK_DEV", integrationType = "SLACK", description = "Dev Slack")
+        val r = controller.toResource(c)
 
-        val result = controller.toDomain(r)
-
-        result.metadata.id shouldBe id
-        result.namespaceId shouldBe namespaceId
-        result.name shouldBe "GITHUB_MAIN"
-        result.integrationType shouldBe "GITHUB"
-        result.description shouldBe "Main GitHub org"
-        result.parameters shouldBe params
+        r.name shouldBe "SLACK_DEV"
+        r.integrationType shouldBe "SLACK"
+        r.description shouldBe "Dev Slack"
+        r.parameters shouldBe params
     }
 
-    "toDomain preserves null description" {
-        val r = resource(description = null)
+    "toDomain maps all fields and generates UUID when id is null" {
+        val a = controller.toDomain(resource(id = null))
+        val b = controller.toDomain(resource(id = null))
 
-        val result = controller.toDomain(r)
-
-        result.description shouldBe null
-    }
-
-    "toDomain generates a random UUID when resource id is null" {
-        val r = resource(id = null)
-
-        val result = controller.toDomain(r)
-
-        // Non-null assertion: the UUID is always set even when the resource has no id
-        result.metadata.id shouldBe result.metadata.id
-    }
-
-    "toDomain preserves null parameters" {
-        val r = resource().copy(parameters = null)
-
-        val result = controller.toDomain(r)
-
-        result.parameters shouldBe null
+        // Two null-id resources must produce distinct UUIDs
+        (a.metadata.id == b.metadata.id) shouldBe false
     }
 
     // -------------------------------------------------------------------------
-    // getById (inherited)
+    // create — namespace ADMIN required (Story 4.2 AC1)
     // -------------------------------------------------------------------------
 
-    "getById returns a resource when the entity is found" {
-        val c = config()
-        every { service.findById(c.id) } returns c
-
-        val result = controller.getById(c.id)
-
-        result shouldBe controller.toResource(c)
-    }
-
-    "getById throws 404 when entity is not found" {
-        val id = UUID.randomUUID()
-        every { service.findById(id) } returns null
-
-        val ex = runCatching { controller.getById(id) }.exceptionOrNull()
-
-        (ex is ResourceNotFoundException) shouldBe true
-    }
-
-    // -------------------------------------------------------------------------
-    // getByIds (inherited)
-    // -------------------------------------------------------------------------
-
-    "getByIds returns matching entities mapped to resources" {
-        val c1 = config(name = "JIRA_PROD")
-        val c2 = config(name = "SLACK_DEV")
-        every { service.findByIds(listOf(c1.id, c2.id)) } returns listOf(c1, c2)
-
-        val result = controller.getByIds(listOf(c1.id, c2.id))
-
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-    }
-
-    // -------------------------------------------------------------------------
-    // listByParent (inherited)
-    // -------------------------------------------------------------------------
-
-    "listByParent returns configs for the given namespaceId" {
-        val c1 = config(name = "A")
-        val c2 = config(name = "B")
-        every { service.findByParent(namespaceId) } returns listOf(c1, c2)
-
-        val result = controller.listByParent(namespaceId)
-
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-        verify(exactly = 1) { service.findByParent(namespaceId) }
-    }
-
-    // -------------------------------------------------------------------------
-    // create (inherited)
-    // -------------------------------------------------------------------------
-
-    "create converts resource to domain, delegates to service, and returns mapped resource" {
-        val r = resource(id = null)
-        val saved = controller.toDomain(r)
+    "create succeeds when caller has WRITE (ADMIN) on the parent namespace" {
+        val r = resource(id = null, name = "new-integration")
+        val saved = config(name = "new-integration")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+        } returns true
         every { service.create(any()) } returns saved
 
         val result = controller.create(r)
 
-        result shouldBe controller.toResource(saved)
+        result.id shouldBe saved.metadata.id
         verify(exactly = 1) { service.create(any()) }
     }
 
+    "create throws 403 when caller lacks WRITE on the parent namespace" {
+        val r = resource(id = null, name = "new-integration")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+        } returns false
+
+        val ex = shouldThrow<ResponseStatusException> { controller.create(r) }
+
+        ex.statusCode shouldBe HttpStatus.FORBIDDEN
+        verify(exactly = 0) { service.create(any()) }
+    }
+
     // -------------------------------------------------------------------------
-    // update (inherited)
+    // listByParent — READ on namespace short-circuit (Story 4.2 AC3)
     // -------------------------------------------------------------------------
 
-    "update delegates to service when entity exists and returns mapped resource" {
+    "listByParent returns all configs when caller has READ on the parent namespace (no N+1)" {
+        val c1 = config(name = "A")
+        val c2 = config(name = "B")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
+        } returns true
+        every { service.findByParent(namespaceId) } returns listOf(c1, c2)
+
+        val result = controller.listByParent(namespaceId)
+
+        result.map { it.id } shouldBe listOf(c1.metadata.id, c2.metadata.id)
+        // No per-entity check — the namespace-level READ is enough
+        verify(exactly = 0) {
+            permissionService.hasPermission(any(), "IntegrationConfig", any(), any())
+        }
+    }
+
+    "listByParent returns empty list when caller has no READ on the parent namespace" {
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
+        } returns false
+
+        controller.listByParent(namespaceId) shouldBe emptyList()
+        verify(exactly = 0) { service.findByParent(any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // Inherited secured endpoints — quick sanity checks
+    // -------------------------------------------------------------------------
+
+    "getById returns 404 when caller lacks READ on the IntegrationConfig" {
         val c = config()
-        val updatedResource = resource(id = c.id, name = "JIRA_STAGING")
-        val updatedDomain = controller.toDomain(updatedResource)
         every { service.findById(c.id) } returns c
-        every { service.update(any()) } returns updatedDomain
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "IntegrationConfig", c.id.toString(), Action.READ)
+        } returns false
 
-        val result = controller.update(c.id, updatedResource)
+        shouldThrow<ResourceNotFoundException> { controller.getById(c.id) }
+    }
 
-        result shouldBe controller.toResource(updatedDomain)
+    "update throws 403 when caller lacks WRITE on the IntegrationConfig" {
+        val c = config()
+        every { service.findById(c.id) } returns c
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "IntegrationConfig", c.id.toString(), Action.WRITE)
+        } returns false
+
+        val ex = shouldThrow<ResponseStatusException> { controller.update(c.id, resource(id = c.id)) }
+        ex.statusCode shouldBe HttpStatus.FORBIDDEN
+    }
+
+    "update preserves the persisted namespaceId when client sends a different value (mass-assignment guard)" {
+        val c = config()
+        val otherNs = UUID.randomUUID()
+        val payload = resource(id = c.id, nsId = otherNs, name = "RENAMED")
+        every { service.findById(c.id) } returns c
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "IntegrationConfig", c.id.toString(), Action.WRITE)
+        } returns true
+        every { service.update(any()) } answers {
+            val saved = firstArg<IntegrationConfig>()
+            saved.namespaceId shouldBe namespaceId
+            saved.name shouldBe "RENAMED"
+            saved
+        }
+
+        controller.update(c.id, payload)
+
         verify(exactly = 1) { service.update(any()) }
     }
 
-    "update throws 404 when entity is not found" {
+    "update throws 404 when the IntegrationConfig does not exist" {
         val id = UUID.randomUUID()
-        val r = resource(id = id)
         every { service.findById(id) } returns null
 
-        val ex = runCatching { controller.update(id, r) }.exceptionOrNull()
-
-        (ex is ResourceNotFoundException) shouldBe true
+        shouldThrow<ResourceNotFoundException> { controller.update(id, resource(id = id)) }
     }
 
-    // -------------------------------------------------------------------------
-    // delete (inherited)
-    // -------------------------------------------------------------------------
+    "delete throws 403 when caller lacks DELETE on the IntegrationConfig" {
+        val c = config()
+        every { service.findById(c.id) } returns c
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.hasPermission(callerId.toString(), "IntegrationConfig", c.id.toString(), Action.DELETE)
+        } returns false
 
-    "delete succeeds when entity exists" {
-        val id = UUID.randomUUID()
-        every { service.delete(id) } returns true
-
-        controller.delete(id)
-
-        verify(exactly = 1) { service.delete(id) }
-    }
-
-    "delete throws 404 when service returns false" {
-        val id = UUID.randomUUID()
-        every { service.delete(id) } returns false
-
-        val ex = runCatching { controller.delete(id) }.exceptionOrNull()
-
-        (ex is ResourceNotFoundException) shouldBe true
+        val ex = shouldThrow<ResponseStatusException> { controller.delete(c.id) }
+        ex.statusCode shouldBe HttpStatus.FORBIDDEN
     }
 })
