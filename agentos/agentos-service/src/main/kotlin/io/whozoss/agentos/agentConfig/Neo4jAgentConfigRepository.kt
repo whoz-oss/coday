@@ -17,8 +17,9 @@ open class Neo4jAgentConfigRepository(
     override fun save(entity: AgentConfig): AgentConfig =
         neo4jRepository
             .save(AgentConfigNode.fromDomain(entity))
+            .also { neo4jRepository.linkAgentConfigToNamespace(it.id, entity.namespaceId.toString()) }
             .toDomain()
-            .also { logger.debug { "[Neo4jAgentConfigRepository] Saved agent config \${it.id} ('\${entity.name}') under namespace \${entity.namespaceId}" } }
+            .also { logger.debug { "[Neo4jAgentConfigRepository] Saved agent config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
 
     override fun findByIds(ids: Collection<UUID>): List<AgentConfig> =
         neo4jRepository
