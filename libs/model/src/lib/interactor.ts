@@ -4,6 +4,7 @@ import {
   CodayEvent,
   ErrorEvent,
   InviteEvent,
+  QuestionEvent,
   TextEvent,
   ThinkingEvent,
   WarnEvent,
@@ -14,7 +15,7 @@ export abstract class Interactor {
   events = new Subject<CodayEvent>()
   private thinking$ = new Subject<null>()
   private subs: Subscription[] = []
-  private lastInviteEvent?: InviteEvent
+  private lastQuestionEvent?: QuestionEvent
 
   debugLevelEnabled: boolean = false
 
@@ -28,7 +29,7 @@ export abstract class Interactor {
 
   async promptText(invite: string, defaultText?: string): Promise<string> {
     const inviteEvent = new InviteEvent({ invite, defaultValue: defaultText })
-    this.lastInviteEvent = inviteEvent
+    this.lastQuestionEvent = inviteEvent
     const answer: Observable<AnswerEvent> = this.events.pipe(
       filter((e) => e.parentKey === inviteEvent.timestamp),
       filter((e) => e instanceof AnswerEvent),
@@ -39,8 +40,8 @@ export abstract class Interactor {
     try {
       const answerEvent = await firstValueFrom(answer)
       this.lastAnswerName = answerEvent.name
-      // Clear lastInviteEvent so reconnecting clients don't see a stale invite
-      this.lastInviteEvent = undefined
+      // Clear lastQuestionEvent so reconnecting clients don't see a stale invite
+      this.lastQuestionEvent = undefined
       return answerEvent.answer
     } catch (error: any) {
       throw new Error(`No answer received over invite ${inviteEvent.timestamp} : ${error.message}`)
@@ -81,6 +82,7 @@ export abstract class Interactor {
       optionalQuestion: invite,
       allowFreeText: allowFreeText ?? false,
     })
+    this.lastQuestionEvent = choiceEvent
     const answer: Observable<string> = this.events.pipe(
       filter((e) => e.parentKey === choiceEvent.timestamp),
       filter((e) => e instanceof AnswerEvent),
@@ -90,8 +92,8 @@ export abstract class Interactor {
     this.sendEvent(choiceEvent)
     try {
       const result = await firstValueFrom(answer)
-      // Clear lastInviteEvent so reconnecting clients don't see a stale invite
-      this.lastInviteEvent = undefined
+      // Clear lastQuestionEvent so reconnecting clients don't see a stale choice
+      this.lastQuestionEvent = undefined
       return result
     } catch (error: any) {
       throw new Error(`No answer received over choice ${choiceEvent.timestamp} : ${error.message}`)
@@ -128,21 +130,21 @@ export abstract class Interactor {
   }
 
   /**
-   * Re-emit the last invite event if any.
+   * Re-emit the last question event (InviteEvent or ChoiceEvent) if any.
    * Used during reconnection to restore the input state.
    */
-  replayLastInvite(): void {
-    if (this.lastInviteEvent) {
-      this.sendEvent(this.lastInviteEvent)
+  replayLastQuestion(): void {
+    if (this.lastQuestionEvent) {
+      this.sendEvent(this.lastQuestionEvent)
     }
   }
 
   /**
-   * Return the last pending invite event without re-emitting it.
+   * Return the last pending question event (InviteEvent or ChoiceEvent) without re-emitting it.
    * Used by project-level SSE to replay active status to new clients.
    */
-  getLastInviteEvent(): InviteEvent | undefined {
-    return this.lastInviteEvent
+  getLastQuestionEvent(): QuestionEvent | undefined {
+    return this.lastQuestionEvent
   }
 
   kill() {

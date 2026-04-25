@@ -128,7 +128,7 @@ class ThreadCodayInstance {
         // the registry already knows about this invite, we're just re-sending it to the new SSE client.
         this.isReplaying = true
         try {
-          this.coday.interactor.replayLastInvite()
+          this.coday.interactor.replayLastQuestion()
         } finally {
           this.isReplaying = false
         }
@@ -497,7 +497,7 @@ export class ThreadCodayManager {
     this.projectEventManager.onNewGlobalConnection = (res) => {
       for (const instance of this.instances.values()) {
         if (!this.pendingInvites.has(instance.threadId)) continue
-        const lastInvite = instance.coday?.interactor?.getLastInviteEvent()
+        const lastInvite = instance.coday?.interactor?.getLastQuestionEvent()
         if (lastInvite) {
           const enriched = { ...lastInvite, threadId: instance.threadId, projectName: instance.projectName }
           const data = `data: ${JSON.stringify(enriched)}\n\n`
@@ -535,7 +535,7 @@ export class ThreadCodayManager {
       if (instance.projectName !== projectName) continue
       // Only replay if the registry confirms a pending invite (source of truth)
       if (!this.pendingInvites.has(instance.threadId)) continue
-      const lastInvite = instance.coday?.interactor?.getLastInviteEvent()
+      const lastInvite = instance.coday?.interactor?.getLastQuestionEvent()
       if (lastInvite) {
         const enriched = { ...lastInvite, threadId: instance.threadId }
         const data = `data: ${JSON.stringify(enriched)}\n\n`
