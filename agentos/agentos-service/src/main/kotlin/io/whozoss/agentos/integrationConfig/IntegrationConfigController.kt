@@ -1,40 +1,33 @@
 package io.whozoss.agentos.integrationConfig
 
-import io.whozoss.agentos.entity.SecuredEntityController
+import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.prepost.PostFilter
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * REST API for managing [IntegrationConfig] entities (Epic 4 Story 4.2).
+ * REST API for managing [IntegrationConfig] entities (Epic 5 declarative migration).
  *
- * Extends [SecuredEntityController] — CREATE / UPDATE / DELETE are restricted
- * to namespace ADMINs (FR23/FR24/FR25). LIST / READ are open to every caller
- * with at least MEMBER access on the parent namespace (FR27) via the standard
- * transitive permission rules. The `[:BELONGS_TO]` edge between each
- * IntegrationConfig node and its parent Namespace node is already maintained
- * by [Neo4jIntegrationConfigRepository.save] (pre-existing).
+ * Authorization declared via `@PreAuthorize`:
+ * - READ: namespace MEMBER (FR27)
+ * - WRITE/DELETE: namespace ADMIN (FR23/24/25)
+ * - CREATE: namespace ADMIN
  *
- * Standard CRUD endpoints (inherited, permission-gated):
- *   GET    /api/integration-configs/{id}
- *   POST   /api/integration-configs/by-ids
- *   GET    /api/integration-configs/by-parentId/{namespaceId}
- *   POST   /api/integration-configs
- *   PUT    /api/integration-configs/{id}
- *   DELETE /api/integration-configs/{id}
+ * The `update` override preserves [IntegrationConfig.namespaceId] (mass-assignment guard).
  */
 @RestController
 @RequestMapping(
@@ -43,50 +36,7 @@ import java.util.UUID
 )
 class IntegrationConfigController(
     private val integrationConfigService: IntegrationConfigService,
-    userService: UserService,
-    permissionService: PermissionService,
-) : SecuredEntityController<IntegrationConfig, UUID, IntegrationConfigResource>(
-    integrationConfigService,
-    userService,
-    permissionService,
-) {
-
-    override fun getEntityType(): String = ENTITY_TYPE
-
-    /**
-     * IntegrationConfig creation/update/delete is restricted to namespace ADMINs
-     * (FR23/FR24/FR25). `Action.WRITE` maps to `PermissionRelation.ADMIN` in
-     * [io.whozoss.agentos.permissions.PermissionServiceImpl.evaluatePermission];
-     * super-admins pass via the `isAdmin` bypass inside `hasPermission`.
-     */
-    override fun checkCreatePermission(userId: String, entity: IntegrationConfig) {
-        if (!permissionService.hasPermission(userId, NAMESPACE_TYPE, entity.namespaceId.toString(), Action.WRITE)) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied - namespace ADMIN role required")
-        }
-    }
-
-    /**
-     * GET /api/integration-configs/by-parentId/{parentId} — list configs in a namespace.
-     *
-     * IntegrationConfig is a shared configuration (not owner-private): any caller
-     * with READ on the parent namespace sees every config in that namespace
-     * (FR27). Short-circuits the N+1 per-entity `hasPermission` cost of
-     * [io.whozoss.agentos.entity.SecuredEntityController.listByParent] by
-     * checking the namespace-level READ once.
-     */
-    override fun listByParent(@PathVariable parentId: UUID): List<IntegrationConfigResource> {
-        val userId = userService.getCurrentUser().id.toString()
-        val canRead = permissionService.hasPermission(userId, NAMESPACE_TYPE, parentId.toString(), Action.READ)
-        if (!canRead) {
-            logger.debug { "User $userId has no READ on namespace $parentId — returning empty IntegrationConfig list" }
-            return emptyList()
-        }
-        return integrationConfigService.findByParent(parentId).map { toResource(it) }
-    }
-
-    // -------------------------------------------------------------------------
-    // Mapping between domain entity and HTTP resource
-    // -------------------------------------------------------------------------
+) : EntityController<IntegrationConfig, UUID, IntegrationConfigResource>(integrationConfigService) {
 
     override fun toResource(entity: IntegrationConfig): IntegrationConfigResource =
         IntegrationConfigResource(
@@ -110,13 +60,6 @@ class IntegrationConfigController(
             parameters = resource.parameters,
         )
 
-    /**
-     * Merge an update resource onto an existing persisted entity.
-     *
-     * [IntegrationConfig.namespaceId] is server-owned — the client cannot
-     * relocate an IntegrationConfig across namespaces via PUT. Only mutable
-     * fields are taken from the payload.
-     */
     private fun toDomainForUpdate(
         resource: IntegrationConfigResource,
         existing: IntegrationConfig,
@@ -128,34 +71,39 @@ class IntegrationConfigController(
             parameters = resource.parameters,
         )
 
-    /**
-     * PUT /{id} — update mutable fields of an existing IntegrationConfig.
-     *
-     * Combines the secured-controller's WRITE permission check (namespace
-     * ADMIN via transitivity) with namespace-pinning: the persisted
-     * [IntegrationConfig.namespaceId] is preserved, blocking cross-namespace
-     * privilege escalation by a single-namespace ADMIN.
-     */
-    @PutMapping(
-        "/{id}",
-        consumes = [MediaType.APPLICATION_JSON_VALUE],
-        produces = [MediaType.APPLICATION_JSON_VALUE],
-    )
+    @GetMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'READ')")
+    @HideOnAccessDenied
+    override fun getById(@PathVariable id: UUID): IntegrationConfigResource = super.getById(id)
+
+    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PostFilter("hasPermission(filterObject.id, 'IntegrationConfig', 'READ')")
+    override fun getByIds(@RequestBody ids: List<UUID>): List<IntegrationConfigResource> = super.getByIds(ids)
+
+    @GetMapping("/by-parentId/{parentId}")
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    override fun listByParent(@PathVariable parentId: UUID): List<IntegrationConfigResource> =
+        super.listByParent(parentId)
+
+    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")
+    override fun create(@Valid @RequestBody resource: IntegrationConfigResource): IntegrationConfigResource =
+        super.create(resource)
+
+    @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'WRITE')")
     override fun update(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: IntegrationConfigResource,
     ): IntegrationConfigResource {
         val existing = integrationConfigService.findById(id)
             ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        val userId = userService.getCurrentUser().id.toString()
-        if (!permissionService.hasPermission(userId, ENTITY_TYPE, id.toString(), Action.WRITE)) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
-        }
         return toResource(integrationConfigService.update(toDomainForUpdate(resource, existing)))
     }
 
-    companion object : KLogging() {
-        private const val ENTITY_TYPE = "IntegrationConfig"
-        private const val NAMESPACE_TYPE = "Namespace"
-    }
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'DELETE')")
+    override fun delete(@PathVariable id: UUID) = super.delete(id)
+
+    companion object : KLogging()
 }

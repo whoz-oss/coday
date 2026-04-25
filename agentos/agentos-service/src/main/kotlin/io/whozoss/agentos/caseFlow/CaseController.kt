@@ -1,9 +1,10 @@
 package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.entity.SecuredEntityController
+import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -11,16 +12,33 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.prepost.PostFilter
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
+/**
+ * REST API for managing [Case] entities (Epic 5 declarative migration).
+ *
+ * Authorization declared via `@PreAuthorize`:
+ * - READ on Case: namespace ADMIN (transitive) OR direct ADMIN/MEMBER on the case (FR15)
+ * - WRITE/DELETE on Case: same permission model
+ * - CREATE: namespace **READ** (FR — a MEMBER can create their own case;
+ *   the ADMIN/MEMBER grant on the new case is auto-applied in the body)
+ *
+ * `userService` and `permissionService` are still injected for two non-authorization
+ * concerns: (1) the auto-ADMIN grant on the new case after create, (2) the fast-path
+ * branch in `listByParent` (namespace ADMIN → unfiltered listing) which is a
+ * performance optimization, not an authorization check.
+ */
 @RestController
 @RequestMapping(
     "/api/cases",
@@ -28,108 +46,9 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-    userService: UserService,
-    permissionService: PermissionService,
-) : SecuredEntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
-
-    override fun getEntityType(): String = ENTITY_TYPE
-
-    /**
-     * To create a Case, the caller must have at least READ on the parent namespace
-     * (i.e. hold a MEMBER or ADMIN relation, or be super-admin via bypass). This
-     * matches Story 3.1 AC1, where a namespace MEMBER may create their own cases.
-     *
-     * Note: [Action.WRITE] would require a namespace ADMIN relation per
-     * [io.whozoss.agentos.permissions.PermissionServiceImpl.evaluatePermission] —
-     * too strict for this use case.
-     */
-    override fun checkCreatePermission(userId: String, entity: Case) {
-        if (!permissionService.hasPermission(userId, NAMESPACE_TYPE, entity.namespaceId.toString(), Action.READ)) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied - no access to namespace")
-        }
-    }
-
-    /**
-     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
-     *
-     * Two fast paths, both avoiding the N+1 `hasPermission` cost of
-     * [io.whozoss.agentos.entity.SecuredEntityController.listByParent]:
-     *
-     * 1. Namespace ADMIN short-circuit (Story 3.2): if the caller holds the ADMIN
-     *    relation on the parent namespace (or is super-admin via bypass), they
-     *    transitively ADMIN every case — return `findByParent` unfiltered in a
-     *    single query. The short-circuit uses `hasPermission(Action.WRITE)` which
-     *    maps to `PermissionRelation.ADMIN` in
-     *    [io.whozoss.agentos.permissions.PermissionServiceImpl.evaluatePermission];
-     *    if a future permission model adds a non-ADMIN WRITE grant (e.g. an
-     *    "editor" relation), revisit this check to avoid leaking every case.
-     * 2. Permission-filtered listing (Story 3.3): otherwise delegate to a
-     *    dedicated Cypher query that returns only cases with a direct
-     *    ADMIN/MEMBER relation on the case OR transitive ADMIN via namespace.
-     *    Namespace MEMBERs do NOT gain transitive READ on cases (FR15).
-     */
-    override fun listByParent(@PathVariable parentId: UUID): List<CaseResource> {
-        val user = userService.getCurrentUser()
-        val userId = user.id.toString()
-        val isNamespaceAdmin = permissionService.hasPermission(
-            userId,
-            NAMESPACE_TYPE,
-            parentId.toString(),
-            Action.WRITE,
-        )
-        if (isNamespaceAdmin) {
-            logger.debug {
-                "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)"
-            }
-            return caseService.findByParent(parentId).map { toResource(it) }
-        }
-        logger.debug {
-            "User $userId is not namespace-ADMIN on $parentId — using permission-filtered listing"
-        }
-        return caseService
-            .findAccessibleByUserInNamespace(user.id, parentId)
-            .map { toResource(it) }
-    }
-
-    /**
-     * POST /api/cases — delegates creation to the parent (which invokes
-     * [checkCreatePermission]), then auto-grants an ADMIN relationship on the new
-     * case to the creator (Story 3.1 AC1).
-     *
-     * The grant is best-effort (non-transactional) — same pattern as Story 2.1 on
-     * namespace creation. A grant failure is logged at WARN; the case stays
-     * persisted. Super-admins keep their bypass regardless.
-     */
-    override fun create(@Valid @RequestBody resource: CaseResource): CaseResource {
-        val created = super.create(resource)
-        val caseId = created.id ?: error("Created case must have an id")
-        val userId = userService.getCurrentUser().id.toString()
-        runCatching {
-            permissionService.grantPermission(
-                userId,
-                ENTITY_TYPE,
-                caseId.toString(),
-                PermissionRelation.ADMIN,
-            )
-            logger.info { "User $userId created case $caseId with auto-ADMIN grant" }
-        }.onFailure { e ->
-            // The case is persisted but the creator lost their direct ADMIN grant.
-            // For a super-admin or namespace ADMIN creator this is harmless (they
-            // retain access via bypass / transitivity). For a namespace MEMBER
-            // creator this is a LOCKOUT: after Story 3.3 (FR15) MEMBERs do not
-            // inherit transitive READ on cases, so only a super-admin or
-            // namespace ADMIN can recover access by manually granting the relation.
-            logger.warn(e) {
-                "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
-                    "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
-            }
-        }
-        return created
-    }
-
-    // -------------------------------------------------------------------------
-    // Mapping between domain entity and HTTP resource
-    // -------------------------------------------------------------------------
+    private val userService: UserService,
+    private val permissionService: PermissionService,
+) : EntityController<Case, UUID, CaseResource>(caseService) {
 
     override fun toResource(entity: Case): CaseResource =
         CaseResource(
@@ -145,30 +64,116 @@ class CaseController(
             metadata = metadata,
             namespaceId = resource.namespaceId,
             status = resource.status,
-            // Mirror the Case data-class default "Case $id" when the client omits
-            // a title, instead of persisting an empty string (Story 3.4 AC4).
             title = resource.title ?: "Case ${metadata.id}",
         )
     }
 
-    // -------------------------------------------------------------------------
-    // Additional endpoints
-    // -------------------------------------------------------------------------
+    /**
+     * Merge an update resource onto an existing persisted entity. The persisted
+     * [Case.namespaceId] and [Case.status] are preserved (mass-assignment guard):
+     * - `namespaceId` is the transitivity key for permissions (FR15) — clients
+     *   must not relocate a Case across namespaces via PUT.
+     * - `status` is a lifecycle field driven by the runtime (`interruptCase`,
+     *   `killCase`, agent execution) — clients must not transition state via PUT.
+     */
+    private fun toDomainForUpdate(
+        resource: CaseResource,
+        existing: Case,
+    ): Case =
+        existing.copy(
+            title = resource.title ?: existing.title,
+        )
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
+    @HideOnAccessDenied
+    override fun getById(@PathVariable id: UUID): CaseResource = super.getById(id)
+
+    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PostFilter("hasPermission(filterObject.id, 'Case', 'READ')")
+    override fun getByIds(@RequestBody ids: List<UUID>): List<CaseResource> = super.getByIds(ids)
+
+    /**
+     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace (Story 3.2/3.3).
+     *
+     * `@PreAuthorize` gates on namespace READ ; inside the body, two perf paths:
+     * 1. Namespace ADMIN → unfiltered listing (single query, no per-case check).
+     * 2. Otherwise → permission-filtered listing via dedicated Cypher
+     *    (`findAccessibleByUserInNamespace`) which respects FR15 (MEMBERs see only
+     *    their own cases or those they were directly granted READ on).
+     */
+    @GetMapping("/by-parentId/{parentId}")
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    override fun listByParent(@PathVariable parentId: UUID): List<CaseResource> {
+        val user = userService.getCurrentUser()
+        val userId = user.id.toString()
+        val isNamespaceAdmin = permissionService.hasPermission(
+            userId,
+            NAMESPACE_TYPE,
+            parentId.toString(),
+            Action.WRITE,
+        )
+        return if (isNamespaceAdmin) {
+            logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
+            caseService.findByParent(parentId).map { toResource(it) }
+        } else {
+            logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
+            caseService.findAccessibleByUserInNamespace(user.id, parentId).map { toResource(it) }
+        }
+    }
+
+    /**
+     * POST /api/cases — create a Case. Permission gate is namespace READ
+     * (a MEMBER may create their own cases). The body delegates to the standard
+     * `EntityController.create`, then auto-grants ADMIN on the new case to the
+     * creator (Story 3.1 AC1). The grant is best-effort (non-transactional).
+     */
+    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'READ')")
+    override fun create(@Valid @RequestBody resource: CaseResource): CaseResource {
+        val created = super.create(resource)
+        val caseId = created.id ?: error("Created case must have an id")
+        val userId = userService.getCurrentUser().id.toString()
+        runCatching {
+            permissionService.grantPermission(
+                userId,
+                ENTITY_TYPE,
+                caseId.toString(),
+                PermissionRelation.ADMIN,
+            )
+            logger.info { "User $userId created case $caseId with auto-ADMIN grant" }
+        }.onFailure { e ->
+            logger.warn(e) {
+                "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
+                    "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
+            }
+        }
+        return created
+    }
+
+    @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
+    override fun update(
+        @PathVariable id: UUID,
+        @Valid @RequestBody resource: CaseResource,
+    ): CaseResource {
+        val existing = caseService.findById(id)
+            ?: throw io.whozoss.agentos.exception.ResourceNotFoundException("Case not found: $id")
+        return toResource(caseService.update(toDomainForUpdate(resource, existing)))
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'Case', 'DELETE')")
+    override fun delete(@PathVariable id: UUID) = super.delete(id)
 
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     fun addMessage(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
     ) {
-        // Check that the user has WRITE permission on the case
         val user = userService.getCurrentUser()
-        val userId = user.id.toString()
-
-        if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.WRITE)) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
-        }
-
         logger.info { "Adding message to case: $caseId" }
         val displayName = listOfNotNull(user.firstname, user.lastname)
             .joinToString(" ")
@@ -184,38 +189,21 @@ class CaseController(
     }
 
     /**
-     * POST /api/cases/{caseId}/interrupt
-     *
-     * Interrupt the current agent turn and return the case to IDLE.
-     * The runtime and SSE connection stay open — the user can send a corrective
-     * message immediately. Use this when the agent is going in the wrong direction.
+     * POST /api/cases/{caseId}/interrupt — interrupt the current agent turn and
+     * return the case to IDLE. Requires WRITE on the case.
      */
     @PostMapping("/{caseId}/interrupt")
-    fun interruptCase(
-        @PathVariable caseId: UUID,
-    ) {
-        // Check that the user has WRITE permission on the case
-        val userId = userService.getCurrentUser().id.toString()
-        if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.WRITE)) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
-        }
-
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    fun interruptCase(@PathVariable caseId: UUID) {
         logger.info { "Interrupting case: $caseId" }
         caseService.interruptCase(caseId)
         logger.info { "Case interrupted: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/kill — permanently terminate a case and evict its runtime. */
+    /** POST /api/cases/{caseId}/kill — permanently terminate a case. Requires DELETE. */
     @PostMapping("/{caseId}/kill")
-    fun killCase(
-        @PathVariable caseId: UUID,
-    ) {
-        // Check that the user has DELETE permission on the case
-        val userId = userService.getCurrentUser().id.toString()
-        if (!permissionService.hasPermission(userId, getEntityType(), caseId.toString(), Action.DELETE)) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied")
-        }
-
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'DELETE')")
+    fun killCase(@PathVariable caseId: UUID) {
         logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }

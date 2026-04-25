@@ -79,8 +79,7 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
         // is not possible in this test class because the "test" profile uses
         // [InMemoryPermissionServiceImpl], a permissive no-op stub. The auto-grant
         // behaviour is covered exhaustively by the mocked unit tests in
-        // [NamespaceControllerSpec] and by the real Neo4j test
-        // [Neo4jSecuredEntityControllerSpec].
+        // [NamespaceControllerSpec].
 
         // -------------------------------------------------------------------------
         // PUT /api/namespaces/{id} — update

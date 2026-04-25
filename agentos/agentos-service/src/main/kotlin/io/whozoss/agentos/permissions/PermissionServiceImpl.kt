@@ -163,9 +163,9 @@ class PermissionServiceImpl(
             if (user?.isAdmin == true) {
                 logger.debug { "Super-admin listing all $entityType entities" }
                 // Super-admin bypasses per-entity checks in hasPermission(), so controllers
-                // (e.g. SecuredEntityController.listByParent) never reach this code path for
-                // super-admins. Return empty list as a safe fallback — callers that need "all
-                // entities" should query the entity service directly.
+                // (declarative @PreAuthorize / @PostFilter paths) never reach this code path
+                // for super-admins. Return empty list as a safe fallback — callers that need
+                // "all entities" should query the entity service directly.
                 return emptyList()
             }
 

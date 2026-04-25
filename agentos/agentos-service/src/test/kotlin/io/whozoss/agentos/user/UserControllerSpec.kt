@@ -26,8 +26,7 @@ class UserControllerSpec : StringSpec({
     timeout = 5000
 
     val userService = mockk<UserService>()
-    val permissionService = mockk<PermissionService>()
-    val controller = UserController(userService, permissionService)
+    val controller = UserController(userService)
 
     fun user(
         id: UUID = UUID.randomUUID(),

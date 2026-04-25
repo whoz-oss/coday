@@ -31,8 +31,8 @@ import java.util.UUID
  *   best-effort (grant failure logs WARN but does not roll back creation)
  * - Mapping helpers (`toResource`, `toDomain`)
  *
- * Inherited endpoints (`getById`, `listByParent`, etc.) are covered at the
- * framework level by `SecuredEntityControllerSpec`.
+ * Authorization paths are declarative (`@PreAuthorize`) and exercised by
+ * [io.whozoss.agentos.security.declarative.MethodSecurityIntegrationSpec].
  */
 class CaseControllerSpec : StringSpec({
 
@@ -66,14 +66,6 @@ class CaseControllerSpec : StringSpec({
     )
 
     beforeTest { clearAllMocks() }
-
-    // -------------------------------------------------------------------------
-    // getEntityType
-    // -------------------------------------------------------------------------
-
-    "getEntityType returns \"Case\" (must match Neo4j label)" {
-        controller.getEntityType() shouldBe "Case"
-    }
 
     // -------------------------------------------------------------------------
     // Mapping
@@ -141,29 +133,10 @@ class CaseControllerSpec : StringSpec({
         }
     }
 
-    "create throws 403 when caller has no READ on the parent namespace" {
-        val r = caseResource(id = null)
-        every { userService.getCurrentUser() } returns caller
-        every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
-        } returns false
-
-        val ex = shouldThrow<ResponseStatusException> { controller.create(r) }
-
-        ex.statusCode shouldBe HttpStatus.FORBIDDEN
-        ex.reason shouldBe "Access denied - no access to namespace"
-        // Neither persistence nor grant should happen when permission is denied
-        verify(exactly = 0) { caseService.create(any()) }
-        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
-    }
-
     "create still succeeds when the auto-ADMIN grant fails (logs warning, no rollback)" {
         val r = caseResource(id = null)
         val saved = caseEntity()
         every { userService.getCurrentUser() } returns caller
-        every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
-        } returns true
         every { caseService.create(any()) } returns saved
         every {
             permissionService.grantPermission(
@@ -177,14 +150,10 @@ class CaseControllerSpec : StringSpec({
         verify(exactly = 1) { caseService.create(any()) }
     }
 
-    "create succeeds for super-admin via hasPermission bypass (READ returns true)" {
-        val superAdmin = caller.copy(isAdmin = true)
+    "create auto-grants ADMIN on the new case to the creator" {
         val r = caseResource(id = null)
         val saved = caseEntity()
-        every { userService.getCurrentUser() } returns superAdmin
-        every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
-        } returns true
+        every { userService.getCurrentUser() } returns caller
         every { caseService.create(any()) } returns saved
         every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
 
@@ -272,43 +241,34 @@ class CaseControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // update / delete — AC3 403 for MEMBER without direct ADMIN (Story 3.4)
+    // update — mass-assignment guard (Story 5.2 P5)
     // -------------------------------------------------------------------------
 
-    "update returns 403 when caller has only namespace MEMBER and no direct ADMIN on case" {
-        val entity = caseEntity()
-        val updateResource = caseResource(id = entity.metadata.id, title = "updated")
-        every { caseService.findById(entity.metadata.id) } returns entity
-        every { userService.getCurrentUser() } returns caller
-        every {
-            permissionService.hasPermission(
-                callerId.toString(), "Case", entity.metadata.id.toString(), Action.WRITE,
-            )
-        } returns false
-
-        val ex = shouldThrow<ResponseStatusException> {
-            controller.update(entity.metadata.id, updateResource)
+    "update preserves the persisted namespaceId and status when client sends different values" {
+        val existing = caseEntity()
+        val otherNs = UUID.randomUUID()
+        val payload = caseResource(id = existing.metadata.id, title = "renamed")
+            .copy(namespaceId = otherNs, status = CaseStatus.RUNNING)
+        every { caseService.findById(existing.metadata.id) } returns existing
+        every { caseService.update(any()) } answers {
+            val saved = firstArg<Case>()
+            saved.namespaceId shouldBe namespaceId
+            saved.status shouldBe existing.status
+            saved.title shouldBe "renamed"
+            saved
         }
 
-        ex.statusCode shouldBe HttpStatus.FORBIDDEN
-        verify(exactly = 0) { caseService.update(any()) }
+        controller.update(existing.metadata.id, payload)
+
+        verify(exactly = 1) { caseService.update(any()) }
     }
 
-    "delete returns 403 when caller has only namespace MEMBER and no direct ADMIN on case" {
-        val entity = caseEntity()
-        every { caseService.findById(entity.metadata.id) } returns entity
-        every { userService.getCurrentUser() } returns caller
-        every {
-            permissionService.hasPermission(
-                callerId.toString(), "Case", entity.metadata.id.toString(), Action.DELETE,
-            )
-        } returns false
+    "update throws 404 when the Case does not exist" {
+        val id = UUID.randomUUID()
+        every { caseService.findById(id) } returns null
 
-        val ex = shouldThrow<ResponseStatusException> {
-            controller.delete(entity.metadata.id)
+        shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
+            controller.update(id, caseResource(id = id))
         }
-
-        ex.statusCode shouldBe HttpStatus.FORBIDDEN
-        verify(exactly = 0) { caseService.delete(any()) }
     }
 })
