@@ -9,8 +9,10 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
@@ -123,6 +125,24 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "id": "${created.id}", "namespaceId": "$namespaceId", "name": "GITHUB_MAIN", "integrationType": "GITHUB" }""")
             ).andExpect(status().isOk)
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/integration-configs/by-parentId/{namespaceId} (Story 4.2)
+        // -------------------------------------------------------------------------
+
+        "GET /api/integration-configs/by-parentId/{namespaceId} returns configs for a super-admin caller" {
+            val listNamespaceId = UUID.randomUUID()
+            integrationConfigService.create(
+                IntegrationConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "JIRA_A", integrationType = "JIRA"),
+            )
+            integrationConfigService.create(
+                IntegrationConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "SLACK_B", integrationType = "SLACK"),
+            )
+
+            mockMvc.perform(get("/api/integration-configs/by-parentId/$listNamespaceId"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
         }
     }
 }
