@@ -92,24 +92,22 @@ class ToolRegistryService(
      * Every call produces **new tool instances** — tools are scoped to the agent run
      * and discarded when the run ends. No tool instance is shared across runs.
      *
-     * Combines:
-     * 1. Fresh instances from config-less plugins (available in every namespace).
-     * 2. Fresh instances from each [IntegrationConfig] found in the namespace,
-     *    using the matching [ToolPlugin] as a factory.
+     * Tools are always resolved via the [IntegrationConfig] entries of the namespace:
+     * each config is matched to a [ToolPlugin] by [ToolPlugin.integrationType], and
+     * the plugin instantiates fresh tools from the config parameters. This applies to
+     * both config-requiring plugins and config-less plugins — a config-less plugin only
+     * contributes tools when an [IntegrationConfig] of its type exists in the namespace.
      *
-     * A namespace with no [IntegrationConfig] for a given plugin type simply gets
-     * no tools from that plugin — silently.
+     * A namespace with no [IntegrationConfig] for a given plugin type gets no tools
+     * from that plugin — silently.
      *
-     * When [agentIntegrations] is non-null, only tools belonging to the listed
-     * integrations are included. The filter is two-level:
-     * - Integration-level: a tool is included only if its integration key appears
-     *   in [agentIntegrations]. For config-less tools the key is
-     *   [ToolPlugin.integrationType]; for config-backed tools it is
-     *   [IntegrationConfig.name] (the multi-instance prefix, e.g. `JIRA_PROD`).
-     * - Tool-level: when the list for a key is non-null, only tools whose [StandardTool.name]
-     *   ends with the allowed suffix are included (exact match or `KEY__suffix` match).
+     * When [agentIntegrations] is non-null, only tools whose [IntegrationConfig.name]
+     * appears as a key in the map are included. The filter is two-level:
+     * - Integration-level: the [IntegrationConfig.name] must be a key in [agentIntegrations].
+     * - Tool-level: when the list for that key is non-null, only tools whose [StandardTool.name]
+     *   matches exactly or ends with `KEY__allowedName` are included.
      *
-     * When [agentIntegrations] is null, all tools are returned (no filtering).
+     * When [agentIntegrations] is null, all tools from all namespace configs are returned.
      *
      * Called by [io.whozoss.agentos.agent.AgentServiceImpl] at agent instantiation time.
      */
@@ -119,33 +117,7 @@ class ToolRegistryService(
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
 
-        // Instantiate config-less tools fresh for this run
-        pluginsByType.values
-            .filter { it.configSchema == null }
-            .forEach { plugin ->
-                // Skip this integration entirely if the agent has an integrations filter
-                // and this integrationType is not listed.
-                if (agentIntegrations != null && plugin.integrationType !in agentIntegrations) {
-                    logger.debug { "[ToolRegistry] Skipping config-less plugin '${plugin.integrationType}' (not in agent integrations filter)" }
-                    return@forEach
-                }
-                try {
-                    val allowedToolNames = agentIntegrations?.get(plugin.integrationType)
-                    val providedTools = plugin.provideTools(null)
-                        .filter { tool -> isToolAllowed(tool.name, plugin.integrationType, allowedToolNames) }
-                    providedTools.forEach { tool ->
-                        if (resolved.containsKey(tool.name)) {
-                            logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from config-less plugin overrides an existing entry" }
-                        }
-                        resolved[tool.name] = tool
-                    }
-                    logger.debug { "[ToolRegistry] Instantiated ${providedTools.size} config-less tool(s) from plugin '${plugin.integrationType}' for run in namespace $namespaceId" }
-                } catch (e: Exception) {
-                    logger.error(e) { "[ToolRegistry] Error instantiating config-less tools for plugin '${plugin.integrationType}': ${e.message}" }
-                }
-            }
-
-        // For each IntegrationConfig in the namespace, find the matching plugin and instantiate
+        // All tools are resolved via IntegrationConfig — config-less plugins included.
         val configs = integrationConfigService.findByParent(namespaceId)
         logger.info { "[ToolRegistry] Resolving tools for namespace $namespaceId: ${configs.size} IntegrationConfig(s) found" }
 
