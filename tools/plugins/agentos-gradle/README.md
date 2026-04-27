@@ -36,6 +36,12 @@ No plugin changes needed. Just ensure the new subproject:
 2. Has a `project.json` (so it is a registered Nx project)
 3. Is tagged `platform:jvm` (so it is picked up by `release.projects` in `nx.json` and the validate CI step)
 
+> **Important:** The `platform:jvm` tag is also required for the plugin's `release` inference
+> to override the global `manifestRootsToUpdate: ["apps/{projectName}"]` set in `nx.json`.
+> A JVM project missing this tag would be included in the release group but Nx would incorrectly
+> try to update a `package.json` at `apps/<projectName>/package.json`, causing the release to fail.
+> Always tag JVM projects with `platform:jvm`.
+
 ## Running unit tests
 
 ```bash
