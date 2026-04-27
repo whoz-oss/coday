@@ -2,6 +2,11 @@
   "name": "agentos-sdk",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
+  "release": {
+    "version": {
+      "manifestRootsToUpdate": []
+    }
+  },
   "sourceRoot": "agentos/agentos-sdk/src",
   "targets": {
     "build": {
@@ -35,6 +40,12 @@
         "passWithNoTests": null
       },
       "dependsOn": ["build"]
+    },
+    "nx-release-publish": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'agentos-sdk published via Gradle in CI'"
+      }
     },
     "publish": {
       "executor": "nx:run-commands",
