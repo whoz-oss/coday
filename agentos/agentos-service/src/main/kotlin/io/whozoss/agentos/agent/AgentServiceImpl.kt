@@ -169,7 +169,7 @@ class AgentServiceImpl(
         }
 
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
-        val instructions = buildInstructions(baseInstructions = baseInstructions, context = context)
+        val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
 
         return AgentSimple(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
@@ -186,8 +186,11 @@ class AgentServiceImpl(
      * Starts from [baseInstructions] (the agent's own instructions from [AgentConfig],
      * may be null) and appends:
      * 1. A namespace context block (always, when [context] is provided).
-     * 2. An integrations block listing each [IntegrationConfig] in the namespace that
-     *    carries a non-null description (omitted entirely when none have a description).
+     * 2. An integrations block listing the [IntegrationConfig] entries whose [name][io.whozoss.agentos.integrationConfig.IntegrationConfig.name]
+     *    appears in [agentIntegrations] AND that carry a non-null description. When
+     *    [agentIntegrations] is null (agent has no declared integrations), this block
+     *    is omitted entirely — the agent has no tools and should not be told about
+     *    integrations it cannot use.
      * 3. A user context block (when [context.userId] resolves to a known [User]).
      *
      * All blocks are injected in the privileged system-prompt channel so they are
@@ -195,6 +198,7 @@ class AgentServiceImpl(
      */
     private fun buildInstructions(
         baseInstructions: String?,
+        agentIntegrations: Map<String, List<String>?>?,
         context: AgentExecutionContext,
     ): String {
         val namespace = namespaceService.findById(context.namespaceId)
@@ -205,21 +209,26 @@ class AgentServiceImpl(
                 namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
             }.trimEnd()
 
-        val integrationsWithDescription =
-            integrationConfigService
-                .findByParent(context.namespaceId)
-                .filter { !it.description.isNullOrBlank() }
         val integrationsBlock =
             when {
-                integrationsWithDescription.isEmpty() -> null
-                else ->
-                    buildString {
-                        appendLine()
-                        appendLine("## Integrations")
-                        integrationsWithDescription.forEach { config ->
-                            appendLine("- ${config.name}: ${config.description}")
-                        }
-                    }.trimEnd()
+                agentIntegrations == null -> null
+                else -> {
+                    val listed =
+                        integrationConfigService
+                            .findByParent(context.namespaceId)
+                            .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
+                    when {
+                        listed.isEmpty() -> null
+                        else ->
+                            buildString {
+                                appendLine()
+                                appendLine("## Integrations")
+                                listed.forEach { config ->
+                                    appendLine("- ${config.name}: ${config.description}")
+                                }
+                            }.trimEnd()
+                    }
+                }
             }
 
         val userBlock =
