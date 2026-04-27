@@ -58,6 +58,41 @@
         ></textarea>
       </div>
 
+      <!-- Integrations section: only shown when the namespace has integration configs -->
+      @if (integrationRows().length > 0) {
+        <fieldset class="agent-config-form__integrations">
+          <legend class="agent-config-form__label">Integrations</legend>
+          <p class="agent-config-form__integrations-hint">
+            Select which integrations this agent can use. Leave tool names empty to allow all tools from an integration.
+          </p>
+          @for (row of integrationRows(); track row.config.id) {
+            <div class="agent-config-form__integration-row">
+              <label class="agent-config-form__integration-toggle">
+                <input
+                  class="agent-config-form__integration-checkbox"
+                  type="checkbox"
+                  [checked]="row.enabled()"
+                  (change)="toggleIntegration(row)"
+                />
+                <span class="agent-config-form__integration-name">{{ row.config.name }}</span>
+                @if (row.config.integrationType) {
+                  <span class="agent-config-form__integration-type">{{ row.config.integrationType }}</span>
+                }
+              </label>
+              @if (row.enabled()) {
+                <input
+                  class="agent-config-form__input agent-config-form__integration-tools"
+                  type="text"
+                  placeholder="Tool names, comma-separated (empty = all tools)"
+                  [formControl]="row.toolsControl"
+                  autocomplete="off"
+                />
+              }
+            </div>
+          }
+        </fieldset>
+      }
+
       <div class="agent-config-form__actions">
         <button
           class="agent-config-form__btn agent-config-form__btn--primary"

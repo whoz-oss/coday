@@ -1,8 +1,25 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  AgentConfigControllerService,
+  IntegrationConfig,
+  IntegrationConfigControllerService,
+} from '@whoz-oss/agentos-api-client'
+import { forkJoin } from 'rxjs'
+
+/**
+ * Tracks the per-integration state within the form:
+ * - `enabled`: signal-based toggle so OnPush change detection reacts immediately
+ * - `toolsControl`: free-text input for comma-separated tool names (empty = all tools allowed)
+ */
+interface IntegrationRow {
+  config: IntegrationConfig
+  enabled: WritableSignal<boolean>
+  toolsControl: FormControl<string>
+}
 
 /**
  * AgentConfigFormComponent — full-page create / edit form for an agent config.
@@ -13,6 +30,16 @@ import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api
  *
  * The namespaceId is fixed at creation time and never exposed as an editable field.
  * On success or cancel, navigates back to /:namespaceId/agent-configs.
+ *
+ * ## Integrations section
+ *
+ * The form loads the namespace's IntegrationConfig list and lets the user select
+ * which integrations the agent can use. For each selected integration, an optional
+ * comma-separated list of tool names restricts access further (empty = all tools).
+ *
+ * This maps directly to AgentConfig.integrations:
+ *   { integrationName: string[] | null }
+ * where null means all tools of that integration are allowed.
  */
 @Component({
   selector: 'agentos-agent-config-form',
@@ -27,6 +54,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
+  private readonly integrationConfigController = inject(IntegrationConfigControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -60,6 +88,9 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
 
+  /** Integration rows built from the namespace's IntegrationConfig list. */
+  protected readonly integrationRows = signal<IntegrationRow[]>([])
+
   /** Kept for the update payload (preserves server-side fields). */
   private existingConfig: AgentConfig | null = null
 
@@ -67,22 +98,31 @@ export class AgentConfigFormComponent implements OnInit {
     const agentConfigId = this.route.snapshot.paramMap.get('agentConfigId')
     if (agentConfigId) {
       this.isEditMode.set(true)
-      this.loadConfig(agentConfigId)
+      this.loadConfigAndIntegrations(agentConfigId)
+    } else {
+      this.loadIntegrations(undefined)
     }
   }
 
-  private loadConfig(id: string): void {
+  /**
+   * In edit mode: load the agent config and the namespace integrations in parallel,
+   * then hydrate both the main form and the integration rows.
+   */
+  private loadConfigAndIntegrations(agentConfigId: string): void {
     this.isLoading.set(true)
-    this.agentConfigController
-      .getByIdAgentConfig(id)
+    forkJoin({
+      config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
+      integrations: this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId),
+    })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (config) => {
+        next: ({ config, integrations }) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
+          this.integrationRows.set(this.buildIntegrationRows(integrations, config.integrations ?? undefined))
           this.isLoading.set(false)
         },
         error: () => {
@@ -90,6 +130,78 @@ export class AgentConfigFormComponent implements OnInit {
           this.navigateBack()
         },
       })
+  }
+
+  /** In create mode: only load the namespace integrations (undefined = no existing filter). */
+  private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
+    this.integrationConfigController
+      .listByParentIntegrationConfig(this.namespaceId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (integrations) => {
+          this.integrationRows.set(this.buildIntegrationRows(integrations, existingIntegrations ?? undefined))
+        },
+      })
+  }
+
+  /**
+   * Build an IntegrationRow for each available integration config.
+   *
+   * If existingIntegrations is provided (edit mode), pre-populate:
+   * - enabled = true when the integration name appears as a key
+   * - toolsControl = comma-joined tool names when the list is non-null, else empty
+   */
+  private buildIntegrationRows(
+    available: IntegrationConfig[],
+    existingIntegrations: AgentConfig['integrations']
+  ): IntegrationRow[] {
+    return available.map((config) => {
+      const name = config.name ?? ''
+      const existingEntry = existingIntegrations?.[name]
+      const isEnabled = existingIntegrations != null && name in existingIntegrations
+      const toolsValue = Array.isArray(existingEntry) ? existingEntry.join(', ') : ''
+      return {
+        config,
+        enabled: signal(isEnabled),
+        toolsControl: new FormControl<string>(toolsValue, { nonNullable: true }),
+      }
+    })
+  }
+
+  /** Toggle the enabled signal for a given row. */
+  protected toggleIntegration(row: IntegrationRow): void {
+    row.enabled.update((v) => !v)
+  }
+
+  /**
+   * Convert the integration rows into the AgentConfig.integrations payload.
+   *
+   * Enabled rows with no tool names → null (all tools allowed).
+   * Enabled rows with tool names → trimmed, non-empty string array.
+   * Disabled rows → excluded from the map.
+   * If no rows are enabled → undefined (no filter, agent sees all namespace tools).
+   */
+  protected buildIntegrationsPayload(): AgentConfig['integrations'] {
+    const rows = this.integrationRows()
+    const enabledRows = rows.filter((r) => r.enabled())
+    if (enabledRows.length === 0) return undefined
+
+    const result: { [key: string]: Array<string> } = {}
+    for (const row of enabledRows) {
+      const name = row.config.name ?? ''
+      const rawTools = row.toolsControl.value.trim()
+      if (rawTools === '') {
+        // null means all tools allowed — the backend contract accepts null per integration
+        // even though the generated TS type declares Array<string>.
+        result[name] = null as any
+      } else {
+        result[name] = rawTools
+          .split(',')
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0)
+      }
+    }
+    return result
   }
 
   protected submit(): void {
@@ -104,6 +216,7 @@ export class AgentConfigFormComponent implements OnInit {
       description: this.descriptionControl.value?.trim() || undefined,
       modelName: this.modelNameControl.value?.trim() || undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
+      integrations: this.buildIntegrationsPayload(),
     }
 
     const call$ = this.isEditMode()

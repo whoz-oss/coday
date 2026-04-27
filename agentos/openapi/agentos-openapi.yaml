@@ -1491,6 +1491,12 @@ components:
           type: string
         modelName:
           type: string
+        integrations:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
       required:
       - name
       - namespaceId
