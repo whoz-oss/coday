@@ -14,6 +14,7 @@ export interface Schedule {
   namespaceId: string
   caseId?: string
   agentName?: string
+  userId?: string
   message: string
   enabled: boolean
   oneShot: boolean

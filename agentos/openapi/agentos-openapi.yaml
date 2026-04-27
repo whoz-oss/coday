@@ -1527,6 +1527,9 @@ components:
           format: uuid
         agentName:
           type: string
+        userId:
+          type: string
+          format: uuid
         message:
           type: string
           minLength: 1
