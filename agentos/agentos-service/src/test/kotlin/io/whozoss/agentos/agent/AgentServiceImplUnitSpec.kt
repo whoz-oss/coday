@@ -251,7 +251,35 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // Integration descriptions block injection into instructions
         // -------------------------------------------------------------------------
 
-        "findAgentByName appends integrations block when configs have descriptions" {
+        "findAgentByName omits integrations block when agentConfig has no integrations (null)" {
+            val configs =
+                listOf(
+                    IntegrationConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespaceId,
+                        name = "JIRA_PROD",
+                        integrationType = "JIRA",
+                        description = "Production Jira workspace",
+                    ),
+                )
+            every { integrationConfigService.findByParent(namespaceId) } returns configs
+            // agentConfig has no integrations field (null)
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions shouldNotContain "## Integrations"
+            agent.instructions shouldNotContain "JIRA_PROD"
+        }
+
+        "findAgentByName appends integrations block only for configs listed in agentConfig.integrations" {
             val localIntegrationService = mockk<IntegrationConfigService>()
             val localService =
                 AgentServiceImpl(
@@ -282,7 +310,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     ),
                 )
             every { localIntegrationService.findByParent(any()) } returns configs
+            // Agent only declares JIRA_PROD
             val config = agentConfig(name = "my-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("JIRA_PROD" to null))
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
@@ -295,10 +325,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agent.instructions shouldContain "## Integrations"
             agent.instructions shouldContain "JIRA_PROD: Production Jira workspace for the engineering team"
-            agent.instructions shouldContain "SLACK_DEV: Dev Slack channel for notifications"
+            agent.instructions shouldNotContain "SLACK_DEV"
         }
 
-        "findAgentByName omits integrations block when no config has a description" {
+        "findAgentByName omits integrations block when listed configs have no description" {
             val configs =
                 listOf(
                     IntegrationConfig(
@@ -311,67 +341,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 )
             every { integrationConfigService.findByParent(namespaceId) } returns configs
             val config = agentConfig(name = "my-agent", modelName = "sonnet")
-            val model = modelConfig(alias = "sonnet")
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
-
-            agent.instructions shouldNotContain "## Integrations"
-        }
-
-        "findAgentByName only lists configs that have a description in the integrations block" {
-            val localIntegrationService = mockk<IntegrationConfigService>()
-            val localService =
-                AgentServiceImpl(
-                    chatClientProvider,
-                    toolRegistryService,
-                    aiModelService,
-                    aiProviderService,
-                    namespaceService,
-                    localIntegrationService,
-                    userService,
-                    agentConfigService,
-                )
-            val configs =
-                listOf(
-                    IntegrationConfig(
-                        metadata = EntityMetadata(id = UUID.randomUUID()),
-                        namespaceId = namespaceId,
-                        name = "JIRA_PROD",
-                        integrationType = "JIRA",
-                        description = "Production Jira",
-                    ),
-                    IntegrationConfig(
-                        metadata = EntityMetadata(id = UUID.randomUUID()),
-                        namespaceId = namespaceId,
-                        name = "GITHUB_MAIN",
-                        integrationType = "GITHUB",
-                        description = null,
-                    ),
-                )
-            every { localIntegrationService.findByParent(any()) } returns configs
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-            val model = modelConfig(alias = "sonnet")
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = localService.findAgentByName("my-agent", context) as AgentSimple
-
-            agent.instructions shouldContain "JIRA_PROD: Production Jira"
-            agent.instructions shouldNotContain "GITHUB_MAIN"
-        }
-
-        "findAgentByName omits integrations block when namespace has no configs" {
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("JIRA_PROD" to null))
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
