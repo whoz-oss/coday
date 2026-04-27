@@ -63,10 +63,12 @@ agentos:
     # Override with env var: AGENTOS_BOOTSTRAP_ENABLED
     enabled: true
     # External identifier of the auto-created admin when the database is empty.
-    # In 'local' mode, set this to your OS username so the bootstrap admin is
-    # immediately usable on first request without creating a second user.
+    # If unset, falls back to the JVM user.name system property — which matches
+    # the OS user in 'local' mode and lets the bootstrap admin be immediately
+    # usable on first request without further configuration.
+    # In 'auth' mode, set this to the email expected from JWT claims.
     # Override with env var: AGENTOS_BOOTSTRAP_ADMIN_EXTERNAL_ID
-    admin-external-id: admin
+    # admin-external-id: admin
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR

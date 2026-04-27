@@ -17,9 +17,13 @@ class BootstrapServiceImplSpec : StringSpec({
     val userService = mockk<UserService>(relaxed = true)
     val applicationArguments = mockk<ApplicationArguments>()
 
-    fun service(externalId: String = "admin") = BootstrapServiceImpl(
+    fun service(
+        configured: String = "",
+        jvmUser: String = "admin",
+    ) = BootstrapServiceImpl(
         userService = userService,
-        defaultAdminExternalId = externalId,
+        configuredAdminExternalId = configured,
+        jvmUserName = jvmUser,
     )
 
     beforeTest { clearAllMocks() }
@@ -43,7 +47,7 @@ class BootstrapServiceImplSpec : StringSpec({
         val captured = slot<User>()
         every { userService.create(capture(captured)) } answers { firstArg() }
 
-        service(externalId = "selim").bootstrap()
+        service(configured = "selim").bootstrap()
 
         captured.captured.externalId shouldBe "selim"
         captured.captured.isAdmin shouldBe true
@@ -54,7 +58,7 @@ class BootstrapServiceImplSpec : StringSpec({
         val captured = slot<User>()
         every { userService.create(capture(captured)) } answers { firstArg() }
 
-        service(externalId = "ops@whoz.com").bootstrap()
+        service(configured = "ops@whoz.com").bootstrap()
 
         captured.captured.email shouldBe "ops@whoz.com"
     }
@@ -130,5 +134,36 @@ class BootstrapServiceImplSpec : StringSpec({
     "isBootstrapped returns false when DB is empty" {
         every { userService.count() } returns 0L
         service().isBootstrapped() shouldBe false
+    }
+
+    "falls back to JVM user.name when configured externalId is blank" {
+        every { userService.count() } returns 0L
+        val captured = slot<User>()
+        every { userService.create(capture(captured)) } answers { firstArg() }
+
+        service(configured = "", jvmUser = "selim").bootstrap()
+
+        captured.captured.externalId shouldBe "selim"
+        captured.captured.isAdmin shouldBe true
+    }
+
+    "explicit configured externalId wins over JVM user.name" {
+        every { userService.count() } returns 0L
+        val captured = slot<User>()
+        every { userService.create(capture(captured)) } answers { firstArg() }
+
+        service(configured = "ops", jvmUser = "selim").bootstrap()
+
+        captured.captured.externalId shouldBe "ops"
+    }
+
+    "falls back to 'admin' sentinel when both configured and JVM user.name are blank" {
+        every { userService.count() } returns 0L
+        val captured = slot<User>()
+        every { userService.create(capture(captured)) } answers { firstArg() }
+
+        service(configured = "", jvmUser = "").bootstrap()
+
+        captured.captured.externalId shouldBe "admin"
     }
 })

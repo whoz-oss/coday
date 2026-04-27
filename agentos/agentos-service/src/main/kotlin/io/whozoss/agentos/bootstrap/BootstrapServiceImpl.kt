@@ -18,13 +18,23 @@ import org.springframework.stereotype.Service
  * thread without competing with HTTP-driven user creation.
  *
  * Two invariants are enforced:
- * 1. **Empty database** → create a default user with [defaultAdminExternalId] and
- *    `isAdmin = true`. The external id is configurable so an operator can match
- *    their own OS username (mode `local`) and have an immediately usable admin
- *    on first request.
+ * 1. **Empty database** → create a default user with [effectiveAdminExternalId] and
+ *    `isAdmin = true`.
  * 2. **Single user with `isAdmin = false`** → promote that user. Covers legacy
  *    deployments where the User predates the `isAdmin` field and was therefore
  *    never auto-promoted.
+ *
+ * The admin externalId is resolved with the following priority:
+ * 1. `agentos.bootstrap.admin-external-id` property / `AGENTOS_BOOTSTRAP_ADMIN_EXTERNAL_ID`
+ *    env var, when non-blank.
+ * 2. JVM `user.name` system property (matches the OS user in `local` mode, so the
+ *    bootstrap admin is immediately usable on first request without further config).
+ * 3. `"admin"` sentinel as a last resort, only if `user.name` is somehow blank.
+ *
+ * In `auth` mode, the operator should set the property explicitly to the email
+ * expected from JWT claims; otherwise the JVM `user.name` will not match any
+ * incoming identity and a non-admin user will be auto-created on the first
+ * authenticated request.
  *
  * Cases with two or more users where none is admin are intentionally not handled:
  * picking a winner would be arbitrary; an operator must intervene explicitly.
@@ -38,9 +48,16 @@ import org.springframework.stereotype.Service
 )
 class BootstrapServiceImpl(
     private val userService: UserService,
-    @Value("\${agentos.bootstrap.admin-external-id:admin}")
-    private val defaultAdminExternalId: String,
+    @Value("\${agentos.bootstrap.admin-external-id:}")
+    private val configuredAdminExternalId: String,
+    @Value("\${user.name:admin}")
+    private val jvmUserName: String,
 ) : BootstrapService, ApplicationRunner {
+
+    private val effectiveAdminExternalId: String
+        get() = configuredAdminExternalId.takeIf { it.isNotBlank() }
+            ?: jvmUserName.takeIf { it.isNotBlank() }
+            ?: "admin"
 
     override fun run(args: ApplicationArguments) {
         bootstrap()
@@ -65,12 +82,13 @@ class BootstrapServiceImpl(
     }
 
     private fun createDefaultAdmin() {
-        logger.info { "[Bootstrap] No users found. Creating default admin (externalId='$defaultAdminExternalId')" }
+        val externalId = effectiveAdminExternalId
+        logger.info { "[Bootstrap] No users found. Creating default admin (externalId='$externalId')" }
         userService.create(
             User(
                 metadata = EntityMetadata(),
-                externalId = defaultAdminExternalId,
-                email = if (defaultAdminExternalId.contains("@")) defaultAdminExternalId else "",
+                externalId = externalId,
+                email = if (externalId.contains("@")) externalId else "",
                 isAdmin = true,
             ),
         )
