@@ -1,0 +1,7 @@
+{
+  "name": "agentos-gradle",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "tools/plugins/agentos-gradle/src",
+  "projectType": "library",
+  "tags": ["type:tool"]
+}

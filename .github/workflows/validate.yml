@@ -2,8 +2,8 @@ name: Validate Coday on pull requests
 
 on:
   pull_request:
-    types: [ opened, synchronize ]
-    branches: [ master ]
+    types: [opened, synchronize]
+    branches: [master]
 
 env:
   NX_MAX_WORKERS: 4
@@ -40,8 +40,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests and lint
-        run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS --verbose
+      - name: Lint and test TypeScript projects
+        run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --exclude="tag:platform:jvm" --parallel=$NX_MAX_WORKERS --verbose
+
+      # nx affected cannot be used directly with --projects="tag:platform:jvm" because the tag filter
+      # gets forwarded to the underlying Gradle/Jest commands as an unknown flag, causing build failures.
+      # Instead, we resolve the affected JVM project names first via nx show projects, then pass the
+      # explicit names to nx run-many (which does not forward them to executors).
+      - name: Build and test JVM projects
+        run: |
+          AFFECTED_JVM=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm" --json --quiet | jq -r 'join(",")')
+          if [ -n "$AFFECTED_JVM" ]; then
+            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS --verbose
+          else
+            echo "No affected JVM projects"
+          fi
 
       - name: Check OpenAPI spec is up to date
         run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="check-openapi-spec" --verbose

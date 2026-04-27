@@ -141,6 +141,59 @@ services:
 
 Custom Whoz plugins written in Kotlin to access business data.
 
+## CI / CD
+
+### Validation (Pull Requests)
+
+Every PR against `master` triggers `.github/workflows/validate.yml`, which:
+
+1. Runs `lint` and `test` on all **affected** TypeScript projects
+2. Builds and tests all **affected** JVM projects (tagged `platform:jvm` — covers sdk, service, and plugins)
+3. Checks the OpenAPI spec is up to date
+
+JDK 25 (Temurin) and Gradle cache are pre-configured in the workflow.
+
+### Release (Push to `master`)
+
+Every push to `master` triggers `.github/workflows/release.yml`, which:
+
+1. Determines if a release is needed (conventional commits: `feat`, `fix`, `BREAKING CHANGE`)
+2. Runs `nx release` — bumps versions, generates changelog, tags, and pushes
+3. Publishes all JVM artifacts to [GitHub Packages](https://github.com/orgs/whoz-oss/packages) in parallel
+
+### Published Artifacts
+
+All artifacts are published to GitHub Packages under the `whoz-oss.agentos` group:
+
+| Artifact | Description | Version key in `libs.versions.toml` |
+|---|---|---|
+| `agentos-sdk` | Plugin SDK — interfaces and extension points | `agentosSdk` |
+| `agentos-service` | Spring Boot orchestration service (bootJar) | `agentosService` |
+| `agentos-datetime-plugin` | Date/time tools plugin | `agentosService` |
+| `agentos-file-plugin` | File system tools plugin | `agentosService` |
+| `agentos-bash-plugin` | Bash command tools plugin | `agentosService` |
+| `agentos-tmux-plugin` | Tmux session management plugin | `agentosService` |
+
+The `agentosSdk` and `agentosService` version keys in `agentos/gradle/libs.versions.toml` are
+both updated automatically by `scripts/release.ts` on every Nx release. To add a new versioned
+Gradle artifact, append its TOML key to the `tomlVersionKeys` array in that script.
+
+### Consuming Artifacts
+
+Add the GitHub Packages Maven repository to your Gradle project:
+
+```kotlin
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/whoz-oss/coday")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR")
+            password = System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+```
+
 ## Detailed Documentation
 
 - **Full architecture**: [docs/ARCHITECTURE.md](docs/to-rework/ARCHITECTURE.md)

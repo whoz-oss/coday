@@ -242,8 +242,8 @@ jobs:
             echo "Warning: Coday Twin PKG not found"
           fi
 
-  publish-sdk:
-    name: publish SDK to GitHub Packages
+  publish-agentos-sdk:
+    name: publish agentos-sdk to GitHub Packages
     runs-on: ubuntu-latest
     needs: release
     if: needs.release.outputs.new_version != ''
@@ -287,3 +287,233 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: pnpm nx publish agentos-sdk
+
+  publish-agentos-service:
+    name: Publish agentos-service to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Publish agentos-service to GitHub Packages
+        working-directory: agentos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: pnpm nx publish agentos-service
+
+  publish-agentos-datetime-plugin:
+    name: Publish agentos-datetime-plugin to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Publish agentos-datetime-plugin to GitHub Packages
+        working-directory: agentos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: pnpm nx publish agentos-datetime-plugin
+
+  publish-agentos-file-plugin:
+    name: Publish agentos-file-plugin to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Publish agentos-file-plugin to GitHub Packages
+        working-directory: agentos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: pnpm nx publish agentos-file-plugin
+
+  publish-agentos-bash-plugin:
+    name: Publish agentos-bash-plugin to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Publish agentos-bash-plugin to GitHub Packages
+        working-directory: agentos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: pnpm nx publish agentos-bash-plugin
+
+  publish-agentos-tmux-plugin:
+    name: Publish agentos-tmux-plugin to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Publish agentos-tmux-plugin to GitHub Packages
+        working-directory: agentos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: pnpm nx publish agentos-tmux-plugin
