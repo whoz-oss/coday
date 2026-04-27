@@ -316,16 +316,32 @@ class CaseRuntime(
     }
 
     /**
-     * Scans the event history backward and returns the UUID of the last user actor,
-     * or null if no user message is found or the actor id is not a valid UUID.
+     * Scans the event history backward and returns the UUID of the last human user actor,
+     * or null if no such message is found or the actor id is not a valid UUID.
+     *
+     * The scheduler actor ([io.whozoss.agentos.schedule.ScheduleExecutorService.SCHEDULER_ACTOR_ID])
+     * uses [ActorRole.USER] so its message is presented to the LLM as a user turn, but it is
+     * not a persisted [io.whozoss.agentos.user.User]. We exclude it by filtering out the
+     * well-known system UUID so [CaseServiceImpl.runAgent] can always find a valid persisted
+     * user to run the agent under — falling back to the last real human who participated in
+     * the conversation.
      */
     private fun resolveUserId(events: List<CaseEvent>): UUID? =
         events
             .filterIsInstance<MessageEvent>()
-            .lastOrNull { it.actor.role == ActorRole.USER }
+            .lastOrNull { event ->
+                event.actor.role == ActorRole.USER &&
+                    event.actor.id != SCHEDULER_ACTOR_ID
+            }
             ?.actor
             ?.id
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Well-known UUID of the synthetic scheduler actor.
+         * Kept in sync with [io.whozoss.agentos.schedule.ScheduleExecutorService.SCHEDULER_ACTOR_ID].
+         */
+        const val SCHEDULER_ACTOR_ID = "00000000-0000-0000-0000-000000000001"
+    }
 }
