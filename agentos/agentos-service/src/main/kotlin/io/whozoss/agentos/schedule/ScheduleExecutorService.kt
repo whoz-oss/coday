@@ -29,8 +29,9 @@ import java.util.concurrent.TimeUnit
  *    [SCHEDULER_ACTOR].
  * 3. Update tracking fields: [Schedule.lastTriggeredAt], [Schedule.occurrenceCount],
  *    [Schedule.nextTriggerAt] (computed by [ScheduleTriggerCalculator]).
- * 4. If the schedule is now expired ([ScheduleTriggerCalculator.isExpiredAfterTrigger]),
- *    soft-delete it.
+ * 4. If the schedule is now expired ([ScheduleTriggerCalculator.isExpiredAfterTrigger])
+ *    or has reached its end condition, disable it ([Schedule.enabled] = false) so it
+ *    no longer appears in polls. The record is preserved for audit purposes.
  *
  * ### Catch-up
  * When the service restarts after downtime, multiple schedules may be due at
@@ -114,16 +115,12 @@ class ScheduleExecutorService(
         )
 
         when {
-            expired -> {
-                scheduleRepository.save(updated)
-                scheduleRepository.delete(schedule.id)
-                logger.info { "[ScheduleExecutor] Schedule ${schedule.id} expired, soft-deleted" }
-            }
-            nextTriggerAt == null -> {
-                // End condition reached (e.g. EndTimestamp passed) but not flagged
-                // as oneShot — disable gracefully.
+            expired || nextTriggerAt == null -> {
+                // End condition reached (oneShot, triggerAt fired, or interval end condition met):
+                // disable the schedule so it no longer appears in polls, but keep it in the
+                // database for audit and history purposes.
                 scheduleRepository.save(updated.copy(enabled = false))
-                logger.info { "[ScheduleExecutor] Schedule ${schedule.id} end condition reached, disabled" }
+                logger.info { "[ScheduleExecutor] Schedule ${schedule.id} completed, disabled" }
             }
             else -> {
                 scheduleRepository.save(updated)
