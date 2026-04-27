@@ -12,9 +12,9 @@ interface ScheduleNodeNeo4jRepository : Neo4jRepository<ScheduleNode, String> {
      * nextTriggerAt (nulls last) then by creation time.
      */
     @Query(
-        $$"""
+        """
             MATCH (s:Schedule)
-            WHERE s.namespaceId = $namespaceId AND (s.removed IS NULL OR s.removed = false)
+            WHERE s.namespaceId = ${'$'}namespaceId AND (s.removed IS NULL OR s.removed = false)
             RETURN s
             ORDER BY
               CASE WHEN s.nextTriggerAt IS NULL THEN 1 ELSE 0 END ASC,
@@ -28,16 +28,19 @@ interface ScheduleNodeNeo4jRepository : Neo4jRepository<ScheduleNode, String> {
      * Find all enabled, non-removed schedules whose nextTriggerAt is at or
      * before [now], ordered by nextTriggerAt ascending.
      *
-     * [now] is passed as an ISO-8601 string (e.g. [Instant.toString]) because
-     * Spring Data Neo4j maps Instant parameters to strings in Cypher queries.
+     * [now] is passed as an ISO-8601 string (e.g. [Instant.toString]) and
+     * converted to a Neo4j DateTime via datetime() so the comparison is
+     * temporal rather than lexicographic. Without this conversion Neo4j would
+     * compare a DateTime property against a String parameter, producing
+     * undefined results (always false in practice).
      */
     @Query(
-        $$"""
+        """
             MATCH (s:Schedule)
             WHERE s.enabled = true
               AND (s.removed IS NULL OR s.removed = false)
               AND s.nextTriggerAt IS NOT NULL
-              AND s.nextTriggerAt <= $now
+              AND s.nextTriggerAt <= datetime(${'$'}now)
             RETURN s
             ORDER BY s.nextTriggerAt ASC
             """,
