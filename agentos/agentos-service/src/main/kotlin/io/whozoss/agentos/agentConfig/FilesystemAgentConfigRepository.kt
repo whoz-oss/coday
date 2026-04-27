@@ -87,6 +87,7 @@ class FilesystemAgentConfigRepository(
             description = model.description,
             instructions = model.instructions,
             modelName = model.modelName,
+            integrations = model.integrations,
         )
     }
 
@@ -102,11 +103,19 @@ class FilesystemAgentConfigRepository(
 }
 
 /**
- * Minimal YAML model for agent definition files read from the filesystem.
+ * YAML model for agent definition files read from the filesystem.
  *
- * Only the fields relevant to [AgentConfig] are mapped. Extra fields present in
- * Coday agent YAMLs (integrations, mandatoryDocs, aiProvider, etc.) are silently
+ * Maps the fields of a Coday-style agent YAML to [AgentConfig].
+ * Extra fields not listed here (e.g. aiProvider, mandatoryDocs) are silently
  * ignored via [JsonIgnoreProperties].
+ *
+ * [integrations] mirrors the Coday YAML structure:
+ * ```yaml
+ * integrations:
+ *   FILES:           # null list → all tools from this integration
+ *   JIRA:
+ *     - GetIssue     # non-null list → only these tool names allowed
+ * ```
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 private data class AgentConfigYamlModel(
@@ -114,4 +123,5 @@ private data class AgentConfigYamlModel(
     val description: String? = null,
     val instructions: String? = null,
     val modelName: String? = null,
+    val integrations: Map<String, List<String>?>? = null,
 )

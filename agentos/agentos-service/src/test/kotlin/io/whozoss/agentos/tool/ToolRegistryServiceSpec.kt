@@ -192,4 +192,132 @@ class ToolRegistryServiceSpec : StringSpec({
         tools.first().name shouldBe "GetCurrentDateTime"
     }
 
+    // -------------------------------------------------------------------------
+    // Agent integrations filter
+    // -------------------------------------------------------------------------
+
+    "resolveToolsForNamespace with agentIntegrations null returns all tools" {
+        val namespaceId = UUID.randomUUID()
+        val config = IntegrationConfig(
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            name = "JIRA_PROD",
+            integrationType = "JIRA",
+        )
+        val configLessPlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
+        val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
+        val service = buildService(plugins = listOf(configLessPlugin, configuredPlugin), configs = listOf(config))
+
+        val tools = service.resolveToolsForNamespace(namespaceId, agentIntegrations = null)
+
+        tools shouldHaveSize 2
+    }
+
+    "resolveToolsForNamespace with agentIntegrations keeps only matching config-less integration" {
+        val namespaceId = UUID.randomUUID()
+        val datetimePlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
+        val filesPlugin = makeConfigLessPlugin("FILES", "ReadFile", "ListFiles")
+        val service = buildService(plugins = listOf(datetimePlugin, filesPlugin))
+
+        val tools = service.resolveToolsForNamespace(namespaceId, agentIntegrations = mapOf("DATETIME" to null))
+
+        tools shouldHaveSize 1
+        tools.first().name shouldBe "GetCurrentDateTime"
+    }
+
+    "resolveToolsForNamespace with agentIntegrations null list allows all tools from that integration" {
+        val namespaceId = UUID.randomUUID()
+        val filesPlugin = makeConfigLessPlugin("FILES", "ReadFile", "ListFiles", "SearchFiles")
+        val service = buildService(plugins = listOf(filesPlugin))
+
+        val tools = service.resolveToolsForNamespace(namespaceId, agentIntegrations = mapOf("FILES" to null))
+
+        tools shouldHaveSize 3
+    }
+
+    "resolveToolsForNamespace with agentIntegrations non-null list filters tools by name" {
+        val namespaceId = UUID.randomUUID()
+        val filesPlugin = makeConfigLessPlugin("FILES", "ReadFile", "ListFiles", "SearchFiles")
+        val service = buildService(plugins = listOf(filesPlugin))
+
+        val tools = service.resolveToolsForNamespace(
+            namespaceId,
+            agentIntegrations = mapOf("FILES" to listOf("ReadFile", "SearchFiles")),
+        )
+
+        tools shouldHaveSize 2
+        tools.map { it.name }.toSet() shouldBe setOf("ReadFile", "SearchFiles")
+    }
+
+    "resolveToolsForNamespace filters configured integration by config name" {
+        val namespaceId = UUID.randomUUID()
+        val config = IntegrationConfig(
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            name = "JIRA_PROD",
+            integrationType = "JIRA",
+        )
+        val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues")
+        val datetimePlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
+        val service = buildService(plugins = listOf(configuredPlugin, datetimePlugin), configs = listOf(config))
+
+        // Agent only has JIRA_PROD, not DATETIME
+        val tools = service.resolveToolsForNamespace(
+            namespaceId,
+            agentIntegrations = mapOf("JIRA_PROD" to null),
+        )
+
+        tools shouldHaveSize 2
+        tools.map { it.name }.toSet() shouldBe setOf("GetIssue", "SearchIssues")
+    }
+
+    "resolveToolsForNamespace filters configured integration tools by allowed list" {
+        val namespaceId = UUID.randomUUID()
+        val config = IntegrationConfig(
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            name = "JIRA_PROD",
+            integrationType = "JIRA",
+        )
+        val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")
+        val service = buildService(plugins = listOf(configuredPlugin), configs = listOf(config))
+
+        val tools = service.resolveToolsForNamespace(
+            namespaceId,
+            agentIntegrations = mapOf("JIRA_PROD" to listOf("GetIssue", "SearchIssues")),
+        )
+
+        tools shouldHaveSize 2
+        tools.map { it.name }.toSet() shouldBe setOf("GetIssue", "SearchIssues")
+    }
+
+    // -------------------------------------------------------------------------
+    // isToolAllowed helper
+    // -------------------------------------------------------------------------
+
+    "isToolAllowed returns true when allowedNames is null" {
+        val service = buildService()
+        service.isToolAllowed("ReadFile", "FILES", null) shouldBe true
+    }
+
+    "isToolAllowed returns true for exact name match" {
+        val service = buildService()
+        service.isToolAllowed("ReadFile", "FILES", listOf("ReadFile", "ListFiles")) shouldBe true
+    }
+
+    "isToolAllowed returns false when name not in allowed list" {
+        val service = buildService()
+        service.isToolAllowed("EditFile", "FILES", listOf("ReadFile", "ListFiles")) shouldBe false
+    }
+
+    "isToolAllowed matches prefixed tool name via KEY__suffix convention" {
+        val service = buildService()
+        service.isToolAllowed("JIRA_PROD__GetIssue", "JIRA_PROD", listOf("GetIssue")) shouldBe true
+    }
+
+    "isToolAllowed does not match wrong prefix" {
+        val service = buildService()
+        service.isToolAllowed("JIRA_STAGING__GetIssue", "JIRA_PROD", listOf("GetIssue")) shouldBe false
+    }
+
 })

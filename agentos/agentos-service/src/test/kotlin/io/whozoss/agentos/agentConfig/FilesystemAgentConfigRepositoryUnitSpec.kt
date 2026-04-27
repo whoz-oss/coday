@@ -313,6 +313,85 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // integrations field
+    // -------------------------------------------------------------------------
+
+    "findByParent maps integrations with null list (all tools allowed)" {
+        val root = tempDir()
+        writeYaml(
+            agentsDir(root), "dev.yaml",
+            """
+            name: Dev
+            integrations:
+              FILES:
+              GIT:
+            """.trimIndent(),
+        )
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsService = mockk<NamespaceService>()
+        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { nsService.findById(namespaceId) } returns Namespace(
+            metadata = EntityMetadata(id = namespaceId),
+            name = "ns",
+            configPath = root.toString(),
+        )
+
+        val result = buildRepo(delegate, nsService).findByParent(namespaceId).single()
+
+        val integrations = result.integrations.shouldNotBeNull()
+        integrations shouldBe mapOf("FILES" to null, "GIT" to null)
+    }
+
+    "findByParent maps integrations with non-null list (restricted tools)" {
+        val root = tempDir()
+        writeYaml(
+            agentsDir(root), "reviewer.yaml",
+            """
+            name: Reviewer
+            integrations:
+              GITHUB:
+                - add_issue_comment
+                - pull_request_read
+              FILES:
+            """.trimIndent(),
+        )
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsService = mockk<NamespaceService>()
+        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { nsService.findById(namespaceId) } returns Namespace(
+            metadata = EntityMetadata(id = namespaceId),
+            name = "ns",
+            configPath = root.toString(),
+        )
+
+        val result = buildRepo(delegate, nsService).findByParent(namespaceId).single()
+
+        val integrations = result.integrations.shouldNotBeNull()
+        integrations["GITHUB"] shouldBe listOf("add_issue_comment", "pull_request_read")
+        integrations["FILES"] shouldBe null
+    }
+
+    "findByParent sets integrations to null when YAML has no integrations field" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "simple.yaml", agentYaml("Simple Agent"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsService = mockk<NamespaceService>()
+        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { nsService.findById(namespaceId) } returns Namespace(
+            metadata = EntityMetadata(id = namespaceId),
+            name = "ns",
+            configPath = root.toString(),
+        )
+
+        val result = buildRepo(delegate, nsService).findByParent(namespaceId).single()
+
+        result.integrations shouldBe null
+    }
+
+    // -------------------------------------------------------------------------
     // Write operations delegated unchanged
     // -------------------------------------------------------------------------
 

@@ -100,7 +100,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
+        every { toolRegistryService.resolveToolsForNamespace(any(), any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
@@ -482,6 +482,43 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agent.instructions shouldNotContain "## User"
             verify(exactly = 0) { userService.findById(any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // Tool filtering via agentConfig.integrations
+        // -------------------------------------------------------------------------
+
+        "findAgentByName passes null integrations to ToolRegistryService when agentConfig has no integrations" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            agentService.findAgentByName("my-agent", context)
+
+            verify(exactly = 1) { toolRegistryService.resolveToolsForNamespace(namespaceId, null) }
+        }
+
+        "findAgentByName passes integrations map to ToolRegistryService when agentConfig has integrations" {
+            val integrations = mapOf("FILES" to null, "JIRA_PROD" to listOf("GetIssue"))
+            val config = agentConfig(name = "my-agent", modelName = "sonnet").copy(integrations = integrations)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            agentService.findAgentByName("my-agent", context)
+
+            verify(exactly = 1) { toolRegistryService.resolveToolsForNamespace(namespaceId, integrations) }
         }
 
         // -------------------------------------------------------------------------

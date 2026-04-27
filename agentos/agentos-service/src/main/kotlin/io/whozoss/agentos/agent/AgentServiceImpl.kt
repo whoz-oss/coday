@@ -105,7 +105,7 @@ class AgentServiceImpl(
                     defaultModel to aiProviderService.getById(defaultModel.aiProviderId)
                 }
             }
-        return createAgentInstance(config.name, config.instructions, modelConfig, providerConfig, context)
+        return createAgentInstance(config.name, config.instructions, config.integrations, modelConfig, providerConfig, context)
     }
 
     /**
@@ -149,18 +149,20 @@ class AgentServiceImpl(
      *
      * [agentName] is the logical name used to identify this agent.
      * [baseInstructions] are the agent-level instructions from [AgentConfig], if any.
+     * [agentIntegrations] is the optional tool-access filter from [AgentConfig.integrations].
      * The namespace description, integrations, and user context are always appended.
      */
     private fun createAgentInstance(
         agentName: String,
         baseInstructions: String?,
+        agentIntegrations: Map<String, List<String>?>?,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
     ): Agent {
         logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId}" }
 
-        val tools = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+        val tools = toolRegistryService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
         logger.info {
             "[AgentService] Loaded ${tools.size} tool(s) " +
                 "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
