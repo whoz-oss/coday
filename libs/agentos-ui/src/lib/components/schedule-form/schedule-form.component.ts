@@ -108,6 +108,30 @@ export class ScheduleFormComponent implements OnInit {
       })
   }
 
+  /**
+   * Convert an ISO 8601 UTC string (e.g. "2025-01-15T16:00:00.000Z") to the
+   * "YYYY-MM-DDTHH:mm" format expected by <input type="datetime-local">,
+   * expressed in the browser's local timezone.
+   *
+   * Using toLocaleString + manual formatting avoids the offset drift that
+   * occurs when naively slicing the UTC string.
+   */
+  private toLocalDatetimeInputValue(isoUtc: string): string {
+    const d = new Date(isoUtc)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return (
+      d.getFullYear() +
+      '-' +
+      pad(d.getMonth() + 1) +
+      '-' +
+      pad(d.getDate()) +
+      'T' +
+      pad(d.getHours()) +
+      ':' +
+      pad(d.getMinutes())
+    )
+  }
+
   private patchForm(schedule: Schedule): void {
     this.messageControl.setValue(schedule.message)
     this.agentNameControl.setValue(schedule.agentName ?? '')
@@ -116,11 +140,11 @@ export class ScheduleFormComponent implements OnInit {
 
     if (schedule.oneShot && schedule.triggerAt) {
       this.scheduleTypeControl.setValue('oneShot')
-      // datetime-local expects "YYYY-MM-DDTHH:mm" — strip seconds/timezone
-      this.triggerAtControl.setValue(schedule.triggerAt.slice(0, 16))
+      // Convert UTC ISO string to local datetime for the datetime-local input
+      this.triggerAtControl.setValue(this.toLocalDatetimeInputValue(schedule.triggerAt))
     } else if (schedule.intervalSchedule) {
       this.scheduleTypeControl.setValue('recurring')
-      this.intervalStartControl.setValue(schedule.intervalSchedule.startTimestamp.slice(0, 16))
+      this.intervalStartControl.setValue(this.toLocalDatetimeInputValue(schedule.intervalSchedule.startTimestamp))
       this.intervalDurationControl.setValue(schedule.intervalSchedule.interval)
     }
   }
