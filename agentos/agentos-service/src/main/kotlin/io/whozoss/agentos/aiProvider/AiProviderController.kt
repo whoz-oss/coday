@@ -27,7 +27,10 @@ import java.util.UUID
  * REST API for managing [AiProvider] entities.
  *
  * Authorization declared via `@PreAuthorize`:
- * - READ: namespace MEMBER (FR32 — apiKey returned in clear, no masking)
+ * - READ: namespace MEMBER. The `apiKey` is returned masked uniformly to MEMBER and
+ *   ADMIN ([maskApiKey]); a future story may refine this to differential masking.
+ *   On update ([toDomainForUpdate]), a masked incoming value preserves the stored
+ *   key — clients PUT'ing a fetched DTO round-trip safely.
  * - WRITE/DELETE: namespace ADMIN (FR28/29/30)
  * - CREATE: namespace ADMIN. User-scoped creation (`namespaceId == null`) is
  *   refused via the SpEL itself: `hasPermission(null, ...)` evaluates to false
@@ -58,7 +61,7 @@ class AiProviderController(
             description = entity.description,
             apiType = entity.apiType,
             baseUrl = entity.baseUrl,
-            apiKey = entity.apiKey,
+            apiKey = maskApiKey(entity.apiKey),
         )
 
     override fun toDomain(resource: AiProviderResource): AiProvider =
@@ -85,7 +88,11 @@ class AiProviderController(
             description = resource.description,
             apiType = resource.apiType ?: existing.apiType,
             baseUrl = resource.baseUrl,
-            apiKey = resource.apiKey?.takeIf { it.isNotBlank() } ?: existing.apiKey,
+            apiKey = if (isMasked(resource.apiKey)) {
+                existing.apiKey
+            } else {
+                resource.apiKey?.takeIf { it.isNotBlank() } ?: existing.apiKey
+            },
         )
 
     @GetMapping("/{id}")

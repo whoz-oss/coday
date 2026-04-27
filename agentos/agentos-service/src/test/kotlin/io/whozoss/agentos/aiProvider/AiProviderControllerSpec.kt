@@ -2,6 +2,7 @@ package io.whozoss.agentos.aiProvider
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.clearAllMocks
 import io.mockk.every
@@ -67,9 +68,12 @@ class AiProviderControllerSpec : StringSpec({
     // Mapping
     // -------------------------------------------------------------------------
 
-    "toResource passes the apiKey through unchanged" {
-        controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe
-            "sk-ant-api03-abcdefghijklmnop"
+    "toResource masks a long apiKey" {
+        controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe "sk-a****mnop"
+    }
+
+    "toResource returns null apiKey when no key is set" {
+        controller.toResource(config(apiKey = null)).apiKey.shouldBeNull()
     }
 
     "toResource maps namespaceId and userId" {
@@ -141,6 +145,21 @@ class AiProviderControllerSpec : StringSpec({
         controller.update(existing.metadata.id, payload)
 
         verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update preserves persisted apiKey when incoming value is masked" {
+        val existing = config(apiKey = "sk-ant-api03-real-secret")
+        val payload = resource(id = existing.metadata.id, apiKey = "sk-a****cret")
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers {
+            val saved = firstArg<AiProvider>()
+            saved.apiKey shouldBe "sk-ant-api03-real-secret"
+            saved
+        }
+
+        val result = controller.update(existing.metadata.id, payload)
+
+        result.apiKey shouldBe maskApiKey("sk-ant-api03-real-secret")
     }
 
     "update keeps the persisted apiKey when client sends a blank apiKey" {
