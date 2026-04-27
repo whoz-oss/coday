@@ -29,6 +29,7 @@ import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
 import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
+import { registerTranscribeRoutes } from './lib/transcribe.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
@@ -292,6 +293,9 @@ registerUserRoutes(app, getUsername, codayOptions.configDir, !!codayOptions.auth
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)
 
+// Register audio transcription routes (project-level, no thread required)
+registerTranscribeRoutes(app, configRegistry, getUsername)
+
 // Note: Legacy webhook routes removed - use prompt routes instead
 // Webhook execution is now handled by prompt-execution.routes.ts
 
@@ -316,7 +320,15 @@ registerProjectRoutes(
 registerProjectPreviewRoutes(app, projectService)
 
 // Register thread management routes
-registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, getUsername, codayOptions)
+registerThreadRoutes(
+  app,
+  threadService,
+  threadFileService,
+  threadCodayManager,
+  getUsername,
+  codayOptions,
+  configRegistry
+)
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)

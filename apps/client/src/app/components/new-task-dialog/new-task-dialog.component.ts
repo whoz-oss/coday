@@ -1,4 +1,5 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog'
 import { MatButtonModule } from '@angular/material/button'
@@ -10,6 +11,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { MatIconModule } from '@angular/material/icon'
 import { ProjectApiService } from '../../core/services/project-api.service'
 import { AgentApiService } from '../../core/services/agent-api.service'
+import { ProjectStateService } from '../../core/services/project-state.service'
 
 @Component({
   selector: 'app-new-task-dialog',
@@ -36,6 +38,9 @@ export class NewTaskDialogComponent implements OnInit {
   private readonly projectApi = inject(ProjectApiService)
   private readonly agentApi = inject(AgentApiService)
   private readonly dialogRef = inject(MatDialogRef<NewTaskDialogComponent>)
+  private readonly projectState = inject(ProjectStateService)
+
+  protected readonly forcedProject = toSignal(this.projectState.forcedProject$, { initialValue: null })
 
   // Form state
   protected readonly selectedProject = signal<string>('')

@@ -9,7 +9,9 @@ import { CodayOptions } from '@coday/model'
 import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model'
 import { ThreadService } from '@coday/service'
 import { ThreadFileService } from '@coday/service'
+import { ConfigServiceRegistry } from '@coday/service'
 import { hasAccess, ThreadUpdateEvent } from '@coday/model'
+import { transcribeWithWhisper } from './whisper'
 
 /**
  * Thread Management REST API Routes
@@ -50,7 +52,8 @@ export function registerThreadRoutes(
   threadFileService: ThreadFileService,
   threadCodayManager: ThreadCodayManager,
   getUsernameFn: (req: express.Request) => string,
-  codayOptions: CodayOptions
+  codayOptions: CodayOptions,
+  configRegistry: ConfigServiceRegistry
 ): void {
   /**
    * GET /api/projects/:projectName/threads
@@ -905,6 +908,105 @@ export function registerThreadRoutes(
         console.error('Error deleting file:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: `Failed to delete file: ${errorMessage}` })
+      }
+    }
+  )
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/voice-message
+   * Send a voice message to a thread.
+   * The audio is transcribed with Whisper and sent as an AudioContent message.
+   *
+   * Body: {
+   *   audio: string (base64-encoded audio),
+   *   mimeType: string,
+   *   language?: string (ISO 639-1, e.g. 'en')
+   * }
+   */
+  app.post(
+    '/api/projects/:projectName/threads/:threadId/voice-message',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const projectName = getParamAsString(req.params.projectName)
+        const threadId = getParamAsString(req.params.threadId)
+        const { audio, mimeType, language } = req.body
+
+        if (!projectName || !threadId) {
+          res.status(400).json({ error: 'Project name and thread ID are required' })
+          return
+        }
+
+        if (!audio || !mimeType) {
+          res.status(400).json({ error: 'Missing required fields: audio, mimeType' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        const thread = await threadService.getThread(projectName, threadId)
+        if (!thread || !hasAccess(thread, username)) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        const instance = threadCodayManager.get(threadId)
+        if (!instance?.coday) {
+          res.status(404).json({ error: 'Thread not found or not active' })
+          return
+        }
+
+        const buffer = Buffer.from(audio, 'base64')
+
+        if (buffer.length > MAX_FILE_SIZE) {
+          res.status(400).json({
+            error: `Audio too large: ${(buffer.length / 1024 / 1024).toFixed(2)} MB exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024} MB`,
+          })
+          return
+        }
+
+        const allowedAudioTypes = [
+          'audio/webm',
+          'audio/mp4',
+          'audio/mpeg',
+          'audio/mp3',
+          'audio/wav',
+          'audio/m4a',
+          'audio/ogg',
+        ]
+        if (!allowedAudioTypes.includes(mimeType)) {
+          res.status(400).json({ error: `Unsupported audio type: ${mimeType}` })
+          return
+        }
+
+        debugLog('VOICE_MESSAGE', `threadId: ${threadId}, project: ${projectName}, mimeType: ${mimeType}`)
+
+        const transcription = await transcribeWithWhisper(buffer, mimeType, username, configRegistry, language)
+
+        const audioContent = {
+          type: 'audio' as const,
+          content: audio,
+          mimeType,
+          transcription,
+        }
+
+        // Upload the audio content so it appears in the thread history with the player + transcription.
+        // Then trigger the agent silently with the transcription — no duplicate UI message.
+        instance.coday.upload([audioContent])
+        instance.coday.triggerWithMessage(username, transcription)
+
+        res.status(200).json({ success: true, type: 'voice-message', transcription })
+      } catch (error) {
+        console.error('Error sending voice message:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Voice message failed'
+        if (errorMessage.includes('OpenAI provider not configured')) {
+          res.status(400).json({ error: errorMessage })
+        } else {
+          res.status(500).json({ error: errorMessage })
+        }
       }
     }
   )

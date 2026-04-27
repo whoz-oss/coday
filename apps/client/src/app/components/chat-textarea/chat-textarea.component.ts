@@ -22,6 +22,9 @@ import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-ap
 import { PromptApiService, PromptAutocomplete } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { HighlightPipe } from '../../pipes/highlight.pipe'
+import { AudioApiService } from '../../core/services/audio-api.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
+import { PendingVoiceMessage } from '../../core/services/first-message-state.service'
 
 @Component({
   selector: 'app-chat-textarea',
@@ -41,6 +44,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   isStopping: boolean = false
   @Output() filesPasted = new EventEmitter<File[]>()
   @Output() messageSubmitted = new EventEmitter<string>()
+  @Output() voiceMessageReady = new EventEmitter<PendingVoiceMessage>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
   @Output() stopRequested = new EventEmitter<void>()
@@ -52,10 +56,20 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   message: string = ''
   isRecording: boolean = false
+  isTranscribing: boolean = false
   isFocused: boolean = false
 
   // Voice recognition properties
   private recognition: any = null
+
+  // Whisper / MediaRecorder state
+  private mediaRecorder: MediaRecorder | null = null
+  private audioChunks: Blob[] = []
+  private voiceInputMode: 'browser' | 'whisper' | 'voice-message' = 'browser'
+
+  get isVoiceMessageMode(): boolean {
+    return this.voiceInputMode === 'voice-message'
+  }
   private sessionHadTranscript: boolean = false
   private pendingLineBreaksTimeout: number | null = null
   // Index of the last processed final result — guards against Chrome mobile replaying all results
@@ -88,6 +102,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private readonly agentApiService = inject(AgentApiService)
   private readonly promptApiService = inject(PromptApiService)
   private readonly projectStateService = inject(ProjectStateService)
+  private readonly audioApiService = inject(AudioApiService)
+  private readonly threadStateService = inject(ThreadStateService)
 
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -97,6 +113,13 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
     // Listen to voice language changes
     this.subscriptions.push(this.preferencesService.voiceLanguage$.subscribe(() => this.updateRecognitionLanguage()))
+
+    // Listen to voice input mode changes
+    this.subscriptions.push(
+      this.preferencesService.voiceInputMode$.subscribe((mode) => {
+        this.voiceInputMode = mode as 'browser' | 'whisper' | 'voice-message'
+      })
+    )
 
     // Listen to Enter key behavior changes
     this.subscriptions.push(
@@ -352,10 +375,149 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   toggleRecording(): void {
     if (this.isRecording) {
-      this.stopRecording()
+      if (this.voiceInputMode === 'whisper' || this.voiceInputMode === 'voice-message') {
+        this.stopWhisperRecording()
+      } else {
+        this.stopRecording()
+      }
     } else {
-      this.startRecording()
+      if (this.voiceInputMode === 'whisper' || this.voiceInputMode === 'voice-message') {
+        void this.startWhisperRecording()
+      } else {
+        void this.startRecording()
+      }
     }
+  }
+
+  private async startWhisperRecording(): Promise<void> {
+    if (this.isRecording) return
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      this.audioChunks = []
+      this.mediaRecorder = new MediaRecorder(stream)
+
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.audioChunks.push(event.data)
+        }
+      }
+
+      this.mediaRecorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop())
+        this.processWhisperAudio()
+      }
+
+      this.mediaRecorder.onerror = (event: Event) => {
+        console.error('[WHISPER] MediaRecorder error:', event)
+        stream.getTracks().forEach((track) => track.stop())
+        this.isRecording = false
+        this.voiceRecordingToggled.emit(false)
+      }
+
+      this.mediaRecorder.start()
+      this.isRecording = true
+      this.voiceRecordingToggled.emit(true)
+      console.log('[WHISPER] Started recording')
+    } catch (error) {
+      console.error('[WHISPER] Failed to start recording:', error)
+      this.isRecording = false
+      this.voiceRecordingToggled.emit(false)
+    }
+  }
+
+  private stopWhisperRecording(): void {
+    if (!this.mediaRecorder || !this.isRecording) return
+
+    try {
+      this.mediaRecorder.stop()
+      this.isRecording = false
+      this.voiceRecordingToggled.emit(false)
+      console.log('[WHISPER] Stopped recording')
+    } catch (error) {
+      console.error('[WHISPER] Failed to stop recording:', error)
+      this.isRecording = false
+      this.voiceRecordingToggled.emit(false)
+    }
+  }
+
+  private processWhisperAudio(): void {
+    if (this.audioChunks.length === 0) return
+
+    const blob = new Blob(this.audioChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' })
+    const mimeType = blob.type.split(';')[0] || 'audio/webm' // Strip codec info like ";codecs=opus"
+    this.audioChunks = []
+
+    this.isTranscribing = true
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const base64 = (reader.result as string).split(',')[1] // Remove data URL prefix
+      if (!base64) {
+        console.error('[WHISPER] Failed to read audio as base64')
+        this.isTranscribing = false
+        return
+      }
+
+      // Map voiceLanguage (e.g. 'en-US') to ISO 639-1 (e.g. 'en')
+      const voiceLang = this.preferencesService.getVoiceLanguage()
+      const language = voiceLang.split('-')[0]
+
+      if (this.voiceInputMode === 'voice-message') {
+        if (!this.threadStateService.getSelectedThreadId()) {
+          // No thread yet: emit the raw audio so the parent (main-app) can create a
+          // thread and send it as a voice message, preserving the audio content.
+          console.log('[WHISPER] No thread selected — emitting voiceMessageReady for thread creation')
+          this.isTranscribing = false
+          this.voiceMessageReady.emit({ base64, mimeType, language })
+          return
+        }
+        // Voice message mode: send audio to the active thread; the backend will
+        // transcribe it, store the audio content, and trigger the agent.
+        this.audioApiService.sendVoiceMessage(base64, mimeType, language).subscribe({
+          next: (response) => {
+            this.isTranscribing = false
+            console.log('[WHISPER] Voice message sent, transcription:', response.transcription?.substring(0, 50))
+          },
+          error: (error) => {
+            console.error('[WHISPER] Voice message error:', error)
+            this.isTranscribing = false
+            // Fallback: transcribe to textarea instead
+            this.fallbackToTranscription(base64, mimeType, language)
+          },
+        })
+      } else {
+        // Whisper mode: transcribe and put text in textarea
+        this.audioApiService.transcribeAudio(base64, mimeType, language).subscribe({
+          next: (response) => {
+            this.isTranscribing = false
+            if (response.text) {
+              this.appendToTextarea(response.text + ' ')
+            }
+          },
+          error: (error) => {
+            console.error('[WHISPER] Transcription error:', error)
+            this.isTranscribing = false
+          },
+        })
+      }
+    }
+    reader.readAsDataURL(blob)
+  }
+
+  private fallbackToTranscription(base64: string, mimeType: string, language?: string): void {
+    this.audioApiService.transcribeAudio(base64, mimeType, language).subscribe({
+      next: (response) => {
+        this.isTranscribing = false
+        if (response.text) {
+          this.appendToTextarea(response.text + ' ')
+        }
+      },
+      error: (error) => {
+        console.error('[WHISPER] Fallback transcription also failed:', error)
+        this.isTranscribing = false
+      },
+    })
   }
 
   private initializeVoiceInput(): void {
@@ -597,6 +759,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       }
       // Show "Starting..." for first message, then rotate phrases
       return this.isStarting ? 'Processing request...' : this.currentThinkingPhrase
+    } else if (this.isVoiceMessageMode && this.isTranscribing) {
+      return 'Uploading...'
+    } else if (this.isVoiceMessageMode && this.isRecording) {
+      return 'Listening...'
     } else if (this.showWelcome) {
       return 'How can I help you today?'
     } else {

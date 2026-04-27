@@ -434,6 +434,12 @@ export class CodayService implements OnDestroy {
       }
     }
 
+    // Silent answers (e.g. voice message triggers) are already displayed via another
+    // message (audio upload) — skip rendering to avoid duplicates.
+    if ((event as any).silent) {
+      return
+    }
+
     // Display AnswerEvent as a user message
     const message: ChatMessage = {
       id: event.timestamp,

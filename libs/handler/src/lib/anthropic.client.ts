@@ -341,6 +341,13 @@ export class AnthropicClient extends AiClient {
                   },
                 }
               }
+              if (c.type === 'audio') {
+                // Audio is not sent to AI — use transcription as text context instead
+                const text = c.transcription
+                  ? `[Voice message]: ${c.transcription}`
+                  : '[Voice message: no transcription available]'
+                result = { type: 'text', text }
+              }
               if (!result) {
                 // Fallback for unknown content types
                 this.interactor.warn(`Unknown content type: ${(c as any).type}`)

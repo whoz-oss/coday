@@ -32,7 +32,7 @@ netty = "4.2.9.Final"
 testcontainers = "1.20.4"
 
 # AgentOS modules versions
-agentosSdk = "1.0.0"
+agentosSdk = "0.126.0"
 agentosService = "0.0.1-SNAPSHOT"
 
 [libraries]

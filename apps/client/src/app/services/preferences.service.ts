@@ -20,6 +20,9 @@ export class PreferencesService {
   private voiceLanguageSubject = new BehaviorSubject<string>('en-US')
   public voiceLanguage$ = this.voiceLanguageSubject.asObservable()
 
+  private voiceInputModeSubject = new BehaviorSubject<'browser' | 'whisper' | 'voice-message'>('browser')
+  public voiceInputMode$ = this.voiceInputModeSubject.asObservable()
+
   private enterToSendSubject = new BehaviorSubject<boolean>(true)
   public enterToSend$ = this.enterToSendSubject.asObservable()
 
@@ -133,6 +136,10 @@ export class PreferencesService {
     const storedTheme = this.getPreferenceSync<string>('theme', 'light') ?? 'light'
     this.themeSubject.next(storedTheme)
 
+    const storedVoiceInputMode =
+      this.getPreferenceSync<'browser' | 'whisper' | 'voice-message'>('voiceInputMode', 'browser') ?? 'browser'
+    this.voiceInputModeSubject.next(storedVoiceInputMode)
+
     console.log('[PREFERENCES] All preferences initialized successfully')
   }
 
@@ -188,6 +195,10 @@ export class PreferencesService {
 
     const storedTheme = (await this.getPreferenceAsync<string>('theme', 'light')) ?? 'light'
     this.themeSubject.next(storedTheme)
+
+    const storedVoiceInputMode =
+      (await this.getPreferenceAsync<'browser' | 'whisper' | 'voice-message'>('voiceInputMode', 'browser')) ?? 'browser'
+    this.voiceInputModeSubject.next(storedVoiceInputMode)
 
     console.log('[PREFERENCES] All preferences initialized successfully (async)')
   }
@@ -313,6 +324,9 @@ export class PreferencesService {
     if (key === 'theme') {
       this.themeSubject.next(value as string)
     }
+    if (key === 'voiceInputMode') {
+      this.voiceInputModeSubject.next(value as 'browser' | 'whisper' | 'voice-message')
+    }
   }
 
   setVoiceLanguage(language: string): void {
@@ -322,6 +336,15 @@ export class PreferencesService {
 
   getVoiceLanguage(): string {
     return this.getPreference<string>('voiceLanguage', 'en-US') ?? 'en-US'
+  }
+
+  setVoiceInputMode(mode: 'browser' | 'whisper' | 'voice-message'): void {
+    console.log('[PREFERENCES] Setting voice input mode to:', mode)
+    this.setPreference('voiceInputMode', mode)
+  }
+
+  getVoiceInputMode(): 'browser' | 'whisper' | 'voice-message' {
+    return this.getPreference<'browser' | 'whisper' | 'voice-message'>('voiceInputMode', 'browser') ?? 'browser'
   }
 
   setEnterToSend(useEnterToSend: boolean): void {

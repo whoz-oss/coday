@@ -1,3 +1,9 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 // Scoped styles for the case item row rendered inside ds-entity-list
 .case-drawer-item {
   display: flex;

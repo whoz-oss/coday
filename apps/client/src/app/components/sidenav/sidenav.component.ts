@@ -354,18 +354,10 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Navigate to home (project selection)
-   * Only allowed if no forced project
+   * Navigate to home (project selection / Global Task Control dashboard)
    */
   navigateToHome(): void {
-    // Don't allow navigation if there's a forced project
-    if (this.forcedProject()) {
-      console.log('[SIDENAV] Cannot navigate to home - forced project active')
-      return
-    }
-
     console.log('[SIDENAV] Navigating to home (project selection)')
-    // Clear project selection and navigate to home
     this.projectStateService.clearSelection()
     this.router.navigate(['/'])
   }

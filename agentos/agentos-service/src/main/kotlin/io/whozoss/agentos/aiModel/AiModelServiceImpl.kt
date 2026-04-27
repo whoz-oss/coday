@@ -14,9 +14,13 @@ import java.util.UUID
  * [AiProviderService] and denormalises them onto the entity before saving, so that
  * namespace-scoped queries can be served without joining through [AiProvider].
  *
- * [create] also enforces two uniqueness constraints:
- * - (aiProviderId, apiName): a model can only be registered once per provider config
- * - (aiProviderId, alias): aliases must be unambiguous within a provider config
+ * [create] enforces one uniqueness constraint:
+ * - (aiProviderId, alias): aliases must be unambiguous within a provider config.
+ *   Two configs may share the same [AiModel.apiModelName] under the same provider
+ *   (e.g. same model at different temperatures) as long as their aliases differ.
+ *   When [AiModel.alias] is null the check is skipped — null aliases are intentionally
+ *   unconstrained so that provider-level "anonymous" configs (resolved only by apiName
+ *   fallback) can coexist without conflicting with each other.
  */
 @Service
 class AiModelServiceImpl(
@@ -24,12 +28,11 @@ class AiModelServiceImpl(
     private val aiProviderService: AiProviderService,
 ) : AiModelService {
     override fun create(entity: AiModel): AiModel {
-        findByAiProviderAndApiName(entity.aiProviderId, entity.apiModelName)?.let {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "A model config for apiName '${entity.apiModelName}' already exists in AiProvider ${entity.aiProviderId}",
-            )
-        }
+        // Uniqueness is enforced on alias only. Two configs may share the same
+        // apiModelName under the same provider (e.g. same model at different
+        // temperatures). When alias is null the check is intentionally skipped:
+        // null-alias configs are anonymous and resolved only via apiName fallback;
+        // they are allowed to accumulate and the highest-priority one wins.
         entity.alias?.let { alias ->
             findByAiProviderAndAlias(entity.aiProviderId, alias)?.let {
                 throw ResponseStatusException(
@@ -48,14 +51,8 @@ class AiModelServiceImpl(
     }
 
     override fun update(entity: AiModel): AiModel {
-        findByAiProviderAndApiName(entity.aiProviderId, entity.apiModelName)
-            ?.takeIf { it.id != entity.id }
-            ?.let {
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "A model config for apiName '${entity.apiModelName}' already exists in AiProvider ${entity.aiProviderId}",
-                )
-            }
+        // Same uniqueness rule as create: only alias must be unique per provider.
+        // Null alias skips the check for the same reason as in create.
         entity.alias?.let { alias ->
             findByAiProviderAndAlias(entity.aiProviderId, alias)
                 ?.takeIf { it.id != entity.id }
