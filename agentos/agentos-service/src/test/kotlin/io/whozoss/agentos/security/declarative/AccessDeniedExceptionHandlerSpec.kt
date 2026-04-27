@@ -12,7 +12,7 @@ import org.springframework.web.servlet.HandlerMapping
 import java.lang.reflect.Method
 
 /**
- * Unit tests for [AccessDeniedExceptionHandler] (Story 5.1, AC6).
+ * Unit tests for [AccessDeniedExceptionHandler].
  *
  * Exercises the 404 / 403 mapping driven by [HideOnAccessDenied] presence on the
  * resolved [HandlerMethod], plus the robustness paths (already-committed response).

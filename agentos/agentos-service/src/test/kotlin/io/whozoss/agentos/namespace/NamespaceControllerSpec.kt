@@ -19,7 +19,7 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [NamespaceController] (Story 5.2 — declarative migration).
+ * Unit tests for [NamespaceController].
  *
  * Authorization is now declarative (`@PreAuthorize`) and only fires through Spring AOP.
  * Pure unit tests bypass the proxy, so authorization paths are NOT exercised here —
@@ -27,10 +27,10 @@ import java.util.UUID
  *
  * What this spec covers:
  * - Mapping (toResource / toDomain, blank-configPath normalisation)
- * - `listAll` permission-filtered listing (Story 2.4 — branches on `User.isAdmin`,
+ * - `listAll` permission-filtered listing ( — branches on `User.isAdmin`,
  *   uses `listEntitiesForUser` to avoid N+1)
- * - `create` auto-grants ADMIN to the creator (Story 2.1 AC2 — best-effort, no rollback)
- * - `delete` cascade-revokes ADMIN/MEMBER relations before service.delete (Story 2.1 AC3)
+ * - `create` auto-grants ADMIN to the creator
+ * - `delete` cascade-revokes ADMIN/MEMBER relations before service.delete
  * - `update` 404-on-missing path
  */
 class NamespaceControllerSpec : StringSpec({
@@ -109,7 +109,7 @@ class NamespaceControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // listAll (Story 2.4) — permission-filtered
+    // listAll — permission-filtered
     // -------------------------------------------------------------------------
 
     "listAll returns all namespaces with role=SUPER-ADMIN for a super-admin caller" {
@@ -165,7 +165,7 @@ class NamespaceControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // create (Story 2.1) — auto-grant ADMIN
+    // create — auto-grant ADMIN
     // -------------------------------------------------------------------------
 
     "create auto-grants ADMIN on the new namespace to the creator" {
@@ -209,7 +209,7 @@ class NamespaceControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // delete (Story 2.1) — cascade revoke
+    // delete — cascade revoke
     // -------------------------------------------------------------------------
 
     "delete cascade-revokes ADMIN and MEMBER relations BEFORE service.delete" {

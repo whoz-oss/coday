@@ -22,7 +22,7 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 
 /**
- * Integration tests for Story 1.3: Neo4j Permission Relations (ADMIN/MEMBER).
+ * Integration tests for Neo4j Permission Relations (ADMIN/MEMBER).
  *
  * Verifies that permission relationships are correctly created, queried, and deleted
  * in a real Neo4j instance using Testcontainers.
@@ -170,7 +170,7 @@ class Neo4jPermissionRelationsSpec : StringSpec() {
             ).shouldBeFalse()
         }
 
-        "delete MEMBER relation preserves a pre-existing ADMIN relation for the same user (Story 2.3 AC3)" {
+        "delete MEMBER relation preserves a pre-existing ADMIN relation for the same user" {
             val user = createUser()
             val namespace = createNamespace()
 

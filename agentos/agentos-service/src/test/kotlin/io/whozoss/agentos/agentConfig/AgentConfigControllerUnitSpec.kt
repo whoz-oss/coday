@@ -12,7 +12,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * Unit tests for [AgentConfigController] (Story 5.2 — declarative migration).
+ * Unit tests for [AgentConfigController].
  *
  * Permission checks are declarative (`@PreAuthorize`) and only fire when the
  * controller is invoked through Spring AOP. In pure unit tests we call the

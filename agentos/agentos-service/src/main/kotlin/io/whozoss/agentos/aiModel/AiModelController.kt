@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * REST API for managing [AiModel] entities (Epic 5 declarative migration).
+ * REST API for managing [AiModel] entities.
  *
  * Authorization declared via `@PreAuthorize`. Because permission depends on the parent
  * AiProvider's namespace (and the AiModel's own namespaceId is denormalised at creation

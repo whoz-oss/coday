@@ -19,16 +19,16 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * Dedicated endpoints for managing namespace ADMIN/MEMBER permissions (Story 2.2/2.3).
+ * Dedicated endpoints for managing namespace ADMIN/MEMBER permissions (/2.3).
  *
- * Authorization (Epic 5 declarative migration):
+ * Authorization:
  * - grant/revoke (ADMIN/MEMBER): namespace WRITE — caller must be namespace ADMIN
  * - listNamespaceUsers: namespace READ + `@HideOnAccessDenied` — 404 hides existence
  *
  * Idempotency: the Neo4j MERGE + DELETE primitives are naturally idempotent,
  * so repeated PUTs/DELETEs are safe.
  *
- * Note: MEMBER management (Story 2.3). Audit-trail properties (grantedBy / grantedAt)
+ * Note: MEMBER management. Audit-trail properties (grantedBy / grantedAt)
  * on the relationship are intentionally deferred.
  */
 @RestController
@@ -103,7 +103,7 @@ class NamespacePermissionEndpoints(
     }
 
     /**
-     * GET — list users with a direct ADMIN/MEMBER relation on the namespace (Story 2.5).
+     * GET — list users with a direct ADMIN/MEMBER relation on the namespace.
      * Each user appears at most once; ADMIN takes precedence over MEMBER for the
      * returned `role`. Super-admins without a direct relation are NOT listed
      * (this endpoint reflects namespace-level grants, not system-level roles).

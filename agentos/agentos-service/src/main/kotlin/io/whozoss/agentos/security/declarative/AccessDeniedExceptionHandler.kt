@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets
 
 /**
  * Spring Security [AccessDeniedHandler] that translates AOP-thrown [AccessDeniedException]
- * into AgentOS-flavoured HTTP responses (Story 5.1).
+ * into AgentOS-flavoured HTTP responses.
  *
  * Spring Security's default behavior is to write HTTP 403 directly via [ExceptionTranslationFilter]
  * before any `@ControllerAdvice` can run, so we plug in here instead. The handler resolves the source

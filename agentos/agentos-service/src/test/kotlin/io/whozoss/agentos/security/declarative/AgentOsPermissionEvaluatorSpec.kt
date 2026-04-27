@@ -14,7 +14,7 @@ import org.springframework.security.core.Authentication
 import java.util.UUID
 
 /**
- * Unit tests for [AgentOsPermissionEvaluator] (Story 5.1).
+ * Unit tests for [AgentOsPermissionEvaluator].
  */
 class AgentOsPermissionEvaluatorSpec : StringSpec({
 

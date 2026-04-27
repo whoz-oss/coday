@@ -50,7 +50,7 @@ class AiProviderControllerIntegrationSpec : StringSpec() {
                 ).andExpect(status().isBadRequest)
         }
 
-        // Story 4.3: when both namespaceId and userId are null, the request is
+        // when both namespaceId and userId are null, the request is
         // refused by `checkCreatePermission` with 403 (user-scoped deprecated)
         // BEFORE the service-level validation that returned 400. The new
         // behaviour is stricter and correct — 403 is emitted sooner.
@@ -72,7 +72,7 @@ class AiProviderControllerIntegrationSpec : StringSpec() {
                 ).andExpect(status().isCreated)
         }
 
-        // Story 4.3 AC6: user-scoped creation is refused by `checkCreatePermission`
+        // User-scoped creation is refused by `checkCreatePermission`
         // (tracked in issue #809 for full cleanup). Previously this returned 201.
         "POST /api/ai-providers with userId only returns 403 (user-scoped deprecated, #809)" {
             val userId = UUID.randomUUID()
@@ -114,7 +114,7 @@ class AiProviderControllerIntegrationSpec : StringSpec() {
                 ).andExpect(status().isOk)
         }
 
-        // Story 4.3 AC2/AC4: secured listing through /by-parentId/{namespaceId}
+        // Secured listing through /by-parentId/{namespaceId}
         "GET /api/ai-providers/by-parentId/{namespaceId} returns providers for super-admin caller" {
             val listNs = UUID.randomUUID()
             aiProviderService.create(

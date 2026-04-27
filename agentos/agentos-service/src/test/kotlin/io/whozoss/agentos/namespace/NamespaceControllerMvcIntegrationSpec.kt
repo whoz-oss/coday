@@ -18,8 +18,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * MVC-layer test for [NamespaceController] — verifies Bean Validation and Story 2.1
- * security flows through the full Spring MVC dispatcher.
+ * MVC-layer test for [NamespaceController] — verifies Bean Validation and   * security flows through the full Spring MVC dispatcher.
  *
  * Uses a full Spring Boot context (webEnvironment = MOCK) with the "test" profile
  * (in-memory persistence). The OS user is auto-promoted to super-admin on first
@@ -111,7 +110,7 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // DELETE /api/namespaces/{id} — super-admin only + cascade (Story 2.1)
+        // DELETE /api/namespaces/{id} — super-admin only + cascade
         // -------------------------------------------------------------------------
 
         "DELETE /api/namespaces/{id} returns 204 for super-admin" {
@@ -133,7 +132,7 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/namespaces — listAll (Story 2.4)
+        // GET /api/namespaces — listAll
         // -------------------------------------------------------------------------
 
         "GET /api/namespaces returns items with role=SUPER-ADMIN for the super-admin caller" {

@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * REST API for managing [IntegrationConfig] entities (Epic 5 declarative migration).
+ * REST API for managing [IntegrationConfig] entities.
  *
  * Authorization declared via `@PreAuthorize`:
  * - READ: namespace MEMBER (FR27)

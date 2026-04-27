@@ -108,7 +108,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                 ).andExpect(status().isOk)
         }
 
-        // Story 4.4 AC5: secured listing through /by-parentId/{providerId}
+        // Secured listing through /by-parentId/{providerId}
         "GET /api/ai-models/by-parentId/{providerId} returns models for super-admin caller" {
             val parent = createParentAiProvider()
             aiModelService.create(
@@ -133,7 +133,7 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
         }
 
-        // Story 4.4 AC5: secured listing through /by-namespaceId/{namespaceId}
+        // Secured listing through /by-namespaceId/{namespaceId}
         "GET /api/ai-models/by-namespaceId/{namespaceId} returns models in namespace" {
             val listNs = UUID.randomUUID()
             val parent = createParentAiProvider(nsId = listNs)

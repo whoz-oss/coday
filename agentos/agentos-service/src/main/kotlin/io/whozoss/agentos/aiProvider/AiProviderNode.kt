@@ -15,7 +15,7 @@ import java.util.UUID
  * Spring Data Neo4j projection for [io.whozoss.agentos.sdk.aiProvider.AiProvider].
  *
  * Stored as `(:AiProvider)-[:BELONGS_TO]->(:Namespace)` for namespace-scoped
- * providers (Story 4.3). The [namespaceId] property keeps the scalar id for
+ * providers. The [namespaceId] property keeps the scalar id for
  * the legacy `findActiveByNamespaceId` query, while the [namespace]
  * @Relationship is required by the transitive permission Cypher queries
  * (`hasAdminAccessViaNamespace` / `hasReadAccessViaNamespace`). Both sources

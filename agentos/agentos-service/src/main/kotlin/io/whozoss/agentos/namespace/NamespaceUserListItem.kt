@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import java.util.UUID
 
 /**
- * HTTP resource returned by `GET /api/namespaces/{id}/users` (Story 2.5).
+ * HTTP resource returned by `GET /api/namespaces/{id}/users`.
  *
  * Represents a user holding a direct `[:ADMIN]` or `[:MEMBER]` relation on the
  * namespace. Super-admins are not listed here unless they also hold a direct

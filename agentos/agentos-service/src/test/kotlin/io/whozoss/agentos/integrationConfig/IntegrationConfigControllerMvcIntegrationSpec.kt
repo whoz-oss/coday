@@ -128,7 +128,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/integration-configs/by-parentId/{namespaceId} (Story 4.2)
+        // GET /api/integration-configs/by-parentId/{namespaceId}
         // -------------------------------------------------------------------------
 
         "GET /api/integration-configs/by-parentId/{namespaceId} returns configs for a super-admin caller" {

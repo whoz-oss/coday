@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 import java.util.UUID
 
 /**
- * SpEL-callable guard for [CaseEventRestController.getById] (Story 5.2).
+ * SpEL-callable guard for [CaseEventRestController.getById].
  *
  * `getById` takes an `eventId` (not a `caseId`), so the standard
  * `hasPermission(#caseId, 'Case', 'READ')` SpEL cannot be used directly.

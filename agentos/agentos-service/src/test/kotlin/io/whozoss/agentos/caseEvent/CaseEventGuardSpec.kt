@@ -14,7 +14,7 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [CaseEventGuard] (Story 5.2 — gap-closure tests for AC4).
+ * Unit tests for [CaseEventGuard].
  *
  * Covers the SpEL-callable `canRead(eventId)` predicate that gates
  * `@PreAuthorize("@caseEventGuard.canRead(#id)")` on

@@ -21,8 +21,8 @@ class Neo4jPermissionRepository(
          * through the parent namespace — only via a direct relation on the
          * entity itself, or through namespace ADMIN transitivity.
          *
-         * Rationale (Story 3.3, FR15): these entities are "owner-private" — each
-         * one has a creator who is auto-granted ADMIN on creation (Story 3.1).
+         * Rationale (, FR15): these entities are "owner-private" — each
+         * one has a creator who is auto-granted ADMIN on creation.
          * Letting every namespace MEMBER see every owner-private entity would
          * break content isolation.
          */

@@ -18,7 +18,7 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [NamespacePermissionEndpoints] (Story 2.2/2.3 — declarative migration).
+ * Unit tests for [NamespacePermissionEndpoints].
  *
  * Authorization is declarative (`@PreAuthorize`) and only fires through Spring AOP.
  * Pure unit tests bypass the proxy — only the body's existence-check + delegation
@@ -171,7 +171,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
     // DELETE — revoke MEMBER (does NOT touch ADMIN)
     // -------------------------------------------------------------------------
 
-    "revokeMember does NOT revoke ADMIN relation (AC3: preserves higher privilege)" {
+    "revokeMember does NOT revoke ADMIN relation (Preserves higher privilege)" {
         stubExistence()
         every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
 

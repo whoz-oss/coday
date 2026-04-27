@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import java.util.UUID
 
 /**
- * HTTP resource returned by `GET /api/namespaces` (Story 2.4).
+ * HTTP resource returned by `GET /api/namespaces`.
  *
  * Represents a namespace from the caller's perspective, carrying the caller's
  * effective [role] on that namespace. Distinct from [NamespaceResource] (used for

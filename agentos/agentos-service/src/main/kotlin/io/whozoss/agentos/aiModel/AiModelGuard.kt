@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component
 import java.util.UUID
 
 /**
- * SpEL-callable guard for [AiModelController] (Story 5.2).
+ * SpEL-callable guard for [AiModelController].
  *
  * The standard `hasPermission(#id, 'AiModel', 'WRITE')` is unsuitable for create/list-by-parent
  * because permission is determined by the **parent AiProvider's namespace**, not by the AiModel
@@ -30,7 +30,7 @@ class AiModelGuard(
     /**
      * Returns true if the current user has WRITE on the namespace of the parent AiProvider
      * referenced by [resource.aiProviderId]. Returns false (→ 403) for missing or user-scoped
-     * providers — a strict fail-closed posture aligned with story 4.4 AC4.
+     * providers — a strict fail-closed posture aligned with  .
      */
     fun canCreate(resource: AiModelResource): Boolean {
         val providerId = resource.aiProviderId ?: return false
@@ -40,8 +40,7 @@ class AiModelGuard(
     }
 
     /**
-     * Returns true when the caller may invoke `listByParent(providerId)`. Aligns with story 4.4
-     * AC5 "empty-list semantics" :
+     * Returns true when the caller may invoke `listByParent(providerId)`. Aligns with       *  "empty-list semantics" :
      * - Provider missing: returns true → controller body runs → `findByParent` returns []
      *   (no info leak; we surface "no models" rather than "no such provider")
      * - Provider user-scoped (legacy): same — returns true, body returns []

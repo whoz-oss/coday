@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * REST API for managing [AiProvider] entities (Epic 5 declarative migration).
+ * REST API for managing [AiProvider] entities.
  *
  * Authorization declared via `@PreAuthorize`:
  * - READ: namespace MEMBER (FR32 — apiKey returned in clear, no masking)

@@ -19,7 +19,7 @@ import java.util.UUID
 /**
  * Read-only REST API for [CaseEvent] entities.
  *
- * Authorization (Story 5.2 — closes pre-existing gap, RFC §1 / Q7):
+ * Authorization:
  * - `getById` requires READ on the parent Case (resolved via [CaseEventGuard])
  * - `getByIds` filters the response per-event via @PostFilter
  * - `listByCase` requires READ on the case directly (caseId is in the path)

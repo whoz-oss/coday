@@ -11,12 +11,12 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 
 /**
- * Spring Security wiring for AgentOS declarative permissions (Story 5.1).
+ * Spring Security wiring for AgentOS declarative permissions.
  *
  * - Activates `@PreAuthorize` / `@PostAuthorize` evaluation via [EnableMethodSecurity]
  * - Plugs [AgentOsPermissionEvaluator] into the SpEL `hasPermission(...)` keyword
  * - Configures a permissive [SecurityFilterChain] that delegates auth decisions to
- *   method-level annotations (story 5-2 will add the annotations to controllers)
+ *   method-level annotations ( will add the annotations to controllers)
  * - Registers [AgentOsAuthenticationFilter] before [UsernamePasswordAuthenticationFilter]
  *   so the [SecurityContextHolder] is populated before any `@PreAuthorize` runs
  *

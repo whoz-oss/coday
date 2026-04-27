@@ -13,7 +13,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * Unit tests for [IntegrationConfigController] (Story 5.2 — declarative migration).
+ * Unit tests for [IntegrationConfigController].
  *
  * See [AgentConfigControllerUnitSpec] for the rationale on what this spec covers
  * vs what is covered by [io.whozoss.agentos.security.declarative.MethodSecurityIntegrationSpec].

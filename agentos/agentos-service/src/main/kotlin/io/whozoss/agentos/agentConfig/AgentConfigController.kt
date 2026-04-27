@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * REST API for managing [AgentConfig] entities (Epic 5 declarative migration).
+ * REST API for managing [AgentConfig] entities.
  *
  * Authorization is declared via `@PreAuthorize` on each endpoint:
  * - READ: namespace MEMBER (transitive permission via `[:BELONGS_TO]`)

@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * End-to-end integration tests for the Spring Security infrastructure (Story 5.1).
+ * End-to-end integration tests for the Spring Security infrastructure.
  *
  * Verifies that:
  * - `@PreAuthorize` AOP is wired and fires

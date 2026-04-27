@@ -21,7 +21,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
 
     /**
      * Creates the `BELONGS_TO` relationship from an AgentConfig node to its
-     * parent Namespace node (Story 4.1).
+     * parent Namespace node.
      *
      * Called after every save. Using an explicit query avoids SDN writing stub
      * [io.whozoss.agentos.namespace.NamespaceNode] properties (empty name /

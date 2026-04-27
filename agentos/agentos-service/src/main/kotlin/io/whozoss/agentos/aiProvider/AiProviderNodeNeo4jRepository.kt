@@ -33,7 +33,7 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
 
     /**
      * Creates the `BELONGS_TO` relationship from an AiProvider node to its
-     * parent Namespace node (Story 4.3).
+     * parent Namespace node.
      *
      * Called after every save of a namespace-scoped AiProvider. Using an
      * explicit query avoids SDN writing stub [io.whozoss.agentos.namespace.NamespaceNode]

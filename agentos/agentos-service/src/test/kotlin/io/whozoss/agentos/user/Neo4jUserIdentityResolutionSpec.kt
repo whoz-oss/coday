@@ -16,7 +16,7 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 
 /**
- * Integration tests for Story 1.5: User Identity Resolution and Auto-Creation.
+ * Integration tests for User Identity Resolution and Auto-Creation.
  *
  * Verifies that the first user becomes super-admin, subsequent users do not,
  * and resolveOrCreateByExternalId is idempotent — all against a real Neo4j instance.

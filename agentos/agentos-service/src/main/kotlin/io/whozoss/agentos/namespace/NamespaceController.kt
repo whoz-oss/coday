@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * REST API for managing Namespaces (Epic 5 declarative migration).
+ * REST API for managing Namespaces.
  *
  * Authorization declared via `@PreAuthorize`:
  * - READ: namespace MEMBER (transitive)
@@ -143,7 +143,7 @@ class NamespaceController(
     }
 
     /**
-     * GET /api/namespaces — list namespaces filtered by the caller's permissions (Story 2.4).
+     * GET /api/namespaces — list namespaces filtered by the caller's permissions.
      *
      * - SUPER-ADMIN: returns every non-deleted namespace with `role = "SUPER-ADMIN"`.
      * - Regular user: returns only namespaces the caller has at least READ on,

@@ -15,7 +15,7 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [AiModelGuard] (Story 5.2).
+ * Unit tests for [AiModelGuard].
  *
  * Covers the SpEL-callable `canCreate` and `canListByProvider` predicates that gate
  * `@PreAuthorize("@aiModelGuard.canCreate(...)")` on [AiModelController].

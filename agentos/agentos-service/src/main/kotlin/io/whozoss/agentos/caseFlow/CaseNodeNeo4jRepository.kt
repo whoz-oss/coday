@@ -53,7 +53,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     )
 
     /**
-     * Find cases in a namespace that a specific user is allowed to see (Story 3.3).
+     * Find cases in a namespace that a specific user is allowed to see.
      *
      * Access rule for Case (owner-private, FR15):
      * - Direct relation on the case: ADMIN or MEMBER → user can see it

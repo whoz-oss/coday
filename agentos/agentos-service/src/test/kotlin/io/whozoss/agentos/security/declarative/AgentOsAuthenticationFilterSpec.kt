@@ -20,7 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder
 import java.util.UUID
 
 /**
- * Unit tests for [AgentOsAuthenticationFilter] (Story 5.1).
+ * Unit tests for [AgentOsAuthenticationFilter].
  *
  * Uses Spring's MockHttpServletRequest/Response rather than mockk because
  * [org.springframework.web.filter.OncePerRequestFilter.doFilter] performs

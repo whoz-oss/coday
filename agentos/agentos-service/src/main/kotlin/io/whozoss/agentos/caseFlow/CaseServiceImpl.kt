@@ -48,7 +48,7 @@ class CaseServiceImpl(
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
         // Persist the full entity so client-supplied title and status are preserved
-        // (Story 3.4 AC4 — previous implementation silently dropped both fields).
+        //.
         val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "[CaseService] Case created: ${saved.id} for namespace ${entity.namespaceId}" }

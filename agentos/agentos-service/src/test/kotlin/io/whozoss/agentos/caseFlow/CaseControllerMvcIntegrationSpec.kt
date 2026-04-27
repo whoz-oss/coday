@@ -20,7 +20,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * MVC-layer test for [CaseController] (Story 3.1).
+ * MVC-layer test for [CaseController].
  *
  * The "test" profile uses [io.whozoss.agentos.permissions.InMemoryPermissionServiceImpl],
  * a permissive no-op stub: every `hasPermission` returns true. Negative paths
@@ -64,7 +64,7 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isCreated)
                 .andExpect(jsonPath("$.namespaceId").value(ns.id.toString()))
                 .andExpect(jsonPath("$.id").exists())
-                // Story 3.4 AC4: title is now preserved after the CaseServiceImpl fix.
+                // Title is now preserved after the CaseServiceImpl fix.
                 .andExpect(jsonPath("$.title").value("hello"))
         }
 
@@ -81,7 +81,7 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/cases/by-parentId/{namespaceId} (Story 3.2)
+        // GET /api/cases/by-parentId/{namespaceId}
         // -------------------------------------------------------------------------
 
         "GET /api/cases/by-parentId/{namespaceId} returns cases for a super-admin caller" {
@@ -106,7 +106,7 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // PUT /api/cases/{id} (Story 3.4)
+        // PUT /api/cases/{id}
         // -------------------------------------------------------------------------
 
         "PUT /api/cases/{id} updates title when caller has WRITE permission (super-admin)" {
@@ -163,7 +163,7 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // DELETE /api/cases/{id} (Story 3.4)
+        // DELETE /api/cases/{id}
         // -------------------------------------------------------------------------
 
         "DELETE /api/cases/{id} returns 204 and makes the case invisible in subsequent listings" {

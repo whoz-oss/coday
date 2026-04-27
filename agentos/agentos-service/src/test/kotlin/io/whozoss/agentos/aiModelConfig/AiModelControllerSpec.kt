@@ -16,7 +16,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * Unit tests for [AiModelController] (Story 5.2 — declarative migration).
+ * Unit tests for [AiModelController].
  *
  * Permission checks moved to `@PreAuthorize` + [io.whozoss.agentos.aiModel.AiModelGuard].
  * See [io.whozoss.agentos.agentConfig.AgentConfigControllerUnitSpec] for the unit-vs-integration

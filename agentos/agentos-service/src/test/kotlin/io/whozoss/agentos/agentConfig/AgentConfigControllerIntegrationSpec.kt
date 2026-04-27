@@ -122,7 +122,7 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/agent-configs/by-parentId/{namespaceId} (Story 4.1)
+        // GET /api/agent-configs/by-parentId/{namespaceId}
         // -------------------------------------------------------------------------
 
         "GET /api/agent-configs/by-parentId/{namespaceId} returns configs for a super-admin caller" {

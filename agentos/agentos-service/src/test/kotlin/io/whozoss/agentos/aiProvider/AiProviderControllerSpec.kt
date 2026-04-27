@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * Unit tests for [AiProviderController] (Story 5.2 — declarative migration).
+ * Unit tests for [AiProviderController].
  *
  * See [io.whozoss.agentos.agentConfig.AgentConfigControllerUnitSpec] for the rationale.
  *

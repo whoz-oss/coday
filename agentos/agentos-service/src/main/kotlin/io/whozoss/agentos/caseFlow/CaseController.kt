@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * REST API for managing [Case] entities (Epic 5 declarative migration).
+ * REST API for managing [Case] entities.
  *
  * Authorization declared via `@PreAuthorize`:
  * - READ on Case: namespace ADMIN (transitive) OR direct ADMIN/MEMBER on the case (FR15)
@@ -94,7 +94,7 @@ class CaseController(
     override fun getByIds(@RequestBody ids: List<UUID>): List<CaseResource> = super.getByIds(ids)
 
     /**
-     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace (Story 3.2/3.3).
+     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace (/3.3).
      *
      * `@PreAuthorize` gates on namespace READ ; inside the body, two perf paths:
      * 1. Namespace ADMIN → unfiltered listing (single query, no per-case check).
@@ -126,7 +126,7 @@ class CaseController(
      * POST /api/cases — create a Case. Permission gate is namespace READ
      * (a MEMBER may create their own cases). The body delegates to the standard
      * `EntityController.create`, then auto-grants ADMIN on the new case to the
-     * creator (Story 3.1 AC1). The grant is best-effort (non-transactional).
+     * creator. The grant is best-effort (non-transactional).
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'READ')")

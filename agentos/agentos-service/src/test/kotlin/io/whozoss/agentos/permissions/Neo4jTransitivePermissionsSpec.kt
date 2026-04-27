@@ -26,7 +26,7 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 
 /**
- * Integration tests for Story 1.4: Transitive Permission Evaluation.
+ * Integration tests for Transitive Permission Evaluation.
  *
  * Verifies that ADMIN/MEMBER permissions on a namespace correctly propagate
  * to child entities (Cases) through the real Neo4j graph traversal.
@@ -116,12 +116,12 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
         }
 
         /**
-         * Story 3.3 FR15: a namespace MEMBER must NOT gain transitive READ on
+         * FR15: a namespace MEMBER must NOT gain transitive READ on
          * child Cases. Each case is owner-private — only the creator (direct
-         * ADMIN via Story 3.1 auto-grant) or the namespace ADMIN can access it.
+         * ADMIN via  auto-grant) or the namespace ADMIN can access it.
          * Test previously asserted the opposite when the bug was present.
          */
-        "MEMBER on namespace does NOT grant READ on child Case (Story 3.3 FR15)" {
+        "MEMBER on namespace does NOT grant READ on child Case" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -133,13 +133,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityLabel = "Namespace"
             )
 
-            // Before Story 3.3 this returned true (bug). It must now be false.
+            // Before this returned true (bug). It must now be false.
             permissionService.hasPermission(
                 user.id.toString(), "Case", case.id.toString(), Action.READ
             ).shouldBeFalse()
         }
 
-        "MEMBER with direct ADMIN on a case retains full access (Story 3.3 AC3)" {
+        "MEMBER with direct ADMIN on a case retains full access" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -150,7 +150,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityId = namespace.id.toString(),
                 entityLabel = "Namespace"
             )
-            // Plus direct ADMIN on the case (simulates Story 3.1 auto-grant)
+            // Plus direct ADMIN on the case (simulates the auto-grant)
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
@@ -170,19 +170,19 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
         }
 
         /**
-         * AC6 anti-regression: the FR15 rule must apply ONLY to Case. Shared
+         * Anti-regression: the FR15 rule must apply ONLY to Case. Shared
          * child entities (AgentConfig, IntegrationConfig, AiProvider, AiModel)
          * keep the MEMBER → transitive READ behaviour required by FR21/FR27/
          * FR32/FR35. We simulate an "AgentConfig" node by creating a
          * non-Case entity with a BELONGS_TO edge to the namespace.
          */
         /**
-         * Story 3.4 AC2: soft-deleting a case must NOT remove its [:ADMIN]
+         * Soft-deleting a case must NOT remove its [:ADMIN]
          * relations — they survive for audit purposes. The repository's delete
          * implementation merely sets `removed = true` on the CaseNode and must
          * leave every permission edge intact.
          */
-        "soft-deleting a case preserves direct ADMIN relation for audit (Story 3.4 AC2)" {
+        "soft-deleting a case preserves direct ADMIN relation for audit" {
             val user = createUser("owner@example.com")
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -215,13 +215,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
         }
 
         /**
-         * Story 4.1 AC3: AgentConfig relies on transitive permissions via the
+         * : AgentConfig relies on transitive permissions via the
          * `[:BELONGS_TO]` relation. Unlike Case (owner-private), AgentConfig is
          * a shared configuration — namespace MEMBERs must gain transitive READ
          * on all configs (FR21), and namespace ADMINs must gain transitive
          * WRITE/DELETE (FR17/18/19).
          */
-        "AgentConfig gets transitive permissions from its parent namespace (Story 4.1 AC3)" {
+        "AgentConfig gets transitive permissions from its parent namespace" {
             val member = createUser("member@example.com")
             val admin = createUser("admin@example.com")
             val namespace = createNamespace()
@@ -266,7 +266,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             ).shouldBeTrue()
         }
 
-        "namespace MEMBER still grants transitive READ on non-Case shared entities (Story 3.3 AC6 anti-regression)" {
+        "namespace MEMBER still grants transitive READ on non-Case shared entities" {
             val user = createUser()
             val namespace = createNamespace()
             // Create an AgentConfig-like node directly in Neo4j with a BELONGS_TO edge
@@ -401,12 +401,12 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
         }
 
         /**
-         * Story 3.2 AC1: a namespace ADMIN transitively has ADMIN on cases that
+         * A namespace ADMIN transitively has ADMIN on cases that
          * were created — and auto-granted — to a different user. Proves end-to-end
          * that `findByParent` + transitive `hasPermission` surfaces all cases in the
          * namespace to a namespace admin, not just those they created themselves.
          */
-        "namespace ADMIN has transitive ADMIN on cases created by other users (Story 3.2 AC1)" {
+        "namespace ADMIN has transitive ADMIN on cases created by other users" {
             val adminUser = createUser("admin@example.com")
             val creatorUser = createUser("creator@example.com")
             val namespace = createNamespace()
@@ -420,7 +420,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityLabel = "Namespace",
             )
             // creatorUser holds direct [:ADMIN] on their two cases
-            // (mirrors Story 3.1 auto-grant flow)
+            // (mirrors  auto-grant flow)
             permissionNodeRepository.createAdminPermission(
                 userId = creatorUser.id.toString(),
                 entityId = case1.id.toString(),
@@ -447,7 +447,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             }
 
             // Service layer: findByParent returns every case in the namespace,
-            // letting the controller's short-circuit (Story 3.2 T1) skip per-case
+            // letting the controller's short-circuit () skip per-case
             // filtering for a namespace admin.
             caseRepository.findByParent(namespace.id) shouldHaveSize 2
         }

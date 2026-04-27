@@ -13,7 +13,7 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [AiModel].
  *
- * Stored as `(:AiModel)-[:BELONGS_TO]->(:Namespace)` (Story 4.4). The
+ * Stored as `(:AiModel)-[:BELONGS_TO]->(:Namespace)`. The
  * [namespaceId] property is kept for direct namespace-scoped queries, while
  * the [namespace] @Relationship is required by the transitive permission
  * Cypher (`hasAdminAccessViaNamespace` / `hasReadAccessViaNamespace`). The

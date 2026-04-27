@@ -24,7 +24,7 @@ import java.util.UUID
  */
 interface CaseService : EntityService<Case, UUID> {
     // ========================================
-    // Permission-filtered listing (Story 3.3)
+    // Permission-filtered listing
     // ========================================
 
     /**

@@ -22,7 +22,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * Unit tests for [CaseController] (Story 3.1).
+ * Unit tests for [CaseController].
  *
  * Covers:
  * - `checkCreatePermission` gate: at least READ on the parent namespace is
@@ -96,7 +96,7 @@ class CaseControllerSpec : StringSpec({
         controller.toDomain(caseResource(id = id)).metadata.id shouldBe id
     }
 
-    "toDomain fills null title with the default 'Case <id>' (Story 3.4 AC4)" {
+    "toDomain fills null title with the default 'Case <id>'" {
         val id = UUID.randomUUID()
         val result = controller.toDomain(caseResource(id = id, title = null))
 
@@ -104,7 +104,7 @@ class CaseControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // create (Story 3.1) — happy path + auto-grant
+    // create — happy path + auto-grant
     // -------------------------------------------------------------------------
 
     "create succeeds when caller has READ on the parent namespace and auto-grants ADMIN on the new case" {
@@ -167,7 +167,7 @@ class CaseControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // listByParent (Story 3.2) — short-circuit for namespace ADMIN
+    // listByParent — short-circuit for namespace ADMIN
     // -------------------------------------------------------------------------
 
     "listByParent short-circuits and returns all cases unfiltered when caller has ADMIN on the parent namespace" {
@@ -190,7 +190,7 @@ class CaseControllerSpec : StringSpec({
         }
     }
 
-    "listByParent uses findAccessibleByUserInNamespace when caller is not namespace ADMIN (Story 3.3)" {
+    "listByParent uses findAccessibleByUserInNamespace when caller is not namespace ADMIN" {
         val ownCase = caseEntity(title = "mine")
         every { userService.getCurrentUser() } returns caller
         every {
@@ -241,7 +241,7 @@ class CaseControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // update — mass-assignment guard (Story 5.2 P5)
+    // update — mass-assignment guard ()
     // -------------------------------------------------------------------------
 
     "update preserves the persisted namespaceId and status when client sends different values" {

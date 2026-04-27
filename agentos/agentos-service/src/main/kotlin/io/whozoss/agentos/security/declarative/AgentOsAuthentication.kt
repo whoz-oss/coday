@@ -11,7 +11,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority
  *
  * Key design choice: `getName()` returns the user's UUID as a String, NOT the principal's
  * `toString()`. This is what [AgentOsPermissionEvaluator] reads to identify the caller,
- * and what `@PreAuthorize("#id == authentication.name")` compares against in story 5-2.
+ * and what `@PreAuthorize("#id == authentication.name")` compares against in .
  *
  * Authorities are derived **strictly** from [User.isAdmin] inside the constructor — there is
  * no externally-supplied authorities parameter, so a caller cannot fabricate a token with

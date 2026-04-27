@@ -17,7 +17,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * MVC-layer test for [NamespacePermissionEndpoints] (Story 2.2).
+ * MVC-layer test for [NamespacePermissionEndpoints].
  *
  * In the "test" profile ([io.whozoss.agentos.permissions.InMemoryPermissionServiceImpl]
  * is used), the permission service is a permissive no-op: every
@@ -102,7 +102,7 @@ class NamespacePermissionEndpointsMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // PUT /api/namespaces/{id}/members/{userId} (Story 2.3)
+        // PUT /api/namespaces/{id}/members/{userId}
         // -------------------------------------------------------------------------
 
         "PUT /api/namespaces/{id}/members/{userId} returns 200 when namespace and user exist" {
@@ -134,7 +134,7 @@ class NamespacePermissionEndpointsMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // DELETE /api/namespaces/{id}/members/{userId} (Story 2.3)
+        // DELETE /api/namespaces/{id}/members/{userId}
         // -------------------------------------------------------------------------
 
         "DELETE /api/namespaces/{id}/members/{userId} returns 204 when namespace and user exist" {
@@ -166,7 +166,7 @@ class NamespacePermissionEndpointsMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/namespaces/{id}/users (Story 2.5)
+        // GET /api/namespaces/{id}/users
         // -------------------------------------------------------------------------
 
         "GET /api/namespaces/{id}/users returns 200 with empty list for newly-created namespace" {

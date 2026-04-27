@@ -10,7 +10,7 @@ import java.util.UUID
  */
 interface CaseRepository : EntityRepository<Case, UUID> {
     /**
-     * Find cases in a namespace that [userId] is allowed to see (Story 3.3).
+     * Find cases in a namespace that [userId] is allowed to see.
      *
      * Permission rule for Case (owner-private, FR15):
      * - User has a direct `[:ADMIN]` or `[:MEMBER]` relation on the case, or
