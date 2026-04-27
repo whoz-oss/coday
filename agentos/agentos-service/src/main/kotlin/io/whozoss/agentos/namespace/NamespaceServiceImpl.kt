@@ -1,14 +1,22 @@
 package io.whozoss.agentos.namespace
 
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.PermissionService
+import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Delegates all persistence operations to NamespaceRepository.
+ * Delegates all persistence operations to [NamespaceRepository].
+ *
+ * Composes [PermissionService] only for [findIdsVisibleTo], a thin typed query
+ * helper used by [NamespaceController.listAll]. CRUD operations remain pure
+ * repository delegates.
  */
 @Service
 class NamespaceServiceImpl(
     private val namespaceRepository: NamespaceRepository,
+    private val permissionService: PermissionService,
 ) : NamespaceService {
     override fun create(entity: Namespace): Namespace = namespaceRepository.save(entity)
 
@@ -23,4 +31,19 @@ class NamespaceServiceImpl(
     override fun delete(id: UUID): Boolean = namespaceRepository.delete(id)
 
     override fun deleteByParent(parentId: String): Int = namespaceRepository.deleteByParent(parentId)
+
+    override fun findIdsVisibleTo(userId: String, action: Action): List<UUID> =
+        permissionService
+            .listEntitiesForUser(userId, ENTITY_TYPE, action)
+            .mapNotNull { raw ->
+                runCatching { UUID.fromString(raw) }.getOrNull()
+                    ?: run {
+                        logger.warn { "[NamespaceService] Dropping malformed id from permission listing: '$raw'" }
+                        null
+                    }
+            }
+
+    companion object : KLogging() {
+        private const val ENTITY_TYPE = "Namespace"
+    }
 }

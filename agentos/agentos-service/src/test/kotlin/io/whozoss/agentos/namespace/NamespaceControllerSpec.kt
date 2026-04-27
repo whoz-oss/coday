@@ -28,7 +28,7 @@ import java.util.UUID
  * What this spec covers:
  * - Mapping (toResource / toDomain, blank-configPath normalisation)
  * - `listAll` permission-filtered listing ( — branches on `User.isAdmin`,
- *   uses `listEntitiesForUser` to avoid N+1)
+ *   delegates to `NamespaceService.findIdsVisibleTo` to avoid N+1)
  * - `create` auto-grants ADMIN to the creator
  * - `delete` cascade-revokes ADMIN/MEMBER relations before service.delete
  * - `update` 404-on-missing path
@@ -125,9 +125,7 @@ class NamespaceControllerSpec : StringSpec({
 
     "listAll returns empty list for a regular user with no permissions" {
         every { userService.getCurrentUser() } returns regularUser
-        every {
-            permissionService.listEntitiesForUser(regularUserId.toString(), "Namespace", Action.READ)
-        } returns emptyList()
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ) } returns emptyList()
 
         controller.listAll() shouldBe emptyList()
     }
@@ -137,31 +135,17 @@ class NamespaceControllerSpec : StringSpec({
         val memberNs = ns(name = "member-ns")
         every { userService.getCurrentUser() } returns regularUser
         every {
-            permissionService.listEntitiesForUser(regularUserId.toString(), "Namespace", Action.READ)
-        } returns listOf(adminNs.id.toString(), memberNs.id.toString())
+            namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ)
+        } returns listOf(adminNs.id, memberNs.id)
         every { namespaceService.findByIds(listOf(adminNs.id, memberNs.id)) } returns listOf(adminNs, memberNs)
         every {
-            permissionService.listEntitiesForUser(regularUserId.toString(), "Namespace", Action.WRITE)
-        } returns listOf(adminNs.id.toString())
+            namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.WRITE)
+        } returns listOf(adminNs.id)
 
         val result = controller.listAll().associate { it.id to it.role }
 
         result[adminNs.id] shouldBe "ADMIN"
         result[memberNs.id] shouldBe "MEMBER"
-    }
-
-    "listAll filters out malformed UUID strings from listEntitiesForUser defensively" {
-        val n1 = ns(name = "valid")
-        every { userService.getCurrentUser() } returns regularUser
-        every {
-            permissionService.listEntitiesForUser(regularUserId.toString(), "Namespace", Action.READ)
-        } returns listOf(n1.id.toString(), "not-a-uuid")
-        every { namespaceService.findByIds(listOf(n1.id)) } returns listOf(n1)
-        every {
-            permissionService.listEntitiesForUser(regularUserId.toString(), "Namespace", Action.WRITE)
-        } returns emptyList()
-
-        controller.listAll().map { it.id } shouldBe listOf(n1.id)
     }
 
     // -------------------------------------------------------------------------

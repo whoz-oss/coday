@@ -163,23 +163,14 @@ class NamespaceController(
         }
 
         val userId = currentUser.id.toString()
-        val readableIds = permissionService.listEntitiesForUser(userId, ENTITY_TYPE, Action.READ)
+        val readableIds = namespaceService.findIdsVisibleTo(userId, Action.READ)
         if (readableIds.isEmpty()) return emptyList()
 
-        val uuids = readableIds.mapNotNull { raw ->
-            runCatching { UUID.fromString(raw) }.getOrNull()
-                ?: run {
-                    logger.warn { "Dropping malformed namespace id from permission listing: '$raw'" }
-                    null
-                }
-        }
-        val namespaces = namespaceService.findByIds(uuids)
-        val adminIdsSet = permissionService
-            .listEntitiesForUser(userId, ENTITY_TYPE, Action.WRITE)
-            .toSet()
+        val namespaces = namespaceService.findByIds(readableIds)
+        val adminIdsSet = namespaceService.findIdsVisibleTo(userId, Action.WRITE).toSet()
 
         return namespaces.map { ns ->
-            val role = if (ns.metadata.id.toString() in adminIdsSet) ADMIN else MEMBER
+            val role = if (ns.metadata.id in adminIdsSet) ADMIN else MEMBER
             toListItem(ns, role)
         }
     }
