@@ -108,17 +108,17 @@ class AiModelGuardSpec : StringSpec({
         guard.canListByProvider(aiProviderId) shouldBe false
     }
 
-    "canListByProvider returns true when the provider does not exist (empty-list semantics)" {
+    "canListByProvider returns false when the provider does not exist (fail-closed)" {
         every { aiProviderService.findById(aiProviderId) } returns null
 
-        // Returning true lets the controller body run super.listByParent which yields [] —
-        // no info leak about provider existence vs no-permission.
-        guard.canListByProvider(aiProviderId) shouldBe true
+        guard.canListByProvider(aiProviderId) shouldBe false
     }
 
-    "canListByProvider returns true when the provider is user-scoped (empty-list semantics)" {
+    "canListByProvider returns false when the provider is user-scoped (closes legacy listing leak)" {
+        // The controller body would otherwise call findByAiProviderId without an owner
+        // filter and return AiModels owned by another user. fail-closed → 403.
         every { aiProviderService.findById(aiProviderId) } returns provider(nsId = null, uId = UUID.randomUUID())
 
-        guard.canListByProvider(aiProviderId) shouldBe true
+        guard.canListByProvider(aiProviderId) shouldBe false
     }
 })

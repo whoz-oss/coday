@@ -40,19 +40,21 @@ class AiModelGuard(
     }
 
     /**
-     * Returns true when the caller may invoke `listByParent(providerId)`. Aligns with       *  "empty-list semantics" :
-     * - Provider missing: returns true → controller body runs → `findByParent` returns []
-     *   (no info leak; we surface "no models" rather than "no such provider")
-     * - Provider user-scoped (legacy): same — returns true, body returns []
-     * - Provider namespace-scoped: requires namespace READ on the parent namespace
+     * Returns true when the caller may invoke `listByParent(providerId)`.
      *
-     * The fall-through to true for missing/user-scoped providers is deliberate: returning false
-     * would surface 403 and disclose to a non-MEMBER caller that a namespace-scoped sibling
-     * provider exists for that id-space. Empty list is the safer default.
+     * Fail-closed posture:
+     * - Provider missing: returns false (→ 403). Avoids exposing the difference between
+     *   "not found" and "no permission" via two distinct response codes.
+     * - Provider user-scoped (legacy, no namespaceId): returns false (→ 403). The
+     *   controller body would otherwise call `findByAiProviderId` with no owner filter
+     *   and leak the AiModels of another user's provider to any authenticated caller.
+     *   The user-scoped path is deprecated by issue #809.
+     * - Provider namespace-scoped: requires namespace READ on the parent namespace,
+     *   evaluated by [PermissionService].
      */
     fun canListByProvider(providerId: UUID): Boolean {
-        val provider = aiProviderService.findById(providerId) ?: return true
-        val nsId = provider.namespaceId ?: return true
+        val provider = aiProviderService.findById(providerId) ?: return false
+        val nsId = provider.namespaceId ?: return false
         return permissionService.hasPermission(currentUserId(), NAMESPACE_TYPE, nsId.toString(), Action.READ)
     }
 
