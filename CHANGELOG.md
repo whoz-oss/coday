@@ -1,3 +1,28 @@
+## 0.126.0 (2026-04-27)
+
+### 🚀 Features
+
+- #799 add Whisper audio transcription as alternative voice input ([#800](https://github.com/whoz-oss/coday/pull/800), [#799](https://github.com/whoz-oss/coday/issues/799))
+
+### 🩹 Fixes
+
+- #WZ-31209 maxTokens for OpenAI/Gemini and relax AiModel uniqueness to alias-only ([#797](https://github.com/whoz-oss/coday/pull/797))
+- skip publish jobs when no version bump was produced and include jvm projects in release ([2335dbd9](https://github.com/whoz-oss/coday/commit/2335dbd9))
+- skip publish jobs when no version bump was produced and include agentos projects in release ([#804](https://github.com/whoz-oss/coday/pull/804))
+- derive new version from projectsVersionData when using multiple release groups ([e3efe310](https://github.com/whoz-oss/coday/commit/e3efe310))
+- #801 replay ChoiceEvent on thread reconnection ([#802](https://github.com/whoz-oss/coday/pull/802), [#801](https://github.com/whoz-oss/coday/issues/801))
+- derive new version from projectsVersionData when using multiple release groups ([#808](https://github.com/whoz-oss/coday/pull/808))
+- restore lockstep versioning and fix releasePublish for JVM projects ([c78c9c01](https://github.com/whoz-oss/coday/commit/c78c9c01))
+- restore lockstep versioning and fix releasePublish for JVM projects ([#813](https://github.com/whoz-oss/coday/pull/813))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
 ## 0.125.4 (2026-04-23)
 
 ### 🚀 Features
