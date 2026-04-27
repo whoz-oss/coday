@@ -2,9 +2,14 @@ package io.whozoss.agentos.schedule
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
+import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -20,6 +25,11 @@ import java.util.UUID
  *   POST   /api/schedules
  *   PUT    /api/schedules/{id}
  *   DELETE /api/schedules/{id}
+ *
+ * [create] is overridden to inject the [userId] of the authenticated caller so
+ * the scheduler can later fire the message under the correct user identity.
+ * The [userId] supplied in the request body (if any) is ignored — it is always
+ * resolved server-side from the current HTTP session.
  */
 @RestController
 @RequestMapping(
@@ -28,6 +38,7 @@ import java.util.UUID
 )
 class ScheduleController(
     private val scheduleService: ScheduleService,
+    private val userService: UserService,
 ) : EntityController<Schedule, UUID, ScheduleResource>(scheduleService) {
 
     // -------------------------------------------------------------------------
@@ -40,6 +51,7 @@ class ScheduleController(
             namespaceId = entity.namespaceId,
             caseId = entity.caseId,
             agentName = entity.agentName,
+            userId = entity.userId,
             message = entity.message,
             enabled = entity.enabled,
             oneShot = entity.oneShot,
@@ -56,6 +68,7 @@ class ScheduleController(
             namespaceId = resource.namespaceId,
             caseId = resource.caseId,
             agentName = resource.agentName,
+            userId = resource.userId,
             message = resource.message,
             enabled = resource.enabled,
             oneShot = resource.oneShot,
@@ -65,6 +78,28 @@ class ScheduleController(
             lastTriggeredAt = resource.lastTriggeredAt,
             occurrenceCount = resource.occurrenceCount,
         )
+
+    // -------------------------------------------------------------------------
+    // Overrides
+    // -------------------------------------------------------------------------
+
+    /**
+     * POST /api/schedules — create a new schedule.
+     *
+     * Overrides [EntityController.create] to inject the current user's id as
+     * [Schedule.userId], regardless of what the client supplies in the body.
+     * This ensures the scheduler fires messages under the identity of the person
+     * who created the schedule.
+     */
+    @org.springframework.web.bind.annotation.PostMapping(
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @ResponseStatus(HttpStatus.CREATED)
+    override fun create(@Valid @RequestBody resource: ScheduleResource): ScheduleResource {
+        val currentUserId = userService.getCurrentUser().id
+        return toResource(scheduleService.create(toDomain(resource).copy(userId = currentUserId)))
+    }
 
     companion object : KLogging()
 }

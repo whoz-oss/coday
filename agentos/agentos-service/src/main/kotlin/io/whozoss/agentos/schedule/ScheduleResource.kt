@@ -24,6 +24,7 @@ data class ScheduleResource(
     val namespaceId: UUID,
     val caseId: UUID? = null,
     val agentName: String? = null,
+    val userId: UUID? = null,
     @field:NotBlank(message = "message must not be blank")
     val message: String,
     val enabled: Boolean = true,

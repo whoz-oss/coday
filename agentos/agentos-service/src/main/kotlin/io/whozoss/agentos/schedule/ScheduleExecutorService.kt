@@ -6,6 +6,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -49,18 +50,9 @@ import java.util.concurrent.TimeUnit
 class ScheduleExecutorService(
     private val scheduleRepository: ScheduleRepository,
     private val caseService: CaseService,
+    private val userService: UserService,
     private val config: SchedulerConfig,
 ) {
-    /**
-     * Synthetic actor used as the originator of scheduler-injected messages.
-     * Uses [ActorRole.USER] so the LLM conversation history treats it as a
-     * user turn — the role distinction matters at the LLM boundary, not here.
-     */
-    private val schedulerActor = Actor(
-        id = SCHEDULER_ACTOR_ID,
-        displayName = "Scheduler",
-        role = ActorRole.USER,
-    )
 
     @Scheduled(
         fixedDelayString = "\${agentos.scheduler.poll-interval-seconds:60}",
@@ -102,10 +94,11 @@ class ScheduleExecutorService(
         logger.info { "[ScheduleExecutor] Firing schedule ${schedule.id} (namespace ${schedule.namespaceId})" }
 
         val caseId = resolveOrCreateCase(schedule)
+        val actor = resolveActor(schedule)
 
         caseService.addMessage(
             caseId = caseId,
-            actor = schedulerActor,
+            actor = actor,
             content = listOf(MessageContent.Text(schedule.message)),
         )
 
@@ -135,6 +128,35 @@ class ScheduleExecutorService(
             else -> {
                 scheduleRepository.save(updated)
                 logger.debug { "[ScheduleExecutor] Schedule ${schedule.id} next trigger: $nextTriggerAt" }
+            }
+        }
+    }
+
+    /**
+     * Resolves the [Actor] to use when injecting the schedule's message.
+     *
+     * When [Schedule.userId] is set, looks up the persisted [User] to build an
+     * actor with the correct display name. Falls back to the synthetic scheduler
+     * actor when no user is associated (e.g. schedules created before this field
+     * was introduced, or system-level schedules).
+     */
+    private fun resolveActor(schedule: Schedule): Actor {
+        val user = schedule.userId?.let { userService.findById(it) }
+        return when {
+            user != null -> Actor(
+                id = user.id.toString(),
+                displayName = listOfNotNull(user.firstname, user.lastname)
+                    .joinToString(" ")
+                    .ifBlank { user.externalId },
+                role = ActorRole.USER,
+            )
+            else -> {
+                logger.warn { "[ScheduleExecutor] Schedule ${schedule.id} has no userId, using synthetic scheduler actor" }
+                Actor(
+                    id = SCHEDULER_ACTOR_ID,
+                    displayName = "Scheduler",
+                    role = ActorRole.USER,
+                )
             }
         }
     }

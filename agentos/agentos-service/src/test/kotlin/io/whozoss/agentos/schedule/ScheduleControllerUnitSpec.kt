@@ -9,6 +9,8 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.schedule.EndCondition
 import io.whozoss.agentos.sdk.schedule.IntervalSchedule
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import java.time.Instant
 import java.util.UUID
 
@@ -27,7 +29,8 @@ class ScheduleControllerUnitSpec : StringSpec({
     timeout = 5000
 
     val service = mockk<ScheduleService>()
-    val controller = ScheduleController(service)
+    val userService = mockk<UserService>()
+    val controller = ScheduleController(service, userService)
 
     val namespaceId = UUID.randomUUID()
     val start = Instant.parse("2025-01-06T10:00:00Z")
@@ -205,18 +208,23 @@ class ScheduleControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // create (inherited)
+    // create (overridden — injects current userId)
     // -------------------------------------------------------------------------
 
-    "create converts resource to domain, delegates to service, and returns mapped resource" {
+    "create injects current userId and delegates to service" {
+        val currentUserId = UUID.randomUUID()
+        val currentUser = User(metadata = EntityMetadata(id = currentUserId), externalId = "test-user")
+        every { userService.getCurrentUser() } returns currentUser
+
         val r = resource(id = null)
-        val saved = controller.toDomain(r)
+        val saved = controller.toDomain(r).copy(userId = currentUserId)
         every { service.create(any()) } returns saved
 
         val result = controller.create(r)
 
         result shouldBe controller.toResource(saved)
-        verify(exactly = 1) { service.create(any()) }
+        result.userId shouldBe currentUserId
+        verify(exactly = 1) { service.create(match { it.userId == currentUserId }) }
     }
 
     // -------------------------------------------------------------------------
