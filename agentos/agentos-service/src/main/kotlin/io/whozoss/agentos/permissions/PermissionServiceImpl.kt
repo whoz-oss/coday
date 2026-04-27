@@ -153,28 +153,10 @@ class PermissionServiceImpl(
         action: Action
     ): List<String> {
         return try {
-            // Super-admin sees all entities
-            val user = try {
-                userService.findById(UUID.fromString(userId))
-            } catch (e: IllegalArgumentException) {
-                logger.debug { "Invalid UUID format for userId: $userId" }
-                null
-            }
-            if (user?.isAdmin == true) {
-                logger.debug { "Super-admin listing all $entityType entities" }
-                // Super-admin bypasses per-entity checks in hasPermission(), so controllers
-                // (declarative @PreAuthorize / @PostFilter paths) never reach this code path
-                // for super-admins. Return empty list as a safe fallback — callers that need
-                // "all entities" should query the entity service directly.
-                return emptyList()
-            }
-
-            // Determine required relation based on action
             val requiredRelation = when (action) {
                 Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
                 Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
             }
-
             permissionRepository.listEntitiesForUser(userId, entityType, requiredRelation)
         } catch (e: Exception) {
             logger.error(e) { "Failed to list entities for user=$userId, type=$entityType, action=$action" }
