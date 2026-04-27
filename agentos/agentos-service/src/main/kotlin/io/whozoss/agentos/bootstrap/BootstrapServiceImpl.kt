@@ -1,72 +1,93 @@
 package io.whozoss.agentos.bootstrap
 
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 
 /**
- * Bootstrap service implementation that runs at application startup.
+ * Guarantees the system always has at least one super-admin.
  *
- * Implements ApplicationRunner to execute automatically after the Spring context
- * starts but before the application begins accepting requests.
+ * Runs as an [ApplicationRunner] after the Spring context is ready and before the
+ * application starts accepting requests, so all decisions are made on a single
+ * thread without competing with HTTP-driven user creation.
  *
- * Its primary role is to ensure the system has at least one super-admin.
- * The first user to connect is automatically promoted to super-admin,
- * which is handled by UserService during user creation.
+ * Two invariants are enforced:
+ * 1. **Empty database** → create a default user with [defaultAdminExternalId] and
+ *    `isAdmin = true`. The external id is configurable so an operator can match
+ *    their own OS username (mode `local`) and have an immediately usable admin
+ *    on first request.
+ * 2. **Single user with `isAdmin = false`** → promote that user. Covers legacy
+ *    deployments where the User predates the `isAdmin` field and was therefore
+ *    never auto-promoted.
  *
- * @property userService Service for managing users
+ * Cases with two or more users where none is admin are intentionally not handled:
+ * picking a winner would be arbitrary; an operator must intervene explicitly.
  */
 @Service
 @ConditionalOnProperty(
     prefix = "agentos.bootstrap",
     name = ["enabled"],
     havingValue = "true",
-    matchIfMissing = true
+    matchIfMissing = true,
 )
 class BootstrapServiceImpl(
-    private val userService: UserService
+    private val userService: UserService,
+    @Value("\${agentos.bootstrap.admin-external-id:admin}")
+    private val defaultAdminExternalId: String,
 ) : BootstrapService, ApplicationRunner {
 
-    companion object : KLogging()
-
-    /**
-     * Called automatically by Spring Boot at startup.
-     * Delegates to bootstrap() for the actual execution.
-     */
     override fun run(args: ApplicationArguments) {
         bootstrap()
     }
 
-    /**
-     * Runs the bootstrap operations.
-     *
-     * Checks if users already exist in the system.
-     * If no users exist, the next user created will be
-     * automatically promoted to super-admin by UserService.
-     */
     override fun bootstrap() {
         logger.info { "[Bootstrap] Starting bootstrap process..." }
 
-        if (isBootstrapped()) {
-            logger.info { "[Bootstrap] System already bootstrapped - users exist. Skipping bootstrap." }
-            return
+        when (val count = userService.count()) {
+            0L -> createDefaultAdmin()
+            1L -> promoteSingleUserIfNeeded()
+            else -> logger.info { "[Bootstrap] $count users exist, no bootstrap action." }
         }
 
-        logger.info { "[Bootstrap] No users found in system. First user will be auto-promoted to super-admin." }
         logger.info { "[Bootstrap] Bootstrap process completed." }
     }
 
-    /**
-     * Checks if the system has already been initialized.
-     *
-     * @return true if at least one user exists, false otherwise
-     */
     override fun isBootstrapped(): Boolean {
         val userCount = userService.count()
         logger.debug { "[Bootstrap] Current user count: $userCount" }
         return userCount > 0
     }
+
+    private fun createDefaultAdmin() {
+        logger.info { "[Bootstrap] No users found. Creating default admin (externalId='$defaultAdminExternalId')" }
+        userService.create(
+            User(
+                metadata = EntityMetadata(),
+                externalId = defaultAdminExternalId,
+                email = if (defaultAdminExternalId.contains("@")) defaultAdminExternalId else "",
+                isAdmin = true,
+            ),
+        )
+    }
+
+    private fun promoteSingleUserIfNeeded() {
+        val user = userService.findAll().firstOrNull() ?: run {
+            logger.warn { "[Bootstrap] count()==1 but findAll() returned empty — race or repo inconsistency, skipping." }
+            return
+        }
+        if (user.isAdmin) {
+            logger.info { "[Bootstrap] Single user '${user.externalId}' is already admin, no migration needed." }
+            return
+        }
+        logger.info { "[Bootstrap] Migrating single user '${user.externalId}' to super-admin" }
+        userService.update(user.copy(isAdmin = true))
+    }
+
+    companion object : KLogging()
 }

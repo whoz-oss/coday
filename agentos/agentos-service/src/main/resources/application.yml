@@ -62,9 +62,11 @@ agentos:
     # Enable bootstrap service to run on startup
     # Override with env var: AGENTOS_BOOTSTRAP_ENABLED
     enabled: true
-    # Auto-create the first user as super-admin
-    # Override with env var: AGENTOS_BOOTSTRAP_AUTO_CREATE_SUPER_ADMIN
-    autoCreateSuperAdmin: true
+    # External identifier of the auto-created admin when the database is empty.
+    # In 'local' mode, set this to your OS username so the bootstrap admin is
+    # immediately usable on first request without creating a second user.
+    # Override with env var: AGENTOS_BOOTSTRAP_ADMIN_EXTERNAL_ID
+    admin-external-id: admin
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
