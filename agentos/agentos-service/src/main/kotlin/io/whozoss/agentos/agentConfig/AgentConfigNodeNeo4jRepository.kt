@@ -18,24 +18,4 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<AgentConfigNode>
-
-    /**
-     * Creates the `BELONGS_TO` relationship from an AgentConfig node to its
-     * parent Namespace node.
-     *
-     * Called after every save. Using an explicit query avoids SDN writing stub
-     * [io.whozoss.agentos.namespace.NamespaceNode] properties (empty name /
-     * description) onto the existing Namespace node when the relationship is
-     * expressed via the @Relationship field.
-     */
-    @Query(
-        $$"""MATCH (a:AgentConfig {id: $agentConfigId})
-            MATCH (ns:Namespace {id: $namespaceId})
-            MERGE (a)-[:BELONGS_TO]->(ns)
-            """,
-    )
-    fun linkAgentConfigToNamespace(
-        agentConfigId: String,
-        namespaceId: String,
-    )
 }

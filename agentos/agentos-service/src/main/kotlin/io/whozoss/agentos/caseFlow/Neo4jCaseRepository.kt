@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
@@ -15,12 +16,13 @@ import java.util.UUID
  */
 open class Neo4jCaseRepository(
     private val caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
+    private val childLinkService: Neo4jChildLinkService,
 ) : CaseRepository {
     override fun save(entity: Case): Case =
         caseNodeNeo4jRepository
             .save(CaseNode.fromDomain(entity))
-            .also { caseNodeNeo4jRepository.linkCaseToNamespace(it.id, entity.namespaceId.toString()) }
-            .also { it.createdBy?.let { createdBy -> caseNodeNeo4jRepository.linkCaseToUser(caseId = it.id, userId = createdBy) } }
+            .also { childLinkService.link("Case", it.id, "Namespace", entity.namespaceId.toString()) }
+            .also { it.createdBy?.let { createdBy -> childLinkService.link("Case", it.id, "User", createdBy, relationship = "CREATED_BY") } }
             .toDomain()
             .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }
 

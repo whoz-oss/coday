@@ -1,6 +1,7 @@
 package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
@@ -15,11 +16,12 @@ import java.util.UUID
 open class Neo4jIntegrationConfigRepository(
     private val neo4jRepository: IntegrationConfigNodeNeo4jRepository,
     private val objectMapper: ObjectMapper,
+    private val childLinkService: Neo4jChildLinkService,
 ) : IntegrationConfigRepository {
     override fun save(entity: IntegrationConfig): IntegrationConfig =
         neo4jRepository
             .save(IntegrationConfigNode.fromDomain(entity, objectMapper))
-            .also { neo4jRepository.linkConfigToNamespace(it.id, entity.namespaceId.toString()) }
+            .also { childLinkService.link("IntegrationConfig", it.id, "Namespace", entity.namespaceId.toString()) }
             .toDomain(objectMapper)
             .also {
                 logger.debug {

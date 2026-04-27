@@ -27,6 +27,7 @@ import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
 import io.whozoss.agentos.permissions.Neo4jPermissionRepository
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -73,9 +74,12 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 )
 class Neo4jPersistenceConfiguration {
     @Bean
-    fun neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository): AgentConfigRepository {
+    fun neo4jAgentConfigRepository(
+        agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active" }
-        return Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository)
+        return Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService)
     }
 
     @Bean
@@ -85,19 +89,23 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jCaseRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): CaseRepository {
+    fun neo4jCaseRepository(
+        caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): CaseRepository {
         logger.info { "[Persistence] Neo4jCaseRepository active" }
-        return Neo4jCaseRepository(caseNodeNeo4jRepository)
+        return Neo4jCaseRepository(caseNodeNeo4jRepository, childLinkService)
     }
 
     @Bean
     fun neo4jCaseEventRepository(
         caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository,
         objectMapper: ObjectMapper,
+        childLinkService: Neo4jChildLinkService,
     ): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }
         val mapper = CaseEventNodeMapper(MessageContentSerializer(objectMapper))
-        return Neo4jCaseEventRepository(caseEventNodeNeo4jRepository, mapper)
+        return Neo4jCaseEventRepository(caseEventNodeNeo4jRepository, mapper, childLinkService)
     }
 
     @Bean
@@ -116,21 +124,28 @@ class Neo4jPersistenceConfiguration {
     fun neo4jIntegrationConfigRepository(
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
         objectMapper: ObjectMapper,
+        childLinkService: Neo4jChildLinkService,
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
-        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper)
+        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
     }
 
     @Bean
-    fun neo4jAiProviderRepository(aiProviderNodeNeo4JRepository: AiProviderNodeNeo4jRepository): AiProviderRepository {
+    fun neo4jAiProviderRepository(
+        aiProviderNodeNeo4JRepository: AiProviderNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): AiProviderRepository {
         logger.info { "[Persistence] Neo4jAiProviderRepository active" }
-        return Neo4jAiProviderRepository(aiProviderNodeNeo4JRepository)
+        return Neo4jAiProviderRepository(aiProviderNodeNeo4JRepository, childLinkService)
     }
 
     @Bean
-    fun neo4jAiModelRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelRepository {
+    fun neo4jAiModelRepository(
+        aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): AiModelRepository {
         logger.info { "[Persistence] Neo4jAiModelRepository active" }
-        return Neo4JAiModelRepository(aiModelNodeNeo4JRepository)
+        return Neo4JAiModelRepository(aiModelNodeNeo4JRepository, childLinkService)
     }
 
     companion object : KLogging()
