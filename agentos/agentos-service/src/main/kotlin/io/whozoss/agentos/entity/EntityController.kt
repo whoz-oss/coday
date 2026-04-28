@@ -8,7 +8,6 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
-import jakarta.validation.constraints.Size
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -20,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.ResponseStatus
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -48,7 +48,8 @@ import java.util.UUID
  * - regular caller : [PermissionService.filterVisibleIds] resolves visible ids in
  *   ≤ 2 Cypher queries (UNION direct + transitif) regardless of input size
  * - input order and duplicates are preserved through a `Map<UUID, ResourceType>` lookup
- * - input is bounded by [MAX_BATCH_SIZE] to prevent DoS via huge batches
+ * - input is bounded by [MAX_BATCH_SIZE] (runtime check throwing HTTP 400) to
+ *   prevent DoS via huge batches
  * - malformed ids returned by [PermissionService] (should not happen — corruption /
  *   schema drift) are logged at WARN level rather than silently dropped
  *
@@ -112,9 +113,19 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
     )
     @PreAuthorize("isAuthenticated()")
     open fun getByIds(
-        @Valid @Size(max = MAX_BATCH_SIZE, message = "Batch size exceeds maximum of $MAX_BATCH_SIZE")
         @RequestBody ids: List<UUID>,
     ): List<ResourceType> {
+        // Runtime size cap. We deliberately do NOT use Bean Validation `@Size` here :
+        // `@Size` on a `@RequestBody` parameter only fires when the controller class
+        // is annotated `@Validated` (Spring), and its violation maps by default to
+        // HTTP 500 rather than 400. A runtime check is explicit, framework-independent,
+        // and produces the right HTTP status (close adversarial review P1 of story 5-4).
+        if (ids.size > MAX_BATCH_SIZE) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE",
+            )
+        }
         if (ids.isEmpty()) return emptyList()
 
         val currentUser = userService.getCurrentUser()

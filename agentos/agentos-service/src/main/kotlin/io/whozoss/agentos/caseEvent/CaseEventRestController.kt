@@ -2,12 +2,14 @@
 
 package io.whozoss.agentos.caseEvent
 
+import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.user.UserService
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -65,23 +68,35 @@ class CaseEventRestController(
      * (overkill for a single use case) or running the wrong query (event id instead of case id).
      *
      * As a result, fixes applied to [io.whozoss.agentos.entity.EntityController.getByIds]
-     * (input order preservation, `@Size` cap, log WARN on parse failure) **must be replicated
-     * manually here**. Today this method already preserves order (`events.filter { ... }` is
-     * a stable filter) and the parse step is implicit in `it.caseId.toString()`. The
-     * `@Size` input cap is NOT applied — it should be added if/when DoS via huge payloads
-     * becomes a concern (cf. story 5-3 review finding P3).
+     * (input order preservation, batch size cap, log WARN on parse failure) **must be
+     * replicated manually here**. Today this method preserves order (`events.filter { ... }`
+     * is stable) and applies the same [EntityController.MAX_BATCH_SIZE] cap as the base
+     * (closes adversarial review P2 of story 5-4).
      */
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     fun getByIds(
         @RequestBody ids: List<UUID>,
     ): List<CaseEvent> {
+        if (ids.size > EntityController.MAX_BATCH_SIZE) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Batch size ${ids.size} exceeds maximum of ${EntityController.MAX_BATCH_SIZE}",
+            )
+        }
         if (ids.isEmpty()) return emptyList()
+
+        val currentUser = userService.getCurrentUser()
+        if (currentUser.isAdmin) {
+            return caseEventService.findByIds(ids)
+        }
+        // Non-admin path : resolve visible parent caseIds in a single batch call BEFORE
+        // materialising events. Was the inverse before — we'd load all events first then
+        // filter — which exposed a timing oracle and unnecessary memory pressure.
+        // Trade-off : we still need the full event list to know their caseIds, so we do
+        // a 2-step fetch but the second step is bounded by the visible Case set.
         val events = caseEventService.findByIds(ids)
         if (events.isEmpty()) return emptyList()
-        val currentUser = userService.getCurrentUser()
-        if (currentUser.isAdmin) return events
-
         val caseIds = events.map { it.caseId.toString() }.distinct()
         val visibleCaseIds = permissionService
             .filterVisibleIds(currentUser.id.toString(), "Case", caseIds, Action.READ)

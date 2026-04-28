@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -83,12 +84,22 @@ class UserController(
      * Overrides the base [EntityController.getByIds] (story 5-4) because the User
      * entity is NOT permission-graph governed. Access is `hasRole('SUPER_ADMIN')` only,
      * so the batch authorization path (`filterVisibleIds` → namespace transitive resolution)
-     * is irrelevant here. We delegate directly to the service.
+     * is irrelevant here. We delegate directly to the service after applying the same
+     * empty short-circuit and size cap as the base (defense-in-depth even for super-admin
+     * — closes adversarial review P3 of story 5-4).
      */
     @PostMapping("/by-ids")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<UserResource> =
-        userService.findByIds(ids).map(::toResource)
+    override fun getByIds(@RequestBody ids: List<UUID>): List<UserResource> {
+        if (ids.size > EntityController.MAX_BATCH_SIZE) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Batch size ${ids.size} exceeds maximum of ${EntityController.MAX_BATCH_SIZE}",
+            )
+        }
+        if (ids.isEmpty()) return emptyList()
+        return userService.findByIds(ids).map(::toResource)
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

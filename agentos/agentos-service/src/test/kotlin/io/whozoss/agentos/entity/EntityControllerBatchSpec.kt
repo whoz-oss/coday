@@ -1,5 +1,6 @@
 package io.whozoss.agentos.entity
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -13,6 +14,8 @@ import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -24,8 +27,6 @@ import java.util.UUID
  * spec to exercise the inherited `getByIds` behaviour without standing up a Spring context.
  *
  * Out of scope here :
- * - `@Size(max = MAX_BATCH_SIZE)` validation — Bean Validation only fires through the
- *   MVC dispatcher. Covered by the MVC integration specs.
  * - `@PreAuthorize("isAuthenticated()")` — Spring AOP only, covered by `MethodSecurityIntegrationSpec`.
  * - Log WARN on malformed UUID — verified manually by reading the code path; non-deterministic
  *   to assert without a custom log appender.
@@ -144,6 +145,25 @@ class EntityControllerBatchSpec : StringSpec({
         val result = controller.getByIds(listOf(a.id, missingId))
 
         result.map { it.tag } shouldContainExactly listOf("found")
+    }
+
+    "getByIds rejects oversized input batches with HTTP 400 (DoS protection)" {
+        val oversizedIds = List(EntityController.MAX_BATCH_SIZE + 1) { UUID.randomUUID() }
+
+        val ex = shouldThrow<ResponseStatusException> { controller.getByIds(oversizedIds) }
+
+        ex.statusCode shouldBe HttpStatus.BAD_REQUEST
+        verify(exactly = 0) { userService.getCurrentUser() }
+        verify(exactly = 0) { service.findByIds(any()) }
+    }
+
+    "getByIds accepts exactly MAX_BATCH_SIZE input ids (boundary)" {
+        val ids = List(EntityController.MAX_BATCH_SIZE) { UUID.randomUUID() }
+        every { userService.getCurrentUser() } returns superAdmin
+        every { service.findByIds(ids.toSet()) } returns emptyList()
+
+        // Should not throw — exactly at the cap is allowed.
+        controller.getByIds(ids) shouldBe emptyList()
     }
 
     "getByIds tolerates malformed UUIDs returned by permissionService (silent drop, fail-closed)" {
