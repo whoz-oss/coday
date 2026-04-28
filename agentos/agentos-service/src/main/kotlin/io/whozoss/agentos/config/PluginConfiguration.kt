@@ -3,8 +3,10 @@ package io.whozoss.agentos.config
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
 import mu.KLogging
 import org.pf4j.ClassLoadingStrategy
+import org.pf4j.CompoundPluginLoader
 import org.pf4j.DefaultPluginLoader
 import org.pf4j.ExtensionFactory
+import org.pf4j.JarPluginLoader
 import org.pf4j.PluginClassLoader
 import org.pf4j.PluginDescriptor
 import org.pf4j.PluginLoader
@@ -66,19 +68,35 @@ private class NullSafeSpringPluginManager(pluginsRoot: Path) : SpringPluginManag
         NullSafeSpringExtensionFactory(this)
 
     override fun createPluginLoader(): PluginLoader =
-        ApdPluginLoader(this)
+        CompoundPluginLoader()
+            .add(ApdJarPluginLoader(this))
+            .add(ApdDefaultPluginLoader(this))
+}
+
+/**
+ * [JarPluginLoader] subclass that overrides [loadPlugin] to use
+ * [ClassLoadingStrategy.APD] (Application first) instead of the default PDA.
+ *
+ * [JarPluginLoader.loadPlugin] creates a [PluginClassLoader] with the 3-argument
+ * constructor (which defaults to PDA), then adds the JAR file. We replicate this
+ * logic but pass [ClassLoadingStrategy.APD] via the 4-argument constructor.
+ */
+private class ApdJarPluginLoader(private val manager: PluginManager) : JarPluginLoader(manager) {
+    override fun loadPlugin(pluginPath: Path, pluginDescriptor: PluginDescriptor): ClassLoader {
+        val classLoader = PluginClassLoader(manager, pluginDescriptor, javaClass.classLoader, ClassLoadingStrategy.APD)
+        classLoader.addFile(pluginPath.toFile())
+        return classLoader
+    }
 }
 
 /**
  * [DefaultPluginLoader] subclass that overrides [createPluginClassLoader] to use
  * [ClassLoadingStrategy.APD] (Application first).
  *
- * [DefaultPluginLoader] itself only overrides [isApplicable]; all loader logic lives in
- * [org.pf4j.BasePluginLoader.createPluginClassLoader], which we override here to pass
- * the [ClassLoadingStrategy.APD] strategy instead of the hardcoded [ClassLoadingStrategy.PDA]
- * used by the default 3-argument [PluginClassLoader] constructor.
+ * This loader handles "exploded" plugin directories (development mode) where classes
+ * live in a `classes/` subdirectory and JARs in a `lib/` subdirectory.
  */
-private class ApdPluginLoader(pluginManager: PluginManager) : DefaultPluginLoader(pluginManager) {
+private class ApdDefaultPluginLoader(pluginManager: PluginManager) : DefaultPluginLoader(pluginManager) {
     override fun createPluginClassLoader(pluginPath: Path, pluginDescriptor: PluginDescriptor): PluginClassLoader =
         PluginClassLoader(pluginManager, pluginDescriptor, javaClass.classLoader, ClassLoadingStrategy.APD)
 }
