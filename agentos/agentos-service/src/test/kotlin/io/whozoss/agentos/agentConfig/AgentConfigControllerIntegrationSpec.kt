@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
@@ -137,6 +138,44 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
             mockMvc.perform(get("/api/agent-configs/by-parentId/$listNamespaceId"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/agent-configs/{id} — happy path
+        // -------------------------------------------------------------------------
+
+        "GET /api/agent-configs/{id} returns 200 with payload for super-admin caller" {
+            val created = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "fetched-agent",
+                    description = "loaded by id",
+                ),
+            )
+
+            mockMvc.perform(get("/api/agent-configs/${created.id}"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.id").value(created.id.toString()))
+                .andExpect(jsonPath("$.name").value("fetched-agent"))
+                .andExpect(jsonPath("$.description").value("loaded by id"))
+        }
+
+        // -------------------------------------------------------------------------
+        // DELETE /api/agent-configs/{id} — happy path
+        // -------------------------------------------------------------------------
+
+        "DELETE /api/agent-configs/{id} returns 204 when entity exists" {
+            val created = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "to-be-deleted",
+                ),
+            )
+
+            mockMvc.perform(delete("/api/agent-configs/${created.id}"))
+                .andExpect(status().isNoContent)
         }
     }
 }
