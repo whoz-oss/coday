@@ -64,13 +64,12 @@ tasks.jar {
             "Plugin-Class" to "io.whozoss.agentos.plugins.mcp.McpPlugin",
         )
     }
-    // Bundle MCP SDK and its transitive deps into the plugin JAR so the
-    // plugin classloader can resolve them independently of the service classpath.
-    // Use the lazy FileCollection overload (no .get()) so runtimeClasspath is
-    // resolved at execution time, not configuration time — required by Gradle 9.
+    // Bundle MCP SDK and its transitive deps (reactor, snakeyaml, etc.) into the plugin JAR
+    // so the plugin classloader can resolve them independently of the service classpath.
+    // Jackson is declared compileOnly and therefore NOT in runtimeClasspath -- it is provided
+    // by the service classloader at runtime, avoiding the LinkageError.
     from(configurations.runtimeClasspath.map { fc -> fc.filter { it.name.endsWith(".jar") }.map { zipTree(it) } }) {
         exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-        // Exclude kotlin-stdlib and jackson — already on the service classpath
         exclude("kotlin/**", "kotlinx/**")
     }
 }

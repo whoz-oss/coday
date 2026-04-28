@@ -19,15 +19,17 @@ import org.pf4j.ExtensionPoint
  * Plugins that require no configuration should declare [configSchema] as null
  * and handle a null [config] in [provideTools] by using built-in defaults.
  *
+ * ## Classloader safety
+ *
+ * Jackson types ([JsonNode]) cross the plugin/service boundary safely because
+ * AgentOS configures PF4J with [org.pf4j.ClassLoadingStrategy.APD]: the
+ * [org.pf4j.PluginClassLoader] delegates to the service classloader first, so
+ * both sides always share the same [JsonNode] class instance. Plugins must
+ * therefore declare Jackson as [compileOnly] and must NOT bundle it in their
+ * fat JAR.
+ *
  * Example usage:
  * ```kotlin
- * // 1. Plugin lifecycle class
- * class MyPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
- *     override fun start() { logger.info("Plugin started") }
- *     override fun stop() { logger.info("Plugin stopped") }
- * }
- *
- * // 2. Tool provider with @Extension
  * @Extension
  * class MyToolProvider : ToolPlugin {
  *     override val integrationType = "MY_INTEGRATION"
@@ -44,8 +46,7 @@ import org.pf4j.ExtensionPoint
  *
  *     override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
  *         val apiKey = config?.get("apiKey")?.asText() ?: ""
- *         val prefix = configName?.let { "${it}__" } ?: ""
- *         return listOf(MyCustomTool(name = "${prefix}MyTool", apiKey = apiKey))
+ *         return listOf(MyCustomTool(apiKey = apiKey))
  *     }
  * }
  * ```

@@ -7,16 +7,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
-import org.pf4j.PluginDescriptor
 import org.pf4j.PluginManager
-import org.pf4j.PluginWrapper
 import java.util.UUID
 
 /**
@@ -60,7 +57,6 @@ class ToolRegistryServiceSpec : StringSpec({
     ): ToolRegistryService {
         val pluginManager = mockk<PluginManager>(relaxed = true)
         every { pluginManager.getExtensions(ToolPlugin::class.java) } returns plugins
-        // whichPlugin returns null for all (no plugin wrapper needed for unit tests)
         every { pluginManager.whichPlugin(any()) } returns null
 
         val integrationConfigService = mockk<IntegrationConfigService>(relaxed = true)
@@ -81,10 +77,6 @@ class ToolRegistryServiceSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "resolveToolsForNamespace produces distinct tool instances on each call for config-less plugins" {
-        // This is the core regression test for issue #733.
-        // Before the fix, config-less tools were singletons: resolveToolsForNamespace returned
-        // the same instances registered at startup. After the fix, each call instantiates
-        // fresh tools so no tool instance outlives its owning agent run.
         val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
         val service = buildService(plugins = listOf(plugin))
         val namespaceId = UUID.randomUUID()
@@ -94,13 +86,10 @@ class ToolRegistryServiceSpec : StringSpec({
 
         tools1 shouldHaveSize 1
         tools2 shouldHaveSize 1
-        // Different instances — not the same object reference
         tools1.first() shouldNotBe tools2.first()
     }
 
     "resolveToolsForNamespace produces distinct tool instances on each call for configured plugins" {
-        // Configured tools were already fresh per call before the fix; this test guards
-        // against any regression that would accidentally cache them.
         val namespaceId = UUID.randomUUID()
         val config = IntegrationConfig(
             metadata = EntityMetadata(),
@@ -187,7 +176,6 @@ class ToolRegistryServiceSpec : StringSpec({
 
         val tools = service.resolveToolsForNamespace(namespaceId)
 
-        // Only config-less tools, no JIRA tools for this namespace
         tools shouldHaveSize 1
         tools.first().name shouldBe "GetCurrentDateTime"
     }
