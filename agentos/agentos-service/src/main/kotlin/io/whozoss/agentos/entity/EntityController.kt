@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.user.UserService
@@ -58,33 +59,33 @@ import java.util.UUID
  * and document the divergence.
  *
  * Type parameters:
- * @param EntityType The domain entity type (must implement Entity)
+ * @param E The domain entity type (must implement Entity)
  * @param ParentIdentifier The parent identifier type (typically UUID)
  * @param ResourceType The HTTP resource/DTO type returned and consumed by all endpoints
  */
-abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceType>(
-    protected val service: EntityService<EntityType, ParentIdentifier>,
+abstract class EntityController<E : Entity, ParentIdentifier, ResourceType>(
+    protected val service: EntityService<E, ParentIdentifier>,
     protected val userService: UserService,
     protected val permissionService: PermissionService,
 ) {
     /**
-     * Neo4j label / SpEL string for this entity type, used by [getByIds] to call
-     * [PermissionService.filterVisibleIds]. Must match the actual entity label
-     * (e.g. `"AgentConfig"`, `"AiProvider"`, `"Namespace"`).
+     * Typed entity discriminator used by [getByIds] to call
+     * [PermissionService.filterVisibleIds]. Each subclass declares its
+     * matching [EntityType] constant (e.g. `EntityType.AGENT_CONFIG`).
      */
-    protected abstract val entityType: String
+    protected abstract val entityType: EntityType
 
     /**
      * Convert a domain entity to its HTTP resource representation.
      * Called before every response is serialised.
      */
-    abstract fun toResource(entity: EntityType): ResourceType
+    abstract fun toResource(entity: E): ResourceType
 
     /**
      * Convert an HTTP resource to its domain entity representation.
      * Called after every request body is deserialised.
      */
-    abstract fun toDomain(resource: ResourceType): EntityType
+    abstract fun toDomain(resource: ResourceType): E
 
     /**
      * GET /{id} — get a single entity by its ID.

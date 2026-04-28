@@ -9,6 +9,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -82,7 +83,7 @@ class EntityControllerBatchSpec : StringSpec({
         every { userService.getCurrentUser() } returns regularUser
         every {
             permissionService.filterVisibleIds(
-                callerId.toString(), "TestEntity", listOf(a.id.toString(), b.id.toString()), Action.READ,
+                callerId.toString(), EntityType.AGENT_CONFIG, listOf(a.id.toString(), b.id.toString()), Action.READ,
             )
         } returns setOf(a.id.toString())
         every { service.findByIds(setOf(a.id)) } returns listOf(a)
@@ -202,7 +203,7 @@ internal class TestController(
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<TestEntity, UUID, TestResource>(service, userService, permissionService) {
-    override val entityType = "TestEntity"
+    override val entityType = EntityType.AGENT_CONFIG
     override fun toResource(entity: TestEntity) = TestResource(entity.metadata.id, entity.tag)
     override fun toDomain(resource: TestResource) = TestEntity(EntityMetadata(id = resource.id), resource.tag)
 }

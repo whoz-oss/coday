@@ -25,7 +25,7 @@ class InMemoryPermissionServiceImpl : PermissionService {
 
     override fun hasPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         action: Action
     ): Boolean {
@@ -35,7 +35,7 @@ class InMemoryPermissionServiceImpl : PermissionService {
 
     override fun grantPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     ) {
@@ -44,7 +44,7 @@ class InMemoryPermissionServiceImpl : PermissionService {
 
     override fun revokePermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     ) {
@@ -52,20 +52,20 @@ class InMemoryPermissionServiceImpl : PermissionService {
     }
 
     override fun listUsersWithPermission(
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation?
     ): List<String> = emptyList()
 
     override fun listEntitiesForUser(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         action: Action
     ): List<String> = emptyList()
 
     override fun filterVisibleIds(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         ids: Collection<String>,
         action: Action,
     ): Set<String> = emptySet()

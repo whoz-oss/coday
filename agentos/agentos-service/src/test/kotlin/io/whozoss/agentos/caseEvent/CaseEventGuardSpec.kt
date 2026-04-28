@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -51,7 +52,7 @@ class CaseEventGuardSpec : StringSpec({
         every { userService.getCurrentUser() } returns caller
         every { caseEventService.findById(eventId) } returns event()
         every {
-            permissionService.hasPermission(callerId.toString(), "Case", caseId.toString(), Action.READ)
+            permissionService.hasPermission(callerId.toString(), EntityType.CASE, caseId.toString(), Action.READ)
         } returns true
 
         guard.canRead(eventId) shouldBe true
@@ -61,7 +62,7 @@ class CaseEventGuardSpec : StringSpec({
         every { userService.getCurrentUser() } returns caller
         every { caseEventService.findById(eventId) } returns event()
         every {
-            permissionService.hasPermission(callerId.toString(), "Case", caseId.toString(), Action.READ)
+            permissionService.hasPermission(callerId.toString(), EntityType.CASE, caseId.toString(), Action.READ)
         } returns false
 
         guard.canRead(eventId) shouldBe false

@@ -102,17 +102,17 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // Verify transitive READ on child Case
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.READ
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
             ).shouldBeTrue()
 
             // Verify transitive WRITE on child Case
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
             ).shouldBeTrue()
 
             // Verify transitive DELETE on child Case
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.DELETE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
             ).shouldBeTrue()
         }
 
@@ -136,7 +136,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // Before this returned true (bug). It must now be false.
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.READ
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
             ).shouldBeFalse()
         }
 
@@ -160,13 +160,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // Direct relation grants full access regardless of the transitive rule
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.READ
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
             ).shouldBeTrue()
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
             ).shouldBeTrue()
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.DELETE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
             ).shouldBeTrue()
         }
 
@@ -241,13 +241,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityLabel = "Namespace",
             )
             permissionService.hasPermission(
-                member.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.READ,
+                member.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.READ,
             ).shouldBeTrue()
             permissionService.hasPermission(
-                member.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.WRITE,
+                member.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.WRITE,
             ).shouldBeFalse()
             permissionService.hasPermission(
-                member.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.DELETE,
+                member.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.DELETE,
             ).shouldBeFalse()
 
             // admin gets ADMIN on namespace → full transitive CRUD
@@ -257,13 +257,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityLabel = "Namespace",
             )
             permissionService.hasPermission(
-                admin.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.READ,
+                admin.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.READ,
             ).shouldBeTrue()
             permissionService.hasPermission(
-                admin.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.WRITE,
+                admin.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.WRITE,
             ).shouldBeTrue()
             permissionService.hasPermission(
-                admin.id.toString(), "AgentConfig", config.metadata.id.toString(), Action.DELETE,
+                admin.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.DELETE,
             ).shouldBeTrue()
         }
 
@@ -288,7 +288,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // MEMBER transitivity DOES apply to AgentConfig (FR21 legitimate)
             permissionService.hasPermission(
-                user.id.toString(), "AgentConfig", agentConfigId, Action.READ
+                user.id.toString(), EntityType.AGENT_CONFIG, agentConfigId, Action.READ
             ).shouldBeTrue()
         }
 
@@ -306,7 +306,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // MEMBER should NOT grant WRITE
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
             ).shouldBeFalse()
         }
 
@@ -324,7 +324,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // MEMBER should NOT grant DELETE
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.DELETE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
             ).shouldBeFalse()
         }
 
@@ -349,7 +349,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // Direct ADMIN should grant WRITE even though namespace is only MEMBER
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
             ).shouldBeTrue()
         }
 
@@ -360,15 +360,15 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // No permission granted - should deny all actions (fail-closed)
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.READ
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
             ).shouldBeFalse()
 
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.WRITE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
             ).shouldBeFalse()
 
             permissionService.hasPermission(
-                user.id.toString(), "Case", case.id.toString(), Action.DELETE
+                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
             ).shouldBeFalse()
         }
 
@@ -379,15 +379,15 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // No permission relations - super-admin should bypass all checks
             permissionService.hasPermission(
-                superAdmin.id.toString(), "Case", case.id.toString(), Action.READ
+                superAdmin.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
             ).shouldBeTrue()
 
             permissionService.hasPermission(
-                superAdmin.id.toString(), "Case", case.id.toString(), Action.WRITE
+                superAdmin.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
             ).shouldBeTrue()
 
             permissionService.hasPermission(
-                superAdmin.id.toString(), "Case", case.id.toString(), Action.DELETE
+                superAdmin.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
             ).shouldBeTrue()
         }
 
@@ -397,7 +397,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             // No relation exists at all
             permissionService.hasPermission(
-                user.id.toString(), "Namespace", namespace.id.toString(), Action.READ
+                user.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), Action.READ
             ).shouldBeFalse()
         }
 
@@ -437,13 +437,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             // full ADMIN privileges via transitive namespace ADMIN.
             listOf(case1, case2).forEach { case ->
                 permissionService.hasPermission(
-                    adminUser.id.toString(), "Case", case.id.toString(), Action.READ,
+                    adminUser.id.toString(), EntityType.CASE, case.id.toString(), Action.READ,
                 ).shouldBeTrue()
                 permissionService.hasPermission(
-                    adminUser.id.toString(), "Case", case.id.toString(), Action.WRITE,
+                    adminUser.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE,
                 ).shouldBeTrue()
                 permissionService.hasPermission(
-                    adminUser.id.toString(), "Case", case.id.toString(), Action.DELETE,
+                    adminUser.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE,
                 ).shouldBeTrue()
             }
 
@@ -487,7 +487,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             val visible = permissionService.filterVisibleIds(
                 memberUser.id.toString(),
-                "AgentConfig",
+                EntityType.AGENT_CONFIG,
                 candidateIds,
                 Action.READ,
             )
@@ -512,7 +512,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
             permissionService.filterVisibleIds(
                 memberUser.id.toString(),
-                "AgentConfig",
+                EntityType.AGENT_CONFIG,
                 listOf(agent.id.toString()),
                 Action.WRITE,
             ).shouldBeEmpty()

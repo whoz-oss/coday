@@ -1,6 +1,7 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -34,7 +35,7 @@ class NamespaceServiceImpl(
 
     override fun findIdsVisibleTo(userId: String, action: Action): List<UUID> =
         permissionService
-            .listEntitiesForUser(userId, ENTITY_TYPE, action)
+            .listEntitiesForUser(userId, EntityType.NAMESPACE, action)
             .mapNotNull { raw ->
                 runCatching { UUID.fromString(raw) }.getOrNull()
                     ?: run {
@@ -43,7 +44,5 @@ class NamespaceServiceImpl(
                     }
             }
 
-    companion object : KLogging() {
-        private const val ENTITY_TYPE = "Namespace"
-    }
+    companion object : KLogging()
 }

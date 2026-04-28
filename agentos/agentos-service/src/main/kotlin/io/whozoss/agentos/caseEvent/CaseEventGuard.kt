@@ -1,6 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Component
@@ -33,13 +34,9 @@ class CaseEventGuard(
         val event = caseEventService.findById(eventId) ?: return false
         return permissionService.hasPermission(
             userService.getCurrentUser().id.toString(),
-            CASE_TYPE,
+            EntityType.CASE,
             event.caseId.toString(),
             Action.READ,
         )
-    }
-
-    companion object {
-        private const val CASE_TYPE = "Case"
     }
 }

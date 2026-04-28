@@ -2,6 +2,7 @@ package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -55,7 +56,7 @@ class AiProviderController(
     permissionService: PermissionService,
 ) : EntityController<AiProvider, UUID, AiProviderResource>(aiProviderService, userService, permissionService) {
 
-    override val entityType = "AiProvider"
+    override val entityType = EntityType.AI_PROVIDER
 
     override fun toResource(entity: AiProvider): AiProviderResource =
         AiProviderResource(

@@ -2,6 +2,7 @@ package io.whozoss.agentos.agentConfig
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -42,7 +43,7 @@ class AgentConfigController(
     permissionService: PermissionService,
 ) : EntityController<AgentConfig, UUID, AgentConfigResource>(agentConfigService, userService, permissionService) {
 
-    override val entityType = "AgentConfig"
+    override val entityType = EntityType.AGENT_CONFIG
 
     override fun toResource(entity: AgentConfig): AgentConfigResource =
         AgentConfigResource(

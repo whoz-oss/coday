@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -27,23 +28,31 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
     "hasPermission with (id, type, permission) delegates to PermissionService" {
         val targetId = UUID.randomUUID()
         every {
-            permissionService.hasPermission(userId, "AgentConfig", targetId.toString(), Action.READ)
+            permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, targetId.toString(), Action.READ)
         } returns true
 
         evaluator.hasPermission(auth, targetId, "AgentConfig", "READ") shouldBe true
 
         verify(exactly = 1) {
-            permissionService.hasPermission(userId, "AgentConfig", targetId.toString(), Action.READ)
+            permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, targetId.toString(), Action.READ)
         }
     }
 
     "hasPermission propagates the permission denial" {
         val targetId = UUID.randomUUID()
         every {
-            permissionService.hasPermission(userId, "Namespace", targetId.toString(), Action.WRITE)
+            permissionService.hasPermission(userId, EntityType.NAMESPACE, targetId.toString(), Action.WRITE)
         } returns false
 
         evaluator.hasPermission(auth, targetId, "Namespace", "WRITE") shouldBe false
+    }
+
+    "hasPermission returns false for an unknown entity label (typo) instead of throwing" {
+        val targetId = UUID.randomUUID()
+
+        evaluator.hasPermission(auth, targetId, "AgenConfig", "READ") shouldBe false
+
+        verify(exactly = 0) { permissionService.hasPermission(any(), any(), any(), any()) }
     }
 
     "hasPermission returns false for an unknown permission string (typo) instead of throwing" {
@@ -75,9 +84,9 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
 
     "hasPermission(domainObject) maps Entity.id and class.simpleName" {
         val id = UUID.randomUUID()
-        val entity = TestEntity(id)
+        val entity = AgentConfig(id)
         every {
-            permissionService.hasPermission(userId, "TestEntity", id.toString(), Action.DELETE)
+            permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, id.toString(), Action.DELETE)
         } returns true
 
         evaluator.hasPermission(auth, entity, "DELETE") shouldBe true
@@ -89,7 +98,7 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
     }
 })
 
-private data class TestEntity(
+private data class AgentConfig(
     val identifier: UUID,
 ) : Entity {
     override val metadata: EntityMetadata = EntityMetadata(id = identifier)

@@ -9,6 +9,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
@@ -205,7 +206,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns regularUser
         every {
             permissionService.filterVisibleIds(
-                callerId.toString(), "AgentConfig", listOf(c1.id.toString(), c2.id.toString()), Action.READ,
+                callerId.toString(), EntityType.AGENT_CONFIG, listOf(c1.id.toString(), c2.id.toString()), Action.READ,
             )
         } returns setOf(c1.id.toString())
         every { service.findByIds(setOf(c1.id)) } returns listOf(c1)

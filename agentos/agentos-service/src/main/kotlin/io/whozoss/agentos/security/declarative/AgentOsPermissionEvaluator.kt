@@ -1,8 +1,10 @@
 package io.whozoss.agentos.security.declarative
 
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
+import mu.KLogging
 import org.springframework.security.access.PermissionEvaluator
 import org.springframework.security.core.Authentication
 import org.springframework.stereotype.Component
@@ -25,9 +27,14 @@ import java.io.Serializable
  * a second [io.whozoss.agentos.user.UserService.getCurrentUser] round-trip
  * during permission evaluation.
  *
- * Permission strings must match enum values of [Action] (READ / WRITE / DELETE);
- * unknown values yield `false` rather than an exception so a typo in SpEL fails
- * closed instead of crashing the request.
+ * **String → typed conversion** : SpEL annotations cannot ergonomically reference
+ * Kotlin enum constants, so [targetType] arrives as a `String` and is converted to
+ * [EntityType] here. Unknown labels (typos in `@PreAuthorize`) fail closed (`false`)
+ * AND emit a WARN log so the misconfiguration surfaces in production logs (story 5-5
+ * AC6 — without this, typos were silently ignored).
+ *
+ * The permission string must match enum values of [Action] (READ / WRITE / DELETE);
+ * unknown values yield `false` (already fail-closed by `runCatching`).
  */
 @Component
 class AgentOsPermissionEvaluator(
@@ -43,7 +50,17 @@ class AgentOsPermissionEvaluator(
         if (authentication == null || targetId == null || targetType == null || permission == null) return false
         val userId = authentication.name ?: return false
         val action = runCatching { Action.valueOf(permission.toString()) }.getOrNull() ?: return false
-        return permissionService.hasPermission(userId, targetType, targetId.toString(), action)
+
+        val entityType = EntityType.fromLabel(targetType)
+        if (entityType == null) {
+            logger.warn {
+                "[AgentOsPermissionEvaluator] Unknown entity label '$targetType' in @PreAuthorize SpEL — " +
+                    "fail-closed (returning false). Check for typos against EntityType.entries."
+            }
+            return false
+        }
+
+        return permissionService.hasPermission(userId, entityType, targetId.toString(), action)
     }
 
     override fun hasPermission(
@@ -55,4 +72,6 @@ class AgentOsPermissionEvaluator(
         val type = targetDomainObject::class.simpleName ?: return false
         return hasPermission(authentication, targetDomainObject.id, type, permission)
     }
+
+    companion object : KLogging()
 }

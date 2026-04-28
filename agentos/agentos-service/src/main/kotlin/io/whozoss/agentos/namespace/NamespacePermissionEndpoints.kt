@@ -1,6 +1,7 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -51,7 +52,7 @@ class NamespacePermissionEndpoints(
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.grantPermission(
-            targetUserId.toString(), ENTITY_TYPE, namespaceId.toString(), PermissionRelation.ADMIN,
+            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
         )
         logger.info { "User ${currentUserId()} granted ADMIN on namespace $namespaceId to user $targetUserId" }
     }
@@ -65,7 +66,7 @@ class NamespacePermissionEndpoints(
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.revokePermission(
-            targetUserId.toString(), ENTITY_TYPE, namespaceId.toString(), PermissionRelation.ADMIN,
+            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
         )
         logger.info { "User ${currentUserId()} revoked ADMIN on namespace $namespaceId from user $targetUserId" }
     }
@@ -79,7 +80,7 @@ class NamespacePermissionEndpoints(
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.grantPermission(
-            targetUserId.toString(), ENTITY_TYPE, namespaceId.toString(), PermissionRelation.MEMBER,
+            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER,
         )
         logger.info { "User ${currentUserId()} granted MEMBER on namespace $namespaceId to user $targetUserId" }
     }
@@ -97,7 +98,7 @@ class NamespacePermissionEndpoints(
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.revokePermission(
-            targetUserId.toString(), ENTITY_TYPE, namespaceId.toString(), PermissionRelation.MEMBER,
+            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER,
         )
         logger.info { "User ${currentUserId()} revoked MEMBER on namespace $namespaceId from user $targetUserId" }
     }
@@ -118,10 +119,10 @@ class NamespacePermissionEndpoints(
 
         val namespaceIdString = namespaceId.toString()
         val adminUserIds = permissionService
-            .listUsersWithPermission(ENTITY_TYPE, namespaceIdString, PermissionRelation.ADMIN)
+            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.ADMIN)
             .toSet()
         val memberUserIds = permissionService
-            .listUsersWithPermission(ENTITY_TYPE, namespaceIdString, PermissionRelation.MEMBER)
+            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.MEMBER)
             .toSet()
         val allUserIds = adminUserIds + memberUserIds
         if (allUserIds.isEmpty()) return emptyList()
@@ -169,7 +170,6 @@ class NamespacePermissionEndpoints(
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()
 
     companion object : KLogging() {
-        private const val ENTITY_TYPE = "Namespace"
         private const val ADMIN = "ADMIN"
         private const val MEMBER = "MEMBER"
     }

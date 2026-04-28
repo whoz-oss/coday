@@ -8,6 +8,7 @@ import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import java.util.UUID
 
@@ -33,7 +34,7 @@ class NamespaceServiceImplSpec : StringSpec({
         val id1 = UUID.randomUUID()
         val id2 = UUID.randomUUID()
         every {
-            permissionService.listEntitiesForUser(userId, "Namespace", Action.READ)
+            permissionService.listEntitiesForUser(userId, EntityType.NAMESPACE,Action.READ)
         } returns listOf(id1.toString(), id2.toString())
 
         val result = service.findIdsVisibleTo(userId, Action.READ)
@@ -44,7 +45,7 @@ class NamespaceServiceImplSpec : StringSpec({
     "findIdsVisibleTo passes Action.WRITE through to the permission lookup" {
         val id1 = UUID.randomUUID()
         every {
-            permissionService.listEntitiesForUser(userId, "Namespace", Action.WRITE)
+            permissionService.listEntitiesForUser(userId, EntityType.NAMESPACE,Action.WRITE)
         } returns listOf(id1.toString())
 
         service.findIdsVisibleTo(userId, Action.WRITE) shouldContainExactly listOf(id1)
@@ -52,7 +53,7 @@ class NamespaceServiceImplSpec : StringSpec({
 
     "findIdsVisibleTo returns empty list when permission lookup yields no entities" {
         every {
-            permissionService.listEntitiesForUser(userId, "Namespace", Action.READ)
+            permissionService.listEntitiesForUser(userId, EntityType.NAMESPACE,Action.READ)
         } returns emptyList()
 
         service.findIdsVisibleTo(userId, Action.READ) shouldBe emptyList()
@@ -61,7 +62,7 @@ class NamespaceServiceImplSpec : StringSpec({
     "findIdsVisibleTo drops malformed UUID strings defensively" {
         val valid = UUID.randomUUID()
         every {
-            permissionService.listEntitiesForUser(userId, "Namespace", Action.READ)
+            permissionService.listEntitiesForUser(userId, EntityType.NAMESPACE,Action.READ)
         } returns listOf(valid.toString(), "not-a-uuid", "")
 
         val result = service.findIdsVisibleTo(userId, Action.READ)

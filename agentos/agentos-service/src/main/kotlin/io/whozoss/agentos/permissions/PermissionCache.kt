@@ -27,10 +27,10 @@ class PermissionCache {
 
         fun generateKey(
             userId: String,
-            entityType: String,
+            entityType: EntityType,
             entityId: String,
             action: Action,
-        ): String = "perm:$userId:$entityType:$entityId:$action"
+        ): String = "perm:$userId:${entityType.label}:$entityId:$action"
     }
 
     private val cache: Cache<String, Boolean> = Caffeine.newBuilder()

@@ -3,6 +3,7 @@ package io.whozoss.agentos.namespace
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -48,7 +49,7 @@ class NamespaceController(
     permissionService: PermissionService,
 ) : EntityController<Namespace, String, NamespaceResource>(namespaceService, userService, permissionService) {
 
-    override val entityType = "Namespace"
+    override val entityType = EntityType.NAMESPACE
 
     override fun toResource(entity: Namespace): NamespaceResource =
         NamespaceResource(
@@ -84,7 +85,7 @@ class NamespaceController(
         val namespaceId = created.id ?: error("Created namespace must have an id")
         val userId = userService.getCurrentUser().id.toString()
         runCatching {
-            permissionService.grantPermission(userId, ENTITY_TYPE, namespaceId.toString(), PermissionRelation.ADMIN)
+            permissionService.grantPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
             logger.info { "Super-admin $userId created namespace $namespaceId with auto-ADMIN grant" }
         }.onFailure { e ->
             logger.warn(e) {
@@ -124,13 +125,13 @@ class NamespaceController(
     private fun cascadeRevokeNamespacePermissions(namespaceId: UUID): Int {
         val namespaceIdString = namespaceId.toString()
         val affectedUserIds = permissionService
-            .listUsersWithPermission(ENTITY_TYPE, namespaceIdString, null)
+            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, null)
             .distinct()
         var revoked = 0
         affectedUserIds.forEach { affectedUserId ->
             listOf(PermissionRelation.ADMIN, PermissionRelation.MEMBER).forEach { relation ->
                 runCatching {
-                    permissionService.revokePermission(affectedUserId, ENTITY_TYPE, namespaceIdString, relation)
+                    permissionService.revokePermission(affectedUserId, EntityType.NAMESPACE, namespaceIdString, relation)
                     revoked++
                 }.onFailure { e ->
                     logger.warn(e) {
@@ -185,7 +186,6 @@ class NamespaceController(
         )
 
     companion object : KLogging() {
-        private const val ENTITY_TYPE = "Namespace"
         private const val SUPER_ADMIN = "SUPER-ADMIN"
         private const val ADMIN = "ADMIN"
         private const val MEMBER = "MEMBER"

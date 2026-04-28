@@ -32,7 +32,7 @@ class PermissionServiceImpl(
 
     override fun hasPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         action: Action
     ): Boolean {
@@ -74,7 +74,7 @@ class PermissionServiceImpl(
      */
     private fun evaluatePermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         action: Action
     ): Boolean {
@@ -102,7 +102,7 @@ class PermissionServiceImpl(
 
     override fun grantPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     ) {
@@ -119,7 +119,7 @@ class PermissionServiceImpl(
 
     override fun revokePermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     ) {
@@ -135,7 +135,7 @@ class PermissionServiceImpl(
     }
 
     override fun listUsersWithPermission(
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation?
     ): List<String> {
@@ -149,7 +149,7 @@ class PermissionServiceImpl(
 
     override fun listEntitiesForUser(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         action: Action
     ): List<String> {
         return try {
@@ -166,7 +166,7 @@ class PermissionServiceImpl(
 
     override fun filterVisibleIds(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         ids: Collection<String>,
         action: Action,
     ): Set<String> {

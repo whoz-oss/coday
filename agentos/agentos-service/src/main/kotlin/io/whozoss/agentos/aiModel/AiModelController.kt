@@ -2,6 +2,7 @@ package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -44,7 +45,7 @@ class AiModelController(
     permissionService: PermissionService,
 ) : EntityController<AiModel, UUID, AiModelResource>(aiModelService, userService, permissionService) {
 
-    override val entityType = "AiModel"
+    override val entityType = EntityType.AI_MODEL
 
     override fun toResource(entity: AiModel): AiModelResource =
         AiModelResource(

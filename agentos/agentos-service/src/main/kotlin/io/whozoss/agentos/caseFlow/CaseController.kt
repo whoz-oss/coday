@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -49,7 +50,7 @@ class CaseController(
     permissionService: PermissionService,
 ) : EntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
 
-    override val entityType = "Case"
+    override val entityType = EntityType.CASE
 
     override fun toResource(entity: Case): CaseResource =
         CaseResource(
@@ -108,7 +109,7 @@ class CaseController(
         val userId = user.id.toString()
         val isNamespaceAdmin = permissionService.hasPermission(
             userId,
-            NAMESPACE_TYPE,
+            EntityType.NAMESPACE,
             parentId.toString(),
             Action.WRITE,
         )
@@ -136,7 +137,7 @@ class CaseController(
         runCatching {
             permissionService.grantPermission(
                 userId,
-                ENTITY_TYPE,
+                EntityType.CASE,
                 caseId.toString(),
                 PermissionRelation.ADMIN,
             )
@@ -209,8 +210,6 @@ class CaseController(
     }
 
     companion object : KLogging() {
-        private const val ENTITY_TYPE = "Case"
-        private const val NAMESPACE_TYPE = "Namespace"
     }
 }
 

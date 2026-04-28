@@ -10,6 +10,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -81,7 +82,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
 
         verify(exactly = 1) {
             permissionService.grantPermission(
-                targetUserId.toString(), "Namespace", namespaceId.toString(), PermissionRelation.ADMIN,
+                targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
             )
         }
     }
@@ -123,7 +124,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
 
         verify(exactly = 1) {
             permissionService.revokePermission(
-                targetUserId.toString(), "Namespace", namespaceId.toString(), PermissionRelation.ADMIN,
+                targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
             )
         }
     }
@@ -155,7 +156,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
 
         verify(exactly = 1) {
             permissionService.grantPermission(
-                targetUserId.toString(), "Namespace", namespaceId.toString(), PermissionRelation.MEMBER,
+                targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER,
             )
         }
     }
@@ -179,12 +180,12 @@ class NamespacePermissionEndpointsSpec : StringSpec({
 
         verify(exactly = 1) {
             permissionService.revokePermission(
-                targetUserId.toString(), "Namespace", namespaceId.toString(), PermissionRelation.MEMBER,
+                targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER,
             )
         }
         verify(exactly = 0) {
             permissionService.revokePermission(
-                targetUserId.toString(), "Namespace", namespaceId.toString(), PermissionRelation.ADMIN,
+                targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
             )
         }
     }
@@ -210,10 +211,10 @@ class NamespacePermissionEndpointsSpec : StringSpec({
         val adminUser = User(metadata = EntityMetadata(id = adminId), externalId = "a", email = "a")
         val memberUser = User(metadata = EntityMetadata(id = memberId), externalId = "m", email = "m")
         every {
-            permissionService.listUsersWithPermission("Namespace", namespaceId.toString(), PermissionRelation.ADMIN)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns listOf(adminId.toString())
         every {
-            permissionService.listUsersWithPermission("Namespace", namespaceId.toString(), PermissionRelation.MEMBER)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns listOf(memberId.toString())
         every { userService.findByIds(any()) } returns listOf(adminUser, memberUser)
 
@@ -228,10 +229,10 @@ class NamespacePermissionEndpointsSpec : StringSpec({
         val dualId = UUID.randomUUID()
         val dualUser = User(metadata = EntityMetadata(id = dualId), externalId = "d", email = "d")
         every {
-            permissionService.listUsersWithPermission("Namespace", namespaceId.toString(), PermissionRelation.ADMIN)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns listOf(dualId.toString())
         every {
-            permissionService.listUsersWithPermission("Namespace", namespaceId.toString(), PermissionRelation.MEMBER)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns listOf(dualId.toString())
         every { userService.findByIds(listOf(dualId)) } returns listOf(dualUser)
 
@@ -245,10 +246,10 @@ class NamespacePermissionEndpointsSpec : StringSpec({
     "listNamespaceUsers returns empty list when no user has a direct relation" {
         every { namespaceService.findById(namespaceId) } returns namespace
         every {
-            permissionService.listUsersWithPermission("Namespace", namespaceId.toString(), PermissionRelation.ADMIN)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns emptyList()
         every {
-            permissionService.listUsersWithPermission("Namespace", namespaceId.toString(), PermissionRelation.MEMBER)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns emptyList()
 
         controller.listNamespaceUsers(namespaceId) shouldBe emptyList()

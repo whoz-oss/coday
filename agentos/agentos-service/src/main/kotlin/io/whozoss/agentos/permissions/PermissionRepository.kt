@@ -19,7 +19,7 @@ interface PermissionRepository {
      */
     fun hasDirectPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     ): Boolean
@@ -35,7 +35,7 @@ interface PermissionRepository {
      */
     fun hasTransitivePermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     ): Boolean
@@ -50,7 +50,7 @@ interface PermissionRepository {
      */
     fun grantPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     )
@@ -65,7 +65,7 @@ interface PermissionRepository {
      */
     fun revokePermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     )
@@ -79,7 +79,7 @@ interface PermissionRepository {
      * @return List of user IDs with the specified relationship
      */
     fun listUsersWithPermission(
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation? = null
     ): List<String>
@@ -95,7 +95,7 @@ interface PermissionRepository {
      */
     fun listEntitiesForUser(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         relation: PermissionRelation
     ): List<String>
 
@@ -119,7 +119,7 @@ interface PermissionRepository {
      */
     fun filterVisibleIds(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         ids: Collection<String>,
         relation: PermissionRelation,
     ): Set<String>

@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -56,7 +57,7 @@ class AiModelGuardSpec : StringSpec({
         every { userService.getCurrentUser() } returns caller
         every { aiProviderService.findById(aiProviderId) } returns provider()
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true
 
         guard.canCreate(resource()) shouldBe true
@@ -66,7 +67,7 @@ class AiModelGuardSpec : StringSpec({
         every { userService.getCurrentUser() } returns caller
         every { aiProviderService.findById(aiProviderId) } returns provider()
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
 
         guard.canCreate(resource()) shouldBe false
@@ -92,7 +93,7 @@ class AiModelGuardSpec : StringSpec({
         every { userService.getCurrentUser() } returns caller
         every { aiProviderService.findById(aiProviderId) } returns provider()
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
         } returns true
 
         guard.canListByProvider(aiProviderId) shouldBe true
@@ -102,7 +103,7 @@ class AiModelGuardSpec : StringSpec({
         every { userService.getCurrentUser() } returns caller
         every { aiProviderService.findById(aiProviderId) } returns provider()
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
         } returns false
 
         guard.canListByProvider(aiProviderId) shouldBe false

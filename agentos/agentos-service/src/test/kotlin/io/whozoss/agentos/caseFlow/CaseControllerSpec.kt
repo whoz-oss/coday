@@ -11,6 +11,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -112,12 +113,12 @@ class CaseControllerSpec : StringSpec({
         val saved = caseEntity()
         every { userService.getCurrentUser() } returns caller
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.READ)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
         } returns true
         every { caseService.create(any()) } returns saved
         every {
             permissionService.grantPermission(
-                callerId.toString(), "Case", saved.metadata.id.toString(), PermissionRelation.ADMIN,
+                callerId.toString(), EntityType.CASE, saved.metadata.id.toString(), PermissionRelation.ADMIN,
             )
         } just Runs
 
@@ -128,7 +129,7 @@ class CaseControllerSpec : StringSpec({
         verify(exactly = 1) { caseService.create(any()) }
         verify(exactly = 1) {
             permissionService.grantPermission(
-                callerId.toString(), "Case", saved.metadata.id.toString(), PermissionRelation.ADMIN,
+                callerId.toString(), EntityType.CASE, saved.metadata.id.toString(), PermissionRelation.ADMIN,
             )
         }
     }
@@ -140,7 +141,7 @@ class CaseControllerSpec : StringSpec({
         every { caseService.create(any()) } returns saved
         every {
             permissionService.grantPermission(
-                callerId.toString(), "Case", saved.metadata.id.toString(), PermissionRelation.ADMIN,
+                callerId.toString(), EntityType.CASE, saved.metadata.id.toString(), PermissionRelation.ADMIN,
             )
         } throws RuntimeException("transient Neo4j failure")
 
@@ -161,7 +162,7 @@ class CaseControllerSpec : StringSpec({
 
         verify(exactly = 1) {
             permissionService.grantPermission(
-                callerId.toString(), "Case", saved.metadata.id.toString(), PermissionRelation.ADMIN,
+                callerId.toString(), EntityType.CASE, saved.metadata.id.toString(), PermissionRelation.ADMIN,
             )
         }
     }
@@ -176,7 +177,7 @@ class CaseControllerSpec : StringSpec({
         val case3 = caseEntity(title = "c")
         every { userService.getCurrentUser() } returns caller
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true
         every { caseService.findByParent(namespaceId) } returns listOf(case1, case2, case3)
 
@@ -186,7 +187,7 @@ class CaseControllerSpec : StringSpec({
         verify(exactly = 1) { caseService.findByParent(namespaceId) }
         // No per-case hasPermission call when caller is namespace ADMIN (avoids N+1)
         verify(exactly = 0) {
-            permissionService.hasPermission(any(), "Case", any(), any())
+            permissionService.hasPermission(any(), EntityType.CASE, any(), any())
         }
     }
 
@@ -194,7 +195,7 @@ class CaseControllerSpec : StringSpec({
         val ownCase = caseEntity(title = "mine")
         every { userService.getCurrentUser() } returns caller
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
         // The permission-filtered repo method returns only cases the user has
         // access to — the repo applies the FR15 rule, controller just maps.
@@ -207,7 +208,7 @@ class CaseControllerSpec : StringSpec({
         result.map { it.id } shouldBe listOf(ownCase.metadata.id)
         // Assert we do NOT fall back to the per-case super.listByParent path
         verify(exactly = 0) {
-            permissionService.hasPermission(any(), "Case", any(), any())
+            permissionService.hasPermission(any(), EntityType.CASE, any(), any())
         }
         verify(exactly = 0) { caseService.findByParent(namespaceId) }
         verify(exactly = 1) { caseService.findAccessibleByUserInNamespace(callerId, namespaceId) }
@@ -216,7 +217,7 @@ class CaseControllerSpec : StringSpec({
     "listByParent non-admin path returns empty list when the user has no accessible case" {
         every { userService.getCurrentUser() } returns caller
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
         every {
             caseService.findAccessibleByUserInNamespace(callerId, namespaceId)
@@ -230,13 +231,13 @@ class CaseControllerSpec : StringSpec({
         val case1 = caseEntity()
         every { userService.getCurrentUser() } returns superAdmin
         every {
-            permissionService.hasPermission(callerId.toString(), "Namespace", namespaceId.toString(), Action.WRITE)
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true
         every { caseService.findByParent(namespaceId) } returns listOf(case1)
 
         controller.listByParent(namespaceId).size shouldBe 1
         verify(exactly = 0) {
-            permissionService.hasPermission(any(), "Case", any(), any())
+            permissionService.hasPermission(any(), EntityType.CASE, any(), any())
         }
     }
 

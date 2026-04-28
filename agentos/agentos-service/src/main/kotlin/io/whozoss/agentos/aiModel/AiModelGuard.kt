@@ -2,6 +2,7 @@ package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Component
@@ -36,7 +37,7 @@ class AiModelGuard(
         val providerId = resource.aiProviderId ?: return false
         val provider = aiProviderService.findById(providerId) ?: return false
         val nsId = provider.namespaceId ?: return false
-        return permissionService.hasPermission(currentUserId(), NAMESPACE_TYPE, nsId.toString(), Action.WRITE)
+        return permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.WRITE)
     }
 
     /**
@@ -55,12 +56,8 @@ class AiModelGuard(
     fun canListByProvider(providerId: UUID): Boolean {
         val provider = aiProviderService.findById(providerId) ?: return false
         val nsId = provider.namespaceId ?: return false
-        return permissionService.hasPermission(currentUserId(), NAMESPACE_TYPE, nsId.toString(), Action.READ)
+        return permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.READ)
     }
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()
-
-    companion object {
-        private const val NAMESPACE_TYPE = "Namespace"
-    }
 }

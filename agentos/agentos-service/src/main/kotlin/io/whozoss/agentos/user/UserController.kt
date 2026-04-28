@@ -3,6 +3,7 @@ package io.whozoss.agentos.user
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.validation.Valid
@@ -50,7 +51,7 @@ class UserController(
      * `hasRole('SUPER_ADMIN')` (or self-or-admin), NOT by the namespace permission
      * graph. [getByIds] is overridden below to bypass [permissionService].
      */
-    override val entityType = "User"
+    override val entityType = EntityType.USER
 
     override fun toResource(entity: User): UserResource =
         UserResource(

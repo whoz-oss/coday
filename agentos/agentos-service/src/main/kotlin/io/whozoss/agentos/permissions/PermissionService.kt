@@ -28,7 +28,7 @@ interface PermissionService {
      */
     fun hasPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         action: Action
     ): Boolean
@@ -43,7 +43,7 @@ interface PermissionService {
      */
     fun grantPermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     )
@@ -58,7 +58,7 @@ interface PermissionService {
      */
     fun revokePermission(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation
     )
@@ -72,7 +72,7 @@ interface PermissionService {
      * @return List of user IDs with the specified relationship
      */
     fun listUsersWithPermission(
-        entityType: String,
+        entityType: EntityType,
         entityId: String,
         relation: PermissionRelation? = null
     ): List<String>
@@ -87,7 +87,7 @@ interface PermissionService {
      */
     fun listEntitiesForUser(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         action: Action
     ): List<String>
 
@@ -119,7 +119,7 @@ interface PermissionService {
      */
     fun filterVisibleIds(
         userId: String,
-        entityType: String,
+        entityType: EntityType,
         ids: Collection<String>,
         action: Action,
     ): Set<String>

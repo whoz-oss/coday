@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
@@ -75,7 +76,7 @@ class MethodSecurityIntegrationSpec : StringSpec() {
             val targetId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns regularUser
             every {
-                permissionService.hasPermission(regularUser.id.toString(), "Test", targetId.toString(), Action.READ)
+                permissionService.hasPermission(regularUser.id.toString(), EntityType.AGENT_CONFIG, targetId.toString(), Action.READ)
             } returns true
 
             mockMvc.perform(get("/__test/with-permission/$targetId"))
@@ -86,7 +87,7 @@ class MethodSecurityIntegrationSpec : StringSpec() {
             val targetId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns regularUser
             every {
-                permissionService.hasPermission(regularUser.id.toString(), "Test", targetId.toString(), Action.READ)
+                permissionService.hasPermission(regularUser.id.toString(), EntityType.AGENT_CONFIG, targetId.toString(), Action.READ)
             } returns false
 
             mockMvc.perform(get("/__test/with-permission/$targetId"))
@@ -111,7 +112,7 @@ class MethodSecurityIntegrationSpec : StringSpec() {
             val targetId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns regularUser
             every {
-                permissionService.hasPermission(regularUser.id.toString(), "Test", targetId.toString(), Action.READ)
+                permissionService.hasPermission(regularUser.id.toString(), EntityType.AGENT_CONFIG, targetId.toString(), Action.READ)
             } returns false
 
             mockMvc.perform(get("/__test/hidden/$targetId"))
@@ -122,7 +123,7 @@ class MethodSecurityIntegrationSpec : StringSpec() {
             val targetId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns regularUser
             every {
-                permissionService.hasPermission(regularUser.id.toString(), "Test", targetId.toString(), Action.READ)
+                permissionService.hasPermission(regularUser.id.toString(), EntityType.AGENT_CONFIG, targetId.toString(), Action.READ)
             } returns true
 
             mockMvc.perform(get("/__test/hidden/$targetId"))
@@ -143,7 +144,7 @@ class SecurityTestController {
     fun permitAll(): Map<String, String> = mapOf("status" to "ok")
 
     @GetMapping("/with-permission/{id}")
-    @PreAuthorize("hasPermission(#id, 'Test', 'READ')")
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     fun withPermission(@PathVariable id: UUID): Map<String, String> = mapOf("id" to id.toString())
 
     @GetMapping("/admin-only")
@@ -151,7 +152,7 @@ class SecurityTestController {
     fun adminOnly(): Map<String, String> = mapOf("status" to "admin")
 
     @GetMapping("/hidden/{id}")
-    @PreAuthorize("hasPermission(#id, 'Test', 'READ')")
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
     fun hidden(@PathVariable id: UUID): Map<String, String> = mapOf("id" to id.toString())
 }

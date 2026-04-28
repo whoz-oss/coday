@@ -11,6 +11,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -163,7 +164,7 @@ class NamespaceControllerSpec : StringSpec({
 
         verify(exactly = 1) {
             permissionService.grantPermission(
-                superAdminId.toString(), "Namespace", savedEntity.id.toString(), PermissionRelation.ADMIN,
+                superAdminId.toString(), EntityType.NAMESPACE, savedEntity.id.toString(), PermissionRelation.ADMIN,
             )
         }
     }
@@ -204,7 +205,7 @@ class NamespaceControllerSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         every { namespaceService.delete(entity.id) } returns true
         every {
-            permissionService.listUsersWithPermission("Namespace", entity.id.toString(), null)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
         } returns listOf(userA, userB)
         every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
 
@@ -213,10 +214,10 @@ class NamespaceControllerSpec : StringSpec({
         verify(exactly = 1) { namespaceService.delete(entity.id) }
         listOf(userA, userB).forEach { uid ->
             verify(exactly = 1) {
-                permissionService.revokePermission(uid, "Namespace", entity.id.toString(), PermissionRelation.ADMIN)
+                permissionService.revokePermission(uid, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
             }
             verify(exactly = 1) {
-                permissionService.revokePermission(uid, "Namespace", entity.id.toString(), PermissionRelation.MEMBER)
+                permissionService.revokePermission(uid, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
             }
         }
     }
@@ -228,17 +229,17 @@ class NamespaceControllerSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         every { namespaceService.delete(entity.id) } returns true
         every {
-            permissionService.listUsersWithPermission("Namespace", entity.id.toString(), null)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
         } returns listOf(userA, userA)
         every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
 
         controller.delete(entity.id)
 
         verify(exactly = 1) {
-            permissionService.revokePermission(userA, "Namespace", entity.id.toString(), PermissionRelation.ADMIN)
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
         }
         verify(exactly = 1) {
-            permissionService.revokePermission(userA, "Namespace", entity.id.toString(), PermissionRelation.MEMBER)
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
         }
     }
 
@@ -255,7 +256,7 @@ class NamespaceControllerSpec : StringSpec({
         every { namespaceService.findById(entity.id) } returns entity
         every { userService.getCurrentUser() } returns superAdmin
         every {
-            permissionService.listUsersWithPermission("Namespace", entity.id.toString(), null)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
         } throws RuntimeException("neo4j down")
 
         shouldThrow<RuntimeException> { controller.delete(entity.id) }
@@ -272,28 +273,28 @@ class NamespaceControllerSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         every { namespaceService.delete(entity.id) } returns true
         every {
-            permissionService.listUsersWithPermission("Namespace", entity.id.toString(), null)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
         } returns listOf(userA, userB)
         every {
-            permissionService.revokePermission(userA, "Namespace", entity.id.toString(), PermissionRelation.ADMIN)
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
         } throws RuntimeException("transient")
         every {
-            permissionService.revokePermission(userA, "Namespace", entity.id.toString(), PermissionRelation.MEMBER)
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
         } just Runs
         every {
-            permissionService.revokePermission(userB, "Namespace", entity.id.toString(), PermissionRelation.ADMIN)
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
         } just Runs
         every {
-            permissionService.revokePermission(userB, "Namespace", entity.id.toString(), PermissionRelation.MEMBER)
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
         } just Runs
 
         controller.delete(entity.id)
 
         verify(exactly = 1) {
-            permissionService.revokePermission(userB, "Namespace", entity.id.toString(), PermissionRelation.ADMIN)
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
         }
         verify(exactly = 1) {
-            permissionService.revokePermission(userB, "Namespace", entity.id.toString(), PermissionRelation.MEMBER)
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
         }
     }
 })

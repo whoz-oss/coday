@@ -5,6 +5,7 @@ package io.whozoss.agentos.caseEvent
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -99,7 +100,7 @@ class CaseEventRestController(
         if (events.isEmpty()) return emptyList()
         val caseIds = events.map { it.caseId.toString() }.distinct()
         val visibleCaseIds = permissionService
-            .filterVisibleIds(currentUser.id.toString(), "Case", caseIds, Action.READ)
+            .filterVisibleIds(currentUser.id.toString(), EntityType.CASE, caseIds, Action.READ)
         return events.filter { it.caseId.toString() in visibleCaseIds }
     }
 
