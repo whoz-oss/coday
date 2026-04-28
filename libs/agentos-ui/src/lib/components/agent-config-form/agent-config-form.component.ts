@@ -191,8 +191,12 @@ export class AgentConfigFormComponent implements OnInit {
       const name = row.config.name ?? ''
       const rawTools = row.toolsControl.value.trim()
       if (rawTools === '') {
-        // null means all tools allowed — the backend contract accepts null per integration
-        // even though the generated TS type declares Array<string>.
+        // null means all tools allowed for this integration (backend contract).
+        // The generated TS type declares Array<string> but the backend accepts null
+        // per integration to mean "all tools allowed". The spec does not yet express
+        // this nullable value because springdoc does not emit nullable:true on Map
+        // additionalProperties for Kotlin nullable generics. Cast is intentional.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result[name] = null as any
       } else {
         result[name] = rawTools
