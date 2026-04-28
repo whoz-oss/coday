@@ -31,6 +31,9 @@ neo4jEmbedded = "2026.02.2"
 netty = "4.2.9.Final"
 testcontainers = "1.20.4"
 
+# MCP Java SDK — version shipped by Spring AI 1.1.x BOM
+mcpSdk = "0.17.0"
+
 # AgentOS modules versions
 agentosSdk = "0.126.0"
 agentosService = "0.0.1-SNAPSHOT"
@@ -88,6 +91,9 @@ neo4j-harness = { module = "org.neo4j.test:neo4j-harness", version.ref = "neo4jE
 # Testcontainers
 testcontainers-neo4j = { module = "org.testcontainers:neo4j", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+
+# MCP Java SDK
+mcp-sdk = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcpSdk" }
 
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
