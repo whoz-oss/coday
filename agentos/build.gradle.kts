@@ -30,7 +30,8 @@ val pluginBuilds = listOf(
     "agentos-datetime-plugin",
     "agentos-tmux-plugin",
     "agentos-bash-plugin",
-    "agentos-file-plugin"
+    "agentos-file-plugin",
+    "agentos-mcp-plugin"
 )
 
 // Resolve all paths at configuration time into plain File values
