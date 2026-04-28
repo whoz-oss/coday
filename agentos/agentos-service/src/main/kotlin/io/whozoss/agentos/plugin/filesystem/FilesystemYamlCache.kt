@@ -63,9 +63,12 @@ class FilesystemYamlCache<T>(
         val items =
             Files
                 .walk(directory)
-                .filter { Files.isRegularFile(it) }
-                .filter { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") }
-                .toList()
+                .use { stream ->
+                    stream
+                        .filter { Files.isRegularFile(it) }
+                        .filter { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") }
+                        .toList()
+                }
                 .mapNotNull { file: Path ->
                     runCatching { parser(file) }
                         .onFailure { logger.error(it) { "[FilesystemYamlCache] Failed to parse $file: ${it.message}" } }

@@ -34,6 +34,7 @@ class AgentConfigServiceImpl(
     override fun findDefault(namespaceId: UUID): AgentConfig =
         agentConfigRepository
             .findByParent(namespaceId)
+            // TODO: add a dedicated findOldestByParent repository method to avoid full scan
             .minByOrNull { it.metadata.created }
             ?: DEFAULT_AGENT_CONFIG
 
