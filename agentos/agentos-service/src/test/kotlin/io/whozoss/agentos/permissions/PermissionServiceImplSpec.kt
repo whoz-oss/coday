@@ -260,4 +260,59 @@ class PermissionServiceImplSpec : StringSpec({
         // Then
         result shouldBe emptyList()
     }
+
+    // -------------------------------------------------------------------------
+    // filterVisibleIds — batch authorization (story 5-3)
+    // -------------------------------------------------------------------------
+
+    "filterVisibleIds returns the subset reported visible by the repository" {
+        val id1 = UUID.randomUUID().toString()
+        val id2 = UUID.randomUUID().toString()
+        val id3 = UUID.randomUUID().toString()
+        every {
+            mockPermissionRepository.filterVisibleIds(userId, "AgentConfig", listOf(id1, id2, id3), PermissionRelation.MEMBER)
+        } returns setOf(id1, id3)
+
+        permissionService.filterVisibleIds(userId, "AgentConfig", listOf(id1, id2, id3), Action.READ) shouldBe setOf(id1, id3)
+    }
+
+    "filterVisibleIds maps WRITE/DELETE actions to ADMIN relation" {
+        val id1 = UUID.randomUUID().toString()
+        every {
+            mockPermissionRepository.filterVisibleIds(userId, "AgentConfig", listOf(id1), PermissionRelation.ADMIN)
+        } returns setOf(id1)
+
+        permissionService.filterVisibleIds(userId, "AgentConfig", listOf(id1), Action.WRITE) shouldBe setOf(id1)
+        permissionService.filterVisibleIds(userId, "AgentConfig", listOf(id1), Action.DELETE) shouldBe setOf(id1)
+
+        verify(exactly = 2) {
+            mockPermissionRepository.filterVisibleIds(userId, "AgentConfig", listOf(id1), PermissionRelation.ADMIN)
+        }
+    }
+
+    "filterVisibleIds short-circuits to empty set on empty input WITHOUT touching the repository" {
+        val result = permissionService.filterVisibleIds(userId, "AgentConfig", emptyList(), Action.READ)
+
+        result shouldBe emptySet()
+        verify(exactly = 0) { mockPermissionRepository.filterVisibleIds(any(), any(), any(), any()) }
+    }
+
+    "filterVisibleIds returns empty set when no candidate id is visible" {
+        val id1 = UUID.randomUUID().toString()
+        val id2 = UUID.randomUUID().toString()
+        every {
+            mockPermissionRepository.filterVisibleIds(userId, "AgentConfig", listOf(id1, id2), PermissionRelation.MEMBER)
+        } returns emptySet()
+
+        permissionService.filterVisibleIds(userId, "AgentConfig", listOf(id1, id2), Action.READ) shouldBe emptySet()
+    }
+
+    "filterVisibleIds returns empty set (fail-closed) when the repository throws" {
+        val id1 = UUID.randomUUID().toString()
+        every {
+            mockPermissionRepository.filterVisibleIds(any(), any(), any(), any())
+        } throws RuntimeException("Cypher failure")
+
+        permissionService.filterVisibleIds(userId, "AgentConfig", listOf(id1), Action.READ) shouldBe emptySet()
+    }
 })

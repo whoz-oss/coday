@@ -212,4 +212,40 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("userId") userId: String,
         @Param("entityLabel") entityLabel: String
     ): List<String>
+
+    // Batch authorization queries — filter a candidate list of ids by user permission
+    // in a single Cypher round-trip (1 logical query, 2 Cypher branches via UNION).
+    // Same shape as findEntitiesWhereUserHasAccessTransitive / findEntitiesWhereUserIsAdminTransitive
+    // but bounded by `e.id IN $ids` so the result set scales linearly with the input
+    // rather than the namespace size.
+
+    @Query("""
+        MATCH (u:User {id: ${'$'}userId})-[:ADMIN|MEMBER]->(n:Namespace)<-[:BELONGS_TO]-(e)
+        WHERE ${'$'}entityLabel IN labels(e) AND e.id IN ${'$'}ids
+        RETURN e.id
+        UNION
+        MATCH (u:User {id: ${'$'}userId})-[:ADMIN|MEMBER]->(e)
+        WHERE ${'$'}entityLabel IN labels(e) AND e.id IN ${'$'}ids
+        RETURN e.id
+    """)
+    fun filterIdsWhereUserHasAccess(
+        @Param("userId") userId: String,
+        @Param("entityLabel") entityLabel: String,
+        @Param("ids") ids: Collection<String>,
+    ): List<String>
+
+    @Query("""
+        MATCH (u:User {id: ${'$'}userId})-[:ADMIN]->(n:Namespace)<-[:BELONGS_TO]-(e)
+        WHERE ${'$'}entityLabel IN labels(e) AND e.id IN ${'$'}ids
+        RETURN e.id
+        UNION
+        MATCH (u:User {id: ${'$'}userId})-[:ADMIN]->(e)
+        WHERE ${'$'}entityLabel IN labels(e) AND e.id IN ${'$'}ids
+        RETURN e.id
+    """)
+    fun filterIdsWhereUserIsAdmin(
+        @Param("userId") userId: String,
+        @Param("entityLabel") entityLabel: String,
+        @Param("ids") ids: Collection<String>,
+    ): List<String>
 }

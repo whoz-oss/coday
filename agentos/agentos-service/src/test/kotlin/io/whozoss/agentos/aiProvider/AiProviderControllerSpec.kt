@@ -9,9 +9,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -28,7 +30,9 @@ import java.util.UUID
 class AiProviderControllerSpec : StringSpec({
 
     val service = mockk<AiProviderService>()
-    val controller = AiProviderController(service)
+    val userService = mockk<UserService>(relaxed = true)
+    val permissionService = mockk<PermissionService>(relaxed = true)
+    val controller = AiProviderController(service, userService, permissionService)
 
     val namespaceId = UUID.randomUUID()
 

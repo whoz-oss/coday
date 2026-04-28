@@ -63,6 +63,13 @@ class InMemoryPermissionServiceImpl : PermissionService {
         action: Action
     ): List<String> = emptyList()
 
+    override fun filterVisibleIds(
+        userId: String,
+        entityType: String,
+        ids: Collection<String>,
+        action: Action,
+    ): Set<String> = emptySet()
+
     override fun clearUserCache(userId: String) {
         // No-op in in-memory mode
     }

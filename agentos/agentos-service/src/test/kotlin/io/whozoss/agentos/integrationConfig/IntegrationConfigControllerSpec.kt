@@ -9,7 +9,9 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
@@ -21,7 +23,9 @@ import java.util.UUID
 class IntegrationConfigControllerSpec : StringSpec({
 
     val service = mockk<IntegrationConfigService>()
-    val controller = IntegrationConfigController(service)
+    val userService = mockk<UserService>(relaxed = true)
+    val permissionService = mockk<PermissionService>(relaxed = true)
+    val controller = IntegrationConfigController(service, userService, permissionService)
 
     val namespaceId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")

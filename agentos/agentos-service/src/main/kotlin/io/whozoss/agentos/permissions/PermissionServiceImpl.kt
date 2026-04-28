@@ -164,6 +164,25 @@ class PermissionServiceImpl(
         }
     }
 
+    override fun filterVisibleIds(
+        userId: String,
+        entityType: String,
+        ids: Collection<String>,
+        action: Action,
+    ): Set<String> {
+        if (ids.isEmpty()) return emptySet()
+        return try {
+            val requiredRelation = when (action) {
+                Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
+                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
+            }
+            permissionRepository.filterVisibleIds(userId, entityType, ids, requiredRelation)
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to filter visible ids for user=$userId, type=$entityType, action=$action" }
+            emptySet() // Fail-closed: any error denies access
+        }
+    }
+
     override fun clearUserCache(userId: String) {
         try {
             permissionCache.invalidateUser(userId)

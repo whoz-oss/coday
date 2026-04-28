@@ -70,8 +70,21 @@ class NamespaceController(
     override fun getById(@PathVariable id: UUID): NamespaceResource = super.getById(id)
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PostFilter("hasPermission(filterObject.id, 'Namespace', 'READ')")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<NamespaceResource> = super.getByIds(ids)
+    @PreAuthorize("isAuthenticated()")
+    override fun getByIds(@RequestBody ids: List<UUID>): List<NamespaceResource> {
+        if (ids.isEmpty()) return emptyList()
+        val currentUser = userService.getCurrentUser()
+        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
+            ids.toSet()
+        } else {
+            permissionService
+                .filterVisibleIds(currentUser.id.toString(), ENTITY_TYPE, ids.map(UUID::toString), Action.READ)
+                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                .toSet()
+        }
+        if (visibleIds.isEmpty()) return emptyList()
+        return namespaceService.findByIds(visibleIds).map(::toResource)
+    }
 
     /**
      * POST /api/namespaces — SUPER_ADMIN only (FR1). Auto-grants ADMIN on the new

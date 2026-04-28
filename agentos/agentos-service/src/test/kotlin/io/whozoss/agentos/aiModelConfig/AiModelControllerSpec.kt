@@ -11,8 +11,10 @@ import io.whozoss.agentos.aiModel.AiModelController
 import io.whozoss.agentos.aiModel.AiModelResource
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
@@ -25,7 +27,9 @@ import java.util.UUID
 class AiModelControllerSpec : StringSpec({
 
     val service = mockk<AiModelService>()
-    val controller = AiModelController(service)
+    val userService = mockk<UserService>(relaxed = true)
+    val permissionService = mockk<PermissionService>(relaxed = true)
+    val controller = AiModelController(service, userService, permissionService)
 
     val namespaceId = UUID.randomUUID()
     val aiProviderId = UUID.randomUUID()

@@ -6,6 +6,7 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.caseFlow.Case
@@ -450,6 +451,71 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             // letting the controller's short-circuit () skip per-case
             // filtering for a namespace admin.
             caseRepository.findByParent(namespace.id) shouldHaveSize 2
+        }
+
+        // ---------------------------------------------------------------------
+        // filterVisibleIds — batch authorization (story 5-3)
+        // ---------------------------------------------------------------------
+
+        "filterVisibleIds keeps namespace-MEMBER-visible AgentConfigs and drops the rest in a single batch" {
+            val memberUser = createUser("member@example.com")
+            val nsAccessible = createNamespace("ns-accessible")
+            val nsForeign = createNamespace("ns-foreign")
+            val agentInside1 = agentConfigRepository.save(
+                AgentConfig(metadata = EntityMetadata(), namespaceId = nsAccessible.id, name = "agent-1"),
+            )
+            val agentInside2 = agentConfigRepository.save(
+                AgentConfig(metadata = EntityMetadata(), namespaceId = nsAccessible.id, name = "agent-2"),
+            )
+            val agentForeign = agentConfigRepository.save(
+                AgentConfig(metadata = EntityMetadata(), namespaceId = nsForeign.id, name = "agent-foreign"),
+            )
+
+            // memberUser has MEMBER on ns-accessible only — should inherit READ
+            // on agent-1 and agent-2 transitively, NOT on agent-foreign.
+            permissionNodeRepository.createMemberPermission(
+                userId = memberUser.id.toString(),
+                entityId = nsAccessible.id.toString(),
+                entityLabel = "Namespace",
+            )
+
+            val candidateIds = listOf(
+                agentInside1.id.toString(),
+                agentInside2.id.toString(),
+                agentForeign.id.toString(),
+            )
+
+            val visible = permissionService.filterVisibleIds(
+                memberUser.id.toString(),
+                "AgentConfig",
+                candidateIds,
+                Action.READ,
+            )
+
+            visible shouldHaveSize 2
+            visible shouldBe setOf(agentInside1.id.toString(), agentInside2.id.toString())
+        }
+
+        "filterVisibleIds with WRITE action requires ADMIN — namespace MEMBER returns empty set" {
+            val memberUser = createUser("member-write@example.com")
+            val namespace = createNamespace("ns-member-write")
+            val agent = agentConfigRepository.save(
+                AgentConfig(metadata = EntityMetadata(), namespaceId = namespace.id, name = "agent-write"),
+            )
+
+            // Member-only relation — no ADMIN propagation.
+            permissionNodeRepository.createMemberPermission(
+                userId = memberUser.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace",
+            )
+
+            permissionService.filterVisibleIds(
+                memberUser.id.toString(),
+                "AgentConfig",
+                listOf(agent.id.toString()),
+                Action.WRITE,
+            ).shouldBeEmpty()
         }
     }
 }

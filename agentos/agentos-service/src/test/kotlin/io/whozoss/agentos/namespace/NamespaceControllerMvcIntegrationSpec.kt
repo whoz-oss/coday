@@ -147,5 +147,41 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
                 // Every item returned must carry role = "SUPER-ADMIN"
                 .andExpect(jsonPath("$[*].role", org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.equalTo("SUPER-ADMIN"))))
         }
+
+        // -------------------------------------------------------------------------
+        // POST /api/namespaces/by-ids — batch authorization (story 5-3)
+        // -------------------------------------------------------------------------
+
+        "POST /api/namespaces/by-ids returns matching namespaces for super-admin (admin bypass)" {
+            // The "test" profile resolves the caller to a super-admin. The new
+            // by-ids implementation short-circuits permissionService.filterVisibleIds
+            // for admins and returns all entities matching the requested ids.
+            // Subset-filtering for non-admins is covered by the UnitSpec
+            // (NamespaceControllerSpec) which mocks the permission lookup directly.
+            val a = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "byid-a-${UUID.randomUUID()}"),
+            )
+            val b = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "byid-b-${UUID.randomUUID()}"),
+            )
+
+            mockMvc.perform(
+                post("/api/namespaces/by-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""["${a.id}", "${b.id}"]"""),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+        }
+
+        "POST /api/namespaces/by-ids with empty array returns 200 with empty list" {
+            mockMvc.perform(
+                post("/api/namespaces/by-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""[]"""),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
     }
 }

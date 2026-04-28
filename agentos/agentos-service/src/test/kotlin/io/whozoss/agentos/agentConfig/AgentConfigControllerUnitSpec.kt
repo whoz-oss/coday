@@ -8,7 +8,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
@@ -29,9 +33,24 @@ import java.util.UUID
 class AgentConfigControllerUnitSpec : StringSpec({
 
     val service = mockk<AgentConfigService>()
-    val controller = AgentConfigController(service)
+    val userService = mockk<UserService>()
+    val permissionService = mockk<PermissionService>()
+    val controller = AgentConfigController(service, userService, permissionService)
 
     val namespaceId = UUID.randomUUID()
+    val callerId = UUID.randomUUID()
+    val superAdmin = User(
+        metadata = EntityMetadata(id = callerId),
+        externalId = "root@example.com",
+        email = "root@example.com",
+        isAdmin = true,
+    )
+    val regularUser = User(
+        metadata = EntityMetadata(id = callerId),
+        externalId = "user@example.com",
+        email = "user@example.com",
+        isAdmin = false,
+    )
 
     fun config(
         id: UUID = UUID.randomUUID(),
@@ -169,14 +188,47 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // getByIds (inherited)
     // -------------------------------------------------------------------------
 
-    "getByIds returns matching entities mapped to resources" {
+    "getByIds returns all matching entities for a super-admin caller (admin bypass)" {
         val c1 = config(name = "agent-a")
         val c2 = config(name = "agent-b")
-        every { service.findByIds(listOf(c1.id, c2.id)) } returns listOf(c1, c2)
+        every { userService.getCurrentUser() } returns superAdmin
+        every { service.findByIds(setOf(c1.id, c2.id)) } returns listOf(c1, c2)
 
         val result = controller.getByIds(listOf(c1.id, c2.id))
 
         result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+    }
+
+    "getByIds filters via permissionService.filterVisibleIds for a regular caller" {
+        val c1 = config(name = "agent-visible")
+        val c2 = config(name = "agent-denied")
+        every { userService.getCurrentUser() } returns regularUser
+        every {
+            permissionService.filterVisibleIds(
+                callerId.toString(), "AgentConfig", listOf(c1.id.toString(), c2.id.toString()), Action.READ,
+            )
+        } returns setOf(c1.id.toString())
+        every { service.findByIds(setOf(c1.id)) } returns listOf(c1)
+
+        val result = controller.getByIds(listOf(c1.id, c2.id))
+
+        result shouldBe listOf(controller.toResource(c1))
+    }
+
+    "getByIds returns empty list for a regular caller with no visible ids (without hitting service.findByIds)" {
+        val c1 = config()
+        every { userService.getCurrentUser() } returns regularUser
+        every {
+            permissionService.filterVisibleIds(any(), any(), any(), any())
+        } returns emptySet()
+
+        controller.getByIds(listOf(c1.id)) shouldBe emptyList()
+    }
+
+    "getByIds short-circuits to empty list on empty input WITHOUT touching userService or permissionService" {
+        controller.getByIds(emptyList()) shouldBe emptyList()
+        verify(exactly = 0) { userService.getCurrentUser() }
+        verify(exactly = 0) { permissionService.filterVisibleIds(any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------

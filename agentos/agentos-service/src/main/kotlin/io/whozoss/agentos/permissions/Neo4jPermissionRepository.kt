@@ -235,6 +235,44 @@ class Neo4jPermissionRepository(
         }
     }
 
+    override fun filterVisibleIds(
+        userId: String,
+        entityType: String,
+        ids: Collection<String>,
+        relation: PermissionRelation,
+    ): Set<String> {
+        return try {
+            when (relation) {
+                PermissionRelation.ADMIN -> permissionNodeRepository.filterIdsWhereUserIsAdmin(
+                    userId = userId,
+                    entityLabel = entityType,
+                    ids = ids,
+                )
+                PermissionRelation.MEMBER -> {
+                    if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
+                        // Owner-private entities (Case, FR15) — MEMBER on the namespace does NOT
+                        // grant READ on children. Same rule as listEntitiesForUser:
+                        // only direct relation OR transitive via namespace ADMIN counts.
+                        permissionNodeRepository.filterIdsWhereUserIsAdmin(
+                            userId = userId,
+                            entityLabel = entityType,
+                            ids = ids,
+                        )
+                    } else {
+                        permissionNodeRepository.filterIdsWhereUserHasAccess(
+                            userId = userId,
+                            entityLabel = entityType,
+                            ids = ids,
+                        )
+                    }
+                }
+            }.toSet()
+        } catch (e: Exception) {
+            logger.error(e) { "Error filtering visible ids for user=$userId, type=$entityType, relation=$relation" }
+            emptySet() // Fail-closed: return empty set on error
+        }
+    }
+
     /**
      * Checks if the entity type is a child of Namespace in the hierarchy.
      * These entities support transitive permissions through their parent namespace.

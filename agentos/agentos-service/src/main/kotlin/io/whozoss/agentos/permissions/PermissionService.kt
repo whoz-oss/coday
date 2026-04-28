@@ -92,6 +92,39 @@ interface PermissionService {
     ): List<String>
 
     /**
+     * Filters a candidate list of entity ids, returning only those the user can access
+     * with the given action. Resolves in a single Cypher round-trip (constant cost in
+     * the number of ids).
+     *
+     * Designed for batch endpoints (`POST /by-ids`) that previously paid an N+1 cost
+     * via `@PostFilter` per-item evaluation. Replaces the pattern :
+     *   `@PostFilter("hasPermission(filterObject.id, 'X', 'READ')")`
+     * with an explicit body :
+     *   `permissionService.filterVisibleIds(userId, "X", ids, READ)`
+     *
+     * Caller responsibility :
+     * - the **bypass admin** (return all ids if `currentUser.isAdmin`) is handled in
+     *   the controller body, NOT here. This method does not consult `User.isAdmin`.
+     * - empty `ids` short-circuits to `emptySet()` without touching the repository.
+     *
+     * The result is **not cached** : a batch Cypher query is already cheap (single
+     * round-trip), and caching a `Set<String>` per (user × type × action × hash(ids))
+     * would explode memory. See AC4 of story 5-3 for the rationale.
+     *
+     * @param userId The ID of the user
+     * @param entityType The entity type to filter (e.g. `"AgentConfig"`)
+     * @param ids The candidate ids
+     * @param action The required action (`READ` → MEMBER+ADMIN, `WRITE`/`DELETE` → ADMIN)
+     * @return Subset of `ids` the user can access. Fail-closed (empty set) on error.
+     */
+    fun filterVisibleIds(
+        userId: String,
+        entityType: String,
+        ids: Collection<String>,
+        action: Action,
+    ): Set<String>
+
+    /**
      * Clears the permission cache for a specific user.
      * Should be called when user permissions change.
      *

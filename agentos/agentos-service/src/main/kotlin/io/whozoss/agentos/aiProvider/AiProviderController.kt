@@ -2,14 +2,16 @@ package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.access.prepost.PostFilter
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -50,6 +52,8 @@ import java.util.UUID
 )
 class AiProviderController(
     private val aiProviderService: AiProviderService,
+    private val userService: UserService,
+    private val permissionService: PermissionService,
 ) : EntityController<AiProvider, UUID, AiProviderResource>(aiProviderService) {
 
     override fun toResource(entity: AiProvider): AiProviderResource =
@@ -101,8 +105,21 @@ class AiProviderController(
     override fun getById(@PathVariable id: UUID): AiProviderResource = super.getById(id)
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PostFilter("hasPermission(filterObject.id, 'AiProvider', 'READ')")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<AiProviderResource> = super.getByIds(ids)
+    @PreAuthorize("isAuthenticated()")
+    override fun getByIds(@RequestBody ids: List<UUID>): List<AiProviderResource> {
+        if (ids.isEmpty()) return emptyList()
+        val currentUser = userService.getCurrentUser()
+        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
+            ids.toSet()
+        } else {
+            permissionService
+                .filterVisibleIds(currentUser.id.toString(), "AiProvider", ids.map(UUID::toString), Action.READ)
+                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                .toSet()
+        }
+        if (visibleIds.isEmpty()) return emptyList()
+        return aiProviderService.findByIds(visibleIds).map(::toResource)
+    }
 
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")

@@ -98,4 +98,29 @@ interface PermissionRepository {
         entityType: String,
         relation: PermissionRelation
     ): List<String>
+
+    /**
+     * Filters a candidate list of entity ids, returning only those the user can access
+     * (direct relation OR transitive via the parent namespace) with the given relation.
+     *
+     * Resolves in a single Cypher round-trip regardless of the input size — the cost
+     * scales with the size of `ids` rather than with the namespace cardinality.
+     * Designed for batch endpoints (`/by-ids`) that previously paid an N+1 cost via
+     * `@PostFilter` per-item evaluation.
+     *
+     * Caller is expected to short-circuit on `ids.isEmpty()` before invoking the
+     * repository — the Cypher query is not run for an empty input.
+     *
+     * @param userId The ID of the user
+     * @param entityType The Neo4j label / type of entities to filter (e.g. `"AgentConfig"`)
+     * @param ids The candidate ids to filter
+     * @param relation The required relation (`MEMBER` for READ, `ADMIN` for WRITE/DELETE)
+     * @return Subset of `ids` that the user can access with the given relation
+     */
+    fun filterVisibleIds(
+        userId: String,
+        entityType: String,
+        ids: Collection<String>,
+        relation: PermissionRelation,
+    ): Set<String>
 }
