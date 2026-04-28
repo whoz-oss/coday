@@ -45,9 +45,13 @@ class McpConnection(
      * @throws McpConnectionException if the process fails to start or the MCP handshake times out.
      */
     fun connect() {
-        logger.info { "[MCP] Connecting to server: ${config.command} ${config.args.joinToString(" ")}" }
+        require(config.transport == McpTransport.STDIO) {
+            "McpConnection only supports stdio transport; HTTP transport is not yet implemented"
+        }
+        val command = config.command!!
+        logger.info { "[MCP] Connecting to server: $command ${config.args.joinToString(" ")}" }
 
-        val paramsBuilder = ServerParameters.builder(config.command)
+        val paramsBuilder = ServerParameters.builder(command)
             .args(config.args)
         if (config.env.isNotEmpty()) {
             paramsBuilder.env(config.env)
@@ -57,7 +61,7 @@ class McpConnection(
         transport = StdioClientTransport(params, McpJsonMapper.getDefault())
 
         client = McpClient.sync(transport)
-            .requestTimeout(Duration.ofSeconds(config.timeoutSeconds.toLong()))
+            .requestTimeout(Duration.ofSeconds(config.timeoutSeconds))
             .build()
 
         try {
@@ -65,7 +69,7 @@ class McpConnection(
             logger.info { "[MCP] Connected: ${initResult.serverInfo?.name} ${initResult.serverInfo?.version}" }
         } catch (e: Exception) {
             runCatching { client.closeGracefully() }
-            throw McpConnectionException("Failed to initialise MCP session for command '${config.command}': ${e.message}", e)
+            throw McpConnectionException("Failed to initialise MCP session for command '$command': ${e.message}", e)
         }
 
         tools = try {

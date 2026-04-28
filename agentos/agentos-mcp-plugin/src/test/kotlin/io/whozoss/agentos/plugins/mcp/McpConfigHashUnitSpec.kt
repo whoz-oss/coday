@@ -6,7 +6,9 @@ import io.kotest.matchers.shouldNotBe
 
 class McpConfigHashUnitSpec : StringSpec({
 
-    "identical configs produce the same hash" {
+    // ----- stdio -----
+
+    "identical stdio configs produce the same hash" {
         val a = McpServerConfig(command = "docker", args = listOf("run", "--rm", "img"))
         val b = McpServerConfig(command = "docker", args = listOf("run", "--rm", "img"))
         a.configHash() shouldBe b.configHash()
@@ -53,5 +55,40 @@ class McpConfigHashUnitSpec : StringSpec({
         val b = McpServerConfig(command = "docker", idleTimeoutMinutes = 30)
         // idle timeout is pool policy, not server behaviour
         a.configHash() shouldBe b.configHash()
+    }
+
+    // ----- HTTP -----
+
+    "identical HTTP configs produce the same hash" {
+        val a = McpServerConfig(url = "https://mcp.example.com/sse", authToken = "tok")
+        val b = McpServerConfig(url = "https://mcp.example.com/sse", authToken = "tok")
+        a.configHash() shouldBe b.configHash()
+    }
+
+    "different URLs produce different hashes" {
+        val a = McpServerConfig(url = "https://mcp-a.example.com/sse")
+        val b = McpServerConfig(url = "https://mcp-b.example.com/sse")
+        a.configHash() shouldNotBe b.configHash()
+    }
+
+    "different authTokens produce different hashes" {
+        val a = McpServerConfig(url = "https://mcp.example.com/sse", authToken = "token-a")
+        val b = McpServerConfig(url = "https://mcp.example.com/sse", authToken = "token-b")
+        a.configHash() shouldNotBe b.configHash()
+    }
+
+    "HTTP without token and HTTP with token produce different hashes" {
+        val a = McpServerConfig(url = "https://mcp.example.com/sse")
+        val b = McpServerConfig(url = "https://mcp.example.com/sse", authToken = "token")
+        a.configHash() shouldNotBe b.configHash()
+    }
+
+    // ----- transport isolation -----
+
+    "stdio and HTTP configs with same text do not collide" {
+        // Pathological case: command value equals url value
+        val stdio = McpServerConfig(command = "https://mcp.example.com/sse")
+        val http = McpServerConfig(url = "https://mcp.example.com/sse")
+        stdio.configHash() shouldNotBe http.configHash()
     }
 })

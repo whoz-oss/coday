@@ -72,7 +72,7 @@ class McpConnectionPool {
         pool[hash]?.let { pooled ->
             return when {
                 pooled.connection.isAlive() -> {
-                    logger.debug { "[McpPool] Reusing connection ${hash.take(8)} for '${config.command}'" }
+                    logger.debug { "[McpPool] Reusing connection ${hash.take(8)} for '${config.label}'" }
                     pooled.connection
                 }
                 else -> {
@@ -95,7 +95,7 @@ class McpConnectionPool {
         val connection = McpConnection(config, hash)
         connection.connect()
         pool[hash] = PooledConnection(connection = connection, config = config)
-        logger.info { "[McpPool] New connection ${hash.take(8)} for '${config.command}' (pool size=${pool.size})" }
+        logger.info { "[McpPool] New connection ${hash.take(8)} for '${config.label}' (pool size=${pool.size})" }
         return connection
     }
 
