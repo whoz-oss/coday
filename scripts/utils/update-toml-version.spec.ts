@@ -1,4 +1,4 @@
-import { updateTomlVersion } from './update-toml-version'
+import { updateTomlVersion, updateTomlVersions } from './update-toml-version'
 
 const MOCK_TOML = `
 [versions]
@@ -73,5 +73,30 @@ describe('updateTomlVersion', () => {
       const result = updateTomlVersion(tomlWithoutSdk, 'agentosSdk', '1.0.0')
       expect(result).toEqual(tomlWithoutSdk)
     })
+  })
+})
+
+describe('updateTomlVersions', () => {
+  it('updates all provided keys in one call', () => {
+    const result = updateTomlVersions(MOCK_TOML, ['agentosSdk', 'agentosService'], '1.2.3')
+    expect(result).toContain('agentosSdk = "1.2.3"')
+    expect(result).toContain('agentosService = "1.2.3"')
+  })
+
+  it('leaves unrelated keys untouched', () => {
+    const result = updateTomlVersions(MOCK_TOML, ['agentosSdk', 'agentosService'], '1.2.3')
+    expect(result).toContain('kotlin = "2.3.20"')
+    expect(result).toContain('springBoot = "3.5.7"')
+  })
+
+  it('returns content unchanged for an empty keys array', () => {
+    const result = updateTomlVersions(MOCK_TOML, [], '1.2.3')
+    expect(result).toEqual(MOCK_TOML)
+  })
+
+  it('behaves identically to a single updateTomlVersion call when given one key', () => {
+    const single = updateTomlVersion(MOCK_TOML, 'agentosSdk', '2.0.0')
+    const multi = updateTomlVersions(MOCK_TOML, ['agentosSdk'], '2.0.0')
+    expect(multi).toEqual(single)
   })
 })

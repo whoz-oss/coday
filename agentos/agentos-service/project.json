@@ -4,57 +4,6 @@
   "projectType": "application",
   "sourceRoot": "agentos/agentos-service/src",
   "targets": {
-    "build": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": [
-        "default",
-        "{projectRoot}/build.gradle.kts",
-        "{workspaceRoot}/agentos/gradle.properties",
-        "{workspaceRoot}/agentos/settings.gradle.kts"
-      ],
-      "outputs": [
-        "{projectRoot}/build"
-      ],
-      "options": {
-        "command": "./gradlew :agentos-service:build",
-        "cwd": "agentos"
-      },
-      "dependsOn": [
-        {
-          "target": "build",
-          "projects": [
-            "agentos-sdk"
-          ]
-        }
-      ]
-    },
-    "test": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": [
-        "default",
-        "{projectRoot}/build.gradle.kts",
-        "{workspaceRoot}/agentos/gradle.properties",
-        "{workspaceRoot}/agentos/settings.gradle.kts"
-      ],
-      "outputs": [
-        "{projectRoot}/build/test-results",
-        "{projectRoot}/build/reports"
-      ],
-      "options": {
-        "command": "./gradlew :agentos-service:test",
-        "cwd": "agentos",
-        "passWithNoTests": null
-      },
-      "dependsOn": [
-        "build",
-        {
-          "target": "build",
-          "projects": ["agentos-sdk"]
-        }
-      ]
-    },
     "check-openapi-spec": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -66,9 +15,7 @@
         "command": "./agentos-service/check-openapi-spec.sh",
         "cwd": "agentos"
       },
-      "dependsOn": [
-        "build"
-      ]
+      "dependsOn": ["build"]
     },
     "generate-openapi-spec": {
       "executor": "nx:run-commands",
@@ -80,9 +27,7 @@
         "command": "./gradlew :agentos-service:generateOpenApiDocs --no-configuration-cache",
         "cwd": "agentos"
       },
-      "dependsOn": [
-        "build"
-      ]
+      "dependsOn": ["build"]
     },
     "regenerate": {
       "executor": "nx:run-commands",
@@ -93,9 +38,7 @@
       "options": {
         "command": "nx run agentos-api-client:generate-client"
       },
-      "dependsOn": [
-        "generate-openapi-spec"
-      ]
+      "dependsOn": ["generate-openapi-spec"]
     },
     "bootRun": {
       "executor": "nx:run-commands",
@@ -114,16 +57,12 @@
         "{workspaceRoot}/agentos/gradle.properties",
         "{workspaceRoot}/agentos/settings.gradle.kts"
       ],
-      "outputs": [
-        "{projectRoot}/build/libs"
-      ],
+      "outputs": ["{projectRoot}/build/libs"],
       "options": {
         "command": "./gradlew :agentos-service:bootJar",
         "cwd": "agentos"
       },
-      "dependsOn": [
-        "build"
-      ]
+      "dependsOn": ["build"]
     }
   },
   "tags": [

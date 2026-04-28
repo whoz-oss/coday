@@ -242,8 +242,8 @@ jobs:
             echo "Warning: Coday Twin PKG not found"
           fi
 
-  publish-sdk:
-    name: publish SDK to GitHub Packages
+  publish-agentos-artifacts:
+    name: Publish ${{ matrix.project }} to GitHub Packages
     runs-on: ubuntu-latest
     needs: release
     if: needs.release.outputs.new_version != ''
@@ -251,6 +251,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    strategy:
+      matrix:
+        project:
+          - agentos-sdk
+          - agentos-service
+          - agentos-datetime-plugin
+          - agentos-file-plugin
+          - agentos-bash-plugin
+          - agentos-tmux-plugin
 
     steps:
       - name: Checkout repository
@@ -281,9 +291,9 @@ jobs:
         working-directory: agentos
         run: chmod +x gradlew
 
-      - name: Publish SDK to GitHub Packages
+      - name: Publish to GitHub Packages
         working-directory: agentos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: pnpm nx publish agentos-sdk
+        run: pnpm nx publish ${{ matrix.project }}
