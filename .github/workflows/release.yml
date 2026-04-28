@@ -71,6 +71,7 @@ jobs:
       id-token: write
     outputs:
       new_version: ${{ steps.release.outputs.new_version }}
+      release_sha: ${{ steps.release_sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -110,10 +111,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
         run: |
-          pnpm nx release --yes
-          # Capture the new version for desktop build from client package.json
-          NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          npx tsx scripts/release.ts
+          # Capture new version only if a release commit was just made
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
+          LATEST_TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
+          HEAD_COMMIT=$(git rev-parse HEAD)
+          if [ "$LATEST_TAG_COMMIT" = "$HEAD_COMMIT" ]; then
+            NEW_VERSION=${LATEST_TAG#release/}
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "new_version=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Capture release commit SHA
+        id: release_sha
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
   # Job 3: Build and upload desktop apps (Coday + Coday Twin)
   desktop-release:
@@ -125,7 +137,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: master
+          ref: ${{ needs.release.outputs.release_sha }}
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
@@ -230,8 +242,8 @@ jobs:
             echo "Warning: Coday Twin PKG not found"
           fi
 
-  publish-sdk:
-    name: publish SDK to GitHub Packages
+  publish-agentos-artifacts:
+    name: Publish ${{ matrix.project }} to GitHub Packages
     runs-on: ubuntu-latest
     needs: release
     if: needs.release.outputs.new_version != ''
@@ -240,9 +252,21 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      matrix:
+        project:
+          - agentos-sdk
+          - agentos-service
+          - agentos-datetime-plugin
+          - agentos-file-plugin
+          - agentos-bash-plugin
+          - agentos-tmux-plugin
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4
@@ -267,9 +291,9 @@ jobs:
         working-directory: agentos
         run: chmod +x gradlew
 
-      - name: Publish SDK to GitHub Packages
+      - name: Publish to GitHub Packages
         working-directory: agentos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: pnpm nx publish agentos-sdk
+        run: pnpm nx publish ${{ matrix.project }}

@@ -1,5 +1,11 @@
 import { Injectable } from '@angular/core'
 
+export interface PendingVoiceMessage {
+  base64: string
+  mimeType: string
+  language?: string
+}
+
 /**
  * Service to manage the first message state during implicit thread creation.
  *
@@ -15,6 +21,7 @@ import { Injectable } from '@angular/core'
 })
 export class FirstMessageStateService {
   private pendingFirstMessage: string | null = null
+  private pendingVoiceMessage: PendingVoiceMessage | null = null
 
   /**
    * Store a first message to be sent after thread navigation
@@ -41,11 +48,31 @@ export class FirstMessageStateService {
   }
 
   /**
+   * Store a voice message payload to be sent after thread navigation.
+   */
+  setPendingVoiceMessage(payload: PendingVoiceMessage): void {
+    console.log('[FIRST-MESSAGE-STATE] Storing pending voice message')
+    this.pendingVoiceMessage = payload
+  }
+
+  /**
+   * Retrieve and clear the pending voice message (consume pattern).
+   */
+  consumePendingVoiceMessage(): PendingVoiceMessage | null {
+    const payload = this.pendingVoiceMessage
+    if (payload) {
+      console.log('[FIRST-MESSAGE-STATE] Consuming pending voice message')
+      this.pendingVoiceMessage = null
+    }
+    return payload
+  }
+
+  /**
    * Check if there's a pending first message without consuming it
    * @returns True if there's a pending first message
    */
   hasPendingFirstMessage(): boolean {
-    return this.pendingFirstMessage !== null
+    return this.pendingFirstMessage !== null || this.pendingVoiceMessage !== null
   }
 
   /**
@@ -56,5 +83,6 @@ export class FirstMessageStateService {
       console.log('[FIRST-MESSAGE-STATE] Clearing pending first message')
       this.pendingFirstMessage = null
     }
+    this.pendingVoiceMessage = null
   }
 }

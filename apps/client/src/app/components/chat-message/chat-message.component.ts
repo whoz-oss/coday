@@ -191,6 +191,22 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
           </div>
         `
         htmlParts.push(imgHtml)
+      } else if (item.type === 'audio') {
+        // Create audio player element
+        const audioSrc = `data:${item.mimeType};base64,${item.content}`
+        const transcriptionHtml = item.transcription
+          ? `<div class="audio-transcription" style="margin-top: 4px; font-style: italic; color: var(--text-secondary, #666); font-size: 0.9em;">“${item.transcription}”</div>`
+          : ''
+        const audioHtml = `
+          <div class="audio-content" style="margin: 8px 0;">
+            <audio controls preload="metadata" style="width: 100%; max-width: 400px; display: block;">
+              <source src="${audioSrc}" type="${item.mimeType}">
+              Your browser does not support the audio element.
+            </audio>
+            ${transcriptionHtml}
+          </div>
+        `
+        htmlParts.push(audioHtml)
       }
     }
 
@@ -227,8 +243,10 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
    */
   private extractTextContent(): string {
     return this.message.content
-      .filter((content) => content.type === 'text')
-      .map((content) => content.content)
+      .filter((content) => content.type === 'text' || (content.type === 'audio' && (content as any).transcription))
+      .map((content) =>
+        content.type === 'text' ? content.content : `[Voice message]: ${(content as any).transcription}`
+      )
       .join('\n\n')
   }
 }

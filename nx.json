@@ -4,9 +4,6 @@
     "defaultBase": "master"
   },
   "targetDefaults": {
-    "build": {
-      "cache": false
-    },
     "@nx/js:tsc": {
       "cache": true,
       "dependsOn": ["^build"],
@@ -24,10 +21,7 @@
       "cache": true
     },
     "test": {
-      "cache": true,
-      "options": {
-        "passWithNoTests": true
-      }
+      "cache": true
     },
     "@angular/build:application": {
       "cache": true,
@@ -52,6 +46,9 @@
   "useDaemonProcess": true,
   "plugins": [
     {
+      "plugin": "./tools/plugins/agentos-gradle/src/index.ts"
+    },
+    {
       "plugin": "@nx/jest/plugin",
       "options": {
         "targetName": "test"
@@ -71,16 +68,24 @@
     }
   ],
   "release": {
-    "projects": ["server", "client", "web", "desktop", "desktop-twin"],
+    "projects": [
+      "server",
+      "client",
+      "web",
+      "desktop",
+      "desktop-twin",
+      "tag:platform:jvm",
+      "!agentos-plugins-filesystem"
+    ],
     "releaseTagPattern": "release/{version}",
-    "git": {
-      "commitMessage": "chore(release): {version}",
-      "tag": true
-    },
     "changelog": {
       "workspaceChangelog": {
         "file": "CHANGELOG.md",
         "createRelease": "github"
+      },
+      "git": {
+        "commitMessage": "chore(release): {version}",
+        "tag": true
       }
     },
     "version": {
@@ -88,6 +93,10 @@
       "manifestRootsToUpdate": ["apps/{projectName}"],
       "versionActionsOptions": {
         "skipLockFileUpdate": true
+      },
+      "git": {
+        "commit": false,
+        "tag": false
       }
     }
   },

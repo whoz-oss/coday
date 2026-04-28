@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "types": ["node"]
+  },
+  "exclude": ["node_modules"],
+  "extends": "../tsconfig.base.json",
+  "include": ["**/*.ts"],
+  "references": [
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ]
+}

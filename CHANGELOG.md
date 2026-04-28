@@ -1,3 +1,72 @@
+## 0.127.0 (2026-04-28)
+
+### 🚀 Features
+
+- publish agentos-service and plugins to GitHub Packages ([#814](https://github.com/whoz-oss/coday/pull/814))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.126.0 (2026-04-27)
+
+### 🚀 Features
+
+- #799 add Whisper audio transcription as alternative voice input ([#800](https://github.com/whoz-oss/coday/pull/800), [#799](https://github.com/whoz-oss/coday/issues/799))
+
+### 🩹 Fixes
+
+- #WZ-31209 maxTokens for OpenAI/Gemini and relax AiModel uniqueness to alias-only ([#797](https://github.com/whoz-oss/coday/pull/797))
+- skip publish jobs when no version bump was produced and include jvm projects in release ([2335dbd9](https://github.com/whoz-oss/coday/commit/2335dbd9))
+- skip publish jobs when no version bump was produced and include agentos projects in release ([#804](https://github.com/whoz-oss/coday/pull/804))
+- derive new version from projectsVersionData when using multiple release groups ([e3efe310](https://github.com/whoz-oss/coday/commit/e3efe310))
+- #801 replay ChoiceEvent on thread reconnection ([#802](https://github.com/whoz-oss/coday/pull/802), [#801](https://github.com/whoz-oss/coday/issues/801))
+- derive new version from projectsVersionData when using multiple release groups ([#808](https://github.com/whoz-oss/coday/pull/808))
+- restore lockstep versioning and fix releasePublish for JVM projects ([c78c9c01](https://github.com/whoz-oss/coday/commit/c78c9c01))
+- restore lockstep versioning and fix releasePublish for JVM projects ([#813](https://github.com/whoz-oss/coday/pull/813))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.125.4 (2026-04-23)
+
+### 🚀 Features
+
+- #31170 bash plugin - exposes configured bash commands as tools ([#786](https://github.com/whoz-oss/coday/pull/786), [#31170](https://github.com/whoz-oss/coday/issues/31170))
+- #WZ-31170 port tmux tools as agentos-tmux-plugin ([#785](https://github.com/whoz-oss/coday/pull/785))
+- unified npm & JAR release pipeline via Nx ([#796](https://github.com/whoz-oss/coday/pull/796))
+
+### 🩹 Fixes
+
+- move release git config to version and changelog subcommands ([3df26ec4](https://github.com/whoz-oss/coday/commit/3df26ec4))
+- move release git config to version and changelog subcommands ([#798](https://github.com/whoz-oss/coday/pull/798))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Vincent Palita @vincent-palita-whoz
+- vincent.audibert
+
+## 0.125.3 (2026-04-22)
+
+### 🩹 Fixes
+
+- #794 allow home navigation and hide worktree for forced projects ([#794](https://github.com/whoz-oss/coday/issues/794))
+- #794 allow home navigation and hide worktree for forced projects ([#795](https://github.com/whoz-oss/coday/pull/795), [#794](https://github.com/whoz-oss/coday/issues/794))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.125.2 (2026-04-22)
 
 ### 🩹 Fixes

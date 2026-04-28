@@ -169,13 +169,14 @@ class AiModelServiceImplSpec : StringSpec() {
         // Uniqueness constraints
         // -------------------------------------------------------------------------
 
-        "create throws 409 when (aiProviderId, apiName) already exists" {
+        "create allows two models with the same apiName under the same provider when aliases differ" {
+            // Uniqueness is on alias only — same apiName with different params (e.g. temperature)
+            // is a valid use-case (e.g. 'haiku-fast' vs 'haiku-careful' using the same model).
             val (service, aiProviderId) = newService()
-            service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5"))
+            service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5", alias = "haiku-fast", temperature = 1.0))
+            service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5", alias = "haiku-careful", temperature = 0.2))
 
-            shouldThrow<ResponseStatusException> {
-                service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5"))
-            }.statusCode.value() shouldBe 409
+            service.findByParent(aiProviderId) shouldHaveSize 2
         }
 
         "create throws 409 when (aiProviderId, alias) already exists" {
@@ -347,11 +348,11 @@ class AiModelServiceImplSpec : StringSpec() {
             service.findById(original.metadata.id)?.alias shouldBe "SMALL"
         }
 
-        "update does not conflict with itself on apiName" {
+        "update does not conflict with itself when changing inference parameters" {
             val (service, aiProviderId) = newService()
             val original = service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5"))
 
-            // updating temperature on same entity must not trigger a self-conflict
+            // updating temperature on the same entity must not trigger a self-conflict on alias
             val updated = service.update(original.copy(temperature = 0.7))
             updated.temperature shouldBe 0.7
         }
@@ -364,14 +365,14 @@ class AiModelServiceImplSpec : StringSpec() {
             updated.alias shouldBe "small"
         }
 
-        "update throws 409 when new apiName conflicts with a sibling" {
+        "update allows changing apiName to one already used by a sibling" {
+            // apiName uniqueness is no longer enforced — only alias uniqueness is.
             val (service, aiProviderId) = newService()
-            service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-opus-4-6"))
-            val toUpdate = service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5"))
+            service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-opus-4-6", alias = "big"))
+            val toUpdate = service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5", alias = "small"))
 
-            shouldThrow<ResponseStatusException> {
-                service.update(toUpdate.copy(apiModelName = "claude-opus-4-6"))
-            }.statusCode.value() shouldBe 409
+            val updated = service.update(toUpdate.copy(apiModelName = "claude-opus-4-6"))
+            updated.apiModelName shouldBe "claude-opus-4-6"
         }
 
         "update throws 409 when new alias conflicts with a sibling" {
