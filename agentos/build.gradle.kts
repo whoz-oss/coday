@@ -56,6 +56,11 @@ tasks.register("deployPlugins") {
     doLast {
         dest.mkdirs()
 
+        // Remove all existing plugin JARs before deploying fresh ones.
+        // This prevents PF4J from seeing two JARs with the same pluginId
+        // (e.g. a versioned release JAR alongside a newly built SNAPSHOT).
+        dest.listFiles { f -> f.extension == "jar" }?.forEach { it.delete() }
+
         libsDirs.forEach { buildDir ->
             val jars = buildDir.listFiles { f -> f.extension == "jar" && !f.name.endsWith("-plain.jar") }
                 ?: emptyArray()
