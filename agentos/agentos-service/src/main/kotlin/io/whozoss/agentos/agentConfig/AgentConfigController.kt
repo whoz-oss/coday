@@ -2,7 +2,6 @@ package io.whozoss.agentos.agentConfig
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -39,9 +38,11 @@ import java.util.UUID
 )
 class AgentConfigController(
     private val agentConfigService: AgentConfigService,
-    private val userService: UserService,
-    private val permissionService: PermissionService,
-) : EntityController<AgentConfig, UUID, AgentConfigResource>(agentConfigService) {
+    userService: UserService,
+    permissionService: PermissionService,
+) : EntityController<AgentConfig, UUID, AgentConfigResource>(agentConfigService, userService, permissionService) {
+
+    override val entityType = "AgentConfig"
 
     override fun toResource(entity: AgentConfig): AgentConfigResource =
         AgentConfigResource(
@@ -84,27 +85,8 @@ class AgentConfigController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): AgentConfigResource = super.getById(id)
 
-    /**
-     * POST `/by-ids` — batch fetch with permission filter resolved in a single Cypher
-     * round-trip via [PermissionService.filterVisibleIds] (story 5-3, drops the previous
-     * `@PostFilter` N+1 pattern).
-     */
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<AgentConfigResource> {
-        if (ids.isEmpty()) return emptyList()
-        val currentUser = userService.getCurrentUser()
-        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
-            ids.toSet()
-        } else {
-            permissionService
-                .filterVisibleIds(currentUser.id.toString(), ENTITY_TYPE, ids.map(UUID::toString), Action.READ)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .toSet()
-        }
-        if (visibleIds.isEmpty()) return emptyList()
-        return agentConfigService.findByIds(visibleIds).map(::toResource)
-    }
+    // POST /by-ids — inherited from EntityController.getByIds (batch authorization,
+    // story 5-4 factorisation of the pattern introduced by 5-3).
 
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
@@ -130,7 +112,5 @@ class AgentConfigController(
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'DELETE')")
     override fun delete(@PathVariable id: UUID) = super.delete(id)
 
-    companion object : KLogging() {
-        private const val ENTITY_TYPE = "AgentConfig"
-    }
+    companion object : KLogging()
 }

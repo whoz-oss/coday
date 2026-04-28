@@ -2,7 +2,6 @@ package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -52,9 +51,11 @@ import java.util.UUID
 )
 class AiProviderController(
     private val aiProviderService: AiProviderService,
-    private val userService: UserService,
-    private val permissionService: PermissionService,
-) : EntityController<AiProvider, UUID, AiProviderResource>(aiProviderService) {
+    userService: UserService,
+    permissionService: PermissionService,
+) : EntityController<AiProvider, UUID, AiProviderResource>(aiProviderService, userService, permissionService) {
+
+    override val entityType = "AiProvider"
 
     override fun toResource(entity: AiProvider): AiProviderResource =
         AiProviderResource(
@@ -104,22 +105,7 @@ class AiProviderController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): AiProviderResource = super.getById(id)
 
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<AiProviderResource> {
-        if (ids.isEmpty()) return emptyList()
-        val currentUser = userService.getCurrentUser()
-        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
-            ids.toSet()
-        } else {
-            permissionService
-                .filterVisibleIds(currentUser.id.toString(), "AiProvider", ids.map(UUID::toString), Action.READ)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .toSet()
-        }
-        if (visibleIds.isEmpty()) return emptyList()
-        return aiProviderService.findByIds(visibleIds).map(::toResource)
-    }
+    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
 
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")

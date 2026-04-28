@@ -3,6 +3,7 @@ package io.whozoss.agentos.user
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.validation.Valid
 import mu.KLogging
@@ -39,8 +40,16 @@ import java.util.UUID
     produces = [MediaType.APPLICATION_JSON_VALUE],
 )
 class UserController(
-    private val userService: UserService,
-) : EntityController<User, String, UserResource>(userService) {
+    userService: UserService,
+    permissionService: PermissionService,
+) : EntityController<User, String, UserResource>(userService, userService, permissionService) {
+
+    /**
+     * Required by [EntityController] but not used here — User access is gated by
+     * `hasRole('SUPER_ADMIN')` (or self-or-admin), NOT by the namespace permission
+     * graph. [getByIds] is overridden below to bypass [permissionService].
+     */
+    override val entityType = "User"
 
     override fun toResource(entity: User): UserResource =
         UserResource(
@@ -68,9 +77,18 @@ class UserController(
     @PreAuthorize("hasRole('SUPER_ADMIN') or #id.toString() == authentication.name")
     override fun getById(@PathVariable id: UUID): UserResource = super.getById(id)
 
+    /**
+     * POST /by-ids — super-admin batch fetch.
+     *
+     * Overrides the base [EntityController.getByIds] (story 5-4) because the User
+     * entity is NOT permission-graph governed. Access is `hasRole('SUPER_ADMIN')` only,
+     * so the batch authorization path (`filterVisibleIds` → namespace transitive resolution)
+     * is irrelevant here. We delegate directly to the service.
+     */
     @PostMapping("/by-ids")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<UserResource> = super.getByIds(ids)
+    override fun getByIds(@RequestBody ids: List<UUID>): List<UserResource> =
+        userService.findByIds(ids).map(::toResource)
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

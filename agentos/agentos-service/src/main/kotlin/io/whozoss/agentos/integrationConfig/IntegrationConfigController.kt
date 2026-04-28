@@ -2,7 +2,6 @@ package io.whozoss.agentos.integrationConfig
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -38,9 +37,11 @@ import java.util.UUID
 )
 class IntegrationConfigController(
     private val integrationConfigService: IntegrationConfigService,
-    private val userService: UserService,
-    private val permissionService: PermissionService,
-) : EntityController<IntegrationConfig, UUID, IntegrationConfigResource>(integrationConfigService) {
+    userService: UserService,
+    permissionService: PermissionService,
+) : EntityController<IntegrationConfig, UUID, IntegrationConfigResource>(integrationConfigService, userService, permissionService) {
+
+    override val entityType = "IntegrationConfig"
 
     override fun toResource(entity: IntegrationConfig): IntegrationConfigResource =
         IntegrationConfigResource(
@@ -80,22 +81,7 @@ class IntegrationConfigController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): IntegrationConfigResource = super.getById(id)
 
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<IntegrationConfigResource> {
-        if (ids.isEmpty()) return emptyList()
-        val currentUser = userService.getCurrentUser()
-        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
-            ids.toSet()
-        } else {
-            permissionService
-                .filterVisibleIds(currentUser.id.toString(), "IntegrationConfig", ids.map(UUID::toString), Action.READ)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .toSet()
-        }
-        if (visibleIds.isEmpty()) return emptyList()
-        return integrationConfigService.findByIds(visibleIds).map(::toResource)
-    }
+    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
 
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")

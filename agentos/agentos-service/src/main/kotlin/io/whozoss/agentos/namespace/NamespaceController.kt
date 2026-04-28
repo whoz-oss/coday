@@ -44,9 +44,11 @@ import java.util.UUID
 )
 class NamespaceController(
     private val namespaceService: NamespaceService,
-    private val userService: UserService,
-    private val permissionService: PermissionService,
-) : EntityController<Namespace, String, NamespaceResource>(namespaceService) {
+    userService: UserService,
+    permissionService: PermissionService,
+) : EntityController<Namespace, String, NamespaceResource>(namespaceService, userService, permissionService) {
+
+    override val entityType = "Namespace"
 
     override fun toResource(entity: Namespace): NamespaceResource =
         NamespaceResource(
@@ -69,22 +71,7 @@ class NamespaceController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): NamespaceResource = super.getById(id)
 
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<NamespaceResource> {
-        if (ids.isEmpty()) return emptyList()
-        val currentUser = userService.getCurrentUser()
-        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
-            ids.toSet()
-        } else {
-            permissionService
-                .filterVisibleIds(currentUser.id.toString(), ENTITY_TYPE, ids.map(UUID::toString), Action.READ)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .toSet()
-        }
-        if (visibleIds.isEmpty()) return emptyList()
-        return namespaceService.findByIds(visibleIds).map(::toResource)
-    }
+    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
 
     /**
      * POST /api/namespaces — SUPER_ADMIN only (FR1). Auto-grants ADMIN on the new

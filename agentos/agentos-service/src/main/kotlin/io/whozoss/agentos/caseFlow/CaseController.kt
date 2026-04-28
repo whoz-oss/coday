@@ -45,9 +45,11 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-    private val userService: UserService,
-    private val permissionService: PermissionService,
-) : EntityController<Case, UUID, CaseResource>(caseService) {
+    userService: UserService,
+    permissionService: PermissionService,
+) : EntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
+
+    override val entityType = "Case"
 
     override fun toResource(entity: Case): CaseResource =
         CaseResource(
@@ -88,22 +90,7 @@ class CaseController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): CaseResource = super.getById(id)
 
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<CaseResource> {
-        if (ids.isEmpty()) return emptyList()
-        val currentUser = userService.getCurrentUser()
-        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
-            ids.toSet()
-        } else {
-            permissionService
-                .filterVisibleIds(currentUser.id.toString(), "Case", ids.map(UUID::toString), Action.READ)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .toSet()
-        }
-        if (visibleIds.isEmpty()) return emptyList()
-        return caseService.findByIds(visibleIds).map(::toResource)
-    }
+    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
 
     /**
      * GET /api/cases/by-parentId/{parentId} — list cases in a namespace (/3.3).

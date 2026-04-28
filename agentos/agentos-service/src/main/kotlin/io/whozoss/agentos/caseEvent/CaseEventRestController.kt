@@ -55,6 +55,21 @@ class CaseEventRestController(
      * returned only if the caller can READ its `caseId`. Resolution is batch via
      * [PermissionService.filterVisibleIds] on the unique caseIds (typically far
      * fewer than the events, since events cluster by case).
+     *
+     * **Why this controller does NOT extend [io.whozoss.agentos.entity.EntityController]
+     * (story 5-4 design choice)** :
+     * The factorised `EntityController.getByIds` resolves visibility on each `filterObject.id`
+     * directly — it can't traverse to a parent entity. CaseEvents are protected by their
+     * **parent Case's** READ permission, not by their own id. Forcing this case into the
+     * factorised pattern would require either an abstract `parentIdOf(entity): String` method
+     * (overkill for a single use case) or running the wrong query (event id instead of case id).
+     *
+     * As a result, fixes applied to [io.whozoss.agentos.entity.EntityController.getByIds]
+     * (input order preservation, `@Size` cap, log WARN on parse failure) **must be replicated
+     * manually here**. Today this method already preserves order (`events.filter { ... }` is
+     * a stable filter) and the parse step is implicit in `it.caseId.toString()`. The
+     * `@Size` input cap is NOT applied — it should be added if/when DoS via huge payloads
+     * becomes a concern (cf. story 5-3 review finding P3).
      */
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")

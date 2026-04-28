@@ -2,11 +2,17 @@ package io.whozoss.agentos.entity
 
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
-import io.whozoss.agentos.sdk.entity.Entity
-import jakarta.validation.Valid
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.entity.Entity
+import io.whozoss.agentos.user.UserService
+import jakarta.validation.Valid
+import jakarta.validation.constraints.Size
+import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -29,11 +35,26 @@ import java.util.UUID
  *
  * Standard endpoints provided:
  * - GET    /{id}                    — get by ID
- * - POST   /by-ids                  — get multiple by IDs
+ * - POST   /by-ids                  — get multiple by IDs (permission-filtered batch)
  * - GET    /by-parentId/{parentId}  — list all entities belonging to a parent
  * - POST                            — create
  * - PUT    /{id}                    — update
  * - DELETE /{id}                    — soft-delete
+ *
+ * **Batch authorization** ([getByIds]) follows the pattern introduced by story 5-3 and
+ * factorised here by story 5-4 :
+ * - empty input short-circuit
+ * - super-admin bypass via [io.whozoss.agentos.user.User.isAdmin]
+ * - regular caller : [PermissionService.filterVisibleIds] resolves visible ids in
+ *   ≤ 2 Cypher queries (UNION direct + transitif) regardless of input size
+ * - input order and duplicates are preserved through a `Map<UUID, ResourceType>` lookup
+ * - input is bounded by [MAX_BATCH_SIZE] to prevent DoS via huge batches
+ * - malformed ids returned by [PermissionService] (should not happen — corruption /
+ *   schema drift) are logged at WARN level rather than silently dropped
+ *
+ * Subclasses with a different authorization model (e.g. parent-id resolution like
+ * [io.whozoss.agentos.caseEvent.CaseEventRestController]) MUST override [getByIds]
+ * and document the divergence.
  *
  * Type parameters:
  * @param EntityType The domain entity type (must implement Entity)
@@ -42,7 +63,16 @@ import java.util.UUID
  */
 abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceType>(
     protected val service: EntityService<EntityType, ParentIdentifier>,
+    protected val userService: UserService,
+    protected val permissionService: PermissionService,
 ) {
+    /**
+     * Neo4j label / SpEL string for this entity type, used by [getByIds] to call
+     * [PermissionService.filterVisibleIds]. Must match the actual entity label
+     * (e.g. `"AgentConfig"`, `"AiProvider"`, `"Namespace"`).
+     */
+    protected abstract val entityType: String
+
     /**
      * Convert a domain entity to its HTTP resource representation.
      * Called before every response is serialised.
@@ -67,16 +97,51 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
             ?: throw ResourceNotFoundException("Entity not found: $id")
 
     /**
-     * POST /by-ids — get multiple entities by their IDs.
+     * POST /by-ids — get multiple entities by their IDs, permission-filtered in batch.
+     *
+     * Authorization is resolved in a single Cypher round-trip (≤ 2 queries via UNION)
+     * regardless of input size — see [PermissionService.filterVisibleIds]. Output preserves
+     * the input order and duplicates so clients that index on request position keep working.
+     *
+     * Capped at [MAX_BATCH_SIZE] ids to prevent DoS via unbounded requests.
      */
     @PostMapping(
         "/by-ids",
         consumes = [MediaType.APPLICATION_JSON_VALUE],
         produces = [MediaType.APPLICATION_JSON_VALUE],
     )
+    @PreAuthorize("isAuthenticated()")
     open fun getByIds(
+        @Valid @Size(max = MAX_BATCH_SIZE, message = "Batch size exceeds maximum of $MAX_BATCH_SIZE")
         @RequestBody ids: List<UUID>,
-    ): List<ResourceType> = service.findByIds(ids).map { toResource(it) }
+    ): List<ResourceType> {
+        if (ids.isEmpty()) return emptyList()
+
+        val currentUser = userService.getCurrentUser()
+        val visibleIds: Set<UUID> = if (currentUser.isAdmin) {
+            ids.toSet()
+        } else {
+            val rawVisible = permissionService.filterVisibleIds(
+                userId = currentUser.id.toString(),
+                entityType = entityType,
+                ids = ids.map(UUID::toString),
+                action = Action.READ,
+            )
+            val parsed = rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+            if (parsed.size != rawVisible.size) {
+                logger.warn {
+                    "[EntityController:$entityType] PermissionService returned ${rawVisible.size - parsed.size} non-UUID id(s); dropping. " +
+                        "This indicates a data corruption or schema drift — investigate."
+                }
+            }
+            parsed.toSet()
+        }
+        if (visibleIds.isEmpty()) return emptyList()
+
+        // Preserve input order and duplicates : look up each input id in the entity map.
+        val entityById = service.findByIds(visibleIds).associateBy { it.metadata.id }
+        return ids.mapNotNull { id -> entityById[id]?.let(::toResource) }
+    }
 
     /**
      * GET /by-parentId/{parentId} — list all entities belonging to a parent.
@@ -132,5 +197,14 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier, ResourceT
         if (!deleted) {
             throw ResourceNotFoundException("Entity not found: $id")
         }
+    }
+
+    companion object : KLogging() {
+        /**
+         * Maximum number of ids accepted in a single `POST /by-ids` request.
+         * Above this, the request is rejected at the validation layer to prevent DoS
+         * via unbounded payloads (Cypher message size, memory pressure, etc.).
+         */
+        const val MAX_BATCH_SIZE = 1000
     }
 }

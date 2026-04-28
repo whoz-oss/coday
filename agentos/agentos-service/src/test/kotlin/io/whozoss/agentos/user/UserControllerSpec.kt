@@ -26,7 +26,8 @@ class UserControllerSpec : StringSpec({
     timeout = 5000
 
     val userService = mockk<UserService>()
-    val controller = UserController(userService)
+    val permissionService = mockk<io.whozoss.agentos.permissions.PermissionService>(relaxed = true)
+    val controller = UserController(userService, permissionService)
 
     fun user(
         id: UUID = UUID.randomUUID(),
