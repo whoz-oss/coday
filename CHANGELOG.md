@@ -1,3 +1,13 @@
+## 0.127.0 (2026-04-28)
+
+### 🚀 Features
+
+- publish agentos-service and plugins to GitHub Packages ([#814](https://github.com/whoz-oss/coday/pull/814))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.126.0 (2026-04-27)
 
 ### 🚀 Features
