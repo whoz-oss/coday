@@ -25,14 +25,12 @@ tasks.named("build") {
 // Plugin deployment
 // ========================================
 
-val pluginBuilds = listOf(
-    "agentos-plugins-filesystem",
-    "agentos-datetime-plugin",
-    "agentos-tmux-plugin",
-    "agentos-bash-plugin",
-    "agentos-file-plugin",
-    "agentos-mcp-plugin"
-)
+// Non-plugin included builds — excluded from deployPlugins.
+// All other included builds are assumed to be plugins.
+val nonPluginBuilds = setOf("agentos-sdk", "agentos-service")
+val pluginBuilds: List<String> = gradle.includedBuilds
+    .map { it.name }
+    .filter { it !in nonPluginBuilds }
 
 // Resolve all paths at configuration time into plain File values
 // so that doLast closures are configuration-cache compatible.
