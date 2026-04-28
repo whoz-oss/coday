@@ -26,9 +26,9 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
 
     fun config(
         name: String,
-        nsId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001"),
+        nsId: UUID = namespaceId,
         modelName: String? = "BIG",
-        createdAt: Instant = Instant.now(),
+        createdAt: Instant = Instant.ofEpochSecond(1_000_000),
     ) = AgentConfig(
         metadata = EntityMetadata(id = UUID.randomUUID(), created = createdAt),
         namespaceId = nsId,
