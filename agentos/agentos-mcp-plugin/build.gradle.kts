@@ -66,7 +66,9 @@ tasks.jar {
     }
     // Bundle MCP SDK and its transitive deps into the plugin JAR so the
     // plugin classloader can resolve them independently of the service classpath.
-    from(configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }.map { zipTree(it) }) {
+    // Use the lazy FileCollection overload (no .get()) so runtimeClasspath is
+    // resolved at execution time, not configuration time — required by Gradle 9.
+    from(configurations.runtimeClasspath.map { fc -> fc.filter { it.name.endsWith(".jar") }.map { zipTree(it) } }) {
         exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
         // Exclude kotlin-stdlib and jackson — already on the service classpath
         exclude("kotlin/**", "kotlinx/**")
