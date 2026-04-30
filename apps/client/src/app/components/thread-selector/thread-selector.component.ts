@@ -14,7 +14,6 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { Router } from '@angular/router'
 import { ThreadApiService } from '../../core/services/thread-api.service'
-import { ProjectApiService } from '../../core/services/project-api.service'
 import { UserService } from '../../core/services/user.service'
 
 /** Recursive node type for sub-thread tree rendering */
@@ -67,7 +66,6 @@ export class ThreadSelectorComponent implements OnInit {
   private readonly projectStateService = inject(ProjectStateService)
   private readonly threadStateService = inject(ThreadStateService)
   private readonly threadApiService = inject(ThreadApiService)
-  private readonly projectApi = inject(ProjectApiService)
   private readonly userService = inject(UserService)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
@@ -340,16 +338,7 @@ export class ThreadSelectorComponent implements OnInit {
    */
   markDone(event: Event, thread: { id: string }): void {
     event.stopPropagation()
-    const projectName = this.currentProject()?.name
-    if (!projectName) return
-
-    this.projectApi
-      .markThreadDone(projectName, thread.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.threadStateService.refreshThreadList(),
-        error: (err) => console.error('[THREAD-SELECTOR] Failed to mark thread as done:', err),
-      })
+    this.threadStateService.markDone(thread.id)
   }
 
   /**
@@ -357,16 +346,7 @@ export class ThreadSelectorComponent implements OnInit {
    */
   markActive(event: Event, thread: { id: string }): void {
     event.stopPropagation()
-    const projectName = this.currentProject()?.name
-    if (!projectName) return
-
-    this.projectApi
-      .markThreadActive(projectName, thread.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.threadStateService.refreshThreadList(),
-        error: (err) => console.error('[THREAD-SELECTOR] Failed to mark thread as active:', err),
-      })
+    this.threadStateService.markActive(thread.id)
   }
 
   /**

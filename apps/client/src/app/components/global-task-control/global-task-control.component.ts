@@ -9,15 +9,15 @@ import { MatMenuModule } from '@angular/material/menu'
 import { MatDividerModule } from '@angular/material/divider'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatInputModule } from '@angular/material/input'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent, ThreadUpdateEvent } from '@coday/model'
 import { TaskCardComponent } from '../task-control/task-card/task-card.component'
 import { NewTaskDialogComponent } from '../new-task-dialog/new-task-dialog.component'
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component'
-import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
 import { OptionsPanelComponent } from '../options-panel/options-panel.component'
 import { GlobalTaskService } from '../../core/services/global-task.service'
-import { ConfigApiService } from '../../core/services/config-api.service'
+import { ConfigStateService } from '../../core/services/config-state.service'
+import { UserService } from '../../core/services/user.service'
 import { TaskStatus } from '../../core/services/task-status.service'
 
 type FilterKey = 'all' | TaskStatus
@@ -73,7 +73,10 @@ export class GlobalTaskControlComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly dialog = inject(MatDialog)
   private readonly router = inject(Router)
-  private readonly configApi = inject(ConfigApiService)
+  private readonly configState = inject(ConfigStateService)
+  private readonly userService = inject(UserService)
+
+  private readonly username = toSignal(this.userService.username$, { initialValue: null })
 
   /** Single global SSE connection aggregating events from all projects */
   private globalEventSource: EventSource | null = null
@@ -108,8 +111,9 @@ export class GlobalTaskControlComponent implements OnInit {
       tasks = tasks.filter((t) => t.projectId === project)
     }
 
-    if (this.starredOnly()) {
-      tasks = tasks.filter((t) => t.starring.length > 0)
+    const currentUsername = this.username()
+    if (this.starredOnly() && currentUsername) {
+      tasks = tasks.filter((t) => t.starring.includes(currentUsername))
     }
 
     const filter = this.activeFilter()
@@ -125,7 +129,8 @@ export class GlobalTaskControlComponent implements OnInit {
     let tasks = this.allTasks()
     const project = this.activeProject()
     if (project) tasks = tasks.filter((t) => t.projectId === project)
-    if (this.starredOnly()) tasks = tasks.filter((t) => t.starring.length > 0)
+    const currentUsername = this.username()
+    if (this.starredOnly() && currentUsername) tasks = tasks.filter((t) => t.starring.includes(currentUsername))
 
     return {
       all: tasks.length,
@@ -175,6 +180,12 @@ export class GlobalTaskControlComponent implements OnInit {
   ngOnInit(): void {
     this.globalTaskService.refresh()
     this.connectGlobalSse()
+    this.userService
+      .fetchCurrentUser()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => console.warn('[GTC] Could not fetch user:', err),
+      })
   }
 
   protected setFilter(key: FilterKey): void {
@@ -213,30 +224,7 @@ export class GlobalTaskControlComponent implements OnInit {
   }
 
   protected openUserConfig(): void {
-    this.configApi
-      .getUserConfig()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (config) => {
-          const dialogRef = this.dialog.open<JsonEditorComponent, JsonEditorData, any>(JsonEditorComponent, {
-            data: {
-              configType: 'user',
-              initialContent: JSON.stringify(config, null, 2),
-            },
-          })
-          dialogRef.afterClosed().subscribe((result) => {
-            if (result) {
-              this.configApi
-                .updateUserConfig(result)
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe({
-                  error: (err) => console.error('[GTC] Error saving user config:', err),
-                })
-            }
-          })
-        },
-        error: (err) => console.error('[GTC] Error loading user config:', err),
-      })
+    this.configState.openUserConfigEditor()
   }
 
   protected openNewTaskDialog(): void {
@@ -269,7 +257,8 @@ export class GlobalTaskControlComponent implements OnInit {
   protected onStarToggled(threadId: string, projectId: string): void {
     const task = this.allTasks().find((t) => t.id === threadId)
     if (!task) return
-    const isStarred = task.starring.length > 0
+    const currentUsername = this.username()
+    const isStarred = !!currentUsername && task.starring.includes(currentUsername)
     this.globalTaskService.toggleStar(projectId, threadId, isStarred)
   }
 

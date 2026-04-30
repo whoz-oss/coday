@@ -15,6 +15,7 @@ import {
 import { map, tap } from 'rxjs/operators'
 import { ThreadApiService, ThreadUpdateResponse } from './thread-api.service'
 import { ProjectStateService } from './project-state.service'
+import { ProjectApiService } from './project-api.service'
 
 /**
  * Service managing the currently selected thread state.
@@ -40,6 +41,7 @@ export class ThreadStateService {
   // Inject API service
   private readonly threadApi = inject(ThreadApiService)
   private readonly projectStateService = inject(ProjectStateService)
+  private readonly projectApi = inject(ProjectApiService)
 
   private readonly projectName$ = this.projectStateService.selectedProject$.pipe(
     map((project) => project?.name),
@@ -241,6 +243,40 @@ export class ThreadStateService {
         return throwError(() => error)
       })
     )
+  }
+
+  /**
+   * Mark a thread as done (sets closedByUser on the backend).
+   * Refreshes the thread list on success.
+   * @param threadId Thread identifier
+   */
+  markDone(threadId: string): void {
+    const projectName = this.projectStateService.getSelectedProjectId()
+    if (!projectName) {
+      console.error('[THREAD_STATE] Cannot mark done: no project selected')
+      return
+    }
+    this.projectApi.markThreadDone(projectName, threadId).subscribe({
+      next: () => this.refreshThreadList(),
+      error: (err) => console.error('[THREAD_STATE] Failed to mark thread as done:', err),
+    })
+  }
+
+  /**
+   * Mark a thread as active (clears closedByUser on the backend).
+   * Refreshes the thread list on success.
+   * @param threadId Thread identifier
+   */
+  markActive(threadId: string): void {
+    const projectName = this.projectStateService.getSelectedProjectId()
+    if (!projectName) {
+      console.error('[THREAD_STATE] Cannot mark active: no project selected')
+      return
+    }
+    this.projectApi.markThreadActive(projectName, threadId).subscribe({
+      next: () => this.refreshThreadList(),
+      error: (err) => console.error('[THREAD_STATE] Failed to mark thread as active:', err),
+    })
   }
 
   /**
