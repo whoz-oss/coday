@@ -9,6 +9,11 @@
   (keydown.space)="navigate(); $event.preventDefault()"
   [attr.aria-label]="'Open task: ' + task().name"
 >
+  <!-- Persistent star indicator (always visible when starred) -->
+  @if (task().starring.length > 0) {
+    <mat-icon class="starred-indicator" aria-label="Starred">star</mat-icon>
+  }
+
   <!-- Status badge -->
   <div class="status-badge">
     <mat-icon class="status-icon">{{ statusIcon() }}</mat-icon>

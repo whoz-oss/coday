@@ -74,6 +74,19 @@
   }
 }
 
+// --- Starred indicator ---
+
+.starred-indicator {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  font-size: 1rem;
+  width: 1rem;
+  height: 1rem;
+  color: #f5a623;
+  pointer-events: none;
+}
+
 // --- Status badge ---
 
 .status-badge {
@@ -243,6 +256,23 @@
 }
 
 // --- Animations ---
+
+@media (max-width: 600px) {
+  .task-actions {
+    opacity: 1;
+
+    .action-btn {
+      width: 36px;
+      height: 36px;
+
+      mat-icon {
+        font-size: 1.25rem;
+        width: 1.25rem;
+        height: 1.25rem;
+      }
+    }
+  }
+}
 
 @keyframes spin {
   from {

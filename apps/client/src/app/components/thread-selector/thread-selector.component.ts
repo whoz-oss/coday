@@ -33,6 +33,7 @@ export interface ThreadNode extends SubThreadNode {
   parentThreadId?: string
   username?: string
   users?: { userId: string }[]
+  closedByUser?: boolean
 }
 
 @Component({
@@ -330,6 +331,22 @@ export class ThreadSelectorComponent implements OnInit {
         this.threadStateService.refreshThreadList()
       },
     })
+  }
+
+  /**
+   * Mark a thread as done (sets closedByUser)
+   */
+  markDone(event: Event, thread: { id: string }): void {
+    event.stopPropagation()
+    this.threadStateService.markDone(thread.id)
+  }
+
+  /**
+   * Mark a thread as active (clears closedByUser)
+   */
+  markActive(event: Event, thread: { id: string }): void {
+    event.stopPropagation()
+    this.threadStateService.markActive(thread.id)
   }
 
   /**

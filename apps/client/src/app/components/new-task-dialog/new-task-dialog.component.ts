@@ -91,6 +91,7 @@ export class NewTaskDialogComponent implements OnInit {
 
   protected readonly isWorktree = computed(() => this.mode() === 'worktree' && this.hasGit())
 
+  /** True when the full task form is valid (project + agent + task description + worktree fields if applicable) */
   protected readonly isValid = computed(() => {
     const projectValid = this.projects().includes(this.selectedProject())
     const agentValid = this.agents().some((a) => a.name === this.selectedAgent())
@@ -98,6 +99,11 @@ export class NewTaskDialogComponent implements OnInit {
     if (this.isWorktree())
       return hasBase && !!this.selectedBranch() && !!this.issueNumber().trim() && !!this.branchType()
     return hasBase
+  })
+
+  /** True when at least a valid project is selected — enables the "Open project" fallback */
+  protected readonly canNavigate = computed(() => {
+    return this.projects().includes(this.selectedProject())
   })
 
   protected openPanel(trigger: MatAutocompleteTrigger): void {
@@ -209,33 +215,43 @@ export class NewTaskDialogComponent implements OnInit {
   }
 
   protected submit(): void {
-    if (!this.isValid() || this.isSubmitting()) return
+    if (this.isSubmitting()) return
 
-    this.isSubmitting.set(true)
+    // Full task launch: all fields valid → create task via API
+    if (this.isValid()) {
+      this.isSubmitting.set(true)
 
-    const fullTask =
-      this.isWorktree() && this.issueNumber().trim()
-        ? `${this.issueNumber().trim()} ${this.task().trim()}`
-        : this.task().trim()
+      const fullTask =
+        this.isWorktree() && this.issueNumber().trim()
+          ? `${this.issueNumber().trim()} ${this.task().trim()}`
+          : this.task().trim()
 
-    this.projectApi
-      .createTask(
-        this.selectedProject(),
-        this.selectedAgent(),
-        fullTask,
-        this.isWorktree() ? 'worktree' : 'local',
-        this.isWorktree() ? this.selectedBranch() : undefined,
-        this.isWorktree() ? this.issueNumber().trim() : undefined,
-        this.isWorktree() ? this.branchType() : undefined
-      )
-      .subscribe({
-        next: ({ threadId, projectId }) => {
-          this.dialogRef.close({ threadId, projectId })
-        },
-        error: () => {
-          this.isSubmitting.set(false)
-        },
-      })
+      this.projectApi
+        .createTask(
+          this.selectedProject(),
+          this.selectedAgent(),
+          fullTask,
+          this.isWorktree() ? 'worktree' : 'local',
+          this.isWorktree() ? this.selectedBranch() : undefined,
+          this.isWorktree() ? this.issueNumber().trim() : undefined,
+          this.isWorktree() ? this.branchType() : undefined
+        )
+        .subscribe({
+          next: ({ threadId, projectId }) => {
+            this.dialogRef.close({ threadId, projectId })
+          },
+          error: () => {
+            this.isSubmitting.set(false)
+          },
+        })
+      return
+    }
+
+    // Navigate-only fallback: project selected but task incomplete → open project with new thread
+    if (this.canNavigate()) {
+      this.dialogRef.close({ projectId: this.selectedProject(), navigate: true })
+      return
+    }
   }
 
   protected cancel(): void {

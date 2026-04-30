@@ -40,6 +40,17 @@
             }
           </button>
         }
+        <button
+          class="filter-chip starred-filter"
+          [class.active]="starredOnly()"
+          (click)="toggleStarredFilter()"
+          role="switch"
+          [attr.aria-checked]="starredOnly()"
+          aria-label="Show starred tasks only"
+        >
+          <mat-icon class="filter-icon">star</mat-icon>
+          <span>Starred</span>
+        </button>
       </nav>
     </header>
 
