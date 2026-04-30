@@ -1,3 +1,23 @@
+## 0.128.0 (2026-04-30)
+
+### 🚀 Features
+
+- #817 add filter by star and add star on card ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 add Control Center menu and toggle thread done state ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 update ui disabled on task create modal ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 add possibility to navigate to project ([#817](https://github.com/whoz-oss/coday/issues/817))
+
+### 🩹 Fixes
+
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+- #817 return pr ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 return on global mission control ([#818](https://github.com/whoz-oss/coday/pull/818), [#817](https://github.com/whoz-oss/coday/issues/817))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.127.0 (2026-04-28)
 
 ### 🚀 Features
