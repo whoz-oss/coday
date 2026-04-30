@@ -1,17 +1,23 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
-import { RouterLink } from '@angular/router'
+import { Router, RouterLink } from '@angular/router'
 import { MatDialog } from '@angular/material/dialog'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatTooltipModule } from '@angular/material/tooltip'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
+import { MatMenuModule } from '@angular/material/menu'
+import { MatDividerModule } from '@angular/material/divider'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatInputModule } from '@angular/material/input'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent, ThreadUpdateEvent } from '@coday/model'
 import { TaskCardComponent } from '../task-control/task-card/task-card.component'
 import { NewTaskDialogComponent } from '../new-task-dialog/new-task-dialog.component'
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component'
+import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
+import { OptionsPanelComponent } from '../options-panel/options-panel.component'
 import { GlobalTaskService } from '../../core/services/global-task.service'
+import { ConfigApiService } from '../../core/services/config-api.service'
 import { TaskStatus } from '../../core/services/task-status.service'
 
 type FilterKey = 'all' | TaskStatus
@@ -53,6 +59,8 @@ const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
     MatButtonModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
+    MatMenuModule,
+    MatDividerModule,
     MatFormFieldModule,
     MatInputModule,
     RouterLink,
@@ -64,6 +72,8 @@ export class GlobalTaskControlComponent implements OnInit {
   private readonly globalTaskService = inject(GlobalTaskService)
   private readonly destroyRef = inject(DestroyRef)
   private readonly dialog = inject(MatDialog)
+  private readonly router = inject(Router)
+  private readonly configApi = inject(ConfigApiService)
 
   /** Single global SSE connection aggregating events from all projects */
   private globalEventSource: EventSource | null = null
@@ -190,6 +200,43 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected refresh(): void {
     this.globalTaskService.refresh()
+  }
+
+  protected openPreferences(): void {
+    this.dialog.open(OptionsPanelComponent, {
+      width: '400px',
+    })
+  }
+
+  protected openTokenUsage(): void {
+    void this.router.navigate(['/token-usage'])
+  }
+
+  protected openUserConfig(): void {
+    this.configApi
+      .getUserConfig()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (config) => {
+          const dialogRef = this.dialog.open<JsonEditorComponent, JsonEditorData, any>(JsonEditorComponent, {
+            data: {
+              configType: 'user',
+              initialContent: JSON.stringify(config, null, 2),
+            },
+          })
+          dialogRef.afterClosed().subscribe((result) => {
+            if (result) {
+              this.configApi
+                .updateUserConfig(result)
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                  error: (err) => console.error('[GTC] Error saving user config:', err),
+                })
+            }
+          })
+        },
+        error: (err) => console.error('[GTC] Error loading user config:', err),
+      })
   }
 
   protected openNewTaskDialog(): void {

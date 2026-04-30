@@ -27,6 +27,35 @@
     <div class="gtc-toolbar-actions">
       <button
         mat-icon-button
+        [matMenuTriggerFor]="controlCenterMenu"
+        matTooltip="Control Center"
+        aria-label="Control Center"
+      >
+        <mat-icon>hub</mat-icon>
+      </button>
+
+      <mat-menu #controlCenterMenu="matMenu">
+        <button mat-menu-item (click)="openPreferences()">
+          <mat-icon>tune</mat-icon>
+          <span>Preferences</span>
+        </button>
+        <button mat-menu-item (click)="openTokenUsage()">
+          <mat-icon>data_usage</mat-icon>
+          <span>Token Usage</span>
+        </button>
+        <button mat-menu-item (click)="openUserConfig()">
+          <mat-icon>manage_accounts</mat-icon>
+          <span>User Configuration</span>
+        </button>
+        <mat-divider />
+        <a mat-menu-item href="https://github.com/whoz-oss/coday" target="_blank" rel="noopener noreferrer">
+          <mat-icon>code</mat-icon>
+          <span>Contribute on GitHub</span>
+        </a>
+      </mat-menu>
+
+      <button
+        mat-icon-button
         (click)="refresh()"
         [disabled]="isLoading()"
         matTooltip="Refresh all tasks"
