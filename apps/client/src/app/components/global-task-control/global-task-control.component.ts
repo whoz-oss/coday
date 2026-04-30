@@ -244,9 +244,14 @@ export class GlobalTaskControlComponent implements OnInit {
       width: '500px',
       disableClose: false,
     })
-    ref.afterClosed().subscribe((result: { threadId: string; projectId: string } | null) => {
-      if (result) {
-        // Refresh the task list — retry a few times to catch the new thread
+    ref.afterClosed().subscribe((result: { threadId?: string; projectId: string; navigate?: boolean } | null) => {
+      if (!result) return
+
+      if (result.navigate) {
+        // Navigate to the project and open a new thread
+        void this.router.navigate(['project', result.projectId])
+      } else {
+        // Full task created — refresh the task list
         setTimeout(() => this.globalTaskService.refresh(), 300)
         setTimeout(() => this.globalTaskService.refresh(), 1500)
       }
