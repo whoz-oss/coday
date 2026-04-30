@@ -70,6 +70,7 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected readonly filters = FILTERS
   protected readonly activeFilter = signal<FilterKey>('all')
+  protected readonly starredOnly = signal(false)
   protected readonly activeProject = signal<string | null>(null)
   protected readonly searchQuery = signal<string>('')
 
@@ -88,13 +89,17 @@ export class GlobalTaskControlComponent implements OnInit {
       .sort((a, b) => a.name.localeCompare(b.name))
   })
 
-  /** Tasks filtered by active project and active status filter */
+  /** Tasks filtered by active project, starred filter, and active status filter */
   protected readonly filteredTasks = computed(() => {
     let tasks = this.allTasks()
 
     const project = this.activeProject()
     if (project) {
       tasks = tasks.filter((t) => t.projectId === project)
+    }
+
+    if (this.starredOnly()) {
+      tasks = tasks.filter((t) => t.starring.length > 0)
     }
 
     const filter = this.activeFilter()
@@ -105,11 +110,12 @@ export class GlobalTaskControlComponent implements OnInit {
     return tasks
   })
 
-  /** Counts for filter badges (after project filter, before status filter) */
+  /** Counts for filter badges (after project + starred filter, before status filter) */
   protected readonly filterCounts = computed((): Record<FilterKey, number> => {
     let tasks = this.allTasks()
     const project = this.activeProject()
     if (project) tasks = tasks.filter((t) => t.projectId === project)
+    if (this.starredOnly()) tasks = tasks.filter((t) => t.starring.length > 0)
 
     return {
       all: tasks.length,
@@ -163,6 +169,10 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected setFilter(key: FilterKey): void {
     this.activeFilter.set(key)
+  }
+
+  protected toggleStarredFilter(): void {
+    this.starredOnly.update((v) => !v)
   }
 
   protected setProject(name: string | null): void {

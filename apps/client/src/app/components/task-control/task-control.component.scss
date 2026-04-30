@@ -138,6 +138,18 @@
   }
 }
 
+.starred-filter {
+  &.active {
+    background: rgba(245, 166, 35, 0.15);
+    border-color: #f5a623;
+    color: #f5a623;
+
+    .filter-icon {
+      color: #f5a623;
+    }
+  }
+}
+
 // ── Groups (All view) ───────────────────────────────────────────────────────────────────
 
 .tc-group {
