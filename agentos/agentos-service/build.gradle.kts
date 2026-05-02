@@ -86,6 +86,7 @@ dependencies {
 
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.actuator)
 
     // OpenAPI / Swagger UI
@@ -159,7 +160,9 @@ dependencies {
     }
 
     // Test dependencies
-    testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.starter.test) {
+        exclude(group = "org.mockito")
+    }
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.bundles.testing.spring)
     testRuntimeOnly(libs.junit.platform.launcher)
@@ -192,7 +195,7 @@ dependencyManagement {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict")
+        freeCompilerArgs.addAll("-Xjsr305=strict", "-Xemit-jvm-type-annotations", "-Xannotation-default-target=param-property")
         jvmTarget.set(
             org.jetbrains.kotlin.gradle.dsl.JvmTarget
                 .fromTarget(libs.versions.kotlinJvmTarget.get()),
