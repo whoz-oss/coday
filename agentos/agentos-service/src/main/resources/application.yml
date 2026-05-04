@@ -73,6 +73,9 @@ agentos:
     # and will be removed in a future neo4j is the only supported
     # production mode going forward.
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
+  user-group:
+    max-users-per-group: ${USER_GROUP_MAX_USERS:30000}
+    max-agents-per-group: ${USER_GROUP_MAX_AGENTS:1000}
 
 logging:
   level:

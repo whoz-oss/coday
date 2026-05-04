@@ -27,6 +27,9 @@ import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
+import io.whozoss.agentos.usergroup.Neo4jUserGroupRepository
+import io.whozoss.agentos.usergroup.UserGroupNodeNeo4jRepository
+import io.whozoss.agentos.usergroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -65,6 +68,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
         "io.whozoss.agentos.integrationConfig",
+        "io.whozoss.agentos.usergroup",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -121,6 +125,12 @@ class Neo4jPersistenceConfiguration {
     fun neo4jAiModelRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelRepository {
         logger.info { "[Persistence] Neo4jAiModelRepository active" }
         return Neo4JAiModelRepository(aiModelNodeNeo4JRepository)
+    }
+
+    @Bean
+    fun neo4jUserGroupRepository(userGroupNodeNeo4jRepository: UserGroupNodeNeo4jRepository): UserGroupRepository {
+        logger.info { "[Persistence] Neo4jUserGroupRepository active" }
+        return Neo4jUserGroupRepository(userGroupNodeNeo4jRepository)
     }
 
     companion object : KLogging()
