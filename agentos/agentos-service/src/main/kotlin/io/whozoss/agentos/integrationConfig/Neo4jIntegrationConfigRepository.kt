@@ -68,7 +68,7 @@ open class Neo4jIntegrationConfigRepository(
         name: String,
     ): IntegrationConfig? =
         neo4jRepository
-            .findActiveByTriple(namespaceId?.toString(), userId?.toString(), name)
+            .findActiveByTripleKey(IntegrationConfigNode.computeTripleKey(namespaceId, userId, name))
             ?.toDomain(objectMapper)
 
     override fun delete(id: UUID): Boolean =
@@ -76,7 +76,14 @@ open class Neo4jIntegrationConfigRepository(
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
-                neo4jRepository.save(node.copy(removed = true))
+                // Switch the unique-constraint discriminant to a per-id tombstone so a future
+                // create with the same triple is not blocked by this row's lingering active key.
+                neo4jRepository.save(
+                    node.copy(
+                        removed = true,
+                        tripleKey = IntegrationConfigNode.tombstoneTripleKey(node.id),
+                    ),
+                )
                 logger.debug { "[Neo4jIntegrationConfigRepository] Soft-deleted config $id" }
                 true
             } ?: false
@@ -84,7 +91,14 @@ open class Neo4jIntegrationConfigRepository(
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
-        neo4jRepository.saveAll(active.map { it.copy(removed = true) })
+        neo4jRepository.saveAll(
+            active.map {
+                it.copy(
+                    removed = true,
+                    tripleKey = IntegrationConfigNode.tombstoneTripleKey(it.id),
+                )
+            },
+        )
         logger.debug { "[Neo4jIntegrationConfigRepository] Soft-deleted ${active.size} configs under namespace $parentId" }
         return active.size
     }

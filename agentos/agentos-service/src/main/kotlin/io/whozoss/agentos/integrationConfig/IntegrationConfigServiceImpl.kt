@@ -1,5 +1,7 @@
 package io.whozoss.agentos.integrationConfig
 
+import mu.KLogging
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -17,6 +19,11 @@ import java.util.UUID
  *
  * Uniqueness on the (namespaceId, userId, name) triple is enforced on [create] (409 on
  * conflict) and on [update] when a rename would collide with another row in the same scope.
+ *
+ * The applicative pre-check ([findByNamespaceAndUserAndName]) is kept for the common case so the
+ * caller gets a descriptive 409 message; the catch on [DataIntegrityViolationException] is the
+ * defence against concurrent inserts that race past the pre-check (the DB-level unique constraint
+ * on `tripleKey` catches the loser).
  */
 @Service
 class IntegrationConfigServiceImpl(
@@ -30,7 +37,7 @@ class IntegrationConfigServiceImpl(
                 conflictMessage(entity),
             )
         }
-        return repository.save(entity)
+        return saveOrConflict(entity)
     }
 
     override fun update(entity: IntegrationConfig): IntegrationConfig {
@@ -43,7 +50,7 @@ class IntegrationConfigServiceImpl(
                     conflictMessage(entity),
                 )
             }
-        return repository.save(entity)
+        return saveOrConflict(entity)
     }
 
     override fun findByIds(ids: Collection<UUID>): List<IntegrationConfig> = repository.findByIds(ids)
@@ -65,6 +72,8 @@ class IntegrationConfigServiceImpl(
         name: String,
     ): IntegrationConfig? = findByNamespaceAndUserAndName(namespaceId, null, name)
 
+    override fun findByUserId(userId: UUID): List<IntegrationConfig> = repository.findByUserId(userId)
+
     private fun requireScope(entity: IntegrationConfig) {
         if (entity.namespaceId == null && entity.userId == null) {
             throw ResponseStatusException(
@@ -74,7 +83,46 @@ class IntegrationConfigServiceImpl(
         }
     }
 
+    private fun saveOrConflict(entity: IntegrationConfig): IntegrationConfig =
+        try {
+            repository.save(entity)
+        } catch (e: DataIntegrityViolationException) {
+            // Catches the race window: two concurrent creates pass the applicative pre-check,
+            // both reach `save`, the DB unique constraint on `tripleKey` rejects one of them.
+            // We only translate to 409 when the violation is identifiably the triple-uniqueness
+            // constraint — any other integrity error (future constraints, NOT NULL breaches,
+            // edge-mismatch, …) is rethrown so it surfaces as a 500 with an honest stack trace
+            // rather than a misleading "name already exists" message.
+            if (!isTripleKeyConflict(e)) {
+                throw e
+            }
+            logger.warn(e) {
+                "[IntegrationConfigService] tripleKey unique-constraint violation on save " +
+                    "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
+            }
+            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+        }
+
+    /**
+     * Inspect the exception chain (Spring DAO wraps the Neo4j driver error) for a marker that
+     * unambiguously identifies the `integration_config_triple_key_unique` constraint. Both the
+     * constraint name and the property name are checked because Neo4j 5.x error messages vary
+     * across server versions and translation layers.
+     */
+    private fun isTripleKeyConflict(e: DataIntegrityViolationException): Boolean {
+        val haystack =
+            generateSequence<Throwable>(e) { it.cause }
+                .mapNotNull { it.message }
+                .joinToString(separator = " | ")
+        return TRIPLE_KEY_CONSTRAINT_NAME in haystack || TRIPLE_KEY_PROPERTY in haystack
+    }
+
     private fun conflictMessage(entity: IntegrationConfig): String =
         "An integration config named '${entity.name}' already exists for this scope " +
             "(namespaceId=${entity.namespaceId}, userId=${entity.userId})"
+
+    companion object : KLogging() {
+        private const val TRIPLE_KEY_CONSTRAINT_NAME = "integration_config_triple_key_unique"
+        private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+    }
 }

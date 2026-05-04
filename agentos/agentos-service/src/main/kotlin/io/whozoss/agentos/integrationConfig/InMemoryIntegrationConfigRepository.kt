@@ -37,16 +37,25 @@ class InMemoryIntegrationConfigRepository : IntegrationConfigRepository {
     override fun deleteByParent(parentId: UUID): Int = findByNamespaceId(parentId).count { delegate.delete(it.metadata.id) }
 
     override fun findByNamespaceId(namespaceId: UUID): List<IntegrationConfig> =
-        delegate.findAll().filter { it.namespaceId == namespaceId }
+        delegate.findAll().filter { it.namespaceId == namespaceId && !it.metadata.removed }
 
-    override fun findByUserId(userId: UUID): List<IntegrationConfig> = delegate.findAll().filter { it.userId == userId }
+    override fun findByUserId(userId: UUID): List<IntegrationConfig> =
+        delegate.findAll().filter { it.userId == userId && !it.metadata.removed }
 
+    // Explicit `removed` filter mirrors the Neo4j repository's `(c.removed IS NULL OR c.removed = false)`
+    // predicate so the two implementations stay observationally equivalent — even if a future change
+    // in the in-memory delegate alters the default `findAll()` semantics.
     override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,
     ): IntegrationConfig? =
-        delegate.findAll().firstOrNull { it.namespaceId == namespaceId && it.userId == userId && it.name == name }
+        delegate.findAll().firstOrNull {
+            it.namespaceId == namespaceId &&
+                it.userId == userId &&
+                it.name == name &&
+                !it.metadata.removed
+        }
 
     companion object {
         private const val ALL_KEY = "all"

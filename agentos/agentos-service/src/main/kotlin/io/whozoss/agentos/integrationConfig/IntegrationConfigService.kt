@@ -37,4 +37,13 @@ interface IntegrationConfigService : EntityService<IntegrationConfig, UUID> {
         namespaceId: UUID,
         name: String,
     ): IntegrationConfig?
+
+    /**
+     * Find all non-removed configs scoped to the given user, regardless of [IntegrationConfig.namespaceId].
+     *
+     * Returns rows where `userId == :userId` — both user-global (`namespaceId IS NULL`)
+     * and user × namespace (`namespaceId = ?`). Used by the user-scoped CRUD listing
+     * ([UserIntegrationConfigController.list]).
+     */
+    fun findByUserId(userId: UUID): List<IntegrationConfig>
 }

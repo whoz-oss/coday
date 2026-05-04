@@ -28,6 +28,13 @@ import java.util.UUID
  * [parameters] is a [com.fasterxml.jackson.databind.JsonNode] in the domain model but Neo4j has
  * no native JSON type, so it is stored as a raw JSON string ([parametersJson]) and round-tripped
  * via [ObjectMapper] in [toDomain] / [fromDomain].
+ *
+ * [tripleKey] is a denormalised, deterministic discriminator computed from
+ * `(namespaceId, userId, name)` (story 6.2.5). It backs both the unique constraint and the
+ * single-property index seek used by [IntegrationConfigNodeNeo4jRepository.findActiveByTripleKey].
+ * Sentinel `_` (underscore — invalid in UUIDs) substitutes a NULL id so two distinct triples
+ * never collide. The key stays in sync with its sources because all writes flow through
+ * [fromDomain]; reads (and `copy(removed = true)` soft deletes) preserve the stored value.
  */
 @Node("IntegrationConfig")
 data class IntegrationConfigNode(
@@ -36,6 +43,7 @@ data class IntegrationConfigNode(
     val namespaceId: String? = null,
     val userId: String? = null,
     val name: String,
+    val tripleKey: String,
     val integrationType: String,
     val description: String? = null,
     val parametersJson: String? = null,
@@ -68,15 +76,45 @@ data class IntegrationConfigNode(
         )
 
     companion object {
+        /**
+         * Sentinel substituted for a NULL id component when computing [tripleKey]. `_` is
+         * outside the UUID alphabet (hex + dashes), so it cannot collide with a real UUID
+         * string and the resulting key remains injective across the three triple modes.
+         */
+        const val NULL_ID_SENTINEL: String = "_"
+
+        /**
+         * Prefix for tombstone keys. Distinct from any active key (no active key starts with
+         * a non-UUID/non-`_` segment), so soft-deleted rows never compete for the unique slot
+         * with their would-be replacements. Each tombstone embeds the row id, which is itself
+         * unique, so multiple tombstones never collide either.
+         */
+        private const val TOMBSTONE_PREFIX: String = "tombstone:"
+
+        fun computeTripleKey(
+            namespaceId: UUID?,
+            userId: UUID?,
+            name: String,
+        ): String = "${namespaceId?.toString() ?: NULL_ID_SENTINEL}:${userId?.toString() ?: NULL_ID_SENTINEL}:$name"
+
+        fun tombstoneTripleKey(id: String): String = "$TOMBSTONE_PREFIX$id"
+
         fun fromDomain(
             config: IntegrationConfig,
             objectMapper: ObjectMapper,
-        ): IntegrationConfigNode =
-            IntegrationConfigNode(
-                id = config.id.toString(),
+        ): IntegrationConfigNode {
+            val idString = config.id.toString()
+            val tripleKey =
+                when {
+                    config.metadata.removed -> tombstoneTripleKey(idString)
+                    else -> computeTripleKey(config.namespaceId, config.userId, config.name)
+                }
+            return IntegrationConfigNode(
+                id = idString,
                 namespaceId = config.namespaceId?.toString(),
                 userId = config.userId?.toString(),
                 name = config.name,
+                tripleKey = tripleKey,
                 integrationType = config.integrationType,
                 description = config.description,
                 parametersJson = config.parameters?.let { objectMapper.writeValueAsString(it) },
@@ -86,5 +124,6 @@ data class IntegrationConfigNode(
                 modifiedBy = config.metadata.modifiedBy,
                 removed = config.metadata.removed.takeIf { it },
             )
+        }
     }
 }

@@ -43,30 +43,24 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     fun findActiveByUserId(userId: String): List<IntegrationConfigNode>
 
     /**
-     * Find a single non-removed config matching the (namespaceId, userId, name) triple.
-     * Both ids are nullable; NULL parameters match rows where the corresponding property is NULL
-     * (Neo4j stores NULL as the absence of a property — `c.namespaceId IS NULL` covers this).
+     * Find a single non-removed config matched by its [IntegrationConfigNode.tripleKey] discriminator.
+     *
+     * The lookup is a single-property exact match on a non-null String, which the Neo4j planner
+     * resolves through the index provisioned by the `integration_config_triple_key_unique`
+     * constraint. This sidesteps the two limitations of the previous composite-index lookup:
+     * indexes were not used for `IS NULL` predicates, and the composite uniqueness constraint
+     * silently exempted rows where any component was NULL.
+     *
+     * Callers must compute the key with [IntegrationConfigNode.computeTripleKey] to keep the
+     * encoding identical to what was written via [IntegrationConfigNode.fromDomain].
      */
     @Query(
         $$"""
-            MATCH (c:IntegrationConfig)
-            WHERE c.name = $name
-              AND (c.removed IS NULL OR c.removed = false)
-              AND (
-                ($namespaceId IS NULL AND c.namespaceId IS NULL)
-                OR c.namespaceId = $namespaceId
-              )
-              AND (
-                ($userId IS NULL AND c.userId IS NULL)
-                OR c.userId = $userId
-              )
+            MATCH (c:IntegrationConfig {tripleKey: $tripleKey})
+            WHERE c.removed IS NULL OR c.removed = false
             RETURN c
             LIMIT 1
             """,
     )
-    fun findActiveByTriple(
-        namespaceId: String?,
-        userId: String?,
-        name: String,
-    ): IntegrationConfigNode?
+    fun findActiveByTripleKey(tripleKey: String): IntegrationConfigNode?
 }
