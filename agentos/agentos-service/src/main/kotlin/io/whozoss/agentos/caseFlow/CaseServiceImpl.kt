@@ -47,7 +47,9 @@ class CaseServiceImpl(
 
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
-        val saved = caseRepository.save(Case(metadata = entity.metadata, namespaceId = entity.namespaceId))
+        // Persist the full entity so client-supplied title and status are preserved
+        //.
+        val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "[CaseService] Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         return saved
@@ -71,6 +73,9 @@ class CaseServiceImpl(
     override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
+
+    override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+        caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
 
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {

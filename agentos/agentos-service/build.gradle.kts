@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.springdoc.openapi)
+    `maven-publish`
 }
 
 group = "whoz-oss.agentos"
@@ -21,6 +22,55 @@ java {
             )
     }
     targetCompatibility = JavaVersion.toVersion(libs.versions.kotlinJvmTarget.get())
+    withSourcesJar()
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+
+            pom {
+                name.set("AgentOS Service")
+                description.set("AgentOS Service - Backend orchestration service")
+                url.set("https://github.com/whoz-oss/coday")
+
+                licenses {
+                    license {
+                        name.set("Apache License 2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("whoz-oss")
+                        name.set("Whoz OSS")
+                        email.set("oss@whoz.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/whoz-oss/coday.git")
+                    developerConnection.set("scm:git:ssh://github.com/whoz-oss/coday.git")
+                    url.set("https://github.com/whoz-oss/coday")
+                }
+            }
+        }
+    }
+
+    repositories {
+        mavenLocal()
+
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/whoz-oss/coday")
+            credentials {
+                username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }
 
 dependencies {
@@ -37,6 +87,7 @@ dependencies {
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.spring.boot.starter.security)
 
     // OpenAPI / Swagger UI
     implementation(libs.springdoc.openapi.starter)
@@ -110,6 +161,8 @@ dependencies {
 
     // Test dependencies
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.security.test)
+    testImplementation(libs.mockk.spring)
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.bundles.testing.spring)
     testRuntimeOnly(libs.junit.platform.launcher)

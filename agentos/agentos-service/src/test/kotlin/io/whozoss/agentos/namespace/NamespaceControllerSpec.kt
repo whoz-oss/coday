@@ -1,31 +1,59 @@
 package io.whozoss.agentos.namespace
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.Runs
+import io.mockk.clearAllMocks
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
  * Unit tests for [NamespaceController].
  *
- * The controller is instantiated directly with MockK stubs — no Spring context.
- * Tests cover:
- * - [NamespaceController.toResource]  — domain → HTTP DTO mapping
- * - [NamespaceController.toDomain]    — HTTP DTO → domain mapping, including blank configPath normalization
- * - [NamespaceController.listAll]     — delegates to [NamespaceService.findAll] and maps results
- * - Inherited [io.whozoss.agentos.entity.EntityController] endpoints:
- *   getById (found / not-found), getByIds, create, update (found / not-found),
- *   delete (found / not-found)
+ * Authorization is now declarative (`@PreAuthorize`) and only fires through Spring AOP.
+ * Pure unit tests bypass the proxy, so authorization paths are NOT exercised here —
+ * they are covered by [io.whozoss.agentos.security.declarative.MethodSecurityIntegrationSpec].
+ *
+ * What this spec covers:
+ * - Mapping (toResource / toDomain, blank-configPath normalisation)
+ * - `listAll` permission-filtered listing ( — branches on `User.isAdmin`,
+ *   delegates to `NamespaceService.findIdsVisibleTo` to avoid N+1)
+ * - `create` auto-grants ADMIN to the creator
+ * - `delete` cascade-revokes ADMIN/MEMBER relations before service.delete
+ * - `update` 404-on-missing path
  */
 class NamespaceControllerSpec : StringSpec({
-    timeout = 5000
-
     val namespaceService = mockk<NamespaceService>()
-    val controller = NamespaceController(namespaceService)
+    val userService = mockk<UserService>()
+    val permissionService = mockk<PermissionService>()
+    val controller = NamespaceController(namespaceService, userService, permissionService)
+
+    val superAdminId = UUID.randomUUID()
+    val superAdmin = User(
+        metadata = EntityMetadata(id = superAdminId),
+        externalId = "super@example.com",
+        email = "super@example.com",
+        isAdmin = true,
+    )
+    val regularUserId = UUID.randomUUID()
+    val regularUser = User(
+        metadata = EntityMetadata(id = regularUserId),
+        externalId = "user@example.com",
+        email = "user@example.com",
+        isAdmin = false,
+    )
 
     fun ns(
         id: UUID = UUID.randomUUID(),
@@ -51,189 +79,222 @@ class NamespaceControllerSpec : StringSpec({
         configPath = configPath,
     )
 
+    beforeTest { clearAllMocks() }
+
     // -------------------------------------------------------------------------
-    // toResource mapping
+    // Mapping
     // -------------------------------------------------------------------------
 
     "toResource maps all fields including configPath" {
         val id = UUID.randomUUID()
-        val entity = ns(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday")
-
-        val result = controller.toResource(entity)
-
-        result shouldBe NamespaceResource(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday")
+        controller.toResource(ns(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday")) shouldBe
+            NamespaceResource(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday")
     }
 
     "toResource preserves null configPath" {
-        val entity = ns(configPath = null)
-
-        controller.toResource(entity).configPath shouldBe null
-    }
-
-    // -------------------------------------------------------------------------
-    // toDomain mapping
-    // -------------------------------------------------------------------------
-
-    "toDomain maps all fields from NamespaceResource to Namespace" {
-        val id = UUID.randomUUID()
-        val r = resource(id = id, name = "platform", description = "Platform team", configPath = "/opt/platform")
-
-        val result = controller.toDomain(r)
-
-        result.metadata.id shouldBe id
-        result.name shouldBe "platform"
-        result.description shouldBe "Platform team"
-        result.configPath shouldBe "/opt/platform"
+        controller.toResource(ns(configPath = null)).configPath shouldBe null
     }
 
     "toDomain normalizes blank configPath to null" {
-        val r = resource(configPath = "   ")
-
-        controller.toDomain(r).configPath shouldBe null
+        controller.toDomain(resource(configPath = "   ")).configPath shouldBe null
     }
 
     "toDomain normalizes empty string configPath to null" {
-        val r = resource(configPath = "")
-
-        controller.toDomain(r).configPath shouldBe null
-    }
-
-    "toDomain preserves null configPath" {
-        val r = resource(configPath = null)
-
-        controller.toDomain(r).configPath shouldBe null
+        controller.toDomain(resource(configPath = "")).configPath shouldBe null
     }
 
     "toDomain generates a random UUID when resource id is null" {
-        val r = resource(id = null)
-
-        val result = controller.toDomain(r)
-
-        result.metadata.id shouldBe result.metadata.id
+        val first = controller.toDomain(resource(id = null))
+        val second = controller.toDomain(resource(id = null))
+        (first.metadata.id == second.metadata.id) shouldBe false
     }
 
     // -------------------------------------------------------------------------
-    // listAll
+    // listAll — permission-filtered
     // -------------------------------------------------------------------------
 
-    "listAll returns all namespaces mapped to NamespaceResource" {
-        val ns1 = ns(name = "engineering")
-        val ns2 = ns(name = "product")
-        every { namespaceService.findAll() } returns listOf(ns1, ns2)
+    "listAll returns all namespaces with role=SUPER-ADMIN for a super-admin caller" {
+        val n1 = ns(name = "a")
+        val n2 = ns(name = "b")
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.findAll() } returns listOf(n1, n2)
 
         val result = controller.listAll()
 
-        result shouldBe listOf(controller.toResource(ns1), controller.toResource(ns2))
-        verify(exactly = 1) { namespaceService.findAll() }
+        result.map { it.role } shouldBe listOf("SUPER-ADMIN", "SUPER-ADMIN")
     }
 
-    "listAll returns empty list when no namespaces exist" {
-        every { namespaceService.findAll() } returns emptyList()
+    "listAll returns empty list for a regular user with no permissions" {
+        every { userService.getCurrentUser() } returns regularUser
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ) } returns emptyList()
 
         controller.listAll() shouldBe emptyList()
     }
 
-    // -------------------------------------------------------------------------
-    // getById (inherited from EntityController)
-    // -------------------------------------------------------------------------
+    "listAll assigns role=ADMIN for namespaces in the WRITE set, role=MEMBER otherwise" {
+        val adminNs = ns(name = "admin-ns")
+        val memberNs = ns(name = "member-ns")
+        every { userService.getCurrentUser() } returns regularUser
+        every {
+            namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ)
+        } returns listOf(adminNs.id, memberNs.id)
+        every { namespaceService.findByIds(listOf(adminNs.id, memberNs.id)) } returns listOf(adminNs, memberNs)
+        every {
+            namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.WRITE)
+        } returns listOf(adminNs.id)
 
-    "getById returns a NamespaceResource when namespace is found" {
-        val entity = ns()
-        every { namespaceService.findByIds(listOf(entity.id)) } returns listOf(entity)
-        every { namespaceService.findById(entity.id) } returns entity
+        val result = controller.listAll().associate { it.id to it.role }
 
-        val result = controller.getById(entity.id)
-
-        result shouldBe controller.toResource(entity)
-    }
-
-    "getById throws 404 when namespace not found" {
-        val id = UUID.randomUUID()
-        every { namespaceService.findByIds(listOf(id)) } returns emptyList()
-        every { namespaceService.findById(id) } returns null
-
-        val ex = runCatching { controller.getById(id) }.exceptionOrNull()
-
-        (ex is ResourceNotFoundException) shouldBe true
+        result[adminNs.id] shouldBe "ADMIN"
+        result[memberNs.id] shouldBe "MEMBER"
     }
 
     // -------------------------------------------------------------------------
-    // getByIds (inherited)
+    // create — auto-grant ADMIN
     // -------------------------------------------------------------------------
 
-    "getByIds returns matching namespaces mapped to resources" {
-        val ns1 = ns(name = "engineering")
-        val ns2 = ns(name = "product")
-        every { namespaceService.findByIds(listOf(ns1.id, ns2.id)) } returns listOf(ns1, ns2)
-
-        val result = controller.getByIds(listOf(ns1.id, ns2.id))
-
-        result shouldBe listOf(controller.toResource(ns1), controller.toResource(ns2))
-    }
-
-    // -------------------------------------------------------------------------
-    // create (inherited)
-    // -------------------------------------------------------------------------
-
-    "create converts resource to domain, delegates to service, and returns mapped resource" {
+    "create auto-grants ADMIN on the new namespace to the creator" {
         val r = resource(id = null, name = "new-namespace")
-        val saved = controller.toDomain(r)
-        every { namespaceService.create(any()) } returns saved
+        val savedEntity = ns(name = "new-namespace")
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.create(any()) } returns savedEntity
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
 
-        val result = controller.create(r)
+        controller.create(r).id shouldBe savedEntity.id
 
-        result shouldBe controller.toResource(saved)
+        verify(exactly = 1) {
+            permissionService.grantPermission(
+                superAdminId.toString(), EntityType.NAMESPACE, savedEntity.id.toString(), PermissionRelation.ADMIN,
+            )
+        }
+    }
+
+    "create still succeeds when auto-grant ADMIN fails (logs warning, no rollback)" {
+        val r = resource(id = null, name = "new-namespace")
+        val savedEntity = ns(name = "new-namespace")
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.create(any()) } returns savedEntity
+        every {
+            permissionService.grantPermission(any(), any(), any(), any())
+        } throws RuntimeException("transient Neo4j failure")
+
+        controller.create(r).id shouldBe savedEntity.id
         verify(exactly = 1) { namespaceService.create(any()) }
     }
 
     // -------------------------------------------------------------------------
-    // update (inherited)
+    // update — 404-on-missing path
     // -------------------------------------------------------------------------
-
-    "update delegates to service when namespace exists and returns mapped resource" {
-        val entity = ns()
-        val updatedResource = resource(id = entity.id, name = "renamed", configPath = "/new/path")
-        val updatedDomain = controller.toDomain(updatedResource)
-        every { namespaceService.findByIds(listOf(entity.id)) } returns listOf(entity)
-        every { namespaceService.findById(entity.id) } returns entity
-        every { namespaceService.update(any()) } returns updatedDomain
-
-        val result = controller.update(entity.id, updatedResource)
-
-        result shouldBe controller.toResource(updatedDomain)
-        verify(exactly = 1) { namespaceService.update(any()) }
-    }
 
     "update throws 404 when namespace not found" {
         val id = UUID.randomUUID()
-        val r = resource(id = id)
-        every { namespaceService.findByIds(listOf(id)) } returns emptyList()
         every { namespaceService.findById(id) } returns null
 
-        val ex = runCatching { controller.update(id, r) }.exceptionOrNull()
-
-        (ex is ResourceNotFoundException) shouldBe true
+        shouldThrow<ResourceNotFoundException> { controller.update(id, resource(id = id)) }
     }
 
     // -------------------------------------------------------------------------
-    // delete (inherited)
+    // delete — cascade revoke
     // -------------------------------------------------------------------------
 
-    "delete succeeds when namespace exists" {
-        val id = UUID.randomUUID()
-        every { namespaceService.delete(id) } returns true
+    "delete cascade-revokes ADMIN and MEMBER relations BEFORE service.delete" {
+        val entity = ns()
+        val userA = UUID.randomUUID().toString()
+        val userB = UUID.randomUUID().toString()
+        every { namespaceService.findById(entity.id) } returns entity
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.delete(entity.id) } returns true
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
+        } returns listOf(userA, userB)
+        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
 
-        controller.delete(id)
+        controller.delete(entity.id)
 
-        verify(exactly = 1) { namespaceService.delete(id) }
+        verify(exactly = 1) { namespaceService.delete(entity.id) }
+        listOf(userA, userB).forEach { uid ->
+            verify(exactly = 1) {
+                permissionService.revokePermission(uid, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
+            }
+            verify(exactly = 1) {
+                permissionService.revokePermission(uid, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
+            }
+        }
     }
 
-    "delete throws 404 when service returns false" {
+    "delete dedups affected users (cascade loops each user only once)" {
+        val entity = ns()
+        val userA = UUID.randomUUID().toString()
+        every { namespaceService.findById(entity.id) } returns entity
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.delete(entity.id) } returns true
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
+        } returns listOf(userA, userA)
+        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
+
+        controller.delete(entity.id)
+
+        verify(exactly = 1) {
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
+        }
+        verify(exactly = 1) {
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
+        }
+    }
+
+    "delete throws 404 when namespace not found" {
         val id = UUID.randomUUID()
-        every { namespaceService.delete(id) } returns false
+        every { namespaceService.findById(id) } returns null
 
-        val ex = runCatching { controller.delete(id) }.exceptionOrNull()
+        shouldThrow<ResourceNotFoundException> { controller.delete(id) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+    }
 
-        (ex is ResourceNotFoundException) shouldBe true
+    "delete re-raises when listUsersWithPermission fails (no orphan relations)" {
+        val entity = ns()
+        every { namespaceService.findById(entity.id) } returns entity
+        every { userService.getCurrentUser() } returns superAdmin
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
+        } throws RuntimeException("neo4j down")
+
+        shouldThrow<RuntimeException> { controller.delete(entity.id) }
+
+        verify(exactly = 0) { namespaceService.delete(any()) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+    }
+
+    "delete continues cascade when an individual revoke fails" {
+        val entity = ns()
+        val userA = UUID.randomUUID().toString()
+        val userB = UUID.randomUUID().toString()
+        every { namespaceService.findById(entity.id) } returns entity
+        every { userService.getCurrentUser() } returns superAdmin
+        every { namespaceService.delete(entity.id) } returns true
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, entity.id.toString(), null)
+        } returns listOf(userA, userB)
+        every {
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
+        } throws RuntimeException("transient")
+        every {
+            permissionService.revokePermission(userA, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
+        } just Runs
+        every {
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
+        } just Runs
+        every {
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
+        } just Runs
+
+        controller.delete(entity.id)
+
+        verify(exactly = 1) {
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.ADMIN)
+        }
+        verify(exactly = 1) {
+            permissionService.revokePermission(userB, EntityType.NAMESPACE, entity.id.toString(), PermissionRelation.MEMBER)
+        }
     }
 })

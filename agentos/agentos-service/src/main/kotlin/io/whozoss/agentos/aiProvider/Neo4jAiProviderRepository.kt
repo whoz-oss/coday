@@ -1,5 +1,6 @@
 package io.whozoss.agentos.aiProvider
 
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
@@ -15,10 +16,18 @@ import java.util.UUID
  */
 open class Neo4jAiProviderRepository(
     private val neo4jRepository: AiProviderNodeNeo4jRepository,
+    private val childLinkService: Neo4jChildLinkService,
 ) : AiProviderRepository {
     override fun save(entity: AiProvider): AiProvider =
         neo4jRepository
             .save(AiProviderNode.fromDomain(entity))
+            .also { savedNode ->
+                // Only link namespace-scoped providers. User-scoped
+                // providers skip this step — they remain legacy (issue #809).
+                entity.namespaceId?.let { nsId ->
+                    childLinkService.link("AiProvider", savedNode.id, "Namespace", nsId.toString())
+                }
+            }
             .toDomain()
             .also { logger.debug { "[Neo4jAiProviderRepository] Saved AiProvider ${it.id} ('${entity.name}')" } }
 

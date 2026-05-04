@@ -67,7 +67,8 @@
       "@whoz-oss/agentos-api-client": ["libs/agentos-api-client/src/index.ts"],
       "@whoz-oss/agentos-dataflow": ["libs/agentos-dataflow/src/index.ts"],
       "@whoz-oss/agentos-ui": ["libs/agentos-ui/src/index.ts"],
-      "@whoz-oss/design-system": ["libs/design-system/src/index.ts"]
+      "@whoz-oss/design-system": ["libs/design-system/src/index.ts"],
+      "agentos-gradle": ["tools/plugins/agentos-gradle/src/index.ts"]
     },
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,

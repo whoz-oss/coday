@@ -14,8 +14,10 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
@@ -33,11 +35,11 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
 
     private val namespaceId = UUID.randomUUID()
 
-    private fun createParentAiProvider(): AiProvider =
+    private fun createParentAiProvider(nsId: UUID = namespaceId): AiProvider =
         aiProviderService.create(
             AiProvider(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
-                namespaceId = namespaceId,
+                namespaceId = nsId,
                 name = "anthropic-${UUID.randomUUID()}",
                 apiType = AiApiType.Anthropic,
             ),
@@ -104,6 +106,49 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                             """{ "id": "${created.id}", "aiProviderId": "${parent.id}", "apiModelName": "gpt-4o-to-update", "alias": "BIG" }""",
                         ),
                 ).andExpect(status().isOk)
+        }
+
+        // Secured listing through /by-parentId/{providerId}
+        "GET /api/ai-models/by-parentId/{providerId} returns models for super-admin caller" {
+            val parent = createParentAiProvider()
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = namespaceId,
+                    apiModelName = "claude-haiku-4-5",
+                ),
+            )
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = namespaceId,
+                    apiModelName = "claude-opus-4-6",
+                ),
+            )
+
+            mockMvc.perform(get("/api/ai-models/by-parentId/${parent.id}"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+        }
+
+        // Secured listing through /by-namespaceId/{namespaceId}
+        "GET /api/ai-models/by-namespaceId/{namespaceId} returns models in namespace" {
+            val listNs = UUID.randomUUID()
+            val parent = createParentAiProvider(nsId = listNs)
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = listNs,
+                    apiModelName = "gpt-4o",
+                ),
+            )
+
+            mockMvc.perform(get("/api/ai-models/by-namespaceId/$listNs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(1)))
         }
     }
 }

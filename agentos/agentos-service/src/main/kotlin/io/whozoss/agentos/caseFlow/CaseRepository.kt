@@ -8,4 +8,19 @@ import java.util.UUID
  *
  * Parent type is UUID representing the namespaceId.
  */
-interface CaseRepository : EntityRepository<Case, UUID>
+interface CaseRepository : EntityRepository<Case, UUID> {
+    /**
+     * Find cases in a namespace that [userId] is allowed to see.
+     *
+     * Permission rule for Case (owner-private, FR15):
+     * - User has a direct `[:ADMIN]` or `[:MEMBER]` relation on the case, or
+     * - User has a direct `[:ADMIN]` relation on the parent namespace (transitive
+     *   ADMIN). Namespace MEMBER does NOT grant transitive READ on cases.
+     *
+     * Super-admin callers must be handled upstream (controller short-circuits
+     * and uses [findByParent] directly to avoid going through this filter).
+     *
+     * Implementations must exclude soft-deleted cases.
+     */
+    fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+}

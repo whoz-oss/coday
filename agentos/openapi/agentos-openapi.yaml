@@ -67,6 +67,88 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/namespaces/{namespaceId}/members/{targetUserId}:
+    put:
+      tags:
+      - namespace-permission-endpoints
+      operationId: grantMember
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+      - namespace-permission-endpoints
+      operationId: revokeMember
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/namespaces/{namespaceId}/admins/{targetUserId}:
+    put:
+      tags:
+      - namespace-permission-endpoints
+      operationId: grantAdmin
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+      - namespace-permission-endpoints
+      operationId: revokeAdmin
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/namespaces/{id}:
     get:
       tags:
@@ -561,7 +643,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Namespace"
+                  $ref: "#/components/schemas/NamespaceListItem"
     post:
       tags:
       - namespace-controller
@@ -1009,6 +1091,27 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PluginActionResponse"
+  /api/namespaces/{namespaceId}/users:
+    get:
+      tags:
+      - namespace-permission-endpoints
+      operationId: listNamespaceUsers
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NamespaceUserListItem"
   /api/namespaces/by-parentId/{parentId}:
     get:
       tags:
@@ -1345,6 +1448,10 @@ components:
           type: string
         bio:
           type: string
+        isAdmin:
+          type: boolean
+      required:
+      - isAdmin
     Namespace:
       type: object
       properties:
@@ -1956,6 +2063,56 @@ components:
       - provider
       - state
       - version
+    NamespaceListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        configPath:
+          type: string
+          description: Optional filesystem path to a directory containing base configuration
+            for this namespace
+        role:
+          type: string
+          description: The caller's effective role on this namespace
+          enum:
+          - SUPER-ADMIN
+          - ADMIN
+          - MEMBER
+      required:
+      - id
+      - name
+      - role
+    NamespaceUserListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        externalId:
+          type: string
+        email:
+          type: string
+        firstname:
+          type: string
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's direct role on this namespace
+          enum:
+          - ADMIN
+          - MEMBER
+      required:
+      - email
+      - externalId
+      - id
+      - role
     IntegrationTypeDescriptor:
       type: object
       properties:

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.aiModel
 
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
@@ -13,10 +14,16 @@ import java.util.UUID
  */
 open class Neo4JAiModelRepository(
     private val neo4jRepository: AiModelNodeNeo4jRepository,
+    private val childLinkService: Neo4jChildLinkService,
 ) : AiModelRepository {
     override fun save(entity: AiModel): AiModel =
         neo4jRepository
             .save(AiModelNode.fromDomain(entity))
+            .also { savedNode ->
+                entity.namespaceId?.let { nsId ->
+                    childLinkService.link("AiModel", savedNode.id, "Namespace", nsId.toString())
+                }
+            }
             .toDomain()
             .also {
                 logger.debug {

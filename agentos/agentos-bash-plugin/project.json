@@ -3,67 +3,6 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "agentos/agentos-bash-plugin/src",
-  "targets": {
-    "build": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": [
-        "default",
-        "{projectRoot}/build.gradle.kts",
-        "{workspaceRoot}/agentos/gradle.properties",
-        "{workspaceRoot}/agentos/settings.gradle.kts"
-      ],
-      "outputs": [
-        "{projectRoot}/build"
-      ],
-      "options": {
-        "command": "./gradlew :agentos-bash-plugin:build",
-        "cwd": "agentos"
-      },
-      "dependsOn": [
-        {
-          "target": "build",
-          "projects": [
-            "agentos-sdk"
-          ]
-        }
-      ]
-    },
-    "test": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": [
-        "default",
-        "{projectRoot}/build.gradle.kts",
-        "{workspaceRoot}/agentos/gradle.properties",
-        "{workspaceRoot}/agentos/settings.gradle.kts"
-      ],
-      "outputs": [
-        "{projectRoot}/build/test-results",
-        "{projectRoot}/build/reports"
-      ],
-      "options": {
-        "command": "./gradlew :agentos-bash-plugin:test",
-        "cwd": "agentos",
-        "passWithNoTests": null
-      },
-      "dependsOn": [
-        "build",
-        {
-          "target": "build",
-          "projects": ["agentos-sdk"]
-        }
-      ]
-    },
-    "clean": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "./gradlew :agentos-bash-plugin:clean",
-        "cwd": "agentos"
-      }
-    }
-  },
   "tags": [
     "type:lib",
     "platform:jvm",

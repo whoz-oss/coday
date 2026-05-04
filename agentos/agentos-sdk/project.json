@@ -2,58 +2,12 @@
   "name": "agentos-sdk",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
-  "release": {
-    "version": {
-      "manifestRootsToUpdate": []
-    }
-  },
   "sourceRoot": "agentos/agentos-sdk/src",
   "targets": {
     "build": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": [
-        "default",
-        "{projectRoot}/build.gradle.kts",
-        "{workspaceRoot}/agentos/gradle.properties",
-        "{workspaceRoot}/agentos/settings.gradle.kts"
-      ],
-      "outputs": ["{projectRoot}/build"],
-      "options": {
-        "command": "./gradlew :agentos-sdk:build",
-        "cwd": "agentos"
-      }
+      "dependsOn": []
     },
     "test": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": [
-        "default",
-        "{projectRoot}/build.gradle.kts",
-        "{workspaceRoot}/agentos/gradle.properties",
-        "{workspaceRoot}/agentos/settings.gradle.kts"
-      ],
-      "outputs": ["{projectRoot}/build/test-results", "{projectRoot}/build/reports"],
-      "options": {
-        "command": "./gradlew :agentos-sdk:test",
-        "cwd": "agentos",
-        "passWithNoTests": null
-      },
-      "dependsOn": ["build"]
-    },
-    "nx-release-publish": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "echo 'agentos-sdk published via Gradle in CI'"
-      }
-    },
-    "publish": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "./gradlew :agentos-sdk:publish",
-        "cwd": "agentos"
-      },
       "dependsOn": ["build"]
     }
   },

@@ -12,6 +12,7 @@ api/case-event-rest-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
+api/namespace-permission-endpoints.service.ts
 api/plugin-controller.service.ts
 api/sse.service.ts
 api/user-controller.service.ts
@@ -41,6 +42,8 @@ model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
 model/models.ts
+model/namespace-list-item.ts
+model/namespace-user-list-item.ts
 model/namespace.ts
 model/plugin-action-response.ts
 model/plugin-info.ts

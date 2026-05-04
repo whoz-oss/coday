@@ -11,7 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import mu.KLogging
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -59,6 +61,8 @@ class CaseEventSseController(
         ],
     )
     @GetMapping("/{caseId}/events", produces = ["text/event-stream"])
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    @HideOnAccessDenied
     fun streamEvents(
         @PathVariable caseId: UUID,
     ): SseEmitter {

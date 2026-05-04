@@ -23,23 +23,4 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<IntegrationConfigNode>
-
-    /**
-     * Creates the `BELONGS_TO` relationship from an IntegrationConfig node to its Namespace node.
-     *
-     * Called after saving a config. Using an explicit query avoids SDN writing
-     * stub [io.whozoss.agentos.namespace.NamespaceNode] properties (empty name/description) onto the existing
-     * Namespace node when the relationship is expressed via the @Relationship field.
-     */
-    @Query(
-        $$"""
-            MATCH (c:IntegrationConfig {id: $configId})
-            MATCH (ns:Namespace {id: $namespaceId})
-            MERGE (c)-[:BELONGS_TO]->(ns)
-            """,
-    )
-    fun linkConfigToNamespace(
-        configId: String,
-        namespaceId: String,
-    )
 }
