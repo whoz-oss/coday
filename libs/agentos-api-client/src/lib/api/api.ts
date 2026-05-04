@@ -14,6 +14,8 @@ export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
+export * from './namespace-permission-endpoints.service'
+import { NamespacePermissionEndpointsService } from './namespace-permission-endpoints.service'
 export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './sse.service'
@@ -29,6 +31,7 @@ export const APIS = [
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,
+  NamespacePermissionEndpointsService,
   PluginControllerService,
   SseService,
   UserControllerService,
