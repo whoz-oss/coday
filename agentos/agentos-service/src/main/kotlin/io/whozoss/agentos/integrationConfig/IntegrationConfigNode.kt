@@ -13,26 +13,28 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [IntegrationConfig].
  *
- * Stored as a `(:IntegrationConfig)-[:BELONGS_TO]->(:Namespace)` edge.
+ * Triple-mode (since story 6.1): both [namespaceId] and [userId] are nullable scalar properties.
+ * For namespace-scoped configs the BELONGS_TO edge to the parent Namespace is materialised by
+ * [Neo4jIntegrationConfigRepository.save] via [io.whozoss.agentos.persistence.Neo4jChildLinkService].
+ * User-only configs (`namespaceId == null`) do NOT yet get a BELONGS_TO edge to the user node —
+ * that wiring lands in story 6.2 alongside the user-scoped CRUD.
  *
  * [namespace] is a nullable `var` so SDN can call the primary constructor before
  * injecting the @Relationship field via property injection.
  *
- * [toDomain] reads [namespace]!!.id — a null here is a data-integrity error and
- * should surface as an NPE rather than be silently ignored.
- *
  * On write, [fromDomain] provides a stub [NamespaceNode] carrying only the `@Id`.
  * SDN MERGEs by `@Id` on save and never overwrites existing Namespace properties.
  *
- * [parameters] is a [JsonNode] in the domain model but Neo4j has no native JSON
- * type, so it is stored as a raw JSON string ([parametersJson]) and round-tripped
+ * [parameters] is a [com.fasterxml.jackson.databind.JsonNode] in the domain model but Neo4j has
+ * no native JSON type, so it is stored as a raw JSON string ([parametersJson]) and round-tripped
  * via [ObjectMapper] in [toDomain] / [fromDomain].
  */
 @Node("IntegrationConfig")
 data class IntegrationConfigNode(
     @Id
     val id: String,
-    val namespaceId: String,
+    val namespaceId: String? = null,
+    val userId: String? = null,
     val name: String,
     val integrationType: String,
     val description: String? = null,
@@ -57,7 +59,8 @@ data class IntegrationConfigNode(
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
                 ),
-            namespaceId = UUID.fromString(namespaceId),
+            namespaceId = namespaceId?.let { UUID.fromString(it) },
+            userId = userId?.let { UUID.fromString(it) },
             name = name,
             integrationType = integrationType,
             description = description,
@@ -71,7 +74,8 @@ data class IntegrationConfigNode(
         ): IntegrationConfigNode =
             IntegrationConfigNode(
                 id = config.id.toString(),
-                namespaceId = config.namespaceId.toString(),
+                namespaceId = config.namespaceId?.toString(),
+                userId = config.userId?.toString(),
                 name = config.name,
                 integrationType = config.integrationType,
                 description = config.description,

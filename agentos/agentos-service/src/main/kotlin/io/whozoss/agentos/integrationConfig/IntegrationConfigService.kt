@@ -10,11 +10,26 @@ import java.util.UUID
  * - [create] and [update] are kept separate (inherited from [EntityService]) because
  *   each will carry distinct business logic as the feature matures (e.g. validation
  *   against the integration type schema, credential encryption, audit events).
- * - [findByNamespaceAndName]: point lookup by the natural key (namespaceId, name).
+ * - [findByNamespaceAndUserAndName]: triple-mode point lookup by the natural key
+ *   (namespaceId, userId, name) — NULL values match rows with NULL on the same column.
+ * - [findByNamespaceAndName]: legacy two-key lookup that always assumes `userId = null`,
+ *   preserved for Epic 4 callers and tests.
  */
 interface IntegrationConfigService : EntityService<IntegrationConfig, UUID> {
     /**
-     * Find a single [IntegrationConfig] by its natural key.
+     * Find a single [IntegrationConfig] matching the (namespaceId, userId, name) triple.
+     *
+     * @return The config if found and not removed, null otherwise.
+     */
+    fun findByNamespaceAndUserAndName(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): IntegrationConfig?
+
+    /**
+     * Find a single namespace-scoped [IntegrationConfig] by its (namespaceId, name) pair.
+     * Equivalent to `findByNamespaceAndUserAndName(namespaceId, null, name)`.
      *
      * @return The config if found and not removed, null otherwise.
      */

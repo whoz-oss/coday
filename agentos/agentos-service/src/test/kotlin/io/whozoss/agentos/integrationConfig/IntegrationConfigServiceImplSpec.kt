@@ -26,7 +26,8 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository())
 
     private fun config(
-        namespaceId: UUID = UUID.randomUUID(),
+        namespaceId: UUID? = UUID.randomUUID(),
+        userId: UUID? = null,
         name: String = "JIRA",
         integrationType: String = "JIRA",
         description: String? = null,
@@ -35,6 +36,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         IntegrationConfig(
             metadata = EntityMetadata(),
             namespaceId = namespaceId,
+            userId = userId,
             name = name,
             integrationType = integrationType,
             description = description,
@@ -143,6 +145,111 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
 
             service.findByParent(nsA) shouldHaveSize 1
             service.findByParent(nsB) shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // Triple-mode (story 6.1, AC1, AC2, FR27bis)
+        // -------------------------------------------------------------------------
+
+        "create throws 400 when both namespaceId and userId are null (invariant)" {
+            val service = newService()
+            shouldThrow<ResponseStatusException> {
+                service.create(config(namespaceId = null, userId = null))
+            }.statusCode.value() shouldBe 400
+        }
+
+        "update throws 400 when both namespaceId and userId are null (defence in depth)" {
+            val service = newService()
+            val original = service.create(config(namespaceId = UUID.randomUUID()))
+            shouldThrow<ResponseStatusException> {
+                service.update(original.copy(namespaceId = null, userId = null))
+            }.statusCode.value() shouldBe 400
+        }
+
+        "create succeeds with namespaceId only (Epic 4 path preserved)" {
+            val service = newService()
+            val saved = service.create(config(namespaceId = UUID.randomUUID(), userId = null))
+            saved.shouldNotBeNull()
+        }
+
+        "create succeeds with userId only (user-global)" {
+            val service = newService()
+            val saved = service.create(config(namespaceId = null, userId = UUID.randomUUID()))
+            saved.shouldNotBeNull()
+        }
+
+        "create succeeds with both namespaceId and userId (user × namespace overlay)" {
+            val service = newService()
+            val saved = service.create(config(namespaceId = UUID.randomUUID(), userId = UUID.randomUUID()))
+            saved.shouldNotBeNull()
+        }
+
+        "create throws 409 on duplicate user-only triple (null, user, name)" {
+            val service = newService()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = null, userId = userId, name = "JIRA"))
+
+            shouldThrow<ResponseStatusException> {
+                service.create(config(namespaceId = null, userId = userId, name = "JIRA"))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "create throws 409 on duplicate user × namespace triple (ns, user, name)" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = userId, name = "JIRA"))
+
+            shouldThrow<ResponseStatusException> {
+                service.create(config(namespaceId = nsId, userId = userId, name = "JIRA"))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "three rows differing only by scope coexist for the same name (AC2 grid)" {
+            // (ns=A, user=null, name) × (ns=null, user=alice, name) × (ns=A, user=alice, name)
+            // — all three valid, none colliding under the (namespaceId, userId, name) uniqueness.
+            val service = newService()
+            val nsA = UUID.randomUUID()
+            val alice = UUID.randomUUID()
+
+            val nsOnly = service.create(config(namespaceId = nsA, userId = null, name = "JIRA"))
+            val userOnly = service.create(config(namespaceId = null, userId = alice, name = "JIRA"))
+            val userNamespace = service.create(config(namespaceId = nsA, userId = alice, name = "JIRA"))
+
+            // All three are persisted as distinct rows
+            (setOf(nsOnly.id, userOnly.id, userNamespace.id)).size shouldBe 3
+
+            // findByNamespaceAndUserAndName retrieves each one independently
+            service.findByNamespaceAndUserAndName(nsA, null, "JIRA")?.id shouldBe nsOnly.id
+            service.findByNamespaceAndUserAndName(null, alice, "JIRA")?.id shouldBe userOnly.id
+            service.findByNamespaceAndUserAndName(nsA, alice, "JIRA")?.id shouldBe userNamespace.id
+        }
+
+        "update conflict check uses the triple, not just (namespaceId, name)" {
+            // A user-overlay row with the same (namespaceId, name) as a namespace-shared row
+            // must NOT block renaming the user-overlay; the conflict check must be triple-aware.
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val alice = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = null, name = "JIRA"))
+            val aliceCfg = service.create(config(namespaceId = nsId, userId = alice, name = "JIRA-SECONDARY"))
+
+            // Renaming alice's overlay to "JIRA" must succeed because the existing (nsId, null, "JIRA")
+            // row has a different scope — the triple is (nsId, alice, "JIRA"), not used yet.
+            val renamed = service.update(aliceCfg.copy(name = "JIRA"))
+            renamed.name shouldBe "JIRA"
+        }
+
+        "update throws 409 when renaming would collide within the same scope" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val alice = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = alice, name = "OLD"))
+            val toUpdate = service.create(config(namespaceId = nsId, userId = alice, name = "OTHER"))
+
+            shouldThrow<ResponseStatusException> {
+                service.update(toUpdate.copy(name = "OLD"))
+            }.statusCode.value() shouldBe 409
         }
 
         // -------------------------------------------------------------------------
