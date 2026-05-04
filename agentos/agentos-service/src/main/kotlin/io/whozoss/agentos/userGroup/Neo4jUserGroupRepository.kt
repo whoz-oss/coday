@@ -2,6 +2,7 @@ package io.whozoss.agentos.userGroup
 
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
+import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -9,17 +10,13 @@ import java.util.UUID
 open class Neo4jUserGroupRepository(
     private val neo4jRepository: UserGroupNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
+    private val neo4jClient: Neo4jClient,
 ) : UserGroupRepository {
     override fun save(entity: UserGroup): UserGroup =
         neo4jRepository
             .save(UserGroupNode.fromDomain(entity))
             .also { childLinkService.link("UserGroup", it.id, "Namespace", entity.namespaceId.toString()) }
             .toDomain()
-            .also {
-                logger.debug {
-                    "[Neo4jUserGroupRepository] Saved user group ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}"
-                }
-            }
 
     override fun findByIds(ids: Collection<UUID>): List<UserGroup> =
         neo4jRepository
@@ -33,9 +30,26 @@ open class Neo4jUserGroupRepository(
             .map { it.toDomain() }
 
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
-        neo4jRepository
-            .findByNamespaceExternalId(externalId)
-            .map { it.toSearchResult() }
+        neo4jClient
+            .query(
+                "MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace) " +
+                    "WHERE ns.externalId = \$externalId " +
+                    "  AND (g.removed IS NULL OR g.removed = false) " +
+                    "  AND (ns.removed IS NULL OR ns.removed = false) " +
+                    "RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name " +
+                    "ORDER BY g.name ASC",
+            ).bind(externalId)
+            .to("externalId")
+            .fetchAs(UserGroupSearchResult::class.java)
+            .mappedBy { _, record ->
+                UserGroupSearchResult(
+                    userGroupId = UUID.fromString(record["userGroupId"].asString()),
+                    namespaceId = UUID.fromString(record["namespaceId"].asString()),
+                    namespaceExternalId = record["namespaceExternalId"].asString(),
+                    name = record["name"].asString(),
+                )
+            }.all()
+            .toList()
 
     override fun delete(id: UUID): Boolean =
         neo4jRepository
@@ -43,7 +57,6 @@ open class Neo4jUserGroupRepository(
             ?.takeIf { it.removed != true }
             ?.let { node ->
                 neo4jRepository.save(node.copy(removed = true))
-                logger.debug { "[Neo4jUserGroupRepository] Soft-deleted user group $id" }
                 true
             } ?: false
 
@@ -51,17 +64,8 @@ open class Neo4jUserGroupRepository(
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
         neo4jRepository.saveAll(active.map { it.copy(removed = true) })
-        logger.debug { "[Neo4jUserGroupRepository] Soft-deleted ${active.size} user groups under namespace $parentId" }
         return active.size
     }
-
-    private fun UserGroupNamespaceProjection.toSearchResult() =
-        UserGroupSearchResult(
-            userGroupId = UUID.fromString(getUserGroup().id),
-            namespaceId = UUID.fromString(getUserGroup().namespaceId),
-            namespaceExternalId = getNamespaceExternalId(),
-            name = getUserGroup().name,
-        )
 
     companion object : KLogging()
 }

@@ -5,4 +5,5 @@ import java.util.UUID
 
 interface UserGroupService : EntityService<UserGroup, UUID> {
     fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult>
+    fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult
 }

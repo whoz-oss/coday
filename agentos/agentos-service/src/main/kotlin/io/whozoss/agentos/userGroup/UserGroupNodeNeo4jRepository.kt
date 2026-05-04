@@ -13,16 +13,4 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<UserGroupNode>
-
-    @Query(
-        $$"""
-            MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
-            WHERE ns.externalId = $externalId
-              AND (g.removed IS NULL OR g.removed = false)
-              AND (ns.removed IS NULL OR ns.removed = false)
-            RETURN g AS userGroup, ns.externalId AS namespaceExternalId
-            ORDER BY g.name ASC
-            """,
-    )
-    fun findByNamespaceExternalId(externalId: String): List<UserGroupNamespaceProjection>
 }

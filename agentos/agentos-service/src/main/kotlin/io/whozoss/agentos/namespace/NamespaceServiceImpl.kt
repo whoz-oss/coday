@@ -29,6 +29,8 @@ class NamespaceServiceImpl(
 
     override fun findAll(): List<Namespace> = namespaceRepository.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
 
+    override fun findByExternalId(externalId: String): Namespace? = namespaceRepository.findByExternalId(externalId)
+
     override fun delete(id: UUID): Boolean = namespaceRepository.delete(id)
 
     override fun deleteByParent(parentId: String): Int = namespaceRepository.deleteByParent(parentId)
