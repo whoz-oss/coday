@@ -10,13 +10,16 @@ open class Neo4jUserGroupRepository(
     private val neo4jRepository: UserGroupNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
 ) : UserGroupRepository {
-
     override fun save(entity: UserGroup): UserGroup =
         neo4jRepository
             .save(UserGroupNode.fromDomain(entity))
             .also { childLinkService.link("UserGroup", it.id, "Namespace", entity.namespaceId.toString()) }
             .toDomain()
-            .also { logger.debug { "[Neo4jUserGroupRepository] Saved user group ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
+            .also {
+                logger.debug {
+                    "[Neo4jUserGroupRepository] Saved user group ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}"
+                }
+            }
 
     override fun findByIds(ids: Collection<UUID>): List<UserGroup> =
         neo4jRepository
@@ -28,6 +31,11 @@ open class Neo4jUserGroupRepository(
         neo4jRepository
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
+
+    override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
+        neo4jRepository
+            .findByNamespaceExternalId(externalId)
+            .map { it.toSearchResult() }
 
     override fun delete(id: UUID): Boolean =
         neo4jRepository
@@ -46,6 +54,14 @@ open class Neo4jUserGroupRepository(
         logger.debug { "[Neo4jUserGroupRepository] Soft-deleted ${active.size} user groups under namespace $parentId" }
         return active.size
     }
+
+    private fun UserGroupNamespaceProjection.toSearchResult() =
+        UserGroupSearchResult(
+            userGroupId = UUID.fromString(getUserGroup().id),
+            namespaceId = UUID.fromString(getUserGroup().namespaceId),
+            namespaceExternalId = getNamespaceExternalId(),
+            name = getUserGroup().name,
+        )
 
     companion object : KLogging()
 }

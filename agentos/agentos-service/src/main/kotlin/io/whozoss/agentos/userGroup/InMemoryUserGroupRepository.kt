@@ -16,4 +16,6 @@ class InMemoryUserGroupRepository :
     EntityRepository<UserGroup, UUID> by InMemoryEntityRepository(
         parentIdExtractor = { it.namespaceId },
         comparator = compareBy { it.name },
-    )
+    ) {
+    override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> = emptyList()
+}

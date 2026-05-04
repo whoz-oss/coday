@@ -13,4 +13,6 @@ class UserGroupServiceImpl(
     override fun findByParent(parentId: UUID): List<UserGroup> = userGroupRepository.findByParent(parentId)
     override fun delete(id: UUID): Boolean = userGroupRepository.delete(id)
     override fun deleteByParent(parentId: UUID): Int = userGroupRepository.deleteByParent(parentId)
+    override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
+        userGroupRepository.findByNamespaceExternalId(externalId)
 }

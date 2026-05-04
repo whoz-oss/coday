@@ -1,0 +1,5 @@
+# GET user groups
+@namespaceExternalId=123
+
+GET {{apiBaseUrl}}//api/user-groups?namespaceExternalId={{namespaceExternalId}}
+Content-Type: application/json
