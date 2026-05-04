@@ -20,22 +20,4 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
             """,
     )
     fun findActiveByCaseId(caseId: String): List<CaseEventNode>
-
-    /**
-     * Creates the `BELONGS_TO` relationship from a CaseEvent node to its Case node.
-     *
-     * Called after saving a new event. Using an explicit query avoids SDN writing
-     * stub [io.whozoss.agentos.caseFlow.CaseNode] properties (empty status/title) onto the existing Case node
-     * when the relationship is expressed via the @Relationship field.
-     */
-    @Query(
-        $$"""MATCH (e:CaseEvent {id: $eventId})
-            MATCH (c:Case {id: $caseId})
-            MERGE (e)-[:BELONGS_TO]->(c)
-            """,
-    )
-    fun linkEventToCase(
-        eventId: String,
-        caseId: String,
-    )
 }

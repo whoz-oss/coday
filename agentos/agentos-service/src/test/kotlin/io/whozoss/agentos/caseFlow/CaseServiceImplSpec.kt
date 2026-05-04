@@ -497,6 +497,94 @@ class CaseServiceImplSpec :
             collectedChunks[1].chunk shouldBe " world"
         }
 
+        // -------------------------------------------------------------------------
+        // Sticky-agent behaviour: second message without @mention reuses last agent
+        // -------------------------------------------------------------------------
+
+        "second message without @mention uses the same agent as the first" {
+            // Regression test for the sticky-agent feature.
+            //
+            // When a user sends `@some-agent hello` and then `follow-up question`,
+            // the second message must be handled by `some-agent`, not the default agent.
+            //
+            // Before the fix, selectAgent() ignored the event history and always fell
+            // back to getDefaultAgentName(), so the second message was always routed
+            // to the default agent regardless of any prior @mention.
+
+            val defaultAgentName = "default-agent"
+            val selectedAgentName = "selected-agent"
+            val selectedAgentId = UUID.nameUUIDFromBytes(selectedAgentName.toByteArray())
+            val agentCallNames = mutableListOf<String>()
+
+            val selectedAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = selectedAgentId)
+                    every { name } returns selectedAgentName
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        agentCallNames.add(selectedAgentName)
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = selectedAgentId,
+                                    agentName = selectedAgentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+
+            val agentService =
+                mockk<AgentService> {
+                    every { getDefaultAgentName(any()) } returns defaultAgentName
+                    // @selected-agent resolves to selectedAgentName
+                    every { resolveAgentName(selectedAgentName, any()) } returns selectedAgentName
+                    // no other mention resolution needed
+                    every { findAgentByName(selectedAgentName, any()) } returns selectedAgent
+                }
+            val caseRepository = InMemoryCaseRepository()
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(agentService, caseRepository, caseEventService, userService)
+            val case = service.create(Case(namespaceId = namespaceId))
+
+            // First message: explicit @mention
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("@$selectedAgentName hello")),
+            )
+            val deadline1 = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < deadline1) {
+                if (service.getById(case.id).status == CaseStatus.IDLE) break
+                Thread.sleep(50)
+            }
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+
+            // Wait for run() to fully exit before sending the second message.
+            val idleDeadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < idleDeadline) {
+                if (!service.getCaseRuntime(case.id).isRunning()) break
+                Thread.sleep(10)
+            }
+
+            // Second message: no @mention — must stick with selectedAgent
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("follow-up question")),
+            )
+            val deadline2 = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < deadline2) {
+                if (agentCallNames.size >= 2) break
+                Thread.sleep(50)
+            }
+
+            agentCallNames shouldBe listOf(selectedAgentName, selectedAgentName)
+        }
+
         "agent runs once per message when two messages are sent sequentially" {
             var runCallCount = 0
             val countingAgent =

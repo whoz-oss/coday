@@ -1,26 +1,33 @@
 package io.whozoss.agentos.aiProvider
 
+import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
+import org.springframework.data.neo4j.core.schema.Relationship
+import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [io.whozoss.agentos.sdk.aiProvider.AiProvider].
  *
- * Stored as a (:AiProvider) node with a [namespaceId] property linking it to its
- * parent namespace (represented as a property, not an SDN @Relationship).
+ * Stored as `(:AiProvider)-[:BELONGS_TO]->(:Namespace)` for namespace-scoped
+ * providers. The [namespaceId] property keeps the scalar id for
+ * the legacy `findActiveByNamespaceId` query, while the [namespace]
+ * @Relationship is required by the transitive permission Cypher queries
+ * (`hasAdminAccessViaNamespace` / `hasReadAccessViaNamespace`). Both sources
+ * are kept in sync by [Neo4jAiProviderRepository.save].
+ *
+ * User-scoped providers (`userId != null`, `namespaceId == null`) do NOT get
+ * the @Relationship — they are legacy and tracked for cleanup in issue #809.
  *
  * [apiKey] is stored in clear text — masking is handled at the API layer by
  * [AiProviderController], not at the persistence layer.
  *
  * [apiType] is stored as its enum name string and round-tripped via [io.whozoss.agentos.sdk.aiProvider.AiApiType.valueOf].
- *
- * Properties kept flat (no nested objects) to avoid SDN's limited support for
- * embedded value types in Community Edition.
  */
 @Node("AiProvider")
 data class AiProviderNode(
@@ -39,6 +46,8 @@ data class AiProviderNode(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
+    val namespace: NamespaceNode? = null,
 ) {
     fun toDomain(): AiProvider =
         AiProvider(

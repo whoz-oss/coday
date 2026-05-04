@@ -118,6 +118,29 @@
                     </button>
                   }
 
+                  <!-- Mark done / Mark active toggle -->
+                  @if (thread.closedByUser) {
+                    <button
+                      mat-icon-button
+                      class="action-button mark-active-button"
+                      title="Mark as active"
+                      (click)="markActive($event, thread)"
+                      type="button"
+                    >
+                      <mat-icon>replay</mat-icon>
+                    </button>
+                  } @else {
+                    <button
+                      mat-icon-button
+                      class="action-button mark-done-button"
+                      title="Mark as done"
+                      (click)="markDone($event, thread)"
+                      type="button"
+                    >
+                      <mat-icon>check_circle_outline</mat-icon>
+                    </button>
+                  }
+
                   <button
                     mat-icon-button
                     class="action-button star-button"

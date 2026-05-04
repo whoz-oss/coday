@@ -2,20 +2,23 @@ package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
+import org.springframework.data.neo4j.core.schema.Relationship
+import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [AgentConfig].
  *
- * Stored as a (:AgentConfig) node with a [namespaceId] property linking it
- * to its parent namespace (represented as a property, not an SDN @Relationship).
- *
- * Properties kept flat (no nested objects) to avoid SDN's limited support for
- * embedded value types in Community Edition.
+ * Stored as `(:AgentConfig)-[:BELONGS_TO]->(:Namespace)`. The [namespaceId]
+ * property keeps the scalar id for the legacy `findActiveByNamespaceId` query,
+ * while the [namespace] @Relationship is required by the transitive permission
+ * Cypher queries (`hasAdminAccessViaNamespace` / `hasReadAccessViaNamespace`).
+ * Both sources are kept in sync by [Neo4jAgentConfigRepository.save].
  *
  * [integrationsJson] serialises [AgentConfig.integrations] as a JSON string
  * because Neo4j cannot store a map-of-lists as a native property.
@@ -36,6 +39,8 @@ data class AgentConfigNode(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
+    val namespace: NamespaceNode? = null,
 ) {
     fun toDomain(): AgentConfig =
         AgentConfig(

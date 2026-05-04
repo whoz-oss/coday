@@ -5,6 +5,8 @@ import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Default implementation of [UserService].
@@ -28,17 +30,28 @@ class UserServiceImpl(
 
     override fun findAll(): List<User> = userRepository.findByParent(UserRepository.USER_PARENT_KEY)
 
+    override fun count(): Long = userRepository.count()
+
     override fun findByExternalId(externalId: String): User? = userRepository.findByExternalId(externalId)
 
     override fun resolveOrCreateByExternalId(externalId: String): User =
-        findByExternalId(externalId) ?: run {
-            logger.info { "[UserService] Auto-creating user for externalId='$externalId'" }
-            create(
-                User(
-                    metadata = EntityMetadata(),
-                    externalId = externalId,
+        findByExternalId(externalId) ?: bootstrapLock.withLock {
+            // Double-check after acquiring lock to prevent TOCTOU race condition
+            findByExternalId(externalId) ?: run {
+                // Check if this is the first user in the system
+                val isFirstUser = userRepository.count() == 0L
+
+                logger.info { "[UserService] Auto-creating user for externalId='$externalId', isAdmin=$isFirstUser" }
+
+                create(
+                    User(
+                        metadata = EntityMetadata(),
+                        externalId = externalId,
+                        email = extractEmailFromExternalId(externalId),
+                        isAdmin = isFirstUser  // First user = super-admin
+                    )
                 )
-            )
+            }
         }
 
     override fun getCurrentUser(): User =
@@ -48,5 +61,24 @@ class UserServiceImpl(
 
     override fun deleteByParent(parentId: String): Int = userRepository.deleteByParent(parentId)
 
-    companion object : KLogging()
+    /**
+     * Extracts the email from the externalId if it is a valid email address.
+     * Otherwise, returns an empty string.
+     *
+     * @param externalId The external identifier that may be an email
+     * @return The email if valid, otherwise an empty string
+     */
+    private fun extractEmailFromExternalId(externalId: String): String {
+        // Simple check: if the externalId contains @ it's likely an email
+        return if (externalId.contains("@")) {
+            externalId
+        } else {
+            ""
+        }
+    }
+
+    companion object : KLogging() {
+        /** Lock to prevent TOCTOU race on first-user bootstrap. Only contended during the very first request. */
+        private val bootstrapLock = ReentrantLock()
+    }
 }

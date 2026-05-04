@@ -2,14 +2,22 @@ package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -19,18 +27,12 @@ import java.util.UUID
 /**
  * REST API for managing [AiModel] entities.
  *
- * Extends [EntityController] with [AiModelResource] as the HTTP DTO.
- *
- * Standard CRUD endpoints (inherited):
- *   GET    /api/ai-models/{id}
- *   POST   /api/ai-models/by-ids
- *   GET    /api/ai-models/by-parentId/{aiProviderId}  — list by provider
- *   POST   /api/ai-models
- *   PUT    /api/ai-models/{id}
- *   DELETE /api/ai-models/{id}
- *
- * Additional endpoints:
- *   GET    /api/ai-models/by-namespaceId/{namespaceId}  — list all models in a namespace
+ * Authorization declared via `@PreAuthorize`. Because permission depends on the parent
+ * AiProvider's namespace (and the AiModel's own namespaceId is denormalised at creation
+ * by the service), `create` and `listByParent` use [AiModelGuard] which encapsulates
+ * the parent lookup. Single-entity operations (READ/PUT/DELETE) use direct permission
+ * checks against `'AiModel'` since the entity's `[:BELONGS_TO]` edge is wired up by
+ * the repository at save time.
  */
 @RestController
 @RequestMapping(
@@ -39,7 +41,12 @@ import java.util.UUID
 )
 class AiModelController(
     private val aiModelService: AiModelService,
-) : EntityController<AiModel, UUID, AiModelResource>(aiModelService) {
+    userService: UserService,
+    permissionService: PermissionService,
+) : EntityController<AiModel, UUID, AiModelResource>(aiModelService, userService, permissionService) {
+
+    override val entityType = EntityType.AI_MODEL
+
     override fun toResource(entity: AiModel): AiModelResource =
         AiModelResource(
             id = entity.metadata.id,
@@ -55,15 +62,8 @@ class AiModelController(
         )
 
     /**
-     * Convert a resource to a domain entity for **create** only.
-     *
-     * [namespaceId] and [userId] are intentionally omitted here — they are
-     * server-resolved from the parent [io.whozoss.agentos.aiProvider.AiProvider] by
-     * [AiModelServiceImpl.create] before persisting. The nil-UUID placeholder
-     * is never stored; the service always overwrites it.
-     *
-     * For **update**, use [toDomainForUpdate] so server-owned fields are preserved
-     * from the persisted record rather than accepted from the client.
+     * Convert a resource to a domain entity for **create** only. [namespaceId] and
+     * [userId] are server-resolved from the parent AiProvider by `AiModelServiceImpl.create`.
      */
     override fun toDomain(resource: AiModelResource): AiModel =
         AiModel(
@@ -80,11 +80,9 @@ class AiModelController(
         )
 
     /**
-     * Merge an update resource onto an existing persisted entity.
-     *
-     * Server-owned fields ([AiModel.namespaceId], [AiModel.userId],
-     * [AiModel.aiProviderId]) are always taken from [existing] — the client
-     * cannot change them via a PUT. Client-supplied fields overwrite the rest.
+     * Merge an update resource onto an existing persisted entity. Server-owned fields
+     * ([AiModel.namespaceId], [AiModel.userId], [AiModel.aiProviderId]) are preserved
+     * (mass-assignment guard).
      */
     private fun toDomainForUpdate(
         resource: AiModelResource,
@@ -99,30 +97,44 @@ class AiModelController(
             maxTokens = resource.maxTokens,
         )
 
-    /**
-     * PUT /{id} — update mutable fields of an existing model config.
-     *
-     * Server-owned fields (namespaceId, userId, aiProviderId) are preserved from the
-     * persisted record and cannot be changed by the client.
-     */
+    @GetMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'AiModel', 'READ')")
+    @HideOnAccessDenied
+    override fun getById(@PathVariable id: UUID): AiModelResource = super.getById(id)
+
+    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
+
+    @GetMapping("/by-parentId/{parentId}")
+    @PreAuthorize("@aiModelGuard.canListByProvider(#parentId)")
+    override fun listByParent(@PathVariable parentId: UUID): List<AiModelResource> = super.listByParent(parentId)
+
+    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("@aiModelGuard.canCreate(#resource)")
+    override fun create(@Valid @RequestBody resource: AiModelResource): AiModelResource = super.create(resource)
+
+    @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'AiModel', 'WRITE')")
     override fun update(
-        id: UUID,
+        @PathVariable id: UUID,
         @Valid @RequestBody resource: AiModelResource,
     ): AiModelResource {
-        val existing =
-            service.findById(id)
-                ?: throw ResourceNotFoundException("AiModel not found: $id")
-        return toResource(service.update(toDomainForUpdate(resource, existing)))
+        val existing = aiModelService.findById(id)
+            ?: throw ResourceNotFoundException("AiModel not found: $id")
+        return toResource(aiModelService.update(toDomainForUpdate(resource, existing)))
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'AiModel', 'DELETE')")
+    override fun delete(@PathVariable id: UUID) = super.delete(id)
 
     /**
      * GET /by-namespaceId/{namespaceId} — list all model configs in a namespace.
-     *
-     * Uses the denormalised [AiModel.namespaceId] property so no join through
-     * [io.whozoss.agentos.aiProvider.AiProvider] is needed.
+     * Secured by namespace READ check (the denormalised [AiModel.namespaceId] is what
+     * the underlying query uses).
      */
     @GetMapping("/by-namespaceId/{namespaceId}")
     @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     fun listByNamespaceId(
         @PathVariable namespaceId: UUID,
     ): List<AiModelResource> = aiModelService.findByNamespaceId(namespaceId).map { toResource(it) }

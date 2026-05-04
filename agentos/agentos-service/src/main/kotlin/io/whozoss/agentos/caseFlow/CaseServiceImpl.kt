@@ -9,6 +9,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -47,7 +48,9 @@ class CaseServiceImpl(
 
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
-        val saved = caseRepository.save(Case(metadata = entity.metadata, namespaceId = entity.namespaceId))
+        // Persist the full entity so client-supplied title and status are preserved
+        //.
+        val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "[CaseService] Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         return saved
@@ -71,6 +74,9 @@ class CaseServiceImpl(
     override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
+
+    override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+        caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
 
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
@@ -117,7 +123,7 @@ class CaseServiceImpl(
             namespaceId = case.namespaceId,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
-            selectAgent = { content -> selectAgent(content, case.namespaceId, case.id) },
+            selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
             runAgent = { agentName, events, userId, shouldContinue -> runAgent(agentName, case.id, events, userId, shouldContinue) },
             inputEvents = inputEvents,
         )
@@ -146,12 +152,21 @@ class CaseServiceImpl(
      * Resolves which agent should handle a message and returns the ordered list of
      * events to store+emit on the runtime.
      *
+     * Resolution order:
+     * 1. Explicit `@mention` in the message content.
+     * 2. Last agent selected in this case (from [pastEvents]) — preserves continuity
+     *    across turns when the user does not re-mention an agent.
+     * 3. Namespace default agent — fallback when no prior selection exists.
+     *
      * Returns an empty list when no agent is configured (signals the runtime to stop).
      *
      * @param content the message content to inspect for @mention syntax.
+     * @param pastEvents the full event history of the case at the time of this call,
+     *   used to recover the last [AgentSelectedEvent] for sticky-agent behaviour.
      */
     private fun selectAgent(
         content: List<MessageContent>,
+        pastEvents: List<CaseEvent>,
         namespaceId: UUID,
         caseId: UUID,
     ): List<CaseEvent> {
@@ -173,9 +188,25 @@ class CaseServiceImpl(
                 logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
                 val warn =
                     WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")
-                val defaultName = agentService.getDefaultAgentName(namespaceId) ?: return listOf(warn)
+                val defaultName = agentService.getDefaultAgentName(namespaceId)
                 return listOf(warn, agentSelectedEvent(defaultName, namespaceId, caseId))
             }
+        }
+
+        // No explicit mention: re-use the last selected agent so the conversation
+        // stays with the same agent across turns without requiring the user to
+        // repeat the @mention on every message.
+        val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
+        val lastSelectedName =
+            pastEvents
+                .take(lastUserMessageIndex.coerceAtLeast(0))
+                .filterIsInstance<AgentSelectedEvent>()
+                .lastOrNull()
+                ?.agentName
+
+        if (lastSelectedName != null) {
+            logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
+            return listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
         }
 
         val defaultName = agentService.getDefaultAgentName(namespaceId)

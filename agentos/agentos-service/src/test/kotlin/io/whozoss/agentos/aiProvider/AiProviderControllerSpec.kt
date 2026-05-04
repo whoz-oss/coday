@@ -1,186 +1,201 @@
 package io.whozoss.agentos.aiProvider
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
-class AiProviderControllerSpec :
-    StringSpec({
-        timeout = 5000
+/**
+ * Unit tests for [AiProviderController].
+ *
+ * See [io.whozoss.agentos.agentConfig.AgentConfigControllerUnitSpec] for the rationale.
+ *
+ * One special case: `create` rejects user-scoped payloads with 400 BEFORE `@PreAuthorize`
+ * (it's a payload validation, not an authorization check). This path runs in a unit test
+ * and is asserted here.
+ */
+class AiProviderControllerSpec : StringSpec({
 
-        val service = mockk<AiProviderService>()
-        val controller = AiProviderController(service)
+    val service = mockk<AiProviderService>()
+    val userService = mockk<UserService>(relaxed = true)
+    val permissionService = mockk<PermissionService>(relaxed = true)
+    val controller = AiProviderController(service, userService, permissionService)
 
-        val namespaceId = UUID.randomUUID()
-        val userId = UUID.randomUUID()
+    val namespaceId = UUID.randomUUID()
 
-        fun config(
-            id: UUID = UUID.randomUUID(),
-            nsId: UUID? = namespaceId,
-            uId: UUID? = null,
-            name: String = "anthropic",
-            description: String? = null,
-            apiKey: String? = null,
-        ) = AiProvider(
-            metadata = EntityMetadata(id = id),
-            namespaceId = nsId,
-            userId = uId,
-            name = name,
-            description = description,
-            apiType = AiApiType.Anthropic,
-            apiKey = apiKey,
-        )
+    fun config(
+        id: UUID = UUID.randomUUID(),
+        nsId: UUID? = namespaceId,
+        uId: UUID? = null,
+        name: String = "anthropic",
+        apiKey: String? = null,
+    ) = AiProvider(
+        metadata = EntityMetadata(id = id),
+        namespaceId = nsId,
+        userId = uId,
+        name = name,
+        apiType = AiApiType.Anthropic,
+        apiKey = apiKey,
+    )
 
-        fun resource(
-            id: UUID? = UUID.randomUUID(),
-            nsId: UUID? = namespaceId,
-            uId: UUID? = null,
-            name: String = "anthropic",
-            description: String? = null,
-            apiKey: String? = null,
-        ) = AiProviderResource(
-            id = id,
-            namespaceId = nsId,
-            userId = uId,
-            name = name,
-            description = description,
-            apiType = AiApiType.Anthropic,
-            apiKey = apiKey,
-        )
+    fun resource(
+        id: UUID? = UUID.randomUUID(),
+        nsId: UUID? = namespaceId,
+        uId: UUID? = null,
+        name: String = "anthropic",
+        apiKey: String? = null,
+    ) = AiProviderResource(
+        id = id,
+        namespaceId = nsId,
+        userId = uId,
+        name = name,
+        apiType = AiApiType.Anthropic,
+        apiKey = apiKey,
+    )
 
-        // -------------------------------------------------------------------------
-        // toResource
-        // -------------------------------------------------------------------------
+    beforeTest { clearAllMocks() }
 
-        "toResource maps description" {
-            val result = controller.toResource(config(description = "Anthropic Claude provider"))
-            result.description shouldBe "Anthropic Claude provider"
+    // -------------------------------------------------------------------------
+    // Mapping
+    // -------------------------------------------------------------------------
+
+    "toResource masks a long apiKey" {
+        controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe "sk-a****mnop"
+    }
+
+    "toResource returns null apiKey when no key is set" {
+        controller.toResource(config(apiKey = null)).apiKey.shouldBeNull()
+    }
+
+    "toResource maps namespaceId and userId" {
+        val uid = UUID.randomUUID()
+        val r = controller.toResource(config(nsId = namespaceId, uId = uid))
+        r.namespaceId shouldBe namespaceId
+        r.userId shouldBe uid
+    }
+
+    // -------------------------------------------------------------------------
+    // create — payload validation: user-scoped refused with 400
+    // -------------------------------------------------------------------------
+
+    "create throws 403 when the entity is user-scoped (namespaceId null) — legacy path #809" {
+        // Note: in production @PreAuthorize fires first and returns 403 due to null target;
+        // in this unit test (no AOP) the body's defense-in-depth fail-closed throw fires.
+        val r = resource(id = null, nsId = null, uId = UUID.randomUUID())
+
+        val ex = shouldThrow<ResponseStatusException> { controller.create(r) }
+
+        ex.statusCode shouldBe HttpStatus.FORBIDDEN
+        (ex.reason ?: "") shouldBe "namespace-scoped AiProvider required (user-scoped deprecated, see #809)"
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "toDomain forces userId=null for namespace-scoped creation (anti-spoofing)" {
+        val spoofedUserId = UUID.randomUUID()
+        val r = resource(id = null, nsId = UUID.randomUUID(), uId = spoofedUserId)
+
+        controller.toDomain(r).userId shouldBe null
+    }
+
+    "toDomain preserves userId for user-scoped paths (legacy reads only — create rejects this)" {
+        val legacyUserId = UUID.randomUUID()
+        val r = resource(id = null, nsId = null, uId = legacyUserId)
+
+        controller.toDomain(r).userId shouldBe legacyUserId
+    }
+
+    "create succeeds when the entity is namespace-scoped" {
+        val r = resource(id = null, name = "openai")
+        val saved = config(name = "openai")
+        every { service.create(any()) } returns saved
+
+        val result = controller.create(r)
+
+        result.id shouldBe saved.metadata.id
+        verify(exactly = 1) { service.create(any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // update — server-owned-field preservation (mass-assignment guard)
+    // -------------------------------------------------------------------------
+
+    "update preserves the persisted namespaceId and userId when client sends different values" {
+        val existing = config(apiKey = "real-key")
+        val otherNs = UUID.randomUUID()
+        val otherUser = UUID.randomUUID()
+        val payload = resource(id = existing.metadata.id, nsId = otherNs, uId = otherUser, name = "renamed")
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers {
+            val saved = firstArg<AiProvider>()
+            saved.namespaceId shouldBe namespaceId
+            saved.userId shouldBe null
+            saved.name shouldBe "renamed"
+            saved
         }
 
-        "toResource maps null description" {
-            controller.toResource(config(description = null)).description shouldBe null
+        controller.update(existing.metadata.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update preserves persisted apiKey when incoming value is masked" {
+        val existing = config(apiKey = "sk-ant-api03-real-secret")
+        val payload = resource(id = existing.metadata.id, apiKey = "sk-a****cret")
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers {
+            val saved = firstArg<AiProvider>()
+            saved.apiKey shouldBe "sk-ant-api03-real-secret"
+            saved
         }
 
-        "toResource masks a long apiKey" {
-            controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe "sk-a****mnop"
+        val result = controller.update(existing.metadata.id, payload)
+
+        result.apiKey shouldBe maskApiKey("sk-ant-api03-real-secret")
+    }
+
+    "update keeps the persisted apiKey when client sends a blank apiKey" {
+        val existing = config(apiKey = "real-key")
+        val payload = resource(id = existing.metadata.id, apiKey = "")
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers {
+            val saved = firstArg<AiProvider>()
+            saved.apiKey shouldBe "real-key"
+            saved
         }
 
-        "toResource returns null apiKey when no key is set" {
-            controller.toResource(config(apiKey = null)).apiKey.shouldBeNull()
+        controller.update(existing.metadata.id, payload)
+    }
+
+    "update replaces the persisted apiKey when client sends a non-blank apiKey" {
+        val existing = config(apiKey = "old-key")
+        val payload = resource(id = existing.metadata.id, apiKey = "new-key")
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers {
+            val saved = firstArg<AiProvider>()
+            saved.apiKey shouldBe "new-key"
+            saved
         }
 
-        "toResource maps namespaceId and userId" {
-            val result = controller.toResource(config(nsId = namespaceId, uId = userId))
-            result.namespaceId shouldBe namespaceId
-            result.userId shouldBe userId
-        }
+        controller.update(existing.metadata.id, payload)
+    }
 
-        "toResource maps null namespaceId" {
-            val result = controller.toResource(config(nsId = null, uId = userId))
-            result.namespaceId.shouldBeNull()
-        }
+    "update throws 404 when the AiProvider does not exist" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns null
 
-        // -------------------------------------------------------------------------
-        // update — masked apiKey preservation
-        // -------------------------------------------------------------------------
-
-        "update preserves persisted apiKey when incoming value is masked" {
-            val existing = config(apiKey = "sk-ant-api03-real-secret")
-            every { service.findById(existing.id) } returns existing
-            every { service.update(any()) } answers { firstArg() }
-
-            val result = controller.update(existing.id, resource(id = existing.id, apiKey = "sk-a****cret"))
-
-            result.apiKey shouldBe maskApiKey("sk-ant-api03-real-secret")
-            verify { service.update(match { it.apiKey == "sk-ant-api03-real-secret" }) }
-        }
-
-        "update clears apiKey when incoming value is null" {
-            val existing = config(apiKey = "sk-ant-api03-old")
-            every { service.findById(existing.id) } returns existing
-            every { service.update(any()) } answers { firstArg() }
-
-            controller.update(existing.id, resource(id = existing.id, apiKey = null))
-
-            verify { service.update(match { it.apiKey == null }) }
-        }
-
-        "update throws 404 when entity is not found" {
-            val id = UUID.randomUUID()
-            every { service.findById(id) } returns null
-            val ex = runCatching { controller.update(id, resource(id = id)) }.exceptionOrNull()
-            (ex is ResourceNotFoundException) shouldBe true
-        }
-
-        // -------------------------------------------------------------------------
-        // listByNamespaceId / listByUserId
-        // -------------------------------------------------------------------------
-
-        "listByNamespaceId returns configs for the namespace" {
-            val c1 = config(name = "anthropic")
-            val c2 = config(name = "openai")
-            every { service.findByNamespaceId(namespaceId) } returns listOf(c1, c2)
-
-            val result = controller.listByNamespaceId(namespaceId)
-
-            result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-            verify(exactly = 1) { service.findByNamespaceId(namespaceId) }
-        }
-
-        "listByUserId returns configs for the user" {
-            val c = config(nsId = null, uId = userId)
-            every { service.findByUserId(userId) } returns listOf(c)
-
-            val result = controller.listByUserId(userId)
-
-            result shouldBe listOf(controller.toResource(c))
-            verify(exactly = 1) { service.findByUserId(userId) }
-        }
-
-        // -------------------------------------------------------------------------
-        // Inherited endpoints
-        // -------------------------------------------------------------------------
-
-        "getById returns a resource when the entity is found" {
-            val c = config()
-            every { service.findById(c.id) } returns c
-            controller.getById(c.id) shouldBe controller.toResource(c)
-        }
-
-        "getById throws 404 when entity is not found" {
-            val id = UUID.randomUUID()
-            every { service.findById(id) } returns null
-            val ex = runCatching { controller.getById(id) }.exceptionOrNull()
-            (ex is ResourceNotFoundException) shouldBe true
-        }
-
-        "create delegates to service and returns mapped resource" {
-            val r = resource(id = null)
-            val saved = controller.toDomain(r)
-            every { service.create(any()) } returns saved
-            controller.create(r) shouldBe controller.toResource(saved)
-            verify(exactly = 1) { service.create(any()) }
-        }
-
-        "delete succeeds when entity exists" {
-            val id = UUID.randomUUID()
-            every { service.delete(id) } returns true
-            controller.delete(id)
-            verify(exactly = 1) { service.delete(id) }
-        }
-
-        "delete throws 404 when service returns false" {
-            val id = UUID.randomUUID()
-            every { service.delete(id) } returns false
-            val ex = runCatching { controller.delete(id) }.exceptionOrNull()
-            (ex is ResourceNotFoundException) shouldBe true
-        }
-    })
+        shouldThrow<ResourceNotFoundException> { controller.update(id, resource(id = id)) }
+    }
+})
