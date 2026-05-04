@@ -27,6 +27,7 @@ data class UserNode(
     val firstname: String? = null,
     val lastname: String? = null,
     val bio: String? = null,
+    val isAdmin: Boolean = false,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -50,6 +51,7 @@ data class UserNode(
             firstname = firstname,
             lastname = lastname,
             bio = bio,
+            isAdmin = isAdmin,
         )
 
     companion object {
@@ -61,6 +63,7 @@ data class UserNode(
                 firstname = user.firstname,
                 lastname = user.lastname,
                 bio = user.bio,
+                isAdmin = user.isAdmin,
                 created = user.metadata.created,
                 createdBy = user.metadata.createdBy,
                 modified = user.metadata.modified,

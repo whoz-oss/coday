@@ -87,6 +87,7 @@ dependencies {
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.spring.boot.starter.security)
 
     // OpenAPI / Swagger UI
     implementation(libs.springdoc.openapi.starter)
@@ -160,6 +161,8 @@ dependencies {
 
     // Test dependencies
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.security.test)
+    testImplementation(libs.mockk.spring)
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.bundles.testing.spring)
     testRuntimeOnly(libs.junit.platform.launcher)

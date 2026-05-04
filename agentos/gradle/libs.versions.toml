@@ -52,7 +52,9 @@ pf4j-spring = { module = "org.pf4j:pf4j-spring", version.ref = "pf4jSpring" }
 # Spring Boot
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-security-test = { module = "org.springframework.security:spring-security-test" }
 
 # Klogger
 klogger = {module="io.github.microutils:kotlin-logging-jvm", version.ref="klogger"}

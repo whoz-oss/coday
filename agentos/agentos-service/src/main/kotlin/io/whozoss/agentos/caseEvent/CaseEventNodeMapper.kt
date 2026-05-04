@@ -22,9 +22,9 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 // Note: fromDomain does NOT set the `case` @Relationship field. The BELONGS_TO
-// edge is created separately via CaseEventNodeNeo4jRepository.linkEventToCase()
-// after the node is saved. This avoids SDN writing stub CaseNode properties
-// (empty status/title) onto the existing Case node.
+// edge is created separately via Neo4jChildLinkService.link(...) in
+// Neo4jCaseEventRepository after the node is saved. This avoids SDN writing
+// stub CaseNode properties (empty status/title) onto the existing Case node.
 
 /**
  * Maps between [CaseEvent] domain objects and their [CaseEventNode] graph projections.

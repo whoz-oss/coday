@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
@@ -12,13 +13,15 @@ import java.util.UUID
  */
 open class Neo4jAgentConfigRepository(
     private val neo4jRepository: AgentConfigNodeNeo4jRepository,
+    private val childLinkService: Neo4jChildLinkService,
 ) : AgentConfigRepository {
 
     override fun save(entity: AgentConfig): AgentConfig =
         neo4jRepository
             .save(AgentConfigNode.fromDomain(entity))
+            .also { childLinkService.link("AgentConfig", it.id, "Namespace", entity.namespaceId.toString()) }
             .toDomain()
-            .also { logger.debug { "[Neo4jAgentConfigRepository] Saved agent config \${it.id} ('\${entity.name}') under namespace \${entity.namespaceId}" } }
+            .also { logger.debug { "[Neo4jAgentConfigRepository] Saved agent config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
 
     override fun findByIds(ids: Collection<UUID>): List<AgentConfig> =
         neo4jRepository

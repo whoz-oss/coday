@@ -20,6 +20,13 @@ interface UserRepository : EntityRepository<User, String> {
      */
     fun findByExternalId(externalId: String): User?
 
+    /**
+     * Count the total number of non-removed users in the system.
+     *
+     * @return The number of active (non-removed) users
+     */
+    fun count(): Long
+
     companion object {
         const val USER_PARENT_KEY = "all"
     }

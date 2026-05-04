@@ -16,6 +16,11 @@ agentos:
     dir: build/test-plugins
   persistence:
     mode: in-memory
+  bootstrap:
+    # Disabled in tests — fixtures manage their own users, the bootstrap
+    # invariants (default admin / single-user migration) would otherwise
+    # contaminate the in-memory DB.
+    enabled: false
 
 logging:
   level:

@@ -58,6 +58,17 @@ agentos:
     #        to x-forwarded-email; requires the User to be pre-registered.
     # Override with env var: AGENTOS_SECURITY_MODE
     mode: local
+  bootstrap:
+    # Enable bootstrap service to run on startup
+    # Override with env var: AGENTOS_BOOTSTRAP_ENABLED
+    enabled: true
+    # External identifier of the auto-created admin when the database is empty.
+    # If unset, falls back to the JVM user.name system property — which matches
+    # the OS user in 'local' mode and lets the bootstrap admin be immediately
+    # usable on first request without further configuration.
+    # In 'auth' mode, set this to the email expected from JWT claims.
+    # Override with env var: AGENTOS_BOOTSTRAP_ADMIN_EXTERNAL_ID
+    # admin-external-id: admin
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
