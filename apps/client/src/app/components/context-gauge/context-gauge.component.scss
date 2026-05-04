@@ -1,0 +1,274 @@
+:host {
+  position: fixed;
+  left: calc(1rem + 10px);
+  z-index: 1500;
+  display: block;
+  top: calc(1rem + 40px + 0.5rem + 40px + 2rem);
+}
+
+.tube-host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  &.hidden {
+    visibility: hidden;
+  }
+}
+
+.tube {
+  position: relative;
+  height: 100px;
+  width: 24px;
+  border: 1px solid rgba(150, 150, 150, 0.35);
+  border-radius: 0 0 50rem 50rem;
+  background-color: var(--color-bg, rgba(20, 20, 20, 0.7));
+  cursor: default;
+  overflow: visible;
+}
+
+.body {
+  position: absolute;
+  border-radius: inherit;
+  height: 100%;
+  width: 100%;
+  bottom: 0;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.shine {
+  position: absolute;
+  left: 10%;
+  top: 0;
+  width: 10%;
+  height: 100%;
+  z-index: 90;
+  opacity: 0.2;
+  pointer-events: none;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    background-color: #fff;
+    border-radius: 50rem;
+    top: 10%;
+    height: 40%;
+    width: 100%;
+  }
+
+  &::after {
+    height: 15%;
+    top: 60%;
+  }
+}
+
+@keyframes liquid-spin {
+  0% {
+    transform: translateX(-50%) rotate(0deg);
+  }
+  100% {
+    transform: translateX(-50%) rotate(360deg);
+  }
+}
+
+.liquid {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  bottom: 0;
+}
+
+.percentage {
+  position: absolute;
+  height: 0%;
+  width: 100%;
+  bottom: 0;
+  left: 0;
+  z-index: 80;
+  transition: height 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: visible;
+
+  &::before,
+  &::after {
+    position: absolute;
+    content: '';
+    width: 100px;
+    height: 100px;
+    border-radius: 40px;
+    animation: liquid-spin 4s infinite linear;
+    transform: translateX(-50%);
+    left: 50%;
+    top: 0;
+    background: var(--tube-color, #34c759);
+    transition: background 0.5s ease;
+  }
+
+  &::after {
+    opacity: 0.4;
+    animation-direction: reverse;
+    border-radius: 30px;
+  }
+}
+
+// Calque 1 : bulles sombres DANS le liquide (fond → surface)
+@keyframes bubble-rise-inside {
+  0% {
+    bottom: 2%;
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  15% {
+    opacity: 0.7;
+  }
+  85% {
+    opacity: 0.4;
+  }
+  100% {
+    bottom: 96%;
+    opacity: 0;
+    transform: scale(1.1);
+  }
+}
+
+.bubbles-inside {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
+
+  .bubble-dark {
+    position: absolute;
+    border-radius: 50%;
+    background: var(--color-bg, rgba(20, 20, 20, 0.55));
+    width: var(--size, 3px);
+    height: var(--size, 3px);
+    opacity: 0;
+    bottom: 2%;
+    left: var(--left, 30%);
+    animation: bubble-rise-inside var(--dur, 1.5s) infinite ease-in;
+    animation-delay: var(--delay, 0s);
+
+    &.invisible {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+// Calque 2 : bulles de couleur au-dessus du liquide
+@keyframes bubble-rise-above {
+  0% {
+    bottom: 0;
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  10% {
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.8;
+  }
+  90% {
+    opacity: 0.3;
+  }
+  100% {
+    bottom: var(--rise, 80px);
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+
+.bubbles-above {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 20;
+  pointer-events: none;
+  overflow: visible;
+
+  .bubble-color {
+    position: absolute;
+    border-radius: 50%;
+    background: var(--tube-color, #34c759);
+    opacity: 0;
+    bottom: 0;
+    left: var(--left, 30%);
+    width: var(--size, 3px);
+    height: var(--size, 3px);
+    animation: bubble-rise-above var(--dur, 1.5s) infinite ease-in;
+    animation-delay: var(--delay, 0s);
+
+    &.invisible {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+// Mousse
+.foam {
+  position: absolute;
+  bottom: 0;
+  left: -1px;
+  width: 100%;
+  height: 14px;
+  z-index: 100;
+  pointer-events: none;
+  overflow: visible;
+  transition: bottom 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+
+  .foam-bubble {
+    position: absolute;
+    top: var(--top, 0px);
+    left: var(--left, 50%);
+    width: var(--size, 4px);
+    height: var(--size, 4px);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0);
+    animation: none;
+  }
+
+  &.active .foam-bubble {
+    animation: foam-pulse var(--dur, 1.5s) ease-in-out infinite;
+    animation-delay: var(--delay, 0s);
+  }
+}
+
+@keyframes foam-pulse {
+  0% {
+    background: rgba(255, 255, 255, 0);
+    transform: scale(0.5);
+  }
+  30% {
+    background: rgba(255, 255, 255, 0.45);
+    transform: scale(1);
+  }
+  60% {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.1);
+  }
+  100% {
+    background: rgba(255, 255, 255, 0);
+    transform: scale(0.6);
+  }
+}
+
+@media (max-width: 768px) {
+  :host {
+    top: calc(0.75rem + 40px + 0.5rem + 40px + 2rem);
+    left: calc(0.75rem + 10px);
+  }
+
+  .tube {
+    height: 75px;
+    width: 20px;
+  }
+}
