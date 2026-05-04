@@ -67,6 +67,63 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/schedules/{id}:
+    get:
+      tags:
+      - schedule-controller
+      operationId: getByIdSchedule
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+    put:
+      tags:
+      - schedule-controller
+      operationId: updateSchedule
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Schedule"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+    delete:
+      tags:
+      - schedule-controller
+      operationId: deleteSchedule
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/namespaces/{id}:
     get:
       tags:
@@ -463,6 +520,47 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/schedules:
+    post:
+      tags:
+      - schedule-controller
+      operationId: createSchedule
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Schedule"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+  /api/schedules/by-ids:
+    post:
+      tags:
+      - schedule-controller
+      operationId: getByIdsSchedule
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Schedule"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -930,6 +1028,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/schedules/by-parentId/{parentId}:
+    get:
+      tags:
+      - schedule-controller
+      operationId: listByParentSchedule
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Schedule"
   /api/plugins:
     get:
       tags:
@@ -1345,6 +1465,98 @@ components:
           type: string
         bio:
           type: string
+    EndCondition:
+      discriminator:
+        propertyName: type
+      properties:
+        type:
+          type: string
+      required:
+      - type
+    EndTimestamp:
+      allOf:
+      - $ref: "#/components/schemas/EndCondition"
+      - type: object
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+      required:
+      - timestamp
+    IntervalSchedule:
+      type: object
+      properties:
+        startTimestamp:
+          type: string
+          format: date-time
+        interval:
+          type: string
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+            format: int32
+        endCondition:
+          oneOf:
+          - $ref: "#/components/schemas/EndTimestamp"
+          - $ref: "#/components/schemas/Occurrences"
+      required:
+      - interval
+      - startTimestamp
+    Occurrences:
+      allOf:
+      - $ref: "#/components/schemas/EndCondition"
+      - type: object
+        properties:
+          count:
+            type: integer
+            format: int32
+      required:
+      - count
+    Schedule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        caseId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        userId:
+          type: string
+          format: uuid
+        message:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+        oneShot:
+          type: boolean
+        triggerAt:
+          type: string
+          format: date-time
+        intervalSchedule:
+          $ref: "#/components/schemas/IntervalSchedule"
+        nextTriggerAt:
+          type: string
+          format: date-time
+        lastTriggeredAt:
+          type: string
+          format: date-time
+        occurrenceCount:
+          type: integer
+          format: int32
+      required:
+      - enabled
+      - message
+      - namespaceId
+      - occurrenceCount
+      - oneShot
     Namespace:
       type: object
       properties:

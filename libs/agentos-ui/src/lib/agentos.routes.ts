@@ -113,6 +113,25 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAiModelsComponent
               ),
           },
+          // --- Schedules ---
+          {
+            path: ':namespaceId/schedules/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/schedule-form/schedule-form.component').then((m) => m.ScheduleFormComponent),
+          },
+          {
+            path: ':namespaceId/schedules/:scheduleId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/schedule-form/schedule-form.component').then((m) => m.ScheduleFormComponent),
+          },
+          {
+            path: ':namespaceId/schedules',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/schedule-list/schedule-list.component').then((m) => m.ScheduleListComponent),
+          },
           // --- Admin ---
           {
             path: 'admin/users/new',

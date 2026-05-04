@@ -220,15 +220,14 @@ class CaseServiceImpl(
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
 
-        requireNotNull(userId) {
-            "Cannot run agent for case $caseId: no user identity found in event history"
-        }
-        requireNotNull(userService.findById(userId)) {
-            "Cannot run agent for case $caseId: user $userId does not exist"
+        val resolvedUserId = userId
+            ?: userService.resolveOrCreateByExternalId(SCHEDULER_SYSTEM_USER_EXTERNAL_ID).id
+        requireNotNull(userService.findById(resolvedUserId)) {
+            "Cannot run agent for case $caseId: user $resolvedUserId does not exist"
         }
 
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
-        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId, userId = userId)
+        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId, userId = resolvedUserId)
         agentService
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)
@@ -357,5 +356,13 @@ class CaseServiceImpl(
         logger.info { "CaseService shutdown complete" }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * External identity key for the synthetic scheduler system user.
+         * This user is auto-created on first use via [UserService.resolveOrCreateByExternalId]
+         * and serves as the agent execution identity when no human user is present in the
+         * case history (e.g. a case created from scratch by the scheduler).
+         */
+        const val SCHEDULER_SYSTEM_USER_EXTERNAL_ID = "scheduler"
+    }
 }

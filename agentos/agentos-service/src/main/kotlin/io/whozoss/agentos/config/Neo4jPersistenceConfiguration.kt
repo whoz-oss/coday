@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
+import io.whozoss.agentos.schedule.Neo4jScheduleRepository
+import io.whozoss.agentos.schedule.ScheduleNodeNeo4jRepository
+import io.whozoss.agentos.schedule.ScheduleRepository
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
 import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
@@ -65,6 +68,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
         "io.whozoss.agentos.integrationConfig",
+        "io.whozoss.agentos.schedule",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -121,6 +125,15 @@ class Neo4jPersistenceConfiguration {
     fun neo4jAiModelRepository(aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository): AiModelRepository {
         logger.info { "[Persistence] Neo4jAiModelRepository active" }
         return Neo4JAiModelRepository(aiModelNodeNeo4JRepository)
+    }
+
+    @Bean
+    fun neo4jScheduleRepository(
+        scheduleNodeNeo4jRepository: ScheduleNodeNeo4jRepository,
+        objectMapper: ObjectMapper,
+    ): ScheduleRepository {
+        logger.info { "[Persistence] Neo4jScheduleRepository active" }
+        return Neo4jScheduleRepository(scheduleNodeNeo4jRepository, objectMapper)
     }
 
     companion object : KLogging()
