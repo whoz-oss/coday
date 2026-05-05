@@ -66,12 +66,7 @@ open class Neo4jUserGroupRepository(
     }
 
     override fun removeAllAgents(userGroupId: UUID) {
-        neo4jClient
-            .query(
-                "MATCH (:UserGroup {id: \$groupId})-[r:HAS_AGENT]->(:AgentConfig) DELETE r",
-            ).bind(userGroupId.toString())
-            .to("groupId")
-            .run()
+        neo4jRepository.removeAllAgents(userGroupId.toString())
     }
 
     override fun delete(id: UUID): Boolean =
