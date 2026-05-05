@@ -16,6 +16,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.reconciliation.ConfigReconciliationService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -26,6 +27,7 @@ import io.whozoss.agentos.user.UserService
 import org.springframework.ai.chat.client.ChatClient
 import java.util.UUID
 
+@Suppress("UNCHECKED_CAST")
 class AgentServiceImplUnitSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
     private val toolRegistryService: ToolRegistryService = mockk()
@@ -34,6 +36,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val namespaceService: NamespaceService = mockk()
     private val integrationConfigService: IntegrationConfigService = mockk(relaxed = true)
     private val userService: UserService = mockk(relaxed = true)
+    private val aiModelReconciliationService: ConfigReconciliationService<AiModel> =
+        mockk(relaxed = true)
+    private val aiProviderReconciliationService: ConfigReconciliationService<AiProvider> =
+        mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -43,6 +49,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
             namespaceService,
             integrationConfigService,
             userService,
+            aiModelReconciliationService,
+            aiProviderReconciliationService,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -85,8 +93,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
     init {
         every { toolRegistryService.resolveToolsForNamespace(any()) } returns emptyList()
+        every { toolRegistryService.resolveToolsForRun(any(), any(), any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
         // integrationConfigService is relaxed — returns emptyList() by default without an explicit stub
+        // reconciliation services are relaxed mocks — return the base entity unchanged (passthrough) by default
 
         // -------------------------------------------------------------------------
         // findAgentByName — alias resolution
@@ -234,6 +244,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     namespaceService,
                     localIntegrationService,
                     userService,
+                    aiModelReconciliationService,
+                    aiProviderReconciliationService,
                 )
             val configs =
                 listOf(
@@ -302,6 +314,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     namespaceService,
                     localIntegrationService,
                     userService,
+                    aiModelReconciliationService,
+                    aiProviderReconciliationService,
                 )
             val configs =
                 listOf(
@@ -382,7 +396,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val chatClient = mockk<ChatClient>(relaxed = true)
 
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 
@@ -412,7 +428,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val chatClient = mockk<ChatClient>(relaxed = true)
 
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 

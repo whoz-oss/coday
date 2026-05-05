@@ -154,7 +154,7 @@ class AiProviderServiceImplSpec : StringSpec() {
             service.create(config(namespaceId = null, userId = userId, name = "anthropic"))
             service.create(config(namespaceId = nsA, userId = userId, name = "anthropic"))
 
-            service.findByNamespaceId(nsA) shouldHaveSize 2 // namespace-only + namespace+user
+            service.findByNamespaceId(nsA) shouldHaveSize 1 // namespace-shared only (userId IS NULL filter per AC14)
             service.findByNamespaceId(nsB) shouldHaveSize 1
             service.findByUserId(userId) shouldHaveSize 2 // user-only + namespace+user
         }

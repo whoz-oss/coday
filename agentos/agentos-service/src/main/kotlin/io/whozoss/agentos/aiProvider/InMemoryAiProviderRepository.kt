@@ -40,9 +40,21 @@ class InMemoryAiProviderRepository : AiProviderRepository {
 
     override fun deleteByParent(parentId: UUID): Int = findByNamespaceId(parentId).count { delegate.delete(it.metadata.id) }
 
-    override fun findByNamespaceId(namespaceId: UUID): List<AiProvider> = delegate.findAll().filter { it.namespaceId == namespaceId }
+    // userId IS NULL filter aligns with story 6.4 AC14 — namespace-scope listing must not
+    // expose user-scoped overrides (FR22, AR8).
+    override fun findByNamespaceId(namespaceId: UUID): List<AiProvider> =
+        delegate.findAll().filter { it.namespaceId == namespaceId && it.userId == null }
 
     override fun findByUserId(userId: UUID): List<AiProvider> = delegate.findAll().filter { it.userId == userId }
+
+    override fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiProvider? =
+        delegate.findAll().firstOrNull {
+            it.namespaceId == namespaceId && it.userId == userId && it.name == name && it.metadata.removed != true
+        }
 
     companion object {
         private const val ALL_KEY = "all"

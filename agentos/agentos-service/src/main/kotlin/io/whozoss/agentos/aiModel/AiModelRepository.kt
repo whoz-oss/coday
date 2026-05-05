@@ -43,4 +43,15 @@ interface AiModelRepository : EntityRepository<AiModel, UUID> {
      * Find all non-removed model configs scoped to the given user, regardless of [AiModel.namespaceId].
      */
     fun findByUserId(userId: UUID): List<AiModel>
+
+    /**
+     * Find a single non-removed model config matching the (namespaceId, userId, name) triple,
+     * where `name` matches [AiModel.alias] first, falling back to [AiModel.apiModelName] when
+     * alias is null. NULL id parameters match rows where the corresponding column is NULL.
+     */
+    fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiModel?
 }

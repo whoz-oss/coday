@@ -28,7 +28,10 @@ class InMemoryAiModelRepository : AiModelRepository {
 
     override fun deleteByParent(parentId: UUID): Int = delegate.deleteByParent(parentId)
 
-    override fun findByNamespaceId(namespaceId: UUID): List<AiModel> = delegate.findAll().filter { it.namespaceId == namespaceId }
+    // userId IS NULL filter aligns with story 6.4 AC14 — namespace-scope listing must not
+    // expose user-scoped overrides (FR22, AR8).
+    override fun findByNamespaceId(namespaceId: UUID): List<AiModel> =
+        delegate.findAll().filter { it.namespaceId == namespaceId && it.userId == null }
 
     override fun findByAiProviderAndApiName(
         aiProviderId: UUID,
@@ -42,4 +45,16 @@ class InMemoryAiModelRepository : AiModelRepository {
 
     override fun findByUserId(userId: UUID): List<AiModel> =
         delegate.findAll().filter { it.userId == userId }
+
+    override fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiModel? =
+        delegate.findAll().firstOrNull { entity ->
+            entity.namespaceId == namespaceId &&
+                entity.userId == userId &&
+                entity.metadata.removed != true &&
+                (entity.alias == name || (entity.alias == null && entity.apiModelName == name))
+        }
 }

@@ -5,6 +5,8 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.reconciliation.ConfigReconciliationService
+import io.whozoss.agentos.reconciliation.RunReconciliationCache
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -49,22 +51,25 @@ class AgentServiceImpl(
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
+    private val aiModelReconciliationService: ConfigReconciliationService<AiModel>,
+    private val aiProviderReconciliationService: ConfigReconciliationService<AiProvider>,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
-        val (modelConfig, providerConfig) = resolveModelPair(namePart, context.namespaceId)
-        // Use the canonical name from the config (alias if set, otherwise apiName)
-        // rather than the raw input so the agent's identity is always stable.
+        val cache = if (context.userId != null) RunReconciliationCache() else null
+        val (modelConfig, providerConfig) = resolveModelPair(namePart, context.namespaceId, context.userId, cache)
         val canonicalName = modelConfig.alias ?: modelConfig.apiModelName
-        return createAgentInstance(canonicalName, modelConfig, providerConfig, context)
+        return createAgentInstance(canonicalName, modelConfig, providerConfig, context, cache)
     }
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
-        val modelConfig = findDefaultModelConfig(context.namespaceId) ?: return null
-        val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
-        return createAgentInstance(modelConfig.alias ?: modelConfig.apiModelName, modelConfig, providerConfig, context)
+        val baseModel = findDefaultModelConfig(context.namespaceId) ?: return null
+        val defaultName = baseModel.alias ?: baseModel.apiModelName
+        val cache = if (context.userId != null) RunReconciliationCache() else null
+        val (modelConfig, providerConfig) = resolveModelPair(defaultName, context.namespaceId, context.userId, cache)
+        return createAgentInstance(modelConfig.alias ?: modelConfig.apiModelName, modelConfig, providerConfig, context, cache)
     }
 
     override fun getDefaultAgentName(namespaceId: UUID): String? {
@@ -84,30 +89,50 @@ class AgentServiceImpl(
     /**
      * Resolve a [AiModel] + [AiProvider] pair for [name] within [namespaceId].
      *
-     * Delegates resolution to [AiModelService.findAiModel] (alias first,
-     * then apiName, highest priority wins within each group).
-     * Throws [IllegalArgumentException] if no match is found.
+     * When [userId] is non-null, applies 3-tier reconciliation:
+     * - model: resolved via [aiModelReconciliationService] with the alias (or apiModelName) as key
+     * - provider: resolved via [aiProviderReconciliationService] with the provider name as key
+     *
+     * When [userId] is null (legacy path), falls back to direct repository lookup without
+     * any user overlay — preserves Epic 4 behavior exactly (NFR-INT-1, AC11).
      */
     private fun resolveModelPair(
         name: String,
         namespaceId: UUID,
+        userId: UUID? = null,
+        cache: RunReconciliationCache? = null,
     ): Pair<AiModel, AiProvider> {
-        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId" }
+        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId (userId=$userId)" }
 
-        val modelConfig =
+        val baseModel =
             aiModelService.findAiModel(namespaceId, name)
                 ?: throw IllegalArgumentException(
                     "No AiModel found for name '$name' in namespace $namespaceId. " +
                         "Configure an AiModel with alias or apiName matching '$name'.",
                 )
 
-        logger.info {
-            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiModelName}' " +
-                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, aiProviderId=${modelConfig.aiProviderId})"
+        val modelConfig: AiModel
+        val providerConfig: AiProvider
+
+        if (userId != null) {
+            val reconciliationName = baseModel.alias ?: baseModel.apiModelName
+            modelConfig = cache?.getOrCompute(reconciliationName, AiModel::class.java) {
+                aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
+            } ?: aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
+
+            val baseProvider = aiProviderService.getById(modelConfig.aiProviderId)
+            providerConfig = cache?.getOrCompute(baseProvider.name, AiProvider::class.java) {
+                aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+            } ?: aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+        } else {
+            modelConfig = baseModel
+            providerConfig = aiProviderService.getById(baseModel.aiProviderId)
         }
 
-        val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
-        logger.debug { "[AgentService] Provider resolved: name='${providerConfig.name}' apiType=${providerConfig.apiType}" }
+        logger.info {
+            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiModelName}' " +
+                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, provider='${providerConfig.name}')"
+        }
         return modelConfig to providerConfig
     }
 
@@ -120,18 +145,25 @@ class AgentServiceImpl(
     /**
      * Build a live [AgentSimple] instance from the resolved entity pair, scoped to [context].
      *
-     * [agentName] is the logical name used to identify this agent (alias if set, otherwise apiName).
-     * The namespace description and user context are appended to the system instructions.
+     * When [context.userId] is non-null, uses [ToolRegistryService.resolveToolsForRun] to apply
+     * 3-tier tool reconciliation. Falls back to [ToolRegistryService.resolveToolsForNamespace]
+     * for anonymous/system runs (userId == null, legacy path, AC11).
      */
     private fun createAgentInstance(
         agentName: String,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
+        cache: RunReconciliationCache? = null,
     ): Agent {
-        logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId}" }
+        logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
 
-        val tools = toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+        val tools =
+            if (context.userId != null) {
+                toolRegistryService.resolveToolsForRun(context.namespaceId, context.userId, cache)
+            } else {
+                toolRegistryService.resolveToolsForNamespace(context.namespaceId)
+            }
         logger.info {
             "[AgentService] Loaded ${tools.size} tool(s) " +
                 "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"

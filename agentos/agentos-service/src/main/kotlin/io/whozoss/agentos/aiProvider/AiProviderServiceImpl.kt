@@ -64,13 +64,5 @@ class AiProviderServiceImpl(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,
-    ): AiProvider? {
-        val candidates =
-            when {
-                namespaceId != null -> repository.findByNamespaceId(namespaceId)
-                userId != null -> repository.findByUserId(userId)
-                else -> emptyList()
-            }
-        return candidates.firstOrNull { it.namespaceId == namespaceId && it.userId == userId && it.name == name }
-    }
+    ): AiProvider? = repository.findByTriple(namespaceId, userId, name)
 }

@@ -19,12 +19,14 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
     fun findActiveByAiProviderId(aiProviderId: String): List<AiModelNode>
 
     /**
-     * Find all non-removed model configs belonging to a namespace, across all provider
-     * configs. Uses the denormalised [AiModelNode.namespaceId] property.
+     * Find all non-removed namespace-shared model configs (userId IS NULL), ordered by apiName.
+     *
+     * Story 6.4 AC14: filters `userId IS NULL` so that user-scoped overrides are hidden from
+     * namespace-scope listings (FR22, AR8).
      */
     @Query(
         $$"""MATCH (m:AiModel)
-            WHERE m.namespaceId = $namespaceId AND (m.removed IS NULL OR m.removed = false)
+            WHERE m.namespaceId = $namespaceId AND m.userId IS NULL AND (m.removed IS NULL OR m.removed = false)
             RETURN m ORDER BY m.apiName ASC
             """,
     )
@@ -72,4 +74,25 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
             """,
     )
     fun findActiveByUserId(userId: String): List<AiModelNode>
+
+    /**
+     * NULL-tolerant triple lookup for the 3-tier reconciliation service (story 6.4).
+     *
+     * `name` matches [AiModelNode.alias] first; when alias is null, falls back to
+     * [AiModelNode.apiModelName]. Matches `(namespaceId, userId, name)` with NULL parity.
+     */
+    @Query(
+        $$"""MATCH (m:AiModel)
+            WHERE (m.namespaceId = $namespaceId OR (m.namespaceId IS NULL AND $namespaceId IS NULL))
+              AND (m.userId = $userId OR (m.userId IS NULL AND $userId IS NULL))
+              AND ((m.alias = $name) OR (m.alias IS NULL AND m.apiName = $name))
+              AND (m.removed IS NULL OR m.removed = false)
+            RETURN m LIMIT 1
+            """,
+    )
+    fun findActiveByTriple(
+        namespaceId: String?,
+        userId: String?,
+        name: String,
+    ): AiModelNode?
 }

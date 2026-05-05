@@ -74,6 +74,8 @@ class IntegrationConfigServiceImpl(
 
     override fun findByUserId(userId: UUID): List<IntegrationConfig> = repository.findByUserId(userId)
 
+    override fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig> = repository.findByParent(namespaceId)
+
     private fun requireScope(entity: IntegrationConfig) {
         if (entity.namespaceId == null && entity.userId == null) {
             throw ResponseStatusException(

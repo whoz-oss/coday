@@ -36,8 +36,10 @@ class InMemoryIntegrationConfigRepository : IntegrationConfigRepository {
 
     override fun deleteByParent(parentId: UUID): Int = findByNamespaceId(parentId).count { delegate.delete(it.metadata.id) }
 
+    // userId IS NULL filter mirrors the Cypher change in story 6.4 AC12 — namespace-scope
+    // listing must not expose user-scoped overlays to admins (AR8, FR22).
     override fun findByNamespaceId(namespaceId: UUID): List<IntegrationConfig> =
-        delegate.findAll().filter { it.namespaceId == namespaceId && !it.metadata.removed }
+        delegate.findAll().filter { it.namespaceId == namespaceId && it.userId == null && !it.metadata.removed }
 
     override fun findByUserId(userId: UUID): List<IntegrationConfig> =
         delegate.findAll().filter { it.userId == userId && !it.metadata.removed }

@@ -1,7 +1,11 @@
 package io.whozoss.agentos.tool
 
+import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
+import io.whozoss.agentos.reconciliation.ConfigNotFoundException
+import io.whozoss.agentos.reconciliation.ConfigReconciliationService
+import io.whozoss.agentos.reconciliation.RunReconciliationCache
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import jakarta.annotation.PostConstruct
@@ -39,6 +43,7 @@ class ToolRegistryService(
     private val pluginManager: PluginManager,
     private val integrationConfigService: IntegrationConfigService,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
+    private val integrationConfigReconciliationService: ConfigReconciliationService<IntegrationConfig>,
 ) {
     /** All loaded ToolPlugin extensions, indexed by integrationType for fast lookup. */
     private val pluginsByType = ConcurrentHashMap<String, ToolPlugin>()
@@ -148,6 +153,89 @@ class ToolRegistryService(
         }
 
         logger.info { "[ToolRegistry] Total tools for namespace $namespaceId: ${resolved.size}" }
+        return resolved.values
+    }
+
+    /**
+     * Resolve the full tool set for a given namespace + user run, applying 3-tier reconciliation
+     * to each [IntegrationConfig] name discovered across namespace-shared and user overlay layers.
+     *
+     * Combines:
+     * 1. Fresh instances from config-less plugins.
+     * 2. For each distinct config name found in namespace-shared OR user overlays, a reconciled
+     *    config is built via [ConfigReconciliationService] and passed to the matching plugin.
+     *
+     * A [ConfigNotFoundException] for a given name is swallowed (warning logged, name skipped).
+     * This preserves the posture "a dormant override must not break the run" (FR30).
+     *
+     * [resolveToolsForNamespace] is preserved unchanged for legacy callers without userId (AC1).
+     */
+    fun resolveToolsForRun(
+        namespaceId: UUID,
+        userId: UUID,
+        cache: RunReconciliationCache? = null,
+    ): Collection<StandardTool<*>> {
+        val resolved = mutableMapOf<String, StandardTool<*>>()
+
+        // Config-less plugins: fresh instances per run
+        pluginsByType.values
+            .filter { it.configSchema == null }
+            .forEach { plugin ->
+                try {
+                    val tools = plugin.provideTools(null)
+                    tools.forEach { tool ->
+                        if (resolved.containsKey(tool.name)) {
+                            logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from config-less plugin" }
+                        }
+                        resolved[tool.name] = tool
+                    }
+                } catch (e: Exception) {
+                    logger.error(e) { "[ToolRegistry] Error instantiating config-less tools for plugin '${plugin.integrationType}': ${e.message}" }
+                }
+            }
+
+        // Enumerate all distinct names across the 3 sources
+        val sharedConfigs = integrationConfigService.findByNamespaceShared(namespaceId)
+        val userOverrides = integrationConfigService.findByUserId(userId)
+            .filter { it.namespaceId == null || it.namespaceId == namespaceId }
+        val distinctNames = (sharedConfigs.map { it.name } + userOverrides.map { it.name }).toSet()
+
+        logger.info {
+            "[ToolRegistry] resolveToolsForRun namespace=$namespaceId user=$userId: " +
+                "${sharedConfigs.size} shared + ${userOverrides.size} user overrides → ${distinctNames.size} distinct names"
+        }
+
+        // Reconcile each name and instantiate via plugin
+        distinctNames.forEach { name ->
+            val resolvedConfig = try {
+                cache?.getOrCompute(name, IntegrationConfig::class.java) {
+                    integrationConfigReconciliationService.resolve(namespaceId, userId, name)
+                } ?: integrationConfigReconciliationService.resolve(namespaceId, userId, name)
+            } catch (e: ConfigNotFoundException) {
+                logger.warn { "[ToolRegistry] Reconciliation failed for name='$name': ${e.message}" }
+                return@forEach
+            }
+
+            val plugin = pluginsByType[resolvedConfig.integrationType] ?: run {
+                logger.warn { "[ToolRegistry] No plugin for integrationType='${resolvedConfig.integrationType}' (name='$name')" }
+                return@forEach
+            }
+
+            try {
+                val tools = plugin.provideTools(resolvedConfig.parameters, resolvedConfig.name)
+                tools.forEach { tool ->
+                    if (resolved.containsKey(tool.name)) {
+                        logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from integrationType='${resolvedConfig.integrationType}'" }
+                    }
+                    resolved[tool.name] = tool
+                }
+                logger.info { "[ToolRegistry] Resolved ${tools.size} tool(s) from name='$name' (type='${resolvedConfig.integrationType}')" }
+            } catch (e: Exception) {
+                logger.error(e) { "[ToolRegistry] Error instantiating tools for name='$name': ${e.message}" }
+            }
+        }
+
+        logger.info { "[ToolRegistry] Total tools for namespace $namespaceId (user $userId): ${resolved.size}" }
         return resolved.values
     }
 

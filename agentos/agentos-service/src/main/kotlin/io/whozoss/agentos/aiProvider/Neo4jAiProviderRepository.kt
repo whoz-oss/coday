@@ -50,6 +50,15 @@ open class Neo4jAiProviderRepository(
             .findActiveByUserId(userId.toString())
             .map { it.toDomain() }
 
+    override fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiProvider? =
+        neo4jRepository
+            .findActiveByTriple(namespaceId?.toString(), userId?.toString(), name)
+            ?.toDomain()
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())

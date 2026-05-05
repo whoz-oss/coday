@@ -46,4 +46,15 @@ interface IntegrationConfigService : EntityService<IntegrationConfig, UUID> {
      * ([UserIntegrationConfigController.list]).
      */
     fun findByUserId(userId: UUID): List<IntegrationConfig>
+
+    /**
+     * Find all non-removed [IntegrationConfig] scoped to the given namespace AND with
+     * [IntegrationConfig.userId] = null (namespace-shared layer of the 3-tier reconciliation).
+     *
+     * Used by [io.whozoss.agentos.tool.ToolRegistryService.resolveToolsForRun] (story 6.4)
+     * to enumerate the names to reconcile. Kept as a separate method from [findByParent]
+     * for clarity at the call site — semantically equivalent to [findByParent] after T9
+     * changes [findByParent] to filter `userId IS NULL`.
+     */
+    fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig>
 }

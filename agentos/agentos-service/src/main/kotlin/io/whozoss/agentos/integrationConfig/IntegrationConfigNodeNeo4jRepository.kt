@@ -8,19 +8,18 @@ import org.springframework.data.neo4j.repository.query.Query
  */
 interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConfigNode, String> {
     /**
-     * Find all non-removed integration configs belonging to a namespace, ordered by name.
+     * Find all non-removed namespace-shared integration configs (userId IS NULL), ordered by name.
      *
-     * Traverses the BELONGS_TO edge and filters by the Namespace id. The edge is
-     * always present for namespace-scoped configs because
-     * [Neo4jIntegrationConfigRepository.save] calls
-     * [io.whozoss.agentos.persistence.Neo4jChildLinkService.link] right after the entity
-     * write. Returning `c, r, ns` gives SDN everything it needs to map the
-     * [IntegrationConfigNode.namespace] @Relationship field.
+     * Semantics changed in story 6.4 (AC12, FR22): only rows with `userId IS NULL` are returned
+     * so that user-scoped overlays (`userId != null`) are hidden from namespace-scope listings.
+     * Admins of the namespace must not see the personal overrides of MEMBERs (AR8).
+     *
+     * Traverses the BELONGS_TO edge and filters by the Namespace id.
      */
     @Query(
         $$"""
             MATCH (c:IntegrationConfig)-[r:BELONGS_TO]->(ns:Namespace)
-            WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false)
+            WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false) AND c.userId IS NULL
             RETURN c, r, ns ORDER BY c.name ASC
             """,
     )

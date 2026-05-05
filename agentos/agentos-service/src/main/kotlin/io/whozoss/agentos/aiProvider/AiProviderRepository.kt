@@ -27,4 +27,14 @@ interface AiProviderRepository : EntityRepository<AiProvider, UUID> {
      * regardless of [AiProvider.namespaceId].
      */
     fun findByUserId(userId: UUID): List<AiProvider>
+
+    /**
+     * Find a single non-removed config matching the (namespaceId, userId, name) triple.
+     * NULL parameters match rows where the corresponding column is NULL.
+     */
+    fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiProvider?
 }
