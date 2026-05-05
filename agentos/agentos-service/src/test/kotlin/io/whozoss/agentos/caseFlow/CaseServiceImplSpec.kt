@@ -28,7 +28,9 @@ import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
@@ -71,6 +73,42 @@ class CaseServiceImplSpec :
             )
         val agentName = "test-agent"
         val agentId: UUID = UUID.nameUUIDFromBytes(agentName.toByteArray())
+
+        /**
+         * Launches a coroutine that subscribes to the runtime's SSE flow and resolves
+         * once a [CaseStatusEvent] with one of [targetStatuses] is observed. Returns the
+         * [Job] so callers can `join()` after triggering the action.
+         *
+         * The subscription is established *before* the caller triggers any action, which
+         * avoids the race inherent to a hot [SharedFlow] with `replay = 0`: events emitted
+         * before the subscriber registers would otherwise be missed.
+         *
+         * Usage:
+         * ```kotlin
+         * val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+         * service.addMessage(...)   // trigger the action
+         * awaiter.join()            // wait for the expected status
+         * ```
+         */
+        fun CoroutineScope.expectCaseStatus(
+            runtime: CaseRuntime,
+            vararg targetStatuses: CaseStatus,
+        ): Job =
+            launch {
+                withTimeout(8_000) {
+                    runtime.events
+                        .filterIsInstance<CaseStatusEvent>()
+                        .first { it.status in targetStatuses }
+                }
+            }
+
+        /**
+         * Suspends until [CaseRuntime.isRunning] returns false, yielding the coroutine
+         * between each check so the background run() coroutine can make progress.
+         */
+        suspend fun awaitNotRunning(runtime: CaseRuntime) {
+            while (runtime.isRunning()) delay(10)
+        }
 
         /** Build a mock Agent that immediately emits AgentFinishedEvent. */
         fun finishingAgent(): Agent =
@@ -146,28 +184,20 @@ class CaseServiceImplSpec :
 
             val service = buildService(countingAgent)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("hello")),
             )
-
-            // Give the background coroutine time to complete.
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                val current = service.getById(case.id)
-                if (current.status == CaseStatus.IDLE || current.status == CaseStatus.ERROR) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             runCallCount shouldBe 1
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
-
-        // -------------------------------------------------------------------------
-        // Event sequence persisted to the event store
-        // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
         // User validation: case must not run without a valid active user
@@ -177,19 +207,16 @@ class CaseServiceImplSpec :
             val actorWithNonUuidId = Actor(id = "not-a-uuid", displayName = "Unknown", role = ActorRole.USER)
             val service = buildService()
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.ERROR, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = actorWithNonUuidId,
                 content = listOf(MessageContent.Text("hello")),
             )
-
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                val status = service.getById(case.id).status
-                if (status == CaseStatus.ERROR || status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             service.getById(case.id).status shouldBe CaseStatus.ERROR
         }
@@ -200,19 +227,16 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(any()) } returns null }
             val service = buildService(userService = userService)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.ERROR, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = actorWithUnknownUser,
                 content = listOf(MessageContent.Text("hello")),
             )
-
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                val status = service.getById(case.id).status
-                if (status == CaseStatus.ERROR || status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             service.getById(case.id).status shouldBe CaseStatus.ERROR
         }
@@ -232,18 +256,16 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("hi")),
             )
-
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             val events = caseEventService.findByParent(case.id)
             events shouldHaveAtLeastSize 4
@@ -291,8 +313,6 @@ class CaseServiceImplSpec :
             val runtime = service.getCaseRuntime(case.id)
 
             val collectedStatuses = mutableListOf<CaseStatus>()
-            // Use a separate CoroutineScope so the collector runs concurrently with
-            // the service calls on the main test thread.
             val collectorScope = CoroutineScope(Dispatchers.IO)
             val collectJob: Job =
                 collectorScope.launch {
@@ -309,8 +329,9 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            // Give the collector a moment to subscribe to the SharedFlow.
-            Thread.sleep(100)
+            // Yield so the collector coroutine has a chance to subscribe to the SharedFlow
+            // before the first status event is emitted.
+            delay(100)
 
             service.addMessage(
                 caseId = case.id,
@@ -354,7 +375,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            Thread.sleep(100)
+            delay(100)
 
             service.killCase(case.id)
 
@@ -390,7 +411,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            Thread.sleep(100)
+            delay(100)
 
             // Route the ERROR status change through handleStatusChange.
             service.update(case.copy(status = CaseStatus.ERROR))
@@ -399,10 +420,6 @@ class CaseServiceImplSpec :
 
             errorEventReceived.get() shouldBe true
         }
-
-        // -------------------------------------------------------------------------
-        // Second message after the first completes
-        // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
         // TextChunkEvent must not be persisted
@@ -439,18 +456,17 @@ class CaseServiceImplSpec :
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
 
-            // Collect TextChunkEvents from the SSE flow until the case reaches IDLE.
-            // Subscribe BEFORE sending the message so no chunks are missed.
+            // Subscribe to both the IDLE gate and text chunks BEFORE sending the message
+            // so no events are missed on the hot SharedFlow (replay = 0).
             val collectedChunks = mutableListOf<TextChunkEvent>()
             val collectorScope = CoroutineScope(Dispatchers.IO)
-            val collectJob: Job =
+            val idleJob: Job =
                 collectorScope.launch {
                     withTimeout(8_000) {
                         runtime.events
                             .filterIsInstance<CaseStatusEvent>()
                             .takeWhile { it.status != CaseStatus.IDLE }
                             .toList()
-                        // IDLE reached — stop. Chunks were collected in parallel below.
                     }
                 }
             val chunkCollectJob: Job =
@@ -465,7 +481,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            Thread.sleep(100) // give collectors time to subscribe
+            delay(100) // give collectors time to subscribe
 
             service.addMessage(
                 caseId = case.id,
@@ -473,14 +489,9 @@ class CaseServiceImplSpec :
                 content = listOf(MessageContent.Text("hi")),
             )
 
-            collectJob.join()
+            idleJob.join()
             chunkCollectJob.cancel() // stop the infinite chunk collector once IDLE is reached
 
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
 
             val persisted = caseEventService.findByParent(case.id)
@@ -549,38 +560,31 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(agentService, caseRepository, caseEventService, userService)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
             // First message: explicit @mention
+            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("@$selectedAgentName hello")),
             )
-            val deadline1 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline1) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            firstIdle.join()
             service.getById(case.id).status shouldBe CaseStatus.IDLE
 
             // Wait for run() to fully exit before sending the second message.
-            val idleDeadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < idleDeadline) {
-                if (!service.getCaseRuntime(case.id).isRunning()) break
-                Thread.sleep(10)
-            }
+            awaitNotRunning(runtime)
 
-            // Second message: no @mention — must stick with selectedAgent
+            // Second message: no @mention — must stick with selectedAgent.
+            // Subscribe before sending so the second IDLE is not missed.
+            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("follow-up question")),
             )
-            val deadline2 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline2) {
-                if (agentCallNames.size >= 2) break
-                Thread.sleep(50)
-            }
+            secondIdle.join()
 
             agentCallNames shouldBe listOf(selectedAgentName, selectedAgentName)
         }
@@ -609,51 +613,35 @@ class CaseServiceImplSpec :
 
             val service = buildService(countingAgent)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
             // First message
+            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("first")),
             )
-            val deadline1 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline1) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            firstIdle.join()
             service.getById(case.id).status shouldBe CaseStatus.IDLE
             runCallCount shouldBe 1
 
-            // Wait until runInFlight is cleared (run()'s finally block) before sending the
-            // second message. The runtime stays alive (IDLE is non-terminal), but run() must
-            // have fully exited so the AtomicBoolean guard allows re-entry.
-            val idleDeadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < idleDeadline) {
-                if (!service.getCaseRuntime(case.id).isRunning()) break
-                Thread.sleep(10)
-            }
+            // Wait until run() has fully exited (runInFlight cleared) before sending
+            // the second message. The runtime stays alive (IDLE is non-terminal), but
+            // run() must have exited so the AtomicBoolean guard allows re-entry.
+            awaitNotRunning(runtime)
 
-            // Second message — the runtime is still alive (IDLE is non-terminal).
-            // We wait for runCallCount to reach 2 rather than polling status, which avoids
-            // a race where the status briefly reads IDLE from the previous run before
-            // the second run transitions it to RUNNING.
+            // Second message — subscribe before sending so the second IDLE is not missed.
+            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("second")),
             )
-            val deadline2 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline2) {
-                if (runCallCount >= 2) break
-                Thread.sleep(50)
-            }
+            secondIdle.join()
+
             runCallCount shouldBe 2
-            // Give the second run a moment to complete and reach IDLE
-            val deadline3 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline3) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
     })
