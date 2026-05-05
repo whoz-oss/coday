@@ -81,7 +81,7 @@ class Neo4jPersistenceConfiguration {
         childLinkService: Neo4jChildLinkService,
         namespaceService: NamespaceService,
     ): AgentConfigRepository {
-        logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
+        logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation active when namespace.configPath is set)" }
         return FilesystemAgentConfigRepository(
             delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
             namespaceService = namespaceService,
