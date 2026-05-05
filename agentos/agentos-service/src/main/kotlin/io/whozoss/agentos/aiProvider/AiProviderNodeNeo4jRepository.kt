@@ -20,13 +20,15 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
     fun findActiveByNamespaceId(namespaceId: String): List<AiProviderNode>
 
     /**
-     * Find all non-removed AI provider configs scoped to a user, ordered by name.
+     * Find all non-removed AI provider configs scoped to a user, ordered by name then id.
+     * The `id` tie-breaker keeps pagination deterministic when two providers share a name
+     * (legal across user-global and user × namespace modes).
      */
     @Query(
         $$"""
             MATCH (c:AiProvider)
             WHERE c.userId = $userId AND (c.removed IS NULL OR c.removed = false)
-            RETURN c ORDER BY c.name ASC
+            RETURN c ORDER BY c.name ASC, c.id ASC
             """,
     )
     fun findActiveByUserId(userId: String): List<AiProviderNode>

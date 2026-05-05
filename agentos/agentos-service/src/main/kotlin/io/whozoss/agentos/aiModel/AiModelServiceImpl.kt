@@ -86,6 +86,8 @@ class AiModelServiceImpl(
         alias: String,
     ): AiModel? = repository.findByAiProviderAndAlias(aiProviderId, alias)
 
+    override fun findByUserId(userId: UUID): List<AiModel> = repository.findByUserId(userId)
+
     override fun findAiModel(
         namespaceId: UUID,
         name: String,

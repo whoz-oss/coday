@@ -39,4 +39,7 @@ class InMemoryAiModelRepository : AiModelRepository {
         aiProviderId: UUID,
         alias: String,
     ): AiModel? = findByParent(aiProviderId).firstOrNull { it.alias == alias }
+
+    override fun findByUserId(userId: UUID): List<AiModel> =
+        delegate.findAll().filter { it.userId == userId }
 }

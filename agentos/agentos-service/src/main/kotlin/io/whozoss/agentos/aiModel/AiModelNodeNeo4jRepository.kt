@@ -59,4 +59,17 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
         aiProviderId: String,
         alias: String,
     ): AiModelNode?
+
+    /**
+     * Find all non-removed model configs scoped to a user, ordered by apiName then id.
+     * The `id` tie-breaker keeps pagination deterministic when two models share an apiName
+     * under the same parent (legal post PR #797 — alias-only uniqueness).
+     */
+    @Query(
+        $$"""MATCH (m:AiModel)
+            WHERE m.userId = $userId AND (m.removed IS NULL OR m.removed = false)
+            RETURN m ORDER BY m.apiName ASC, m.id ASC
+            """,
+    )
+    fun findActiveByUserId(userId: String): List<AiModelNode>
 }

@@ -38,4 +38,9 @@ interface AiModelRepository : EntityRepository<AiModel, UUID> {
         aiProviderId: UUID,
         alias: String,
     ): AiModel?
+
+    /**
+     * Find all non-removed model configs scoped to the given user, regardless of [AiModel.namespaceId].
+     */
+    fun findByUserId(userId: UUID): List<AiModel>
 }

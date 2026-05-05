@@ -55,4 +55,10 @@ interface AiModelService : EntityService<AiModel, UUID> {
         namespaceId: UUID,
         name: String = "default",
     ): AiModel?
+
+    /**
+     * Find all non-removed [AiModel] scoped to the given user, regardless of [AiModel.namespaceId].
+     * Used by [UserAiModelController.list] (story 6.3).
+     */
+    fun findByUserId(userId: UUID): List<AiModel>
 }

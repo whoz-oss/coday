@@ -63,6 +63,11 @@ open class Neo4JAiModelRepository(
             .findActiveByAiProviderIdAndAlias(aiProviderId.toString(), alias)
             ?.toDomain()
 
+    override fun findByUserId(userId: UUID): List<AiModel> =
+        neo4jRepository
+            .findActiveByUserId(userId.toString())
+            .map { it.toDomain() }
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
