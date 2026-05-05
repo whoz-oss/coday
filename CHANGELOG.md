@@ -1,3 +1,13 @@
+## 0.131.0 (2026-05-05)
+
+### 🚀 Features
+
+- wz-31595: register agentos on eureka ([#822](https://github.com/whoz-oss/coday/pull/822))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.130.0 (2026-05-05)
 
 ### 🚀 Features
