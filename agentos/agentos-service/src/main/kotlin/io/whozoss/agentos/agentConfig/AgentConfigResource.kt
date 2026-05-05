@@ -13,7 +13,10 @@ import java.util.UUID
  *
  * [namespaceId] is required — agent configs are always scoped to a namespace.
  * [name] is required — an agent must have a name.
- * [description], [instructions], and [modelName] are optional.
+ * [description], [instructions], [modelName], and [integrations] are optional.
+ *
+ * [integrations] maps integration names to an optional list of allowed tool names.
+ * A null list means all tools from that integration are allowed.
  */
 @Schema(name = "AgentConfig")
 data class AgentConfigResource(
@@ -25,4 +28,5 @@ data class AgentConfigResource(
     val description: String? = null,
     val instructions: String? = null,
     val modelName: String? = null,
+    val integrations: Map<String, List<String>?>? = null,
 )

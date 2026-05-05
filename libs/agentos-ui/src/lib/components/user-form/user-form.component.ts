@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
+import { UserStateService } from '../../services/user-state.service'
 
 /**
  * UserFormComponent — create and edit form for a user (admin view).
@@ -31,6 +32,7 @@ export class UserFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly userAdminState = inject(UserAdminStateService)
+  private readonly userState = inject(UserStateService)
 
   private readonly userId = this.route.snapshot.params['userId'] as string | undefined
 
@@ -44,10 +46,34 @@ export class UserFormComponent implements OnInit {
     firstname: new FormControl<string>('', { nonNullable: true }),
     lastname: new FormControl<string>('', { nonNullable: true }),
     bio: new FormControl<string>('', { nonNullable: true }),
+    isAdmin: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
   ngOnInit(): void {
     if (!this.isEditMode) return
+
+    // Self-rule: the backend ignores isAdmin changes from the caller on their own
+    // record. Disable the checkbox in self-edit mode so the UX matches the contract.
+    // Fallback: if currentUser hasn't been loaded yet (e.g. direct landing), fetch it
+    // before deciding — without this, a self-edit could leave the checkbox enabled.
+    const applySelfEditDisable = () => {
+      if (this.userState.currentUser()?.id === this.userId) {
+        this.form.controls.isAdmin.disable()
+      }
+    }
+    if (this.userState.currentUser()) {
+      applySelfEditDisable()
+    } else {
+      this.userState
+        .loadMe()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: () => applySelfEditDisable(),
+          // If we can't resolve the current user, disable the checkbox unconditionally
+          // so the UI never falsely advertises a permission the backend will reject.
+          error: () => this.form.controls.isAdmin.disable(),
+        })
+    }
 
     // Try to resolve from already-loaded state first (avoids extra HTTP call).
     const existing = this.userAdminState.users().find((u) => u.id === this.userId)
@@ -83,7 +109,7 @@ export class UserFormComponent implements OnInit {
     if (this.form.invalid || this.isSaving()) return
     this.isSaving.set(true)
 
-    const { email, externalId, firstname, lastname, bio } = this.form.getRawValue()
+    const { email, externalId, firstname, lastname, bio, isAdmin } = this.form.getRawValue()
 
     const action$ = this.isEditMode
       ? this.userAdminState.updateUser(this.userId!, {
@@ -91,6 +117,7 @@ export class UserFormComponent implements OnInit {
           firstname: firstname || undefined,
           lastname: lastname || undefined,
           bio: bio || undefined,
+          isAdmin,
         })
       : this.userAdminState.createUser({
           email: email || undefined,
@@ -98,6 +125,7 @@ export class UserFormComponent implements OnInit {
           firstname: firstname || undefined,
           lastname: lastname || undefined,
           bio: bio || undefined,
+          isAdmin,
         })
 
     action$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
@@ -120,6 +148,7 @@ export class UserFormComponent implements OnInit {
     firstname?: string
     lastname?: string
     bio?: string
+    isAdmin?: boolean
   }): void {
     this.form.setValue({
       email: user.email ?? '',
@@ -127,6 +156,7 @@ export class UserFormComponent implements OnInit {
       firstname: user.firstname ?? '',
       lastname: user.lastname ?? '',
       bio: user.bio ?? '',
+      isAdmin: user.isAdmin ?? false,
     })
   }
 }

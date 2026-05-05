@@ -81,6 +81,17 @@
         </div>
       </div>
 
+      <div class="user-form__section">
+        <h2 class="user-form__section-title">Permissions</h2>
+
+        <div class="user-form__field user-form__field--checkbox">
+          <input id="uf-isAdmin" class="user-form__checkbox" type="checkbox" formControlName="isAdmin" />
+          <label class="user-form__label user-form__label--checkbox" for="uf-isAdmin">
+            Super admin (full access to AgentOS)
+          </label>
+        </div>
+      </div>
+
       <div class="user-form__actions">
         <button class="user-form__btn user-form__btn--primary" type="submit" [disabled]="form.invalid || isSaving()">
           {{ isSaving() ? 'Saving…' : isEditMode ? 'Save changes' : 'Create user' }}

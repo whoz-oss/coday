@@ -113,6 +113,31 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAiModelsComponent
               ),
           },
+          // --- Agent Configs ---
+          {
+            path: ':namespaceId/agent-configs/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-form/agent-config-form.component').then(
+                (m) => m.AgentConfigFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/agent-configs/:agentConfigId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-form/agent-config-form.component').then(
+                (m) => m.AgentConfigFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/agent-configs',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-agent-configs/namespace-agent-configs.component').then(
+                (m) => m.NamespaceAgentConfigsComponent
+              ),
+          },
           // --- Admin ---
           {
             path: 'admin/users/new',

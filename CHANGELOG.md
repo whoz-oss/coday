@@ -1,3 +1,78 @@
+## 0.132.0 (2026-05-05)
+
+### 🚀 Features
+
+- #31424 Add UserGroup model ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add externalId to Namespace ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement GET user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement POST user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add integrity constraints ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31644 Fix after code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Generate open api documentation ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement get and create user group ([#821](https://github.com/whoz-oss/coday/pull/821), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.131.2 (2026-05-05)
+
+### 🩹 Fixes
+
+- PR #832 review follow-ups (audit log, UX fallback, test pin, rename) ([#834](https://github.com/whoz-oss/coday/pull/834), [#832](https://github.com/whoz-oss/coday/issues/832))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.131.1 (2026-05-05)
+
+### 🩹 Fixes
+
+- relax super-admin creation/update via API with self-rule ([#832](https://github.com/whoz-oss/coday/pull/832), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.131.0 (2026-05-05)
+
+### 🚀 Features
+
+- wz-31595: register agentos on eureka ([#822](https://github.com/whoz-oss/coday/pull/822))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.130.0 (2026-05-05)
+
+### 🚀 Features
+
+- tag-based project selection for release pipeline ([#829](https://github.com/whoz-oss/coday/pull/829))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.129.0 (2026-05-05)
+
+### 🚀 Features
+
+- #WZ-31326 use AgentConfig entities in AgentService resolution ([#770](https://github.com/whoz-oss/coday/pull/770))
+
+### 🩹 Fixes
+
+- deployPlugins cleans stale plugin JARs before rebuilding ([#820](https://github.com/whoz-oss/coday/pull/820))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.128.0 (2026-04-30)
 
 ### 🚀 Features

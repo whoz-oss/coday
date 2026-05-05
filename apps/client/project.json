@@ -4,7 +4,7 @@
   "projectType": "application",
   "prefix": "app",
   "sourceRoot": "apps/client/src",
-  "tags": [],
+  "tags": ["platform:npm"],
   "targets": {
     "build": {
       "executor": "nx:run-commands",

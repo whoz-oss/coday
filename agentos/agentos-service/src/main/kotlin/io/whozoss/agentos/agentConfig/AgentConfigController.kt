@@ -53,6 +53,7 @@ class AgentConfigController(
             description = entity.description,
             instructions = entity.instructions,
             modelName = entity.modelName,
+            integrations = entity.integrations,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -63,6 +64,7 @@ class AgentConfigController(
             description = resource.description,
             instructions = resource.instructions,
             modelName = resource.modelName,
+            integrations = resource.integrations,
         )
 
     /**

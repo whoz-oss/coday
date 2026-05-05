@@ -15,4 +15,5 @@ export interface AgentConfig {
   description?: string
   instructions?: string
   modelName?: string
+  integrations?: { [key: string]: Array<string> }
 }

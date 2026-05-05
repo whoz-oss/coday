@@ -1,0 +1,15 @@
+@namespaceExternalId=123
+
+### List namespaces
+GET {{apiBaseUrl}}/api/namespaces
+Content-Type: application/json
+
+
+### Create a namespace
+POST {{apiBaseUrl}}/api/namespaces
+Content-Type: application/json
+
+{
+    "name": "Namespace",
+    "externalId": "{{namespaceExternalId}}"
+}
