@@ -32,12 +32,14 @@ open class Neo4jUserGroupRepository(
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
         neo4jClient
             .query(
-                "MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace) " +
-                    "WHERE ns.externalId = \$externalId " +
-                    "  AND (g.removed IS NULL OR g.removed = false) " +
-                    "  AND (ns.removed IS NULL OR ns.removed = false) " +
-                    "RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name " +
-                    "ORDER BY g.name ASC",
+                $$"""
+                    MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
+                    WHERE ns.externalId = $externalId
+                      AND (g.removed IS NULL OR g.removed = false)
+                      AND (ns.removed IS NULL OR ns.removed = false)
+                    RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name
+                    ORDER BY g.name ASC
+                """,
             ).bind(externalId)
             .to("externalId")
             .fetchAs(UserGroupSearchResult::class.java)
