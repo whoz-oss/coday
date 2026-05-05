@@ -1,3 +1,21 @@
+## 0.132.0 (2026-05-05)
+
+### 🚀 Features
+
+- #31424 Add UserGroup model ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add externalId to Namespace ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement GET user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement POST user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add integrity constraints ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31644 Fix after code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Generate open api documentation ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement get and create user group ([#821](https://github.com/whoz-oss/coday/pull/821), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.131.2 (2026-05-05)
 
 ### 🩹 Fixes
