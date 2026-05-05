@@ -138,8 +138,12 @@ class UserController(
             externalId = existing.externalId,        // server-managed (IdP key)
             isAdmin = newIsAdmin,                    // self-rule applied above
         )
-        logger.info { "User profile $id updated" }
-        return toResource(userService.update(updated))
+        val persisted = userService.update(updated)
+        logger.info {
+            "User profile $id updated by caller=$callerName " +
+                "(isAdmin: ${existing.isAdmin} -> ${persisted.isAdmin}, selfEdit=$isSelfEdit)"
+        }
+        return toResource(persisted)
     }
 
     @DeleteMapping("/{id}")

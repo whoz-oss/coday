@@ -6,6 +6,7 @@ import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.slot
+import io.mockk.verify
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
@@ -39,7 +40,7 @@ import java.util.UUID
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class UserControllerSelfRuleMvcSpec : StringSpec() {
+class UserControllerSelfRuleIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
@@ -236,6 +237,11 @@ class UserControllerSelfRuleMvcSpec : StringSpec() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "id": "$targetUserId", "email": "target@example.com", "isAdmin": true }""")
             ).andExpect(status().isForbidden)
+
+            // Pin: the 403 must come from @PreAuthorize, not from a relaxed-mock
+            // findById returning null (which would yield 404). If the annotation
+            // were ever removed, this assertion would fail.
+            verify(exactly = 0) { userService.findById(targetUserId) }
         }
     }
 }
