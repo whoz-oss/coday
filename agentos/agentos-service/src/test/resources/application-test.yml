@@ -1,7 +1,23 @@
 spring:
   application:
     name: agentos-service-test
-  
+
+  # Disable Spring Cloud Config and Eureka so tests run fully standalone.
+  # These are activated only by the 'whoz' profile; disabling them here
+  # prevents connection attempts to Cloud Config Server and Eureka during tests.
+  cloud:
+    config:
+      enabled: false
+    discovery:
+      enabled: false
+    # Spring Cloud 2024.0.x (Moore) officially targets Spring Boot 3.4.x.
+    # AgentOS uses Spring Boot 3.5.x which is functionally compatible but
+    # triggers the built-in version guard. Disable the guard here so the
+    # test context loads cleanly. The same property is set in application.yml
+    # so it applies to all non-whoz profiles.
+    compatibility-verifier:
+      enabled: false
+
   ai:
     openai:
       api-key: test-key
@@ -10,6 +26,10 @@ spring:
 
 server:
   port: 0  # Random port for tests
+
+eureka:
+  client:
+    enabled: false
 
 agentos:
   plugins:
