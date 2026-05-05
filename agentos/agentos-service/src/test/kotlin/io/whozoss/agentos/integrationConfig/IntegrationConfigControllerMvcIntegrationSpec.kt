@@ -39,6 +39,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var integrationConfigService: IntegrationConfigService
+    @Autowired lateinit var namespaceService: io.whozoss.agentos.namespace.NamespaceService
 
     private val namespaceId = UUID.randomUUID()
 
@@ -136,6 +137,13 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
         "GET /api/integration-configs/by-parentId/{namespaceId} returns configs for a super-admin caller" {
             val listNamespaceId = UUID.randomUUID()
+            namespaceService.create(
+                io.whozoss.agentos.namespace.Namespace(
+                    metadata = EntityMetadata(id = listNamespaceId),
+                    name = "test-ns-${listNamespaceId}",
+                    externalId = "ext-${listNamespaceId}",
+                ),
+            )
             integrationConfigService.create(
                 IntegrationConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "JIRA_A", integrationType = "JIRA"),
             )
