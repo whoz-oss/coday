@@ -39,7 +39,7 @@ open class Neo4jUserGroupRepository(
                       AND (ns.removed IS NULL OR ns.removed = false)
                     OPTIONAL MATCH (g)-[:HAS_AGENT]->(a:AgentConfig)
                       WHERE a.removed IS NULL OR a.removed = false
-                    RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name
+                    RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(a.id) AS agentIds
                     ORDER BY g.name ASC
                 """,
             ).bind(externalId)
@@ -51,7 +51,7 @@ open class Neo4jUserGroupRepository(
                     namespaceId = UUID.fromString(record["namespaceId"].asString()),
                     namespaceExternalId = record["namespaceExternalId"].asString(),
                     name = record["name"].asString(),
-                    agentIds = record["agentIds"].asList { it.asString() },
+                    agentIds = record["agentIds"].asList { UUID.fromString(it.asString()) },
                 )
             }.all()
             .toList()

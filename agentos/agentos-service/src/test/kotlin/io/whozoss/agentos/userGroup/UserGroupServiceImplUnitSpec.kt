@@ -58,7 +58,7 @@ class UserGroupServiceImplUnitSpec :
                     namespaceId = namespaceId,
                     namespaceExternalId = externalId,
                     name = "Team A",
-                    agentIds = listOf(agentId1.toString(), agentId2.toString()),
+                    agentIds = listOf(agentId1, agentId2),
                 )
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
@@ -77,7 +77,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team A",
-                        agentIds = listOf(agentId1.toString(), agentId2.toString()),
+                        agentIds = listOf(agentId1, agentId2),
                     ),
                 )
 
@@ -90,7 +90,7 @@ class UserGroupServiceImplUnitSpec :
                     },
                 )
             }
-            result.agentIds shouldContainExactlyInAnyOrder listOf(agentId1.toString(), agentId2.toString())
+            result.agentIds shouldContainExactlyInAnyOrder listOf(agentId1, agentId2)
         }
 
         "createFromRequest with no agents skips addAgents" {
@@ -142,7 +142,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team C",
-                        agentIds = listOf(agentId.toString()),
+                        agentIds = listOf(agentId),
                     ),
                 )
             }
@@ -164,7 +164,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team D",
-                        agentIds = listOf(agentId.toString()),
+                        agentIds = listOf(agentId),
                     ),
                 )
             }

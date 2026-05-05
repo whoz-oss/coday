@@ -44,7 +44,7 @@ class UserGroupServiceImpl(
             namespaceService.findByExternalId(request.namespaceExternalId)
                 ?: throw UnprocessableEntityException("Namespace not found for externalId: ${request.namespaceExternalId}")
 
-        validateAgentsInNamespace(request.agentIds.map { UUID.fromString(it) }, namespace.id)
+        validateAgentsInNamespace(request.agentIds, namespace.id)
 
         val group =
             create(
@@ -56,7 +56,7 @@ class UserGroupServiceImpl(
 
         userGroupRepository.removeAllAgents(group.id)
         if (request.agentIds.isNotEmpty()) {
-            userGroupRepository.addAgents(group.id, request.agentIds.map { UUID.fromString(it) })
+            userGroupRepository.addAgents(group.id, request.agentIds)
         }
 
         // TODO: Query user group with counters
@@ -65,7 +65,10 @@ class UserGroupServiceImpl(
             .first { it.name == request.name }
     }
 
-    private fun validateAgentsInNamespace(agentIds: List<UUID>, namespaceId: UUID) {
+    private fun validateAgentsInNamespace(
+        agentIds: List<UUID>,
+        namespaceId: UUID,
+    ) {
         if (agentIds.isEmpty()) return
         val found = agentConfigRepository.findByIds(agentIds)
         val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
