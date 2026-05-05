@@ -35,11 +35,12 @@ agentos:
   plugins:
     dir: build/test-plugins
   persistence:
-    mode: in-memory
+    mode: embedded-neo4j
+    data-dir: build/test-neo4j-data/
   bootstrap:
     # Disabled in tests — fixtures manage their own users, the bootstrap
     # invariants (default admin / single-user migration) would otherwise
-    # contaminate the in-memory DB.
+    # contaminate the embedded Neo4j DB.
     enabled: false
 
 logging:
