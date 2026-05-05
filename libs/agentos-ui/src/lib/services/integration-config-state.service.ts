@@ -120,6 +120,17 @@ export class IntegrationConfigStateService {
       .pipe(map((page) => page.content ?? []))
   }
 
+  /**
+   * Multicast, refresh-aware view of the caller's user-global configs (`namespaceId IS NULL`).
+   * Tied to `refresh$` so a `create`/`update`/`delete` triggers re-emission for any subscriber
+   * — consumed by `UserProfileComponent` so the recap stays in sync with mutations performed
+   * from any namespace page. `catchError` per source so a 5xx doesn't blank the recap.
+   */
+  readonly userGlobal$: Observable<UserIntegrationConfig[]> = this.refresh$.pipe(
+    switchMap(() => this.loadUserConfigs('global').pipe(catchError(() => of([] as UserIntegrationConfig[])))),
+    shareReplay({ bufferSize: 1, refCount: true })
+  )
+
   loadNamespaceConfigs(namespaceId: string): Observable<IntegrationConfig[]> {
     if (!namespaceId) return of([])
     return this.nsController.listByParentIntegrationConfig(namespaceId)

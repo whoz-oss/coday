@@ -124,6 +124,12 @@ export class AiProviderConfigStateService {
       .pipe(map((page) => page.content ?? []))
   }
 
+  /** Multicast user-global view, refresh-aware (see `IntegrationConfigStateService.userGlobal$`). */
+  readonly userGlobal$: Observable<UserAiProvider[]> = this.refresh$.pipe(
+    switchMap(() => this.loadUserProviders('global').pipe(catchError(() => of([] as UserAiProvider[])))),
+    shareReplay({ bufferSize: 1, refCount: true })
+  )
+
   loadNamespaceProviders(namespaceId: string): Observable<AiProvider[]> {
     if (!namespaceId) return of([])
     return this.nsController.listByNamespaceIdAiProvider(namespaceId)

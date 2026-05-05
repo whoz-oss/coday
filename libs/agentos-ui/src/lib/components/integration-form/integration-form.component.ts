@@ -238,8 +238,10 @@ export class IntegrationFormComponent implements OnInit {
       integrationType: this.typeControl.value,
       parameters: this.paramsValue(),
     }
-    // scopeControl.value is reliable even when disabled (Reactive Forms preserves the underlying value).
-    const scope = this.scopeControl.value
+    // getRawValue() includes disabled controls (scope is disabled in edit mode) — more robust
+    // than form.value which would skip it. control.value direct also works on disabled controls
+    // but is fragile to refactors that pass the parent form value around.
+    const scope = this.form.getRawValue().scope
 
     const call$ =
       this.isEditMode() && this.existingConfig?.id

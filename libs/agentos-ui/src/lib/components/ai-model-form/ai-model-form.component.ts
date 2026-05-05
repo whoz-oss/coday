@@ -270,7 +270,8 @@ export class AiModelFormComponent implements OnInit {
       maxTokens: raw.maxTokens ?? null,
       aiProviderId: raw.aiProviderId,
     }
-    const scope = this.scopeControl.value
+    // raw is form.getRawValue() — already includes the disabled scope control in edit mode.
+    const scope = raw.scope
 
     const call$ =
       this.isEditMode() && this.existingModel?.id

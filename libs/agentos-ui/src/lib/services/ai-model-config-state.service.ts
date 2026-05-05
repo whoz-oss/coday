@@ -5,7 +5,18 @@ import {
   UserAiModel,
   UserAiModelControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
+import {
+  BehaviorSubject,
+  catchError,
+  combineLatest,
+  distinctUntilChanged,
+  map,
+  Observable,
+  of,
+  shareReplay,
+  switchMap,
+  tap,
+} from 'rxjs'
 import { AiProviderConfigStateService, AiProviderScope } from './ai-provider-config-state.service'
 
 /**
@@ -129,7 +140,13 @@ export class AiModelConfigStateService {
           case 'userGlobal':
             return userGlobalItems
         }
-      })
+      }),
+      // Skip emissions where the eligible list is structurally identical (same ids, same
+      // order). Prevents the form from clearing a stale aiProviderId selection on every
+      // upstream tick (e.g. a refresh that returned the same providers).
+      distinctUntilChanged(
+        (a, b) => a.length === b.length && a.every((x, i) => x.id === b[i]?.id && x.scope === b[i]?.scope)
+      )
     )
   }
 
@@ -139,6 +156,12 @@ export class AiModelConfigStateService {
       .listUserAiModel(namespaceParam, undefined, 0, LIST_PAGE_SIZE)
       .pipe(map((page) => page.content ?? []))
   }
+
+  /** Multicast user-global view, refresh-aware (see `IntegrationConfigStateService.userGlobal$`). */
+  readonly userGlobal$: Observable<UserAiModel[]> = this.refresh$.pipe(
+    switchMap(() => this.loadUserModels('global').pipe(catchError(() => of([] as UserAiModel[])))),
+    shareReplay({ bufferSize: 1, refCount: true })
+  )
 
   loadNamespaceModels(namespaceId: string): Observable<AiModel[]> {
     if (!namespaceId) return of([])
@@ -169,7 +192,11 @@ export class AiModelConfigStateService {
     existing: AiModel | UserAiModel
   ): Observable<AiModel | UserAiModel> {
     if (scope === 'namespace') {
-      const payload: AiModel = this.assembleNamespacePayload(draft, (existing as AiModel).namespaceId ?? '')
+      const existingNs = (existing as AiModel).namespaceId
+      if (!existingNs) {
+        throw new Error(`Cannot update namespace-scoped AiModel ${id}: existing record has no namespaceId`)
+      }
+      const payload: AiModel = this.assembleNamespacePayload(draft, existingNs)
       return this.nsController.updateAiModel(id, payload).pipe(tap(() => this.refresh()))
     }
     const userExisting = existing as UserAiModel

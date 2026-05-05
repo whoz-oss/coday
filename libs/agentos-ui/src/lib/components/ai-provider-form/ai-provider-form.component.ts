@@ -177,6 +177,9 @@ export class AiProviderFormComponent implements OnInit {
           this.baseUrlControl.setValue(config.baseUrl ?? '')
           this.apiKeyControl.setValue('')
           this.initialApiKey = ''
+          // Mark touched so the required-state of the field surfaces immediately if the
+          // user submits without typing a key (rather than passing validation silently).
+          this.apiKeyControl.markAsTouched()
           this.isLoading.set(false)
           // Strip the template param so a refresh doesn't re-hydrate over user edits.
           this.router.navigate([], {
@@ -233,7 +236,8 @@ export class AiProviderFormComponent implements OnInit {
       baseUrl: baseUrl ? baseUrl : null,
       apiKey,
     }
-    const scope = this.scopeControl.value
+    // getRawValue() includes disabled controls (scope is disabled in edit mode).
+    const scope = this.form.getRawValue().scope
 
     const call$ =
       this.isEditMode() && this.existingConfig?.id
