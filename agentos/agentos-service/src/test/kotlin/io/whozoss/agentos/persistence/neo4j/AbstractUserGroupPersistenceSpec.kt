@@ -1,10 +1,12 @@
 package io.whozoss.agentos.persistence.neo4j
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import org.springframework.dao.DataIntegrityViolationException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -96,6 +98,22 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.save(userGroup(ns.id, "Orphan"))
 
             userGroupRepo.findByNamespaceExternalId("").shouldBeEmpty()
+        }
+
+        "save throws on duplicate name + namespaceId" {
+            val ns = namespaceRepo.save(namespace())
+            userGroupRepo.save(userGroup(ns.id, "Duplicate"))
+
+            shouldThrow<DataIntegrityViolationException> {
+                userGroupRepo.save(userGroup(ns.id, "Duplicate"))
+            }
+        }
+
+        "same name in different namespaces is allowed" {
+            val ns1 = namespaceRepo.save(namespace())
+            val ns2 = namespaceRepo.save(namespace())
+            userGroupRepo.save(userGroup(ns1.id, "Team Alpha"))
+            userGroupRepo.save(userGroup(ns2.id, "Team Alpha"))
         }
     }
 }

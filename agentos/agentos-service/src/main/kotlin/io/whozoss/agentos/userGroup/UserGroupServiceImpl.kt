@@ -1,7 +1,9 @@
 package io.whozoss.agentos.userGroup
 
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.util.*
 
@@ -10,9 +12,17 @@ class UserGroupServiceImpl(
     private val userGroupRepository: UserGroupRepository,
     private val namespaceService: NamespaceService,
 ) : UserGroupService {
-    override fun create(entity: UserGroup): UserGroup = userGroupRepository.save(entity)
+    override fun create(entity: UserGroup): UserGroup = try {
+        userGroupRepository.save(entity)
+    } catch (e: DataIntegrityViolationException) {
+        throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
+    }
 
-    override fun update(entity: UserGroup): UserGroup = userGroupRepository.save(entity)
+    override fun update(entity: UserGroup): UserGroup = try {
+        userGroupRepository.save(entity)
+    } catch (e: DataIntegrityViolationException) {
+        throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
+    }
 
     override fun findByIds(ids: Collection<UUID>): List<UserGroup> = userGroupRepository.findByIds(ids)
 
