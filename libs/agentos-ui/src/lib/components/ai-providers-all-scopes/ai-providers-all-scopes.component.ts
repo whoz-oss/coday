@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, OnInit } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider, UserAiProvider } from '@whoz-oss/agentos-api-client'
@@ -10,6 +10,7 @@ import {
   AiProviderConfigViewModel,
   AiProviderScope,
 } from '../../services/ai-provider-config-state.service'
+import { UserStateService } from '../../services/user-state.service'
 import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
 
 const SECTION_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
@@ -54,8 +55,12 @@ export class AiProvidersAllScopesComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(AiProviderConfigStateService)
+  private readonly userState = inject(UserStateService)
 
   protected namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  /** Super-admin bypasses the read-only guard on the namespace section. */
+  protected readonly isAdmin = computed(() => !!this.userState.currentUser()?.isAdmin)
 
   protected readonly listItems$ = this.state.vm$.pipe(map((vm) => this.toListItems(vm)))
 

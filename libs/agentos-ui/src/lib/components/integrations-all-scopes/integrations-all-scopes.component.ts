@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, OnInit } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { IntegrationConfig, UserIntegrationConfig } from '@whoz-oss/agentos-api-client'
@@ -10,6 +10,7 @@ import {
   IntegrationConfigViewModel,
   IntegrationScope,
 } from '../../services/integration-config-state.service'
+import { UserStateService } from '../../services/user-state.service'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
 const SECTION_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
@@ -54,8 +55,16 @@ export class IntegrationsAllScopesComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(IntegrationConfigStateService)
+  private readonly userState = inject(UserStateService)
 
   protected namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  /**
+   * Super-admin (User.isAdmin) bypasses the read-only guard on the namespace section.
+   * Non-admins see edit/delete hidden on NS configs (default-safe — backend would 403
+   * the write anyway). The proper namespace-admin role check is post-MVP.
+   */
+  protected readonly isAdmin = computed(() => !!this.userState.currentUser()?.isAdmin)
 
   protected readonly listItems$ = this.state.vm$.pipe(map((vm) => this.toListItems(vm)))
 
