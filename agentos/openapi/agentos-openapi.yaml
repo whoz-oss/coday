@@ -765,6 +765,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserIntegrationConfig"
+  /api/user-groups:
+    get:
+      tags:
+      - user-group-controller
+      operationId: searchByNamespaceExternalIdUserGroup
+      parameters:
+      - name: namespaceExternalId
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGroupSearchResult"
+    post:
+      tags:
+      - user-group-controller
+      operationId: createUserGroup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupCreateRequest"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
   /api/user-ai-providers:
     get:
       tags:
@@ -869,43 +906,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserAiModel"
-  /api/user-groups:
-    get:
-      tags:
-      - user-group-controller
-      operationId: searchByNamespaceExternalIdUserGroup
-      parameters:
-      - name: namespaceExternalId
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/UserGroupSearchResult"
-    post:
-      tags:
-      - user-group-controller
-      operationId: createUserGroup
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserGroupCreateRequest"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserGroupSearchResult"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
