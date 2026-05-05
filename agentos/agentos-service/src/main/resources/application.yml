@@ -1,6 +1,13 @@
 spring:
   application:
     name: agentos-service
+  cloud:
+    # Spring Cloud 2024.0.x (Moore) targets Spring Boot 3.4.x officially.
+    # AgentOS runs Spring Boot 3.5.x which is functionally compatible but
+    # triggers the built-in version guard. Disable the guard globally so the
+    # service starts cleanly in all profiles (standalone, whoz, test).
+    compatibility-verifier:
+      enabled: false
   ai:
     chat:
       client:
@@ -42,11 +49,16 @@ server:
 management:
   endpoints:
     web:
+      # Use /management as base path to follow Whoz backend conventions.
+      # Eureka health check URL is configured accordingly in application-whoz.yml.
+      base-path: /management
       exposure:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: when-authorized
+      # 'always' so that Eureka can read the health status without credentials.
+      # The health endpoint itself does not expose sensitive data.
+      show-details: always
 
 agentos:
   plugins:
