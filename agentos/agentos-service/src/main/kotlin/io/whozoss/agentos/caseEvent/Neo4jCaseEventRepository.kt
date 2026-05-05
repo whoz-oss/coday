@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseEvent
 
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
@@ -23,11 +24,12 @@ import java.util.UUID
 open class Neo4jCaseEventRepository(
     private val caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository,
     private val mapper: CaseEventNodeMapper,
+    private val childLinkService: Neo4jChildLinkService,
 ) : CaseEventRepository {
     override fun save(entity: CaseEvent): CaseEvent =
         caseEventNodeNeo4jRepository
             .save(mapper.fromDomain(entity))
-            .also { caseEventNodeNeo4jRepository.linkEventToCase(it.id, it.caseId) }
+            .also { childLinkService.link("CaseEvent", it.id, "Case", it.caseId) }
             .let { mapper.toDomain(it) }
             .also { logger.debug { "[Neo4jCaseEventRepository] Saved ${entity.type.value} event ${entity.id} for case ${entity.caseId}" } }
 

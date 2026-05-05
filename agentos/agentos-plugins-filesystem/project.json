@@ -55,6 +55,18 @@
         }
       ]
     },
+    "nx-release-publish": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'agentos-plugins-filesystem is a legacy project and is not published to GitHub Packages'"
+      }
+    },
+    "publish": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'agentos-plugins-filesystem is a legacy project and is not published to GitHub Packages'"
+      }
+    },
     "jar": {
       "executor": "nx:run-commands",
       "cache": true,
@@ -78,7 +90,6 @@
   },
   "tags": [
     "type:app",
-    "platform:jvm",
     "scope:service"
   ]
 }

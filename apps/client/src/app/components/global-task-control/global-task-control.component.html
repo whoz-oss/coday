@@ -27,6 +27,35 @@
     <div class="gtc-toolbar-actions">
       <button
         mat-icon-button
+        [matMenuTriggerFor]="controlCenterMenu"
+        matTooltip="Control Center"
+        aria-label="Control Center"
+      >
+        <mat-icon>hub</mat-icon>
+      </button>
+
+      <mat-menu #controlCenterMenu="matMenu">
+        <button mat-menu-item (click)="openPreferences()">
+          <mat-icon>tune</mat-icon>
+          <span>Preferences</span>
+        </button>
+        <button mat-menu-item (click)="openTokenUsage()">
+          <mat-icon>data_usage</mat-icon>
+          <span>Token Usage</span>
+        </button>
+        <button mat-menu-item (click)="openUserConfig()">
+          <mat-icon>manage_accounts</mat-icon>
+          <span>User Configuration</span>
+        </button>
+        <mat-divider />
+        <a mat-menu-item href="https://github.com/whoz-oss/coday" target="_blank" rel="noopener noreferrer">
+          <mat-icon>code</mat-icon>
+          <span>Contribute on GitHub</span>
+        </a>
+      </mat-menu>
+
+      <button
+        mat-icon-button
         (click)="refresh()"
         [disabled]="isLoading()"
         matTooltip="Refresh all tasks"
@@ -34,13 +63,19 @@
       >
         <mat-icon>refresh</mat-icon>
       </button>
-      <button mat-stroked-button routerLink="/projects" aria-label="Manage projects">
+      <button mat-stroked-button routerLink="/projects" aria-label="Manage projects" matTooltip="Manage projects">
         <mat-icon>settings</mat-icon>
-        Manage projects
+        <span class="btn-label">Manage projects</span>
       </button>
-      <button mat-flat-button class="gtc-new-btn" (click)="openNewTaskDialog()" aria-label="New task">
+      <button
+        mat-flat-button
+        class="gtc-new-btn"
+        (click)="openNewTaskDialog()"
+        aria-label="New task"
+        matTooltip="New Task"
+      >
         <mat-icon>rocket_launch</mat-icon>
-        New Task
+        <span class="btn-label">New Task</span>
       </button>
     </div>
   </header>
@@ -80,6 +115,17 @@
           }
         </button>
       }
+      <button
+        class="filter-chip starred-filter"
+        [class.active]="starredOnly()"
+        (click)="toggleStarredFilter()"
+        role="switch"
+        [attr.aria-checked]="starredOnly()"
+        aria-label="Show starred tasks only"
+      >
+        <mat-icon class="filter-icon">star</mat-icon>
+        <span>Starred</span>
+      </button>
     </nav>
   </div>
 

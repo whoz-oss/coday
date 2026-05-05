@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
 import java.nio.file.Files
@@ -34,6 +35,7 @@ class PluginController(
      * Get all loaded plugins
      */
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     fun getAllPlugins(): ResponseEntity<List<PluginInfo>> {
         val plugins = pluginService.getLoadedPlugins()
         return ResponseEntity.ok(plugins)
@@ -43,6 +45,7 @@ class PluginController(
      * Get a specific plugin by ID
      */
     @GetMapping("/{pluginId}")
+    @PreAuthorize("isAuthenticated()")
     fun getPlugin(
         @PathVariable pluginId: String,
     ): ResponseEntity<PluginInfo> {
@@ -59,6 +62,7 @@ class PluginController(
      */
     @SwaggerRequestBody(content = [Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE, schema = Schema(type = "object", requiredProperties = ["file"]))])
     @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun uploadPlugin(
         @RequestParam("file") file: MultipartFile,
     ): ResponseEntity<PluginUploadResponse> {
@@ -74,12 +78,22 @@ class PluginController(
                 .body(PluginUploadResponse(false, "Only JAR files are allowed", null))
         }
 
+        // Path-traversal guard: extract the leaf filename only — discard any directory
+        // components from a maliciously crafted Content-Disposition header
+        // (e.g. "../etc/foo.jar" or "/absolute/path/foo.jar").
+        val safeFilename = Paths.get(file.originalFilename!!).fileName.toString()
+        if (safeFilename.isBlank() || safeFilename != file.originalFilename) {
+            return ResponseEntity
+                .badRequest()
+                .body(PluginUploadResponse(false, "Invalid filename: must not contain path separators", null))
+        }
+
         return try {
             // Save the uploaded file to the plugins directory
             val pluginsDir = Paths.get("plugins")
             Files.createDirectories(pluginsDir)
 
-            val targetPath = pluginsDir.resolve(file.originalFilename!!)
+            val targetPath = pluginsDir.resolve(safeFilename)
             Files.copy(file.inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING)
 
             // Load the plugin
@@ -114,6 +128,7 @@ class PluginController(
      * Start a plugin
      */
     @PostMapping("/{pluginId}/start")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun startPlugin(
         @PathVariable pluginId: String,
     ): ResponseEntity<PluginActionResponse> {
@@ -132,6 +147,7 @@ class PluginController(
      * Stop a plugin
      */
     @PostMapping("/{pluginId}/stop")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun stopPlugin(
         @PathVariable pluginId: String,
     ): ResponseEntity<PluginActionResponse> {
@@ -149,6 +165,7 @@ class PluginController(
      * Reload a plugin
      */
     @PostMapping("/{pluginId}/reload")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun reloadPlugin(
         @PathVariable pluginId: String,
     ): ResponseEntity<PluginActionResponse> {
@@ -167,6 +184,7 @@ class PluginController(
      * Unload a plugin
      */
     @DeleteMapping("/{pluginId}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun unloadPlugin(
         @PathVariable pluginId: String,
     ): ResponseEntity<PluginActionResponse> {
@@ -184,6 +202,7 @@ class PluginController(
      * Reload all agents from all plugins
      */
     @PostMapping("/reload-agents")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun reloadAllAgents(): ResponseEntity<PluginActionResponse> =
         try {
             agentRegistry.reloadPluginAgents()
@@ -198,6 +217,7 @@ class PluginController(
      * Debug a specific plugin
      */
     @GetMapping("/{pluginId}/debug")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun debugPlugin(
         @PathVariable pluginId: String,
     ): ResponseEntity<PluginActionResponse> {
@@ -220,6 +240,7 @@ class PluginController(
      * Debug all plugins
      */
     @GetMapping("/debug")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun debugAllPlugins(): ResponseEntity<PluginActionResponse> {
         if (pluginDebugService == null) {
             return ResponseEntity

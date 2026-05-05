@@ -87,54 +87,56 @@ class ToolRegistryService(
     }
 
     /**
-     * Resolve the full tool set for a given namespace and agent run.
+     * Resolve the tool set for a given namespace and agent run.
      *
      * Every call produces **new tool instances** — tools are scoped to the agent run
      * and discarded when the run ends. No tool instance is shared across runs.
      *
-     * Combines:
-     * 1. Fresh instances from config-less plugins (available in every namespace).
-     * 2. Fresh instances from each [IntegrationConfig] found in the namespace,
-     *    using the matching [ToolPlugin] as a factory.
+     * Tools are always resolved via the [IntegrationConfig] entries of the namespace:
+     * each config is matched to a [ToolPlugin] by [ToolPlugin.integrationType], and
+     * the plugin instantiates fresh tools from the config parameters. This applies to
+     * both config-requiring plugins and config-less plugins — a config-less plugin only
+     * contributes tools when an [IntegrationConfig] of its type exists in the namespace.
      *
-     * A namespace with no [IntegrationConfig] for a given plugin type simply gets
-     * no tools from that plugin — silently.
+     * A namespace with no [IntegrationConfig] for a given plugin type gets no tools
+     * from that plugin — silently.
+     *
+     * When [agentIntegrations] is non-null, only tools whose [IntegrationConfig.name]
+     * appears as a key in the map are included. The filter is two-level:
+     * - Integration-level: the [IntegrationConfig.name] must be a key in [agentIntegrations].
+     * - Tool-level: when the list for that key is non-null, only tools whose [StandardTool.name]
+     *   matches exactly or ends with `KEY__allowedName` are included.
+     *
+     * When [agentIntegrations] is null, all tools from all namespace configs are returned.
      *
      * Called by [io.whozoss.agentos.agent.AgentServiceImpl] at agent instantiation time.
      */
-    fun resolveToolsForNamespace(namespaceId: UUID): Collection<StandardTool<*>> {
+    fun resolveToolsForNamespace(
+        namespaceId: UUID,
+        agentIntegrations: Map<String, List<String>?>? = null,
+    ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
 
-        // Instantiate config-less tools fresh for this run
-        pluginsByType.values
-            .filter { it.configSchema == null }
-            .forEach { plugin ->
-                try {
-                    val providedTools = plugin.provideTools(null)
-                    providedTools.forEach { tool ->
-                        if (resolved.containsKey(tool.name)) {
-                            logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from config-less plugin overrides an existing entry" }
-                        }
-                        resolved[tool.name] = tool
-                    }
-                    logger.debug { "[ToolRegistry] Instantiated ${providedTools.size} config-less tool(s) from plugin '${plugin.integrationType}' for run in namespace $namespaceId" }
-                } catch (e: Exception) {
-                    logger.error(e) { "[ToolRegistry] Error instantiating config-less tools for plugin '${plugin.integrationType}': ${e.message}" }
-                }
-            }
-
-        // For each IntegrationConfig in the namespace, find the matching plugin and instantiate
+        // All tools are resolved via IntegrationConfig — config-less plugins included.
         val configs = integrationConfigService.findByParent(namespaceId)
         logger.info { "[ToolRegistry] Resolving tools for namespace $namespaceId: ${configs.size} IntegrationConfig(s) found" }
 
         configs.forEach { config ->
+            // Skip this integration config entirely if the agent has an integrations filter
+            // and this config name is not listed.
+            if (agentIntegrations != null && config.name !in agentIntegrations) {
+                logger.debug { "[ToolRegistry] Skipping IntegrationConfig '${config.name}' (not in agent integrations filter)" }
+                return@forEach
+            }
             val plugin = pluginsByType[config.integrationType]
             if (plugin == null) {
                 logger.warn { "[ToolRegistry] No plugin found for integrationType='${config.integrationType}' (config id=${config.metadata.id}) — skipping" }
                 return@forEach
             }
             try {
+                val allowedToolNames = agentIntegrations?.get(config.name)
                 val providedTools = plugin.provideTools(config.parameters, config.name)
+                    .filter { tool -> isToolAllowed(tool.name, config.name, allowedToolNames) }
                 providedTools.forEach { tool ->
                     if (resolved.containsKey(tool.name)) {
                         logger.warn { "[ToolRegistry] Tool name conflict: '${tool.name}' from integrationType='${config.integrationType}' overrides an existing entry" }
@@ -149,6 +151,25 @@ class ToolRegistryService(
 
         logger.info { "[ToolRegistry] Total tools for namespace $namespaceId: ${resolved.size}" }
         return resolved.values
+    }
+
+    /**
+     * Determines whether a tool is allowed given the integration key and the
+     * optional list of allowed tool names.
+     *
+     * [allowedNames] null means all tools from this integration are allowed.
+     * When non-null, the tool name must either match exactly one of the allowed
+     * names, or end with `__<allowedName>` (the multi-instance prefix convention).
+     */
+    internal fun isToolAllowed(
+        toolName: String,
+        integrationKey: String,
+        allowedNames: List<String>?,
+    ): Boolean {
+        if (allowedNames == null) return true
+        return allowedNames.any { allowed ->
+            toolName == allowed || toolName == "${integrationKey}__${allowed}"
+        }
     }
 
     companion object : KLogging()

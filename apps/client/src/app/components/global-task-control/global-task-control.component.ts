@@ -1,17 +1,23 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
-import { RouterLink } from '@angular/router'
+import { Router, RouterLink } from '@angular/router'
 import { MatDialog } from '@angular/material/dialog'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatTooltipModule } from '@angular/material/tooltip'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
+import { MatMenuModule } from '@angular/material/menu'
+import { MatDividerModule } from '@angular/material/divider'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatInputModule } from '@angular/material/input'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent, ThreadUpdateEvent } from '@coday/model'
 import { TaskCardComponent } from '../task-control/task-card/task-card.component'
 import { NewTaskDialogComponent } from '../new-task-dialog/new-task-dialog.component'
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component'
+import { OptionsPanelComponent } from '../options-panel/options-panel.component'
 import { GlobalTaskService } from '../../core/services/global-task.service'
+import { ConfigStateService } from '../../core/services/config-state.service'
+import { UserService } from '../../core/services/user.service'
 import { TaskStatus } from '../../core/services/task-status.service'
 
 type FilterKey = 'all' | TaskStatus
@@ -53,6 +59,8 @@ const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
     MatButtonModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
+    MatMenuModule,
+    MatDividerModule,
     MatFormFieldModule,
     MatInputModule,
     RouterLink,
@@ -64,12 +72,18 @@ export class GlobalTaskControlComponent implements OnInit {
   private readonly globalTaskService = inject(GlobalTaskService)
   private readonly destroyRef = inject(DestroyRef)
   private readonly dialog = inject(MatDialog)
+  private readonly router = inject(Router)
+  private readonly configState = inject(ConfigStateService)
+  private readonly userService = inject(UserService)
+
+  private readonly username = toSignal(this.userService.username$, { initialValue: null })
 
   /** Single global SSE connection aggregating events from all projects */
   private globalEventSource: EventSource | null = null
 
   protected readonly filters = FILTERS
   protected readonly activeFilter = signal<FilterKey>('all')
+  protected readonly starredOnly = signal(false)
   protected readonly activeProject = signal<string | null>(null)
   protected readonly searchQuery = signal<string>('')
 
@@ -88,13 +102,18 @@ export class GlobalTaskControlComponent implements OnInit {
       .sort((a, b) => a.name.localeCompare(b.name))
   })
 
-  /** Tasks filtered by active project and active status filter */
+  /** Tasks filtered by active project, starred filter, and active status filter */
   protected readonly filteredTasks = computed(() => {
     let tasks = this.allTasks()
 
     const project = this.activeProject()
     if (project) {
       tasks = tasks.filter((t) => t.projectId === project)
+    }
+
+    const currentUsername = this.username()
+    if (this.starredOnly() && currentUsername) {
+      tasks = tasks.filter((t) => t.starring.includes(currentUsername))
     }
 
     const filter = this.activeFilter()
@@ -105,11 +124,13 @@ export class GlobalTaskControlComponent implements OnInit {
     return tasks
   })
 
-  /** Counts for filter badges (after project filter, before status filter) */
+  /** Counts for filter badges (after project + starred filter, before status filter) */
   protected readonly filterCounts = computed((): Record<FilterKey, number> => {
     let tasks = this.allTasks()
     const project = this.activeProject()
     if (project) tasks = tasks.filter((t) => t.projectId === project)
+    const currentUsername = this.username()
+    if (this.starredOnly() && currentUsername) tasks = tasks.filter((t) => t.starring.includes(currentUsername))
 
     return {
       all: tasks.length,
@@ -159,10 +180,20 @@ export class GlobalTaskControlComponent implements OnInit {
   ngOnInit(): void {
     this.globalTaskService.refresh()
     this.connectGlobalSse()
+    this.userService
+      .fetchCurrentUser()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => console.warn('[GTC] Could not fetch user:', err),
+      })
   }
 
   protected setFilter(key: FilterKey): void {
     this.activeFilter.set(key)
+  }
+
+  protected toggleStarredFilter(): void {
+    this.starredOnly.update((v) => !v)
   }
 
   protected setProject(name: string | null): void {
@@ -182,14 +213,33 @@ export class GlobalTaskControlComponent implements OnInit {
     this.globalTaskService.refresh()
   }
 
+  protected openPreferences(): void {
+    this.dialog.open(OptionsPanelComponent, {
+      width: '400px',
+    })
+  }
+
+  protected openTokenUsage(): void {
+    void this.router.navigate(['/token-usage'])
+  }
+
+  protected openUserConfig(): void {
+    this.configState.openUserConfigEditor()
+  }
+
   protected openNewTaskDialog(): void {
     const ref = this.dialog.open(NewTaskDialogComponent, {
       width: '500px',
       disableClose: false,
     })
-    ref.afterClosed().subscribe((result: { threadId: string; projectId: string } | null) => {
-      if (result) {
-        // Refresh the task list — retry a few times to catch the new thread
+    ref.afterClosed().subscribe((result: { threadId?: string; projectId: string; navigate?: boolean } | null) => {
+      if (!result) return
+
+      if (result.navigate) {
+        // Navigate to the project and open a new thread
+        void this.router.navigate(['project', result.projectId])
+      } else {
+        // Full task created — refresh the task list
         setTimeout(() => this.globalTaskService.refresh(), 300)
         setTimeout(() => this.globalTaskService.refresh(), 1500)
       }
@@ -207,7 +257,8 @@ export class GlobalTaskControlComponent implements OnInit {
   protected onStarToggled(threadId: string, projectId: string): void {
     const task = this.allTasks().find((t) => t.id === threadId)
     if (!task) return
-    const isStarred = task.starring.length > 0
+    const currentUsername = this.username()
+    const isStarred = !!currentUsername && task.starring.includes(currentUsername)
     this.globalTaskService.toggleStar(projectId, threadId, isStarred)
   }
 

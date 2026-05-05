@@ -15,6 +15,8 @@ import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { Namespace } from '../model/namespace'
+// @ts-ignore
+import { NamespaceListItem } from '../model/namespace-list-item'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -333,17 +335,17 @@ export class NamespaceControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<Namespace>>
+  ): Observable<Array<NamespaceListItem>>
   public listAllNamespace(
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<Namespace>>>
+  ): Observable<HttpResponse<Array<NamespaceListItem>>>
   public listAllNamespace(
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<Namespace>>>
+  ): Observable<HttpEvent<Array<NamespaceListItem>>>
   public listAllNamespace(
     observe: any = 'body',
     reportProgress: boolean = false,
@@ -374,7 +376,7 @@ export class NamespaceControllerService extends BaseService {
 
     let localVarPath = `/api/namespaces`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<Namespace>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<NamespaceListItem>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),

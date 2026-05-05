@@ -1,7 +1,9 @@
 package io.whozoss.agentos.aiModelConfig
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -9,193 +11,102 @@ import io.whozoss.agentos.aiModel.AiModelController
 import io.whozoss.agentos.aiModel.AiModelResource
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [io.whozoss.agentos.aiModel.AiModelController].
+ * Unit tests for [AiModelController].
+ *
+ * Permission checks moved to `@PreAuthorize` + [io.whozoss.agentos.aiModel.AiModelGuard].
+ * See [io.whozoss.agentos.agentConfig.AgentConfigControllerUnitSpec] for the unit-vs-integration
+ * coverage rationale. The guard bean is tested separately in [AiModelGuardSpec].
  */
-class AiModelControllerSpec :
-    StringSpec({
-        timeout = 5000
+class AiModelControllerSpec : StringSpec({
 
-        val service = mockk<AiModelService>()
-        val controller = AiModelController(service)
+    val service = mockk<AiModelService>()
+    val userService = mockk<UserService>(relaxed = true)
+    val permissionService = mockk<PermissionService>(relaxed = true)
+    val controller = AiModelController(service, userService, permissionService)
 
-        val aiProviderId = UUID.randomUUID()
-        val namespaceId = UUID.randomUUID()
+    val namespaceId = UUID.randomUUID()
+    val aiProviderId = UUID.randomUUID()
 
-        fun model(
-            id: UUID = UUID.randomUUID(),
-            apiName: String = "claude-haiku-4-5",
-            description: String? = null,
-            alias: String? = "SMALL",
-            priority: Int = 0,
-            temperature: Double? = 0.3,
-            maxTokens: Int? = 1024,
-        ) = AiModel(
-            metadata = EntityMetadata(id = id),
-            aiProviderId = aiProviderId,
-            namespaceId = namespaceId,
-            apiModelName = apiName,
-            description = description,
-            alias = alias,
-            priority = priority,
-            temperature = temperature,
-            maxTokens = maxTokens,
-        )
+    fun model(
+        id: UUID = UUID.randomUUID(),
+        nsId: UUID? = namespaceId,
+        apiName: String = "claude-haiku-4-5",
+    ) = AiModel(
+        metadata = EntityMetadata(id = id),
+        aiProviderId = aiProviderId,
+        namespaceId = nsId,
+        userId = null,
+        apiModelName = apiName,
+        alias = "SMALL",
+        priority = 0,
+    )
 
-        fun resource(
-            id: UUID? = UUID.randomUUID(),
-            apiName: String = "claude-haiku-4-5",
-            description: String? = null,
-            alias: String? = "SMALL",
-            priority: Int = 0,
-        ) = AiModelResource(
-            id = id,
-            aiProviderId = aiProviderId,
-            namespaceId = namespaceId,
-            apiModelName = apiName,
-            description = description,
-            alias = alias,
-            priority = priority,
-        )
+    fun resource(
+        id: UUID? = UUID.randomUUID(),
+        apiName: String = "claude-haiku-4-5",
+    ) = AiModelResource(
+        id = id,
+        aiProviderId = aiProviderId,
+        namespaceId = namespaceId,
+        apiModelName = apiName,
+        alias = "SMALL",
+        priority = 0,
+    )
 
-        // -------------------------------------------------------------------------
-        // toResource
-        // -------------------------------------------------------------------------
+    beforeTest { clearAllMocks() }
 
-        "toResource maps all fields correctly" {
-            val id = UUID.randomUUID()
-            val m =
-                model(
-                    id = id,
-                    apiName = "claude-opus-4-6",
-                    description = "A powerful model",
-                    alias = "BIG",
-                    priority = 5,
-                    temperature = 0.7,
-                    maxTokens = 4096,
-                )
+    // -------------------------------------------------------------------------
+    // Mapping
+    // -------------------------------------------------------------------------
 
-            val result = controller.toResource(m)
+    "toResource maps all fields correctly" {
+        val id = UUID.randomUUID()
+        val m = model(id = id, apiName = "claude-opus-4-6")
+        val r = controller.toResource(m)
+        r.id shouldBe id
+        r.aiProviderId shouldBe aiProviderId
+        r.namespaceId shouldBe namespaceId
+        r.apiModelName shouldBe "claude-opus-4-6"
+    }
 
-            result.id shouldBe id
-            result.aiProviderId shouldBe aiProviderId
-            result.namespaceId shouldBe namespaceId
-            result.apiModelName shouldBe "claude-opus-4-6"
-            result.description shouldBe "A powerful model"
-            result.alias shouldBe "BIG"
-            result.priority shouldBe 5
-            result.temperature shouldBe 0.7
-            result.maxTokens shouldBe 4096
+    "toDomain leaves namespaceId null at create time (denormalised by service)" {
+        val r = resource(id = null)
+        val domain = controller.toDomain(r)
+        domain.namespaceId shouldBe null
+        domain.aiProviderId shouldBe aiProviderId
+    }
+
+    // -------------------------------------------------------------------------
+    // update — mass-assignment guard
+    // -------------------------------------------------------------------------
+
+    "update preserves server-owned fields (namespaceId, aiProviderId) regardless of client payload" {
+        val existing = model()
+        val clientResource = resource(id = existing.metadata.id).copy(namespaceId = null)
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers {
+            val saved = firstArg<AiModel>()
+            saved.namespaceId shouldBe namespaceId
+            saved.aiProviderId shouldBe aiProviderId
+            saved
         }
 
-        "toResource maps null description" {
-            val m = model(description = null)
-            controller.toResource(m).description shouldBe null
-        }
+        controller.update(existing.metadata.id, clientResource)
 
-        // -------------------------------------------------------------------------
-        // listByNamespaceId
-        // -------------------------------------------------------------------------
+        verify(exactly = 1) { service.update(any()) }
+    }
 
-        "listByNamespaceId returns all model configs for the namespace" {
-            val m1 = model(apiName = "claude-haiku-4-5")
-            val m2 = model(apiName = "claude-opus-4-6")
-            every { service.findByNamespaceId(namespaceId) } returns listOf(m1, m2)
+    "update throws 404 when the AiModel does not exist" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns null
 
-            val result = controller.listByNamespaceId(namespaceId)
-
-            result shouldBe listOf(controller.toResource(m1), controller.toResource(m2))
-            verify(exactly = 1) { service.findByNamespaceId(namespaceId) }
-        }
-
-        // -------------------------------------------------------------------------
-        // Inherited endpoints
-        // -------------------------------------------------------------------------
-
-        "getById returns a resource when the entity is found" {
-            val m = model()
-            every { service.findById(m.id) } returns m
-            controller.getById(m.id) shouldBe controller.toResource(m)
-        }
-
-        "getById throws 404 when entity is not found" {
-            val id = UUID.randomUUID()
-            every { service.findById(id) } returns null
-            val ex = runCatching { controller.getById(id) }.exceptionOrNull()
-            (ex is ResourceNotFoundException) shouldBe true
-        }
-
-        "listByParent returns model configs for the given aiProviderId" {
-            val m1 = model(apiName = "claude-haiku-4-5")
-            val m2 = model(apiName = "claude-opus-4-6")
-            every { service.findByParent(aiProviderId) } returns listOf(m1, m2)
-
-            val result = controller.listByParent(aiProviderId)
-
-            result shouldBe listOf(controller.toResource(m1), controller.toResource(m2))
-        }
-
-        "create delegates to service and returns mapped resource" {
-            val r = resource(id = null)
-            val saved = model()
-            every { service.create(any()) } returns saved
-
-            val result = controller.create(r)
-
-            result shouldBe controller.toResource(saved)
-            verify(exactly = 1) { service.create(any()) }
-        }
-
-        "update delegates to service when entity exists" {
-            val m = model()
-            val updatedDomain = m.copy(alias = "UPDATED")
-            every { service.findById(m.id) } returns m
-            every { service.update(any()) } returns updatedDomain
-
-            val result = controller.update(m.id, resource(id = m.id))
-
-            result shouldBe controller.toResource(updatedDomain)
-        }
-
-        "update preserves server-owned fields (namespaceId, aiProviderId) regardless of client payload" {
-            val m = model()
-            // Client sends a resource with a different (or null) namespaceId — server must ignore it
-            val clientResource = resource(id = m.id).copy(namespaceId = null)
-            val updatedDomain = m.copy(alias = "UPDATED")
-            every { service.findById(m.id) } returns m
-            every { service.update(any()) } answers {
-                val saved = firstArg<AiModel>()
-                // namespaceId must come from the persisted entity, not the client payload
-                saved.namespaceId shouldBe namespaceId
-                saved.aiProviderId shouldBe aiProviderId
-                updatedDomain
-            }
-
-            controller.update(m.id, clientResource)
-        }
-
-        "update throws 404 when entity is not found" {
-            val id = UUID.randomUUID()
-            every { service.findById(id) } returns null
-            val ex = runCatching { controller.update(id, resource(id = id)) }.exceptionOrNull()
-            (ex is ResourceNotFoundException) shouldBe true
-        }
-
-        "delete succeeds when entity exists" {
-            val id = UUID.randomUUID()
-            every { service.delete(id) } returns true
-            controller.delete(id)
-            verify(exactly = 1) { service.delete(id) }
-        }
-
-        "delete throws 404 when service returns false" {
-            val id = UUID.randomUUID()
-            every { service.delete(id) } returns false
-            val ex = runCatching { controller.delete(id) }.exceptionOrNull()
-            (ex is ResourceNotFoundException) shouldBe true
-        }
-    })
+        shouldThrow<ResourceNotFoundException> { controller.update(id, resource(id = id)) }
+    }
+})

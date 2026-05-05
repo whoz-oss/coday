@@ -1,0 +1,20 @@
+<ds-entity-list
+  title="Agent Configs"
+  [items]="(configItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No agent configs defined yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="agentConfigItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="namespace-agent-configs__back" type="button" (click)="goBack()">
+    &#8592; Namespaces
+  </button>
+</ds-entity-list>
+
+<!-- Item template: renders AgentConfigItemComponent for each entity-list card slot -->
+<ng-template #agentConfigItemTpl let-item>
+  @if (resolveConfig(item.id); as config) {
+    <agentos-agent-config-item [config]="config" [namespaceId]="namespaceId" (deleteRequested)="deleteConfig($event)" />
+  }
+</ng-template>

@@ -44,6 +44,7 @@ export class UserFormComponent implements OnInit {
     firstname: new FormControl<string>('', { nonNullable: true }),
     lastname: new FormControl<string>('', { nonNullable: true }),
     bio: new FormControl<string>('', { nonNullable: true }),
+    isAdmin: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
   ngOnInit(): void {
@@ -83,7 +84,7 @@ export class UserFormComponent implements OnInit {
     if (this.form.invalid || this.isSaving()) return
     this.isSaving.set(true)
 
-    const { email, externalId, firstname, lastname, bio } = this.form.getRawValue()
+    const { email, externalId, firstname, lastname, bio, isAdmin } = this.form.getRawValue()
 
     const action$ = this.isEditMode
       ? this.userAdminState.updateUser(this.userId!, {
@@ -91,6 +92,7 @@ export class UserFormComponent implements OnInit {
           firstname: firstname || undefined,
           lastname: lastname || undefined,
           bio: bio || undefined,
+          isAdmin,
         })
       : this.userAdminState.createUser({
           email: email || undefined,
@@ -98,6 +100,7 @@ export class UserFormComponent implements OnInit {
           firstname: firstname || undefined,
           lastname: lastname || undefined,
           bio: bio || undefined,
+          isAdmin,
         })
 
     action$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
@@ -120,6 +123,7 @@ export class UserFormComponent implements OnInit {
     firstname?: string
     lastname?: string
     bio?: string
+    isAdmin?: boolean
   }): void {
     this.form.setValue({
       email: user.email ?? '',
@@ -127,6 +131,7 @@ export class UserFormComponent implements OnInit {
       firstname: user.firstname ?? '',
       lastname: user.lastname ?? '',
       bio: user.bio ?? '',
+      isAdmin: user.isAdmin ?? false,
     })
   }
 }

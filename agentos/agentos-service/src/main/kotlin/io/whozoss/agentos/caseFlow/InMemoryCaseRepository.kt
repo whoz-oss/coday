@@ -18,9 +18,20 @@ import java.util.UUID
     "'\${agentos.persistence.mode:in-memory}' != 'neo4j' " +
         "and '\${agentos.persistence.mode:in-memory}' != 'embedded-neo4j'",
 )
-class InMemoryCaseRepository :
-    CaseRepository,
-    EntityRepository<Case, UUID> by InMemoryEntityRepository(
+class InMemoryCaseRepository(
+    private val delegate: EntityRepository<Case, UUID> = InMemoryEntityRepository(
         parentIdExtractor = { it.namespaceId },
         comparator = compareBy { it.metadata.id },
-    )
+    ),
+) : CaseRepository,
+    EntityRepository<Case, UUID> by delegate {
+
+    /**
+     * Permissive implementation: returns every case in the namespace. Consistent
+     * with [io.whozoss.agentos.permissions.InMemoryPermissionServiceImpl] which
+     * always grants access in in-memory mode. Production filtering happens in
+     * [Neo4jCaseRepository.findAccessibleByUserInNamespace].
+     */
+    override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+        delegate.findByParent(namespaceId)
+}
