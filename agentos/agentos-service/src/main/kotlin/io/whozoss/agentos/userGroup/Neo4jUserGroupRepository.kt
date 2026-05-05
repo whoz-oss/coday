@@ -60,9 +60,7 @@ open class Neo4jUserGroupRepository(
         userGroupId: UUID,
         agentConfigIds: Collection<UUID>,
     ) {
-        agentConfigIds.forEach { agentConfigId ->
-            childLinkService.link("UserGroup", userGroupId.toString(), "AgentConfig", agentConfigId.toString(), "HAS_AGENT")
-        }
+        neo4jRepository.addAgents(userGroupId.toString(), agentConfigIds.map { it.toString() })
     }
 
     override fun removeAllAgents(userGroupId: UUID) {

@@ -15,4 +15,17 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
 
     @Query($$"MATCH (:UserGroup {id: $groupId})-[r:HAS_AGENT]->(:AgentConfig) DELETE r")
     fun removeAllAgents(groupId: String)
+
+    @Query(
+        $$"""
+        UNWIND $agentIds AS agentId
+        MATCH (g:UserGroup {id: $groupId})
+        MATCH (a:AgentConfig {id: agentId})
+        MERGE (g)-[:HAS_AGENT]->(a)
+    """,
+    )
+    fun addAgents(
+        groupId: String,
+        agentIds: List<String>,
+    )
 }

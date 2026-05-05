@@ -6,6 +6,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.*
 
 @Service
@@ -39,6 +40,7 @@ class UserGroupServiceImpl(
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
         userGroupRepository.findByNamespaceExternalId(externalId)
 
+    @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
         val namespace =
             namespaceService.findByExternalId(request.namespaceExternalId)
@@ -54,7 +56,6 @@ class UserGroupServiceImpl(
                 ),
             )
 
-        userGroupRepository.removeAllAgents(group.id)
         if (request.agentIds.isNotEmpty()) {
             userGroupRepository.addAgents(group.id, request.agentIds)
         }
@@ -69,12 +70,15 @@ class UserGroupServiceImpl(
         agentIds: List<UUID>,
         namespaceId: UUID,
     ) {
-        if (agentIds.isEmpty()) return
-        val found = agentConfigRepository.findByIds(agentIds)
-        val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
-        val invalidIds = agentIds - validIds
-        if (invalidIds.isNotEmpty()) {
-            throw UnprocessableEntityException("Agent configs not found in namespace: $invalidIds")
-        }
+        agentIds
+            .takeIf { it.isNotEmpty() }
+            ?.let {
+                val found = agentConfigRepository.findByIds(agentIds)
+                val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
+                val invalidIds = agentIds - validIds
+                if (invalidIds.isNotEmpty()) {
+                    throw UnprocessableEntityException("Agent configs not found in namespace: $invalidIds")
+                }
+            }
     }
 }

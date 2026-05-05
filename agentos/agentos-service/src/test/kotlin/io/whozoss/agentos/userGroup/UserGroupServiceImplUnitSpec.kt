@@ -81,7 +81,6 @@ class UserGroupServiceImplUnitSpec :
                     ),
                 )
 
-            verify(exactly = 1) { userGroupRepository.removeAllAgents(groupId) }
             verify(exactly = 1) {
                 userGroupRepository.addAgents(
                     groupId,
@@ -120,7 +119,6 @@ class UserGroupServiceImplUnitSpec :
                 ),
             )
 
-            verify(exactly = 1) { userGroupRepository.removeAllAgents(groupId) }
             verify(exactly = 0) { userGroupRepository.addAgents(any(), any()) }
         }
 
