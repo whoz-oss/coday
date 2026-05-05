@@ -164,6 +164,13 @@ describe('AiProviderConfigStateService', () => {
       const payload = userController.updateUserAiProvider.mock.calls[0][1]
       expect(payload.apiKey).toBe('sk-ant-fresh')
     })
+
+    it('sends apiKey:null when draft.apiKey is the empty string (explicit clear)', async () => {
+      await firstValueFrom(service.update(ITEM_ID, { ...baseDraft, apiKey: '' }, 'userOnNs', userOnNsProvider))
+      const payload = userController.updateUserAiProvider.mock.calls[0][1]
+      expect('apiKey' in payload).toBe(true)
+      expect(payload.apiKey).toBeNull()
+    })
   })
 
   describe('delete dispatch', () => {

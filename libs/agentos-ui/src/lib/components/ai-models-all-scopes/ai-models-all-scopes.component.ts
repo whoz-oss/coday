@@ -141,8 +141,11 @@ export class AiModelsAllScopesComponent implements OnInit {
   }
 
   protected openCreateForm(): void {
+    // Admins default to namespace scope, non-admins to userOnNs — see the all-scopes
+    // sibling components for the rationale.
+    const scope = this.isAdmin() ? 'namespace' : 'userOnNs'
     this.router.navigate(['/agentos', this.namespaceId, 'ai-models', 'new'], {
-      queryParams: { scope: 'namespace' },
+      queryParams: { scope },
     })
   }
 

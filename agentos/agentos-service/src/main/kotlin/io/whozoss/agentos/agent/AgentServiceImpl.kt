@@ -100,19 +100,14 @@ class AgentServiceImpl(
     ): Agent {
         val cache = if (context.userId != null) RunReconciliationCache() else null
         val modelLookupName = config.modelName
+            ?: findDefaultModelConfig(context.namespaceId)
+                ?.let { it.alias ?: it.apiModelName }
+            ?: throw IllegalArgumentException(
+                "AgentConfig '${config.name}' has no modelName and no default AiModel is configured " +
+                    "for namespace ${context.namespaceId}.",
+            )
         val (modelConfig, providerConfig) =
-            when {
-                modelLookupName != null -> resolveModelPair(modelLookupName, context.namespaceId, context.userId, cache)
-                else -> {
-                    val defaultModel =
-                        findDefaultModelConfig(context.namespaceId)
-                            ?: throw IllegalArgumentException(
-                                "AgentConfig '${config.name}' has no modelName and no default AiModel is configured " +
-                                    "for namespace ${context.namespaceId}.",
-                            )
-                    defaultModel to aiProviderService.getById(defaultModel.aiProviderId)
-                }
-            }
+            resolveModelPair(modelLookupName, context.namespaceId, context.userId, cache)
         return createAgentInstance(config.name, config.instructions, config.integrations, modelConfig, providerConfig, context, cache)
     }
 

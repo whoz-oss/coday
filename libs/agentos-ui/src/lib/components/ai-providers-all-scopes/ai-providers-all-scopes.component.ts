@@ -118,8 +118,12 @@ export class AiProvidersAllScopesComponent implements OnInit {
   }
 
   protected openCreateForm(): void {
+    // Admins default to namespace scope (managing NS-shared providers), non-admins default
+    // to userOnNs (their own override, what they're allowed to create). Without this gate,
+    // a non-admin clicking Create would submit a namespace form and get a silent 403.
+    const scope = this.isAdmin() ? 'namespace' : 'userOnNs'
     this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
-      queryParams: { scope: 'namespace' },
+      queryParams: { scope },
     })
   }
 

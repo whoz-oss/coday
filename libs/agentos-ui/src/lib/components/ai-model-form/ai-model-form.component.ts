@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, injec
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
+import { startWith, switchMap } from 'rxjs'
 import { AiModel, UserAiModel } from '@whoz-oss/agentos-api-client'
 import { AiModelConfigStateService, AiModelScope, EligibleProvider } from '../../services/ai-model-config-state.service'
 
@@ -129,11 +130,26 @@ export class AiModelFormComponent implements OnInit {
     const modelId = params.get('modelId')
     const hintedScope = this.parseScope(queryParams.get('scope'))
 
-    // Subscribe to scope changes so the eligible providers list refreshes and any stale
-    // selection is cleared when the user toggles the radio in create mode.
-    this.scopeControl.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((scope) => {
-      this.refreshEligibleProviders(scope)
-    })
+    // Single subscription that drives the eligible providers list and clears a stale
+    // selection. switchMap auto-cancels the previous inner observable on every scope
+    // change, so no race between concurrent emissions and no subscription leak when
+    // the user toggles the radio rapidly. startWith seeds the initial value before
+    // the first setValue triggers valueChanges.
+    this.scopeControl.valueChanges
+      .pipe(
+        startWith(this.scopeControl.value),
+        switchMap((scope) => this.state.eligibleProviders$(scope)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((list) => {
+        this.eligibleProviders.set(list)
+        // If the previously selected provider is no longer eligible, clear the field so
+        // the user is forced to pick a compatible parent.
+        const currentId = this.aiProviderIdControl.value
+        if (currentId && !list.some((p) => p.id === currentId)) {
+          this.aiProviderIdControl.setValue('')
+        }
+      })
 
     if (modelId) {
       this.isEditMode.set(true)
@@ -143,9 +159,8 @@ export class AiModelFormComponent implements OnInit {
       return
     }
 
+    // setValue triggers valueChanges, which propagates through the switchMap above.
     this.scopeControl.setValue(hintedScope)
-    // Initial population (the valueChanges subscription above won't fire until the next setValue)
-    this.refreshEligibleProviders(hintedScope)
 
     const templateId = queryParams.get('template')
     if (templateId) {
@@ -164,21 +179,6 @@ export class AiModelFormComponent implements OnInit {
     return config.namespaceId ? 'userOnNs' : 'userGlobal'
   }
 
-  private refreshEligibleProviders(scope: AiModelScope): void {
-    this.state
-      .eligibleProviders$(scope)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((list) => {
-        this.eligibleProviders.set(list)
-        // If the previously selected provider is no longer eligible, clear the field so the
-        // user is forced to pick a compatible parent.
-        const currentId = this.aiProviderIdControl.value
-        if (currentId && !list.some((p) => p.id === currentId)) {
-          this.aiProviderIdControl.setValue('')
-        }
-      })
-  }
-
   private loadModel(id: string, hintedScope: AiModelScope): void {
     this.isLoading.set(true)
     this.state
@@ -188,8 +188,9 @@ export class AiModelFormComponent implements OnInit {
         next: (model) => {
           this.existingModel = model
           const scope = this.deriveScopeFromConfig(model)
+          // setValue propagates through the switchMap pipe set up in ngOnInit, which
+          // refreshes eligibleProviders and clears any stale aiProviderId selection.
           this.scopeControl.setValue(scope)
-          this.refreshEligibleProviders(scope)
           this.applyModelToForm(model)
           this.isLoading.set(false)
         },

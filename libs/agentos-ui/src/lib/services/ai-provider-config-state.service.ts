@@ -186,8 +186,11 @@ export class AiProviderConfigStateService {
     scope: AiProviderScope,
     existing: AiProvider | UserAiProvider
   ): Observable<AiProvider | UserAiProvider> {
+    // null    → omit the apiKey field (backend keeps the persisted credential)
+    // ''      → send JSON null (explicit clear; backend wipes the credential)
+    // string  → send the new key
     const apiKeyField =
-      draft.apiKey === null ? {} : { apiKey: draft.apiKey === '' ? undefined : (draft.apiKey as string) }
+      draft.apiKey === null ? {} : { apiKey: (draft.apiKey === '' ? null : draft.apiKey) as string | undefined }
 
     if (scope === 'namespace') {
       const payload: AiProvider = {

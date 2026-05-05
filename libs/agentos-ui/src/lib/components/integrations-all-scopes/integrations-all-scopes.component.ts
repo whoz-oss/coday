@@ -124,10 +124,13 @@ export class IntegrationsAllScopesComponent implements OnInit {
   }
 
   protected openCreateForm(): void {
-    // Default scope at create is 'namespace' — preserves the historical UX. The form's radio
-    // selector lets the user switch to userOnNs / userGlobal before submit.
+    // Default scope depends on permissions: admins land on `namespace` (NS-shared config,
+    // their typical case), non-admins land on `userOnNs` (their own override, what they're
+    // actually allowed to create). Without this gate, non-admins would submit a `namespace`
+    // form and get a silent 403. The form's radio still lets the user switch before submit.
+    const scope = this.isAdmin() ? 'namespace' : 'userOnNs'
     this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
-      queryParams: { scope: 'namespace' },
+      queryParams: { scope },
     })
   }
 

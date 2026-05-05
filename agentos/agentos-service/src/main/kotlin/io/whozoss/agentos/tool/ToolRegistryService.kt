@@ -211,6 +211,19 @@ class ToolRegistryService(
                 "${sharedConfigs.size} shared + ${userOverrides.size} user overrides → ${distinctNames.size} distinct names"
         }
 
+        // Observability: warn when an agent declares an integration name that has no
+        // matching IntegrationConfig in any of the 3 layers — silently produces an empty
+        // toolset for that name, which would otherwise be hard to diagnose at runtime.
+        if (agentIntegrations != null) {
+            val orphans = agentIntegrations.keys - distinctNames
+            if (orphans.isNotEmpty()) {
+                logger.warn {
+                    "[ToolRegistry] Agent declares integration(s) ${orphans.toSortedSet()} but no matching " +
+                        "IntegrationConfig found in namespace $namespaceId for user $userId — these tools will be empty."
+                }
+            }
+        }
+
         // Reconcile each name and instantiate via plugin
         distinctNames.forEach { name ->
             // Apply agent integrations filter at the integration level

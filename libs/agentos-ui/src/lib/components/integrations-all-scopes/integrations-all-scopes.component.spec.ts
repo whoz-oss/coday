@@ -158,10 +158,19 @@ describe('IntegrationsAllScopesComponent', () => {
       })
     })
 
-    it('opens create with the default scope=namespace query param', () => {
+    it('opens create with scope=namespace when current user is admin', () => {
+      component['isAdmin'].set(true)
       component['openCreateForm']()
       expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
         queryParams: { scope: 'namespace' },
+      })
+    })
+
+    it('opens create with scope=userOnNs when current user is NOT admin (avoids silent 403)', () => {
+      // isAdmin signal default = false (mock returns of(false))
+      component['openCreateForm']()
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+        queryParams: { scope: 'userOnNs' },
       })
     })
   })
