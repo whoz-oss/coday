@@ -1,3 +1,13 @@
+## 0.131.1 (2026-05-05)
+
+### 🩹 Fixes
+
+- relax super-admin creation/update via API with self-rule ([#832](https://github.com/whoz-oss/coday/pull/832), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.131.0 (2026-05-05)
 
 ### 🚀 Features
