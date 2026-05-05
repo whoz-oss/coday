@@ -43,21 +43,23 @@ const userOnNsConfig = {
   name: 'Slack mine on NS',
   integrationType: 'slack',
 }
-let userGlobalConfigs: Array<typeof userOnNsConfig> = [
-  {
-    id: USER_GLOBAL_ID,
-    namespaceId: undefined as unknown as string,
-    userId: 'me',
-    name: 'Slack mine global',
-    integrationType: 'slack',
-  },
-]
 
 async function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
 test.fixme('story 6.5 — Integrations all-scopes golden path', async ({ page }) => {
+  // Test-local mutable state — must not leak across parallel workers.
+  let userGlobalConfigs: Array<typeof userOnNsConfig> = [
+    {
+      id: USER_GLOBAL_ID,
+      namespaceId: undefined as unknown as string,
+      userId: 'me',
+      name: 'Slack mine global',
+      integrationType: 'slack',
+    },
+  ]
+
   // Mock NS-shared list
   await page.route(`**/api/agentos/api/integration-configs/by-parentId/${NS_ID}`, (route) =>
     fulfillJson(route, [namespaceConfig])

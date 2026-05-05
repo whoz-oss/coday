@@ -122,17 +122,17 @@ export class IntegrationFormComponent implements OnInit {
     const queryParams = this.route.snapshot.queryParamMap
 
     const integrationId = params.get('integrationId')
-    const scope = this.parseScope(queryParams.get('scope'))
-    this.scopeControl.setValue(scope)
+    const hintedScope = this.parseScope(queryParams.get('scope'))
 
     if (integrationId) {
       this.isEditMode.set(true)
       // Edit-mode: scope is immutable — disable the radio so the user cannot change it.
       this.scopeControl.disable()
-      this.loadConfig(integrationId, scope)
+      this.loadConfig(integrationId, hintedScope)
       return
     }
 
+    this.scopeControl.setValue(hintedScope)
     const templateId = queryParams.get('template')
     if (templateId) {
       this.hydrateFromTemplate(templateId)
@@ -143,14 +143,27 @@ export class IntegrationFormComponent implements OnInit {
     return raw && VALID_SCOPES.has(raw as IntegrationScope) ? (raw as IntegrationScope) : 'namespace'
   }
 
-  private loadConfig(id: string, scope: IntegrationScope): void {
+  /**
+   * In edit-mode, the scope is **derived from the loaded resource**, not from the URL —
+   * a forged `?scope=` would otherwise route the update to the wrong controller. The
+   * query param is only used as an initial hint for the GET; the source of truth is
+   * the entity returned by the server.
+   */
+  private deriveScopeFromConfig(config: IntegrationConfig | UserIntegrationConfig): IntegrationScope {
+    const isUserScope = 'userId' in config && !!(config as UserIntegrationConfig).userId
+    if (!isUserScope) return 'namespace'
+    return config.namespaceId ? 'userOnNs' : 'userGlobal'
+  }
+
+  private loadConfig(id: string, hintedScope: IntegrationScope): void {
     this.isLoading.set(true)
     this.state
-      .getById(id, scope)
+      .getById(id, hintedScope)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
           this.existingConfig = config
+          this.scopeControl.setValue(this.deriveScopeFromConfig(config))
           this.applyConfigToForm(config)
           this.isLoading.set(false)
         },

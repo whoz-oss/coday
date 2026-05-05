@@ -5,7 +5,7 @@ import {
   UserIntegrationConfig,
   UserIntegrationConfigControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, combineLatest, map, Observable, switchMap, tap } from 'rxjs'
+import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
 
 /**
  * Scope of an integration config row in the unified 3-section view.
@@ -65,20 +65,27 @@ export class IntegrationConfigStateService {
    * Reactive view model for the all-scopes page. Re-emits whenever:
    *  - the active namespace changes (`setNamespace`)
    *  - any mutation calls `refresh()` (also done implicitly by create/update/delete)
+   *
+   * Multicast via `shareReplay` so concurrent subscribers (template async pipe + ngOnInit
+   * derivations) share a single fan-out of HTTP calls instead of redoing all 3 GETs each.
+   * Per-source `catchError` keeps the page rendering when one of the 3 layers fails — a
+   * 5xx on user-global must not blank the namespace section.
    */
   readonly vm$: Observable<IntegrationConfigViewModel> = combineLatest([this.namespaceId$, this.refresh$]).pipe(
     switchMap(([namespaceId]) => {
       if (!namespaceId) {
-        return combineLatest([this.loadNamespaceConfigs(''), this.loadUserConfigs('global')]).pipe(
-          map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as UserIntegrationConfig[], userGlobal }))
-        )
+        return combineLatest([
+          this.loadNamespaceConfigs('').pipe(catchError(() => of([] as IntegrationConfig[]))),
+          this.loadUserConfigs('global').pipe(catchError(() => of([] as UserIntegrationConfig[]))),
+        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as UserIntegrationConfig[], userGlobal })))
       }
       return combineLatest([
-        this.loadNamespaceConfigs(namespaceId),
-        this.loadUserConfigs(namespaceId),
-        this.loadUserConfigs('global'),
+        this.loadNamespaceConfigs(namespaceId).pipe(catchError(() => of([] as IntegrationConfig[]))),
+        this.loadUserConfigs(namespaceId).pipe(catchError(() => of([] as UserIntegrationConfig[]))),
+        this.loadUserConfigs('global').pipe(catchError(() => of([] as UserIntegrationConfig[]))),
       ]).pipe(map(([namespace, userOnNs, userGlobal]) => ({ namespace, userOnNs, userGlobal })))
-    })
+    }),
+    shareReplay({ bufferSize: 1, refCount: true })
   )
 
   setNamespace(namespaceId: string): void {
@@ -101,7 +108,7 @@ export class IntegrationConfigStateService {
   }
 
   loadNamespaceConfigs(namespaceId: string): Observable<IntegrationConfig[]> {
-    if (!namespaceId) return new BehaviorSubject<IntegrationConfig[]>([]).asObservable()
+    if (!namespaceId) return of([])
     return this.nsController.listByParentIntegrationConfig(namespaceId)
   }
 
