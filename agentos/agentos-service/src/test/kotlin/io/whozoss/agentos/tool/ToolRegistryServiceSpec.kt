@@ -15,6 +15,7 @@ import io.whozoss.agentos.reconciliation.ConfigReconciliationService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import org.pf4j.PluginManager
 import java.util.UUID
 
 /**
