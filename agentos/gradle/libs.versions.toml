@@ -32,8 +32,8 @@ netty = "4.2.9.Final"
 testcontainers = "1.20.4"
 
 # AgentOS modules versions
-agentosSdk = "0.128.0"
-agentosService = "0.128.0"
+agentosSdk = "0.129.0"
+agentosService = "0.129.0"
 
 [libraries]
 # Kotlin
