@@ -18,6 +18,7 @@ import {
   tap,
 } from 'rxjs'
 import { AiProviderConfigStateService, AiProviderScope } from './ai-provider-config-state.service'
+import { multicastRefreshable } from './rxjs-state.utils'
 
 /**
  * Scope of an AI model row in the unified 3-section view. Same shape as `AiProviderScope` —
@@ -42,6 +43,10 @@ export interface EligibleProvider {
   id: string
   name: string
   scope: AiProviderScope
+}
+
+function eligibleProvidersEqual(a: EligibleProvider[], b: EligibleProvider[]): boolean {
+  return a.length === b.length && a.every((x, i) => x.id === b[i]?.id && x.scope === b[i]?.scope)
 }
 
 /**
@@ -141,12 +146,9 @@ export class AiModelConfigStateService {
             return userGlobalItems
         }
       }),
-      // Skip emissions where the eligible list is structurally identical (same ids, same
-      // order). Prevents the form from clearing a stale aiProviderId selection on every
-      // upstream tick (e.g. a refresh that returned the same providers).
-      distinctUntilChanged(
-        (a, b) => a.length === b.length && a.every((x, i) => x.id === b[i]?.id && x.scope === b[i]?.scope)
-      )
+      // Avoid clearing a stale aiProviderId selection when the upstream tick produced an
+      // identical list (same ids, same order).
+      distinctUntilChanged(eligibleProvidersEqual)
     )
   }
 
@@ -157,10 +159,11 @@ export class AiModelConfigStateService {
       .pipe(map((page) => page.content ?? []))
   }
 
-  /** Multicast user-global view, refresh-aware (see `IntegrationConfigStateService.userGlobal$`). */
-  readonly userGlobal$: Observable<UserAiModel[]> = this.refresh$.pipe(
-    switchMap(() => this.loadUserModels('global').pipe(catchError(() => of([] as UserAiModel[])))),
-    shareReplay({ bufferSize: 1, refCount: true })
+  /** User-global slice consumed by `UserProfileComponent.recap` — see `multicastRefreshable`. */
+  readonly userGlobal$: Observable<UserAiModel[]> = multicastRefreshable(
+    this.refresh$,
+    () => this.loadUserModels('global'),
+    [] as UserAiModel[]
   )
 
   loadNamespaceModels(namespaceId: string): Observable<AiModel[]> {

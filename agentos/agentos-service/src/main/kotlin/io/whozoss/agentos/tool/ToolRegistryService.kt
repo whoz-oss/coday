@@ -211,9 +211,8 @@ class ToolRegistryService(
                 "${sharedConfigs.size} shared + ${userOverrides.size} user overrides → ${distinctNames.size} distinct names"
         }
 
-        // Observability: warn when an agent declares an integration name that has no
-        // matching IntegrationConfig in any of the 3 layers — silently produces an empty
-        // toolset for that name, which would otherwise be hard to diagnose at runtime.
+        // Surface integration names declared by the agent that resolve to nothing — would
+        // otherwise produce an empty toolset for that name with no runtime trace.
         if (agentIntegrations != null) {
             val orphans = agentIntegrations.keys - distinctNames
             if (orphans.isNotEmpty()) {

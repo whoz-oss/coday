@@ -16,6 +16,7 @@ import {
   AiProviderScope,
 } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
+import { defaultCreateScope } from '../_shared/default-create-scope'
 import { AiModelItemComponent, ParentProviderRef } from '../ai-model-item/ai-model-item.component'
 
 const SECTION_LABEL: Readonly<Record<AiModelScope, string>> = Object.freeze({
@@ -141,11 +142,8 @@ export class AiModelsAllScopesComponent implements OnInit {
   }
 
   protected openCreateForm(): void {
-    // Admins default to namespace scope, non-admins to userOnNs — see the all-scopes
-    // sibling components for the rationale.
-    const scope = this.isAdmin() ? 'namespace' : 'userOnNs'
     this.router.navigate(['/agentos', this.namespaceId, 'ai-models', 'new'], {
-      queryParams: { scope },
+      queryParams: { scope: defaultCreateScope(this.isAdmin()) },
     })
   }
 

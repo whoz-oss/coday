@@ -130,11 +130,6 @@ export class AiModelFormComponent implements OnInit {
     const modelId = params.get('modelId')
     const hintedScope = this.parseScope(queryParams.get('scope'))
 
-    // Single subscription that drives the eligible providers list and clears a stale
-    // selection. switchMap auto-cancels the previous inner observable on every scope
-    // change, so no race between concurrent emissions and no subscription leak when
-    // the user toggles the radio rapidly. startWith seeds the initial value before
-    // the first setValue triggers valueChanges.
     this.scopeControl.valueChanges
       .pipe(
         startWith(this.scopeControl.value),
@@ -143,8 +138,8 @@ export class AiModelFormComponent implements OnInit {
       )
       .subscribe((list) => {
         this.eligibleProviders.set(list)
-        // If the previously selected provider is no longer eligible, clear the field so
-        // the user is forced to pick a compatible parent.
+        // Force the user to pick again when their parent provider is no longer eligible
+        // for the new scope (FR3).
         const currentId = this.aiProviderIdControl.value
         if (currentId && !list.some((p) => p.id === currentId)) {
           this.aiProviderIdControl.setValue('')
@@ -159,7 +154,6 @@ export class AiModelFormComponent implements OnInit {
       return
     }
 
-    // setValue triggers valueChanges, which propagates through the switchMap above.
     this.scopeControl.setValue(hintedScope)
 
     const templateId = queryParams.get('template')
@@ -188,8 +182,6 @@ export class AiModelFormComponent implements OnInit {
         next: (model) => {
           this.existingModel = model
           const scope = this.deriveScopeFromConfig(model)
-          // setValue propagates through the switchMap pipe set up in ngOnInit, which
-          // refreshes eligibleProviders and clears any stale aiProviderId selection.
           this.scopeControl.setValue(scope)
           this.applyModelToForm(model)
           this.isLoading.set(false)
@@ -270,7 +262,6 @@ export class AiModelFormComponent implements OnInit {
       maxTokens: raw.maxTokens ?? null,
       aiProviderId: raw.aiProviderId,
     }
-    // raw is form.getRawValue() — already includes the disabled scope control in edit mode.
     const scope = raw.scope
 
     const call$ =

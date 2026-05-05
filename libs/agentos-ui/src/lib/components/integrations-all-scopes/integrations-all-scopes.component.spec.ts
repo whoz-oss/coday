@@ -167,7 +167,6 @@ describe('IntegrationsAllScopesComponent', () => {
     })
 
     it('opens create with scope=userOnNs when current user is NOT admin (avoids silent 403)', () => {
-      // isAdmin signal default = false (mock returns of(false))
       component['openCreateForm']()
       expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
         queryParams: { scope: 'userOnNs' },

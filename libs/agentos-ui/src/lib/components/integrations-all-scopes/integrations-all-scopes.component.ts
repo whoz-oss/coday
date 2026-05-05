@@ -11,6 +11,7 @@ import {
   IntegrationScope,
 } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
+import { defaultCreateScope } from '../_shared/default-create-scope'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
 const SECTION_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
@@ -124,13 +125,8 @@ export class IntegrationsAllScopesComponent implements OnInit {
   }
 
   protected openCreateForm(): void {
-    // Default scope depends on permissions: admins land on `namespace` (NS-shared config,
-    // their typical case), non-admins land on `userOnNs` (their own override, what they're
-    // actually allowed to create). Without this gate, non-admins would submit a `namespace`
-    // form and get a silent 403. The form's radio still lets the user switch before submit.
-    const scope = this.isAdmin() ? 'namespace' : 'userOnNs'
     this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
-      queryParams: { scope },
+      queryParams: { scope: defaultCreateScope(this.isAdmin()) },
     })
   }
 

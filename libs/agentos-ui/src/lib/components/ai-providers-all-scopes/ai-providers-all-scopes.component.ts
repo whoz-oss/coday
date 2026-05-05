@@ -11,6 +11,7 @@ import {
   AiProviderScope,
 } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
+import { defaultCreateScope } from '../_shared/default-create-scope'
 import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
 
 const SECTION_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
@@ -118,12 +119,8 @@ export class AiProvidersAllScopesComponent implements OnInit {
   }
 
   protected openCreateForm(): void {
-    // Admins default to namespace scope (managing NS-shared providers), non-admins default
-    // to userOnNs (their own override, what they're allowed to create). Without this gate,
-    // a non-admin clicking Create would submit a namespace form and get a silent 403.
-    const scope = this.isAdmin() ? 'namespace' : 'userOnNs'
     this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
-      queryParams: { scope },
+      queryParams: { scope: defaultCreateScope(this.isAdmin()) },
     })
   }
 

@@ -6,6 +6,7 @@ import {
   UserIntegrationConfigControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
+import { multicastRefreshable } from './rxjs-state.utils'
 
 /**
  * Scope of an integration config row in the unified 3-section view.
@@ -120,15 +121,11 @@ export class IntegrationConfigStateService {
       .pipe(map((page) => page.content ?? []))
   }
 
-  /**
-   * Multicast, refresh-aware view of the caller's user-global configs (`namespaceId IS NULL`).
-   * Tied to `refresh$` so a `create`/`update`/`delete` triggers re-emission for any subscriber
-   * — consumed by `UserProfileComponent` so the recap stays in sync with mutations performed
-   * from any namespace page. `catchError` per source so a 5xx doesn't blank the recap.
-   */
-  readonly userGlobal$: Observable<UserIntegrationConfig[]> = this.refresh$.pipe(
-    switchMap(() => this.loadUserConfigs('global').pipe(catchError(() => of([] as UserIntegrationConfig[])))),
-    shareReplay({ bufferSize: 1, refCount: true })
+  /** User-global slice consumed by `UserProfileComponent.recap` — see `multicastRefreshable`. */
+  readonly userGlobal$: Observable<UserIntegrationConfig[]> = multicastRefreshable(
+    this.refresh$,
+    () => this.loadUserConfigs('global'),
+    [] as UserIntegrationConfig[]
   )
 
   loadNamespaceConfigs(namespaceId: string): Observable<IntegrationConfig[]> {

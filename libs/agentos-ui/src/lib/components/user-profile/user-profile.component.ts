@@ -72,10 +72,6 @@ export class UserProfileComponent implements OnInit {
    * delete from this view). The state services already cache via shareReplay.
    */
   protected readonly recap = toSignal(
-    // Subscribe to the multicast `userGlobal$` of each state service so the recap stays in
-    // sync with mutations triggered from any namespace page (each `create`/`update`/`delete`
-    // pushes through `refresh$` which re-emits these streams). Using `loadXxx('global')`
-    // directly was cold + non-multicast, so the recap missed updates.
     combineLatest([
       this.integrationState.userGlobal$,
       this.providerState.userGlobal$,

@@ -99,27 +99,20 @@ class AgentServiceImpl(
         context: AgentExecutionContext,
     ): Agent {
         val cache = if (context.userId != null) RunReconciliationCache() else null
-        val modelLookupName = config.modelName
-            ?: findDefaultModelConfig(context.namespaceId)
-                ?.let { it.alias ?: it.apiModelName }
-            ?: throw IllegalArgumentException(
-                "AgentConfig '${config.name}' has no modelName and no default AiModel is configured " +
-                    "for namespace ${context.namespaceId}.",
-            )
-        val (modelConfig, providerConfig) =
-            resolveModelPair(modelLookupName, context.namespaceId, context.userId, cache)
+        val baseModel =
+            config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
+                ?: findDefaultModelConfig(context.namespaceId)
+                ?: throw IllegalArgumentException(
+                    "AgentConfig '${config.name}' could not resolve an AiModel " +
+                        "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
+                )
+        val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId, cache)
         return createAgentInstance(config.name, config.instructions, config.integrations, modelConfig, providerConfig, context, cache)
     }
 
     /**
-     * Resolve a [AiModel] + [AiProvider] pair for [name] within [namespaceId].
-     *
-     * When [userId] is non-null, applies 3-tier reconciliation:
-     * - model: resolved via [aiModelReconciliationService] with the alias (or apiModelName) as key
-     * - provider: resolved via [aiProviderReconciliationService] with the provider name as key
-     *
-     * When [userId] is null (legacy path), falls back to direct repository lookup without
-     * any user overlay — preserves Epic 4 behavior exactly (NFR-INT-1, AC11).
+     * Resolve a [AiModel] + [AiProvider] pair by name lookup, then apply user overlays.
+     * Throws when no AiModel matches [name] in [namespaceId].
      */
     private fun resolveModelPair(
         name: String,
@@ -127,36 +120,45 @@ class AgentServiceImpl(
         userId: UUID? = null,
         cache: RunReconciliationCache? = null,
     ): Pair<AiModel, AiProvider> {
-        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId (userId=$userId)" }
-
         val baseModel =
             aiModelService.findAiModel(namespaceId, name)
                 ?: throw IllegalArgumentException(
                     "No AiModel found for name '$name' in namespace $namespaceId. " +
                         "Configure an AiModel with alias or apiName matching '$name'.",
                 )
+        return applyOverlaysToModel(baseModel, namespaceId, userId, cache)
+    }
 
-        val modelConfig: AiModel
-        val providerConfig: AiProvider
-
-        if (userId != null) {
+    /**
+     * Apply 3-tier reconciliation on a pre-resolved [baseModel] (alias-first key for the
+     * model, provider name for the provider). When [userId] is null, falls back to direct
+     * repository lookup with no overlay — preserves Epic 4 behaviour exactly (NFR-INT-1, AC11).
+     */
+    private fun applyOverlaysToModel(
+        baseModel: AiModel,
+        namespaceId: UUID,
+        userId: UUID?,
+        cache: RunReconciliationCache?,
+    ): Pair<AiModel, AiProvider> {
+        val (modelConfig, providerConfig) = if (userId != null) {
             val reconciliationName = baseModel.alias ?: baseModel.apiModelName
-            modelConfig = cache?.getOrCompute(reconciliationName, AiModel::class.java) {
+            val resolvedModel = cache?.getOrCompute(reconciliationName, AiModel::class.java) {
                 aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
             } ?: aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
 
-            val baseProvider = aiProviderService.getById(modelConfig.aiProviderId)
-            providerConfig = cache?.getOrCompute(baseProvider.name, AiProvider::class.java) {
+            val baseProvider = aiProviderService.getById(resolvedModel.aiProviderId)
+            val resolvedProvider = cache?.getOrCompute(baseProvider.name, AiProvider::class.java) {
                 aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
             } ?: aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+            resolvedModel to resolvedProvider
         } else {
-            modelConfig = baseModel
-            providerConfig = aiProviderService.getById(baseModel.aiProviderId)
+            baseModel to aiProviderService.getById(baseModel.aiProviderId)
         }
 
         logger.info {
-            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiModelName}' " +
-                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, provider='${providerConfig.name}')"
+            "[AgentService] Resolved model '${modelConfig.alias ?: modelConfig.apiModelName}' " +
+                "-> apiName='${modelConfig.apiModelName}' (priority=${modelConfig.priority}, " +
+                "provider='${providerConfig.name}', userId=$userId)"
         }
         return modelConfig to providerConfig
     }

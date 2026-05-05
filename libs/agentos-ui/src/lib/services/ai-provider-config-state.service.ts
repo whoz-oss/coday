@@ -6,6 +6,7 @@ import {
   UserAiProviderControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
+import { multicastRefreshable } from './rxjs-state.utils'
 
 /**
  * Scope of an AI provider row in the unified 3-section view.
@@ -124,10 +125,11 @@ export class AiProviderConfigStateService {
       .pipe(map((page) => page.content ?? []))
   }
 
-  /** Multicast user-global view, refresh-aware (see `IntegrationConfigStateService.userGlobal$`). */
-  readonly userGlobal$: Observable<UserAiProvider[]> = this.refresh$.pipe(
-    switchMap(() => this.loadUserProviders('global').pipe(catchError(() => of([] as UserAiProvider[])))),
-    shareReplay({ bufferSize: 1, refCount: true })
+  /** User-global slice consumed by `UserProfileComponent.recap` — see `multicastRefreshable`. */
+  readonly userGlobal$: Observable<UserAiProvider[]> = multicastRefreshable(
+    this.refresh$,
+    () => this.loadUserProviders('global'),
+    [] as UserAiProvider[]
   )
 
   loadNamespaceProviders(namespaceId: string): Observable<AiProvider[]> {
@@ -192,9 +194,6 @@ export class AiProviderConfigStateService {
     scope: AiProviderScope,
     existing: AiProvider | UserAiProvider
   ): Observable<AiProvider | UserAiProvider> {
-    // null    → omit the apiKey field (backend keeps the persisted credential)
-    // ''      → send JSON null (explicit clear; backend wipes the credential)
-    // string  → send the new key
     const apiKeyField =
       draft.apiKey === null ? {} : { apiKey: (draft.apiKey === '' ? null : draft.apiKey) as string | undefined }
 
