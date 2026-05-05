@@ -8,6 +8,16 @@ spring:
     # service starts cleanly in all profiles (standalone, whoz, test).
     compatibility-verifier:
       enabled: false
+    config:
+      # Disable Cloud Config by default. Enabled only with the 'whoz' profile.
+      enabled: false
+      import-check:
+        enabled: false
+    discovery:
+      # Disable service discovery (Eureka) by default. Enabled only with the
+      # 'whoz' profile. Without this, EurekaClientAutoConfiguration fires and
+      # requires TransportClientFactories even in standalone mode.
+      enabled: false
   ai:
     chat:
       client:

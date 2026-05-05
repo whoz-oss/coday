@@ -20,6 +20,8 @@ spring:
         max-attempts: 10000000
         initial-interval: 1000
         multiplier: 1.1
+    discovery:
+      enabled: true
     compatibility-verifier:
       enabled: false
     refresh:
