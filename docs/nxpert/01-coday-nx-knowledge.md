@@ -71,17 +71,17 @@ Two GitHub Actions workflows in `.github/workflows/`:
   JVM projects are handled separately: `nx show projects --affected --projects="tag:platform:jvm" --json --quiet`
   resolves affected names first, then `nx run-many` is called with explicit names (tag filter can't
   be forwarded to Gradle executors directly).
-- **`release.yml`**: Push to master — 4 jobs in sequence:
+- **`release.yml`**: Push to master — 5 jobs in sequence:
   1. `check-release` — detects releasable commits since last tag
   2. `release` — runs `nx release` (version bump, changelog, GitHub release, npm publish for Node projects)
-  3. `desktop-release` — macOS runner, signs and packages `.pkg` for `tag:platform:node` desktop apps, uploads to GitHub Release
+  3. `desktop-release` — macOS runner, signs and packages `.pkg` for `tag:platform:npm` desktop apps, uploads to GitHub Release
   4. `compute-jvm-projects` — resolves `tag:platform:jvm` projects via `nx show projects --json --quiet | jq -c '.'`
   5. `publish-agentos-artifacts` — matrix job over the dynamic list, publishes each JVM project to GitHub Packages
 
 ## Release System
 
 Uses `nx release` with conventional commits. Tag pattern: `release/{version}`.
-- **Node projects** selected via `tag:platform:node` in `nx.json` release config
+- **npm projects** selected via `tag:platform:npm` in `nx.json` release config
 - **JVM projects** selected via `tag:platform:jvm` — `agentos-plugins-filesystem` explicitly does NOT carry this tag (legacy, not published)
 - Adding a new publishable project only requires the right `platform:*` tag — no CI config changes needed
 

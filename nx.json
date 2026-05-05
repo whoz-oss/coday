@@ -68,7 +68,7 @@
     }
   ],
   "release": {
-    "projects": ["tag:platform:node", "tag:platform:jvm"],
+    "projects": ["tag:platform:npm", "tag:platform:jvm"],
     "releaseTagPattern": "release/{version}",
     "changelog": {
       "workspaceChangelog": {

@@ -270,7 +270,7 @@ jobs:
         id: resolve
         # --json --quiet mirrors validate.yml to avoid output pollution from the nx daemon/cache
         run: |
-          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.')
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.' || echo '[]')
           echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
 
   publish-agentos-artifacts:
