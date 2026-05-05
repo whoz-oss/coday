@@ -1,0 +1,27 @@
+<ds-entity-list
+  title="AI Models"
+  [items]="(listItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No AI models available."
+  cardMinWidth="400px"
+  [itemTemplate]="aiModelItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
+</ds-entity-list>
+
+<ng-template #aiModelItemTpl let-item>
+  @if (isEmptyPlaceholder(item.id)) {
+    <p class="ai-models-all-scopes__empty">{{ item.name }}</p>
+  } @else if (resolve(item.id); as resolved) {
+    <agentos-ai-model-item
+      [model]="resolved.config"
+      [scope]="resolved.scope"
+      [readOnly]="resolved.scope === 'namespace'"
+      [parentProvider]="resolved.parentProvider"
+      (editRequested)="onEdit(resolved)"
+      (deleteRequested)="onDelete(resolved)"
+      (overrideRequested)="onOverride($event)"
+    />
+  }
+</ng-template>

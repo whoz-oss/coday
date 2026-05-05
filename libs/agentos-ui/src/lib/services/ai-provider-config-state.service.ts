@@ -161,7 +161,7 @@ export class AiProviderConfigStateService {
     }
     const userPayload: UserAiProvider = {
       name: draft.name,
-      apiType: draft.apiType,
+      apiType: draft.apiType as unknown as UserAiProvider['apiType'],
       description: draft.description as string | undefined,
       baseUrl: draft.baseUrl as string | undefined,
       apiKey: draft.apiKey as string | undefined,
@@ -203,7 +203,7 @@ export class AiProviderConfigStateService {
     const userExisting = existing as UserAiProvider
     const userPayload: UserAiProvider = {
       name: draft.name,
-      apiType: draft.apiType,
+      apiType: draft.apiType as unknown as UserAiProvider['apiType'],
       description: draft.description as string | undefined,
       baseUrl: draft.baseUrl as string | undefined,
       userId: userExisting.userId,

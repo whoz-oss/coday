@@ -88,8 +88,8 @@ export const AGENTOS_ROUTES: Route[] = [
             path: ':namespaceId/ai-providers',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/namespace-ai-providers/namespace-ai-providers.component').then(
-                (m) => m.NamespaceAiProvidersComponent
+              import('./components/ai-providers-all-scopes/ai-providers-all-scopes.component').then(
+                (m) => m.AiProvidersAllScopesComponent
               ),
           },
           // --- AI models ---
@@ -109,8 +109,8 @@ export const AGENTOS_ROUTES: Route[] = [
             path: ':namespaceId/ai-models',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/namespace-ai-models/namespace-ai-models.component').then(
-                (m) => m.NamespaceAiModelsComponent
+              import('./components/ai-models-all-scopes/ai-models-all-scopes.component').then(
+                (m) => m.AiModelsAllScopesComponent
               ),
           },
           // --- Agent Configs ---
