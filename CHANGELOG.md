@@ -1,3 +1,13 @@
+## 0.131.2 (2026-05-05)
+
+### 🩹 Fixes
+
+- PR #832 review follow-ups (audit log, UX fallback, test pin, rename) ([#834](https://github.com/whoz-oss/coday/pull/834), [#832](https://github.com/whoz-oss/coday/issues/832))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.131.1 (2026-05-05)
 
 ### 🩹 Fixes
