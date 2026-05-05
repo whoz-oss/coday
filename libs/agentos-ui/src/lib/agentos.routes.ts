@@ -67,8 +67,8 @@ export const AGENTOS_ROUTES: Route[] = [
             path: ':namespaceId/integrations',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/namespace-integrations/namespace-integrations.component').then(
-                (m) => m.NamespaceIntegrationsComponent
+              import('./components/integrations-all-scopes/integrations-all-scopes.component').then(
+                (m) => m.IntegrationsAllScopesComponent
               ),
           },
           // --- AI Providers ---

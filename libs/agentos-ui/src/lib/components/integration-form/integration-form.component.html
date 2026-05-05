@@ -11,6 +11,16 @@
     <p class="integration-form__loading">Loading&hellip;</p>
   } @else {
     <form class="integration-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <fieldset class="integration-form__field integration-form__scope" [disabled]="isEditMode()">
+        <legend class="integration-form__label">Scope</legend>
+        @for (opt of scopeOptions; track trackByScope($index, opt)) {
+          <label class="integration-form__scope-option">
+            <input type="radio" [value]="opt.value" [formControl]="scopeControl" />
+            <span>{{ opt.label }}</span>
+          </label>
+        }
+      </fieldset>
+
       <div class="integration-form__field">
         <label class="integration-form__label" for="integration-type">Type <span aria-hidden="true">*</span></label>
         <select id="integration-type" class="integration-form__select" [formControl]="typeControl">
