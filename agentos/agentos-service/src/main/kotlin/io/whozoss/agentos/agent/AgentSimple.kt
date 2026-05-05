@@ -420,11 +420,30 @@ class AgentSimple(
                     )
                 }
 
+                // Filter case events to only those belonging to this integration.
+                // Tool names follow the "INTEGRATION_NAME__toolName" convention, so the
+                // prefix before "__" is the integration identity. Events from other
+                // integrations are not visible to this tool — no cross-integration leakage.
+                val integrationPrefix = tool.name.substringBefore("__", missingDelimiterValue = "")
+                val filteredEvents =
+                    caseEventsProvider().let { all ->
+                        if (integrationPrefix.isEmpty()) {
+                            all
+                        } else {
+                            all.filter { event ->
+                                when (event) {
+                                    is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
+                                    is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
+                                    else -> true
+                                }
+                            }
+                        }
+                    }
                 val context = ToolContext(
                     namespaceId = namespaceId,
                     userId = userId,
                     userExternalId = userExternalId,
-                    caseEvents = caseEventsProvider(),
+                    caseEvents = filteredEvents,
                 )
 
                 val result: String
