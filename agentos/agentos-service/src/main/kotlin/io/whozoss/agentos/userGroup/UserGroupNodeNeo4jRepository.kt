@@ -22,7 +22,7 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         MATCH (g:UserGroup {id: $groupId})
         MATCH (a:AgentConfig {id: agentId})
         MERGE (g)-[:HAS_AGENT]->(a)
-    """,
+        """,
     )
     fun addAgents(
         groupId: String,

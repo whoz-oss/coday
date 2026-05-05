@@ -1,4 +1,4 @@
-@namespaceExternalId=456
+@namespaceExternalId=123
 
 ### List namespaces
 GET {{apiBaseUrl}}/api/namespaces

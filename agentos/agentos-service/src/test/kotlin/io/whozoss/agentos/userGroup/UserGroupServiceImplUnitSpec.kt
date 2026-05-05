@@ -47,7 +47,7 @@ class UserGroupServiceImplUnitSpec :
         // createFromRequest — agent validation
         // -------------------------------------------------------------------------
 
-        "createFromRequest with valid agents calls removeAllAgents then addAgents" {
+        "createFromRequest with valid agents calls addAgents" {
             val agentId1 = randomUUID()
             val agentId2 = randomUUID()
             val groupId = randomUUID()
