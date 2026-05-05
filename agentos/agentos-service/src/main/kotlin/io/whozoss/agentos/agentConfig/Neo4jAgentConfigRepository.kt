@@ -48,7 +48,7 @@ open class Neo4jAgentConfigRepository(
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
         neo4jRepository.saveAll(active.map { it.copy(removed = true) })
-        logger.debug { "[Neo4jAgentConfigRepository] Soft-deleted \${active.size} agent configs under namespace $parentId" }
+        logger.debug { "[Neo4jAgentConfigRepository] Soft-deleted ${active.size} agent configs under namespace $parentId" }
         return active.size
     }
 

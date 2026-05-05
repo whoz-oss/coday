@@ -27,6 +27,7 @@ export class NamespaceItemComponent {
   @Output() integrationsRequested = new EventEmitter<Namespace>()
   @Output() aiProvidersRequested = new EventEmitter<Namespace>()
   @Output() aiModelsRequested = new EventEmitter<Namespace>()
+  @Output() agentConfigsRequested = new EventEmitter<Namespace>()
   @Output() deleteRequested = new EventEmitter<Namespace>()
 
   protected readonly menuItems: KebabMenuItem[] = [
@@ -34,6 +35,7 @@ export class NamespaceItemComponent {
     { key: 'integrations', label: 'Manage integrations', icon: 'settings' },
     { key: 'ai-providers', label: 'AI Providers', icon: 'smart_toy' },
     { key: 'ai-models', label: 'AI models', icon: 'model_training' },
+    { key: 'agent-configs', label: 'Agent Configs', icon: 'support_agent' },
     { key: 'delete', label: 'Delete namespace', icon: 'delete', variant: 'danger' },
   ]
 
@@ -54,6 +56,9 @@ export class NamespaceItemComponent {
         break
       case 'ai-models':
         this.aiModelsRequested.emit(this.namespace)
+        break
+      case 'agent-configs':
+        this.agentConfigsRequested.emit(this.namespace)
         break
       case 'delete':
         if (confirm(`Delete namespace "${this.namespace.name}"?`)) {
