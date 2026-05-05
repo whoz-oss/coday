@@ -1,10 +1,10 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, OnInit } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiModel, UserAiModel } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { combineLatest, map } from 'rxjs'
+import { combineLatest, map, of, switchMap } from 'rxjs'
 import {
   AiModelConfigStateService,
   AiModelConfigViewModel,
@@ -15,7 +15,7 @@ import {
   AiProviderConfigViewModel,
   AiProviderScope,
 } from '../../services/ai-provider-config-state.service'
-import { UserStateService } from '../../services/user-state.service'
+import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { AiModelItemComponent, ParentProviderRef } from '../ai-model-item/ai-model-item.component'
 
 const SECTION_LABEL: Readonly<Record<AiModelScope, string>> = Object.freeze({
@@ -59,12 +59,12 @@ export class AiModelsAllScopesComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(AiModelConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
-  private readonly userState = inject(UserStateService)
+  private readonly namespaceRole = inject(NamespaceRoleStateService)
 
   protected namespaceId = this.route.snapshot.params['namespaceId'] as string
 
-  /** Super-admin bypasses the read-only guard on the namespace section. */
-  protected readonly isAdmin = computed(() => !!this.userState.currentUser()?.isAdmin)
+  /** Whether the user can administrate this namespace (super-admin OR namespace ADMIN). */
+  protected readonly isAdmin = signal(false)
 
   protected readonly listItems$ = combineLatest([this.state.vm$, this.providerState.vm$]).pipe(
     map(([modelVm, providerVm]) => this.toListItems(modelVm, this.indexProvidersById(providerVm)))
@@ -79,6 +79,14 @@ export class AiModelsAllScopesComponent implements OnInit {
       this.state.setNamespace(ns)
       this.providerState.setNamespace(ns)
     })
+
+    this.route.paramMap
+      .pipe(
+        map((params) => params.get('namespaceId') ?? ''),
+        switchMap((ns) => (ns ? this.namespaceRole.isAdminOfNamespace$(ns) : of(false))),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((v) => this.isAdmin.set(v))
 
     combineLatest([this.state.vm$, this.providerState.vm$])
       .pipe(takeUntilDestroyed(this.destroyRef))

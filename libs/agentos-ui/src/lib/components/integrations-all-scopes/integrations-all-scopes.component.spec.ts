@@ -9,6 +9,7 @@ import {
   IntegrationConfigStateService,
   IntegrationConfigViewModel,
 } from '../../services/integration-config-state.service'
+import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { IntegrationsAllScopesComponent } from './integrations-all-scopes.component'
 
 describe('IntegrationsAllScopesComponent', () => {
@@ -42,6 +43,7 @@ describe('IntegrationsAllScopesComponent', () => {
 
   let vm$: BehaviorSubject<IntegrationConfigViewModel>
   let stateMock: Partial<IntegrationConfigStateService>
+  let namespaceRoleMock: Partial<NamespaceRoleStateService>
   let routerMock: { navigate: jest.Mock }
   let component: IntegrationsAllScopesComponent
 
@@ -56,6 +58,9 @@ describe('IntegrationsAllScopesComponent', () => {
       setNamespace: jest.fn(),
       delete: jest.fn().mockReturnValue(of(undefined)),
     }
+    namespaceRoleMock = {
+      isAdminOfNamespace$: jest.fn().mockReturnValue(of(false)),
+    }
     routerMock = { navigate: jest.fn() }
 
     TestBed.configureTestingModule({
@@ -69,6 +74,7 @@ describe('IntegrationsAllScopesComponent', () => {
         },
         { provide: Router, useValue: routerMock },
         { provide: IntegrationConfigStateService, useValue: stateMock },
+        { provide: NamespaceRoleStateService, useValue: namespaceRoleMock },
         ChangeDetectorRef,
       ],
     })

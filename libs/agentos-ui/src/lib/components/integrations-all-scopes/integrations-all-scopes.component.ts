@@ -1,16 +1,16 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, OnInit } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { IntegrationConfig, UserIntegrationConfig } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { map } from 'rxjs'
+import { map, of, switchMap } from 'rxjs'
 import {
   IntegrationConfigStateService,
   IntegrationConfigViewModel,
   IntegrationScope,
 } from '../../services/integration-config-state.service'
-import { UserStateService } from '../../services/user-state.service'
+import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
 const SECTION_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
@@ -55,16 +55,15 @@ export class IntegrationsAllScopesComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(IntegrationConfigStateService)
-  private readonly userState = inject(UserStateService)
+  private readonly namespaceRole = inject(NamespaceRoleStateService)
 
   protected namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   /**
-   * Super-admin (User.isAdmin) bypasses the read-only guard on the namespace section.
-   * Non-admins see edit/delete hidden on NS configs (default-safe — backend would 403
-   * the write anyway). The proper namespace-admin role check is post-MVP.
+   * Whether the current user can administrate this namespace's configs (super-admin OR
+   * namespace ADMIN by relation). Drives [readOnly] on the namespace section.
    */
-  protected readonly isAdmin = computed(() => !!this.userState.currentUser()?.isAdmin)
+  protected readonly isAdmin = signal(false)
 
   protected readonly listItems$ = this.state.vm$.pipe(map((vm) => this.toListItems(vm)))
 
@@ -84,6 +83,15 @@ export class IntegrationsAllScopesComponent implements OnInit {
       if (ns && ns !== this.namespaceId) this.namespaceId = ns
       this.state.setNamespace(ns)
     })
+
+    this.route.paramMap
+      .pipe(
+        map((params) => params.get('namespaceId') ?? ''),
+        switchMap((ns) => (ns ? this.namespaceRole.isAdminOfNamespace$(ns) : of(false))),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((v) => this.isAdmin.set(v))
+
     this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
       const next = new Map<string, ResolvedItem>()
       vm.namespace.forEach((c) => {
