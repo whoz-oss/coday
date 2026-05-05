@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.tmux
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.concurrent.TimeUnit
 
 /** Regex for safe session names: alphanumeric, hyphens, underscores only. */
@@ -284,7 +285,7 @@ class TmuxTool(
         }
     }
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val validationError =
             when {
                 input == null -> "Input is required"

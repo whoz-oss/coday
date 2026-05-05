@@ -124,7 +124,7 @@ class CaseServiceImpl(
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
-            runAgent = { agentName, events, userId, shouldContinue -> runAgent(agentName, case.id, events, userId, shouldContinue) },
+            runAgent = { agentName, events, eventsProvider, userId, shouldContinue -> runAgent(agentName, case.id, events, eventsProvider, userId, shouldContinue) },
             inputEvents = inputEvents,
         )
 
@@ -233,6 +233,7 @@ class CaseServiceImpl(
         agentName: String,
         caseId: UUID,
         events: List<CaseEvent>,
+        eventsProvider: () -> List<CaseEvent>,
         userId: UUID?,
         shouldContinue: () -> Boolean,
     ) {
@@ -246,7 +247,12 @@ class CaseServiceImpl(
         }
 
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
-        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId, userId = userId)
+        val context = AgentExecutionContext(
+            namespaceId = runtime.namespaceId,
+            caseId = caseId,
+            userId = userId,
+            caseEventsProvider = eventsProvider,
+        )
         agentService
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)

@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -57,6 +58,12 @@ class AgentSimple(
     private val tools: Collection<StandardTool<*>>,
     /** The effective system instructions passed to the LLM, after namespace context injection. */
     val instructions: String? = null,
+    /** AgentOS UUID of the user who initiated the case, or null when unresolvable. */
+    private val userId: UUID? = null,
+    /** Identity-provider key of the user (e.g. email). Used by plugins that manage their own auth. */
+    private val userExternalId: String? = null,
+    /** Returns the live event list of the current case at the moment of invocation. */
+    private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
 ) : Agent {
 
     override fun run(
@@ -117,6 +124,7 @@ class AgentSimple(
                             llmTurnIndex,
                         )
                     }
+
 
                 // Make single LLM call with tools
                 val prompt = chatClient.prompt(Prompt(allMessages))
@@ -412,12 +420,19 @@ class AgentSimple(
                     )
                 }
 
+                val context = ToolContext(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    userExternalId = userExternalId,
+                    caseEvents = caseEventsProvider(),
+                )
+
                 val result: String
                 val toolDuration =
                     measureTime {
                         result =
                             try {
-                                tool.executeWithJson(toolInput)
+                                tool.executeWithJson(toolInput, context)
                             } catch (e: Exception) {
                                 runBlocking {
                                     eventChannel.send(

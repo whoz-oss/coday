@@ -5,11 +5,15 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.whozoss.agentos.plugins.file.tools.ListFilesTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
+import java.util.UUID
 import kotlin.io.path.createFile
 import kotlin.io.path.writeText
 
 class ListFilesToolSpec : StringSpec() {
+    private val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
+
     init {
         "listing normal directory should show files and dirs with / suffix" {
             val tempDir = Files.createTempDirectory("test")
@@ -19,7 +23,7 @@ class ListFilesToolSpec : StringSpec() {
                 tempDir.resolve("file1.txt").createFile()
                 tempDir.resolve("file2.md").createFile()
 
-                val result = tool.execute(ListFilesTool.Input(""))
+                val result = tool.execute(ListFilesTool.Input(""), ctx)
 
                 result shouldContain "subdir/"
                 result shouldContain "file1.txt"
@@ -36,7 +40,7 @@ class ListFilesToolSpec : StringSpec() {
                 val tool = ListFilesTool(tempDir)
                 tempDir.resolve("file.txt").createFile()
 
-                val result = tool.execute(ListFilesTool.Input("."))
+                val result = tool.execute(ListFilesTool.Input("."), ctx)
 
                 result shouldContain "file.txt"
             } finally {
@@ -50,7 +54,7 @@ class ListFilesToolSpec : StringSpec() {
                 val tool = ListFilesTool(tempDir)
                 Files.createDirectories(tempDir.resolve("empty"))
 
-                val result = tool.execute(ListFilesTool.Input("empty"))
+                val result = tool.execute(ListFilesTool.Input("empty"), ctx)
 
                 result shouldBe ""
             } finally {
@@ -66,7 +70,7 @@ class ListFilesToolSpec : StringSpec() {
                 val linkFile = tempDir.resolve("link.txt")
                 Files.createSymbolicLink(linkFile, targetFile)
 
-                val result = tool.execute(ListFilesTool.Input(""))
+                val result = tool.execute(ListFilesTool.Input(""), ctx)
 
                 result shouldContain "link.txt"
             } finally {
@@ -82,7 +86,7 @@ class ListFilesToolSpec : StringSpec() {
                 val linkFile = tempDir.resolve("broken-link.txt")
                 Files.createSymbolicLink(linkFile, nonexistent)
 
-                val result = tool.execute(ListFilesTool.Input(""))
+                val result = tool.execute(ListFilesTool.Input(""), ctx)
 
                 result shouldContain "broken-link.txt"
                 result shouldContain "inaccessible"
@@ -97,7 +101,7 @@ class ListFilesToolSpec : StringSpec() {
                 val tool = ListFilesTool(tempDir)
                 tempDir.resolve("file.txt").createFile()
 
-                val result = tool.execute(ListFilesTool.Input("file.txt"))
+                val result = tool.execute(ListFilesTool.Input("file.txt"), ctx)
 
                 result shouldContain "not a directory"
             } finally {
@@ -112,7 +116,7 @@ class ListFilesToolSpec : StringSpec() {
                 Files.createDirectories(tempDir.resolve("a/b"))
                 tempDir.resolve("a/b/file.txt").createFile()
 
-                val result = tool.execute(ListFilesTool.Input("a/b"))
+                val result = tool.execute(ListFilesTool.Input("a/b"), ctx)
 
                 result shouldContain "file.txt"
             } finally {

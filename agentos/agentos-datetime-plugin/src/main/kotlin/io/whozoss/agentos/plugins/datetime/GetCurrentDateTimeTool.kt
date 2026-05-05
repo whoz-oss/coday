@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.datetime
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -57,7 +58,7 @@ class GetCurrentDateTimeTool(
         val timezone: String? = null,
     )
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val timezone = input?.timezone?.takeIf { it.isNotBlank() } ?: defaultTimezone
 
         return try {

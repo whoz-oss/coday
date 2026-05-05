@@ -7,7 +7,9 @@ import io.whozoss.agentos.plugins.file.tools.EditFilesTool.Input
 import io.whozoss.agentos.plugins.file.tools.EditFilesTool.PatchEdit
 import io.whozoss.agentos.plugins.file.tools.EditFilesTool.Replacement
 import io.whozoss.agentos.plugins.file.tools.EditFilesTool.WriteEdit
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
+import java.util.UUID
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.io.path.exists
@@ -17,6 +19,7 @@ import kotlin.io.path.writeText
 
 class EditFilesToolSpec : StringSpec() {
     private lateinit var tempDir: Path
+    private val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
     init {
         beforeEach {
@@ -36,6 +39,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "newfile.txt", content = "New content"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "File write success"
@@ -54,6 +58,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "small.txt", content = "New content"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "File write success"
@@ -72,6 +77,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "large.txt", content = "New content"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "not accepted"
@@ -89,6 +95,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "newlarge.txt", content = largeContent),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "File write success"
@@ -104,6 +111,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "a/b/c/file.txt", content = "nested"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "File write success"
@@ -119,6 +127,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "file.txt", content = "content"),
                     ),
                 ),
+                ctx,
             )
 
             val tmpFiles = Files.list(tempDir).filter { it.fileName.toString().contains(".tmp") }.toList()
@@ -139,6 +148,7 @@ class EditFilesToolSpec : StringSpec() {
                         ),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "successfully edited by chunks"
@@ -159,6 +169,7 @@ class EditFilesToolSpec : StringSpec() {
                         ),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "Chunks not found"
@@ -180,6 +191,7 @@ class EditFilesToolSpec : StringSpec() {
                         ),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "Duplicate chunks found"
@@ -200,6 +212,7 @@ class EditFilesToolSpec : StringSpec() {
                         ),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "Chunks too short"
@@ -216,6 +229,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "file2.txt", content = "Content 2"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "file1.txt: File write success"
@@ -237,6 +251,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "success2.txt", content = "Success 2"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "success.txt: File write success"
@@ -259,6 +274,7 @@ class EditFilesToolSpec : StringSpec() {
                         ),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "nonexistent.txt:"
@@ -282,6 +298,7 @@ class EditFilesToolSpec : StringSpec() {
                         ),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "successfully edited by chunks"
@@ -291,7 +308,7 @@ class EditFilesToolSpec : StringSpec() {
         "empty edits list should return no edits provided" {
             val tool = EditFilesTool(tempDir)
 
-            val result = tool.execute(Input(edits = emptyList()))
+            val result = tool.execute(Input(edits = emptyList()), ctx)
 
             result shouldContain "No edits provided"
         }
@@ -305,6 +322,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = "unicode.txt", content = "Hello 世界 🌍"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain "File write success"
@@ -331,6 +349,7 @@ class EditFilesToolSpec : StringSpec() {
                             WriteEdit(path = "readonly/file.txt", content = "test content"),
                         ),
                     ),
+                    ctx,
                 )
 
                 result shouldContain "readonly/file.txt:"
@@ -354,6 +373,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = ".env", content = "SECRET=value"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain ".env:"
@@ -370,6 +390,7 @@ class EditFilesToolSpec : StringSpec() {
                         WriteEdit(path = ".env.local", content = "SECRET=value"),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain ".env.local:"
@@ -390,6 +411,7 @@ class EditFilesToolSpec : StringSpec() {
                         ),
                     ),
                 ),
+                ctx,
             )
 
             result shouldContain ".env:"
@@ -403,6 +425,7 @@ class EditFilesToolSpec : StringSpec() {
             val tool = EditFilesTool(tempDir)
 
             val result = tool.executeWithJson(
+
                 """
                 {
                     "edits": [
@@ -414,6 +437,7 @@ class EditFilesToolSpec : StringSpec() {
                     ]
                 }
                 """,
+                ctx,
             )
 
             result shouldContain "File write success"
@@ -442,6 +466,7 @@ class EditFilesToolSpec : StringSpec() {
                     ]
                 }
                 """,
+                ctx,
             )
 
             result shouldContain "successfully edited by chunks"
@@ -475,6 +500,7 @@ class EditFilesToolSpec : StringSpec() {
                     ]
                 }
                 """,
+                ctx,
             )
 
             result shouldContain "new.txt: File write success"
@@ -492,6 +518,7 @@ class EditFilesToolSpec : StringSpec() {
                     "edits": []
                 }
                 """,
+                ctx,
             )
 
             result shouldContain "No edits provided"
@@ -523,6 +550,7 @@ class EditFilesToolSpec : StringSpec() {
                     ]
                 }
                 """,
+                ctx,
             )
 
             result shouldContain "successfully edited by chunks"
@@ -543,6 +571,7 @@ class EditFilesToolSpec : StringSpec() {
                     ]
                 }
                 """,
+                ctx,
             )
 
             result shouldContain "File write success"
