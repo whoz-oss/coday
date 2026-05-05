@@ -216,6 +216,32 @@ npm install js-yaml
 - **Encrypted secrets**: `apiKey` and token values are stored encrypted at rest in AgentOS.
   The plaintext values in `user.yml` are sent over HTTPS and never logged.
 
+## UI 3-niveaux (story 6.5 + 6.6)
+
+Une fois la migration terminée, les overrides user-level sont gérables directement depuis l'UI
+AgentOS via une vue unifiée 3 sections par ressource :
+
+| Page | Sections affichées |
+|------|---------------------|
+| `/agentos/<ns>/integrations` | Configurations du namespace · Mes overrides sur ce namespace · Mes overrides globaux |
+| `/agentos/<ns>/ai-providers` | AI Providers du namespace · Mes overrides sur ce namespace · Mes overrides globaux |
+| `/agentos/<ns>/ai-models` | AI Models du namespace · Mes overrides sur ce namespace · Mes overrides globaux |
+| `/agentos/me` | Récap (collapsable) des overrides user-global toutes ressources confondues |
+
+Chaque ligne porte un badge de provenance (`NS`, `USER × NS`, `USER GLOBAL`). Le bouton
+"Override pour moi" sur les items NS-shared ouvre le form pré-rempli avec un sélecteur radio
+de portée (radio désactivé en edit — la portée est immutable une fois la ressource créée).
+
+Le form AI Model filtre la liste des providers parents éligibles en fonction de la portée
+choisie (FR3 — un AiModel `userOnNs` ne peut référencer qu'un provider `userOnNs` ou
+namespace-shared visible ; un AiModel `userGlobal` ne peut référencer qu'un provider
+`userGlobal`). Changer le radio scope dans le form re-filtre automatiquement la liste et
+réinitialise la sélection si elle devient incompatible.
+
+Les forms AI Provider conservent la sémantique de masquage des `apiKey` (NFR-SEC-1) :
+en edit, si la valeur du champ n'a pas été modifiée, le PUT n'inclut pas `apiKey` dans le
+payload et le backend conserve la valeur persistée.
+
 ## See Also
 
 - [User-level overlays pattern](user-level-overlays.md) — 3-tier resolution, merge semantics, REST API

@@ -114,6 +114,79 @@
             Edit profile
           </button>
         </div>
+
+        <!-- Story 6.6 — recap of user-global overrides (namespaceId IS NULL) across the 3 ressources.
+             Section is collapsable and discreet. Edit goes through the namespace pages. -->
+        <div class="user-profile__overrides">
+          <button
+            class="user-profile__overrides-toggle"
+            type="button"
+            (click)="toggleOverrides()"
+            [attr.aria-expanded]="isOverridesExpanded()"
+          >
+            <span
+              class="user-profile__overrides-arrow"
+              [class.user-profile__overrides-arrow--open]="isOverridesExpanded()"
+              >▶</span
+            >
+            Mes configurations utilisateur globales
+            <span class="user-profile__overrides-count">({{ recap().total }})</span>
+          </button>
+
+          @if (isOverridesExpanded()) {
+            @if (recap().total === 0) {
+              <p class="user-profile__overrides-empty">
+                Aucune configuration globale. Crée-en depuis les pages Integrations / AI Providers / AI Models de tes
+                namespaces.
+              </p>
+            } @else {
+              @if (recap().integrations.length > 0) {
+                <h3 class="user-profile__overrides-subtitle">Integrations</h3>
+                <ul class="user-profile__overrides-list">
+                  @for (entry of recap().integrations; track trackEntry($index, entry)) {
+                    <li class="user-profile__overrides-row">
+                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
+                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
+                      <button class="user-profile__overrides-delete" type="button" (click)="deleteEntry(entry)">
+                        Delete
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (recap().aiProviders.length > 0) {
+                <h3 class="user-profile__overrides-subtitle">AI Providers</h3>
+                <ul class="user-profile__overrides-list">
+                  @for (entry of recap().aiProviders; track trackEntry($index, entry)) {
+                    <li class="user-profile__overrides-row">
+                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
+                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
+                      <button class="user-profile__overrides-delete" type="button" (click)="deleteEntry(entry)">
+                        Delete
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (recap().aiModels.length > 0) {
+                <h3 class="user-profile__overrides-subtitle">AI Models</h3>
+                <ul class="user-profile__overrides-list">
+                  @for (entry of recap().aiModels; track trackEntry($index, entry)) {
+                    <li class="user-profile__overrides-row">
+                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
+                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
+                      <button class="user-profile__overrides-delete" type="button" (click)="deleteEntry(entry)">
+                        Delete
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+            }
+          }
+        </div>
       </div>
     }
   } @else {

@@ -1,9 +1,27 @@
 import { Location } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
+import { combineLatest, map } from 'rxjs'
+import { AiModelConfigStateService } from '../../services/ai-model-config-state.service'
+import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
+import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { UserStateService } from '../../services/user-state.service'
+
+interface UserGlobalEntry {
+  category: 'integration' | 'aiProvider' | 'aiModel'
+  id: string
+  name: string
+  subtitle: string
+}
+
+interface UserGlobalRecap {
+  integrations: UserGlobalEntry[]
+  aiProviders: UserGlobalEntry[]
+  aiModels: UserGlobalEntry[]
+  total: number
+}
 
 /**
  * UserProfileComponent — full-page view and edit of the current user's profile.
@@ -12,13 +30,11 @@ import { UserStateService } from '../../services/user-state.service'
  *   - Read mode: displays all user fields (email, externalId read-only + firstname, lastname, bio)
  *   - Edit mode: reactive form for firstname, lastname, bio
  *
- * Navigation:
- *   - Back button uses Location.back() for contextual return (preserves browser history).
- *   - Falls back to /agentos if no history entry exists (direct URL access).
- *
- * Data:
- *   - Loads the current user via UserStateService.loadMe() on init if not already cached.
- *   - Persists changes via UserStateService.updateMe().
+ * Story 6.6 also adds a "Mes configurations utilisateur" section that recaps the user's
+ * user-global overrides (`namespaceId IS NULL`) across the 3 ressources (Integrations, AI
+ * Providers, AI Models). The section is collapsable and discreet, and each entry exposes a
+ * delete action — edit navigation requires a namespace context which `/me` doesn't have, so
+ * users edit overrides from the namespace pages where they were created.
  */
 @Component({
   selector: 'agentos-user-profile',
@@ -33,10 +49,14 @@ export class UserProfileComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly location = inject(Location)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly integrationState = inject(IntegrationConfigStateService)
+  private readonly providerState = inject(AiProviderConfigStateService)
+  private readonly modelState = inject(AiModelConfigStateService)
 
   protected readonly isEditing = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isSaving = signal(false)
+  protected readonly isOverridesExpanded = signal(false)
 
   protected readonly currentUser = this.userState.currentUser
 
@@ -45,6 +65,60 @@ export class UserProfileComponent implements OnInit {
     lastname: new FormControl<string>('', { nonNullable: true }),
     bio: new FormControl<string>('', { nonNullable: true }),
   })
+
+  /**
+   * User-global recap — reads only the `namespaceId IS NULL` slice of each resource. The
+   * combineLatest emits a single recap whenever any of the 3 sources updates (e.g. after a
+   * delete from this view). The state services already cache via shareReplay.
+   */
+  protected readonly recap = toSignal(
+    combineLatest([
+      this.integrationState.loadUserConfigs('global'),
+      this.providerState.loadUserProviders('global'),
+      this.modelState.loadUserModels('global'),
+    ]).pipe(
+      map(([integrations, providers, models]): UserGlobalRecap => {
+        const integrationEntries = integrations.map(
+          (c): UserGlobalEntry => ({
+            category: 'integration',
+            id: c.id ?? '',
+            name: c.name,
+            subtitle: c.integrationType,
+          })
+        )
+        const providerEntries = providers.map(
+          (p): UserGlobalEntry => ({
+            category: 'aiProvider',
+            id: p.id ?? '',
+            name: p.name,
+            subtitle: p.apiType,
+          })
+        )
+        const modelEntries = models.map(
+          (m): UserGlobalEntry => ({
+            category: 'aiModel',
+            id: m.id ?? '',
+            name: m.alias ?? m.apiModelName,
+            subtitle: m.apiModelName,
+          })
+        )
+        return {
+          integrations: integrationEntries,
+          aiProviders: providerEntries,
+          aiModels: modelEntries,
+          total: integrationEntries.length + providerEntries.length + modelEntries.length,
+        }
+      })
+    ),
+    {
+      initialValue: {
+        integrations: [],
+        aiProviders: [],
+        aiModels: [],
+        total: 0,
+      } as UserGlobalRecap,
+    }
+  )
 
   ngOnInit(): void {
     if (this.currentUser()) {
@@ -92,12 +166,36 @@ export class UserProfileComponent implements OnInit {
       })
   }
 
+  protected toggleOverrides(): void {
+    this.isOverridesExpanded.update((v) => !v)
+  }
+
+  protected deleteEntry(entry: UserGlobalEntry): void {
+    if (!entry.id) return
+    const call$ =
+      entry.category === 'integration'
+        ? this.integrationState.delete(entry.id, 'userGlobal')
+        : entry.category === 'aiProvider'
+          ? this.providerState.delete(entry.id, 'userGlobal')
+          : this.modelState.delete(entry.id, 'userGlobal')
+
+    call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      error: (err) => {
+        console.error(`[UserProfile] Delete failed for ${entry.category}:${entry.id}:`, err)
+      },
+    })
+  }
+
   protected goBack(): void {
     if (window.history.length > 1) {
       this.location.back()
     } else {
       this.router.navigate(['/agentos'])
     }
+  }
+
+  protected trackEntry(_index: number, entry: UserGlobalEntry): string {
+    return `${entry.category}:${entry.id}`
   }
 
   private syncFormFromState(): void {

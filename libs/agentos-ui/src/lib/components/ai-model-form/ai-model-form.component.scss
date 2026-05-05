@@ -6,6 +6,35 @@
   margin: 0 auto;
   padding: 2rem 1rem;
 
+  &__scope {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin: 0;
+
+    &[disabled] {
+      opacity: 0.6;
+    }
+  }
+
+  &__scope-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  &__hint {
+    font-size: 0.8rem;
+    color: var(--color-warning);
+    margin: 0.25rem 0 0;
+  }
+
   &__header {
     display: flex;
     flex-direction: column;

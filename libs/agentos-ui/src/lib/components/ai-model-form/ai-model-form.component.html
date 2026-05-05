@@ -11,6 +11,16 @@
     <p class="ai-model-form__loading">Loading&hellip;</p>
   } @else {
     <form class="ai-model-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <fieldset class="ai-model-form__scope" [disabled]="isEditMode()">
+        <legend class="ai-model-form__label">Portée de la configuration</legend>
+        @for (opt of scopeOptions; track trackByScope($index, opt)) {
+          <label class="ai-model-form__scope-option">
+            <input type="radio" [formControl]="scopeControl" [value]="opt.value" />
+            <span>{{ opt.label }}</span>
+          </label>
+        }
+      </fieldset>
+
       <div class="ai-model-form__field">
         <label class="ai-model-form__label" for="model-provider"> Provider <span aria-hidden="true">*</span> </label>
         @if (isEditMode()) {
@@ -26,10 +36,15 @@
         } @else {
           <select id="model-provider" class="ai-model-form__select" [formControl]="aiProviderIdControl">
             <option value="" disabled>Select provider</option>
-            @for (provider of providers(); track trackByProvider($index, provider)) {
-              <option [value]="provider.id">{{ provider.name }} ({{ provider.apiType }})</option>
+            @for (provider of eligibleProviders(); track trackByProvider($index, provider)) {
+              <option [value]="provider.id">{{ provider.name }} ({{ scopeBadgeFor(provider.scope) }})</option>
             }
           </select>
+          @if (eligibleProviders().length === 0) {
+            <p class="ai-model-form__hint">
+              Aucun provider compatible avec ce scope. Crée d'abord un AI Provider dans cette portée.
+            </p>
+          }
         }
       </div>
 

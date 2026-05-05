@@ -1,27 +1,42 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
-import { catchError, of } from 'rxjs'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  AiProvider,
-  AiProviderControllerService,
-  AiModel,
-  AiModelControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { AiModel, UserAiModel } from '@whoz-oss/agentos-api-client'
+import { AiModelConfigStateService, AiModelScope, EligibleProvider } from '../../services/ai-model-config-state.service'
+
+const VALID_SCOPES: ReadonlySet<AiModelScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
+
+const SCOPE_LABEL: Readonly<Record<AiModelScope, string>> = Object.freeze({
+  namespace: 'Configuration du namespace',
+  userOnNs: 'Pour moi sur ce namespace',
+  userGlobal: 'Pour moi globalement',
+})
+
+const SCOPE_BADGE: Readonly<Record<AiModelScope, string>> = Object.freeze({
+  namespace: 'NS',
+  userOnNs: 'USER × NS',
+  userGlobal: 'USER GLOBAL',
+})
 
 /**
- * AiModelFormComponent — full-page create / edit form for an AI model.
+ * AiModelFormComponent — full-page create / edit form for an AI model (story 6.6).
  *
- * Mode is determined by the presence of `:modelId` in the route params:
+ * Mode is determined by the route param `:modelId`:
  * - `/:namespaceId/ai-models/new`               → create mode
- * - `/:namespaceId/ai-models/:modelId/edit`      → edit mode
+ * - `/:namespaceId/ai-models/:modelId/edit`     → edit mode
  *
- * The namespaceId is fixed at creation time and never shown as an editable field.
- * The aiProviderId (provider) is chosen from a select in create mode and becomes
- * read-only in edit mode — it cannot be reassigned after creation.
+ * The active scope is driven by the `?scope=` query param in create mode (radio selector
+ * exposed). In edit mode the scope is **derived from the loaded resource** — the query
+ * param is ignored to prevent forged URLs from routing the update to the wrong controller.
  *
- * On success or cancel, navigates back to /:namespaceId/ai-models.
+ * Provider dropdown filters by FR3 parent-mode constraint via
+ * `AiModelConfigStateService.eligibleProviders$(scope)`. When the user changes the scope
+ * radio in create mode, the eligible list updates and a stale selection is cleared so the
+ * user is forced to pick a compatible parent.
+ *
+ * The provider field is also locked in edit mode (consistent with the previous UX — the
+ * parent reference is immutable post-creation per backend invariants).
  */
 @Component({
   selector: 'agentos-ai-model-form',
@@ -35,16 +50,15 @@ export class AiModelFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly aiModelController = inject(AiModelControllerService)
-  private readonly aiProviderController = inject(AiProviderControllerService)
+  private readonly state = inject(AiModelConfigStateService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
-  /** All providers for this namespace — used to populate the provider select. */
-  protected readonly providers = toSignal(
-    this.aiProviderController.listByParentAiProvider(this.namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
-    { initialValue: [] as AiProvider[] }
-  )
+  protected readonly scopeOptions: ReadonlyArray<{ value: AiModelScope; label: string }> = [
+    { value: 'namespace', label: SCOPE_LABEL.namespace },
+    { value: 'userOnNs', label: SCOPE_LABEL.userOnNs },
+    { value: 'userGlobal', label: SCOPE_LABEL.userGlobal },
+  ]
 
   protected readonly form = new FormGroup({
     aiProviderId: new FormControl<string>('', {
@@ -60,34 +74,32 @@ export class AiModelFormComponent implements OnInit {
     priority: new FormControl<number>(0, { nonNullable: true }),
     temperature: new FormControl<number | null>(null),
     maxTokens: new FormControl<number | null>(null),
+    scope: new FormControl<AiModelScope>('namespace', { nonNullable: true }),
   })
 
   protected get aiProviderIdControl() {
     return this.form.controls.aiProviderId
   }
-
   protected get apiModelNameControl() {
     return this.form.controls.apiModelName
   }
-
   protected get descriptionControl() {
     return this.form.controls.description
   }
-
   protected get aliasControl() {
     return this.form.controls.alias
   }
-
   protected get priorityControl() {
     return this.form.controls.priority
   }
-
   protected get temperatureControl() {
     return this.form.controls.temperature
   }
-
   protected get maxTokensControl() {
     return this.form.controls.maxTokens
+  }
+  protected get scopeControl() {
+    return this.form.controls.scope
   }
 
   protected readonly isEditMode = signal(false)
@@ -95,44 +107,89 @@ export class AiModelFormComponent implements OnInit {
   protected readonly isLoading = signal(false)
 
   /**
-   * Display label for the locked provider field in edit mode.
-   * Derived reactively from providers + aiProviderId so it resolves correctly
-   * regardless of which signal settles first (providers load vs model load).
+   * Eligible providers for the current scope, computed reactively. The signal is wired
+   * from the state service which combines the 3 provider sources and filters via FR3.
    */
+  protected readonly eligibleProviders = signal<EligibleProvider[]>([])
+
   protected readonly selectedProviderLabel = computed(() => {
     const id = this.aiProviderIdControl.value
-    const provider = this.providers().find((p) => p.id === id)
-    return provider ? `${provider.name} (${provider.apiType})` : id
+    const provider = this.eligibleProviders().find((p) => p.id === id)
+    return provider ? `${provider.name} (${SCOPE_BADGE[provider.scope]})` : id
   })
 
-  /** Kept for the update payload (preserves server-side fields). */
-  private existingModel: AiModel | null = null
+  /** Kept for the update payload (preserves server-side userId/namespaceId). */
+  private existingModel: AiModel | UserAiModel | null = null
 
   ngOnInit(): void {
-    const modelId = this.route.snapshot.paramMap.get('modelId')
+    this.state.setNamespace(this.namespaceId)
+    const params = this.route.snapshot.paramMap
+    const queryParams = this.route.snapshot.queryParamMap
+
+    const modelId = params.get('modelId')
+    const hintedScope = this.parseScope(queryParams.get('scope'))
+
+    // Subscribe to scope changes so the eligible providers list refreshes and any stale
+    // selection is cleared when the user toggles the radio in create mode.
+    this.scopeControl.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((scope) => {
+      this.refreshEligibleProviders(scope)
+    })
+
     if (modelId) {
       this.isEditMode.set(true)
-      this.loadModel(modelId)
+      this.scopeControl.disable()
+      this.aiProviderIdControl.disable()
+      this.loadModel(modelId, hintedScope)
+      return
+    }
+
+    this.scopeControl.setValue(hintedScope)
+    // Initial population (the valueChanges subscription above won't fire until the next setValue)
+    this.refreshEligibleProviders(hintedScope)
+
+    const templateId = queryParams.get('template')
+    if (templateId) {
+      this.hydrateFromTemplate(templateId)
     }
   }
 
-  private loadModel(id: string): void {
+  private parseScope(raw: string | null): AiModelScope {
+    return raw && VALID_SCOPES.has(raw as AiModelScope) ? (raw as AiModelScope) : 'namespace'
+  }
+
+  private deriveScopeFromConfig(config: AiModel | UserAiModel): AiModelScope {
+    const isUserScope = !!(config as UserAiModel).userId
+    if (!isUserScope) return 'namespace'
+    return config.namespaceId ? 'userOnNs' : 'userGlobal'
+  }
+
+  private refreshEligibleProviders(scope: AiModelScope): void {
+    this.state
+      .eligibleProviders$(scope)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((list) => {
+        this.eligibleProviders.set(list)
+        // If the previously selected provider is no longer eligible, clear the field so the
+        // user is forced to pick a compatible parent.
+        const currentId = this.aiProviderIdControl.value
+        if (currentId && !list.some((p) => p.id === currentId)) {
+          this.aiProviderIdControl.setValue('')
+        }
+      })
+  }
+
+  private loadModel(id: string, hintedScope: AiModelScope): void {
     this.isLoading.set(true)
-    this.aiModelController
-      .getByIdAiModel(id)
+    this.state
+      .getById(id, hintedScope)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (model) => {
           this.existingModel = model
-          this.aiProviderIdControl.setValue(model.aiProviderId)
-          // Provider cannot be changed after creation — lock the control
-          this.aiProviderIdControl.disable()
-          this.apiModelNameControl.setValue(model.apiModelName)
-          this.descriptionControl.setValue(model.description ?? null)
-          this.aliasControl.setValue(model.alias ?? '')
-          this.priorityControl.setValue(model.priority ?? 0)
-          this.temperatureControl.setValue(model.temperature ?? null)
-          this.maxTokensControl.setValue(model.maxTokens ?? null)
+          const scope = this.deriveScopeFromConfig(model)
+          this.scopeControl.setValue(scope)
+          this.refreshEligibleProviders(scope)
+          this.applyModelToForm(model)
           this.isLoading.set(false)
         },
         error: () => {
@@ -142,28 +199,81 @@ export class AiModelFormComponent implements OnInit {
       })
   }
 
+  private hydrateFromTemplate(templateId: string): void {
+    this.isLoading.set(true)
+    this.state
+      .getById(templateId, 'namespace')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (model) => {
+          // Hydrate fields that make sense to copy across overrides; leave aiProviderId
+          // untouched because the parent provider must satisfy the FR3 mode constraint
+          // for the chosen scope, which the user picks via the radio.
+          this.apiModelNameControl.setValue(model.apiModelName)
+          this.descriptionControl.setValue(model.description ?? null)
+          this.aliasControl.setValue(model.alias ?? '')
+          this.priorityControl.setValue(model.priority ?? 0)
+          this.temperatureControl.setValue(model.temperature ?? null)
+          this.maxTokensControl.setValue(model.maxTokens ?? null)
+          this.isLoading.set(false)
+          this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { template: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          })
+        },
+        error: (err) => {
+          console.warn(`[AiModelForm] Could not hydrate from template ${templateId}:`, err)
+          this.isLoading.set(false)
+          this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { template: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          })
+        },
+      })
+  }
+
+  private applyModelToForm(model: AiModel | UserAiModel): void {
+    this.aiProviderIdControl.setValue(model.aiProviderId)
+    this.apiModelNameControl.setValue(model.apiModelName)
+    this.descriptionControl.setValue(model.description ?? null)
+    this.aliasControl.setValue(model.alias ?? '')
+    this.priorityControl.setValue(model.priority ?? 0)
+    this.temperatureControl.setValue(model.temperature ?? null)
+    this.maxTokensControl.setValue(model.maxTokens ?? null)
+  }
+
   protected submit(): void {
     if (this.form.invalid || this.isSubmitting()) return
 
-    this.isSubmitting.set(true)
-
-    // getRawValue() includes disabled controls (aiProviderId in edit mode)
-    const raw = this.form.getRawValue()
-
-    const payload: AiModel = {
-      ...(this.existingModel ?? {}),
-      aiProviderId: raw.aiProviderId,
-      apiModelName: raw.apiModelName.trim(),
-      description: raw.description?.trim() || undefined,
-      alias: raw.alias.trim() || undefined,
-      priority: raw.priority,
-      temperature: raw.temperature ?? undefined,
-      maxTokens: raw.maxTokens ?? undefined,
+    if (this.isEditMode() && !this.existingModel?.id) {
+      this.navigateBack()
+      return
     }
 
-    const call$ = this.isEditMode()
-      ? this.aiModelController.updateAiModel(this.existingModel!.id ?? '', payload)
-      : this.aiModelController.createAiModel(payload)
+    this.isSubmitting.set(true)
+    const raw = this.form.getRawValue()
+    const trimmedDescription = raw.description?.trim()
+    const alias = raw.alias.trim()
+
+    const draft = {
+      apiModelName: raw.apiModelName.trim(),
+      description: trimmedDescription ? trimmedDescription : null,
+      alias: alias ? alias : null,
+      priority: raw.priority,
+      temperature: raw.temperature ?? null,
+      maxTokens: raw.maxTokens ?? null,
+      aiProviderId: raw.aiProviderId,
+    }
+    const scope = this.scopeControl.value
+
+    const call$ =
+      this.isEditMode() && this.existingModel?.id
+        ? this.state.update(this.existingModel.id, draft, scope, this.existingModel)
+        : this.state.create(draft, scope, this.namespaceId)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
@@ -179,7 +289,15 @@ export class AiModelFormComponent implements OnInit {
     this.router.navigate(['/agentos', this.namespaceId, 'ai-models'])
   }
 
-  protected trackByProvider(_index: number, provider: AiProvider): string {
-    return provider.id ?? ''
+  protected trackByProvider(_index: number, provider: EligibleProvider): string {
+    return provider.id
+  }
+
+  protected trackByScope(_index: number, opt: { value: AiModelScope }): string {
+    return opt.value
+  }
+
+  protected scopeBadgeFor(scope: 'namespace' | 'userOnNs' | 'userGlobal'): string {
+    return SCOPE_BADGE[scope]
   }
 }
