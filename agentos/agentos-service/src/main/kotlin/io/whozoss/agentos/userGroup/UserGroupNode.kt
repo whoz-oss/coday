@@ -1,5 +1,6 @@
 package io.whozoss.agentos.userGroup
 
+import io.whozoss.agentos.agentConfig.AgentConfigNode
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
@@ -23,6 +24,8 @@ data class UserGroupNode(
     val removed: Boolean? = null,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     val namespace: NamespaceNode? = null,
+    @Relationship(type = "HAS_AGENT", direction = OUTGOING)
+    val agents: List<AgentConfigNode> = emptyList(),
 ) {
     fun toDomain(): UserGroup =
         UserGroup(

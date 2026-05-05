@@ -1,5 +1,6 @@
 package io.whozoss.agentos.userGroup
 
+import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
@@ -11,18 +12,21 @@ import java.util.*
 class UserGroupServiceImpl(
     private val userGroupRepository: UserGroupRepository,
     private val namespaceService: NamespaceService,
+    private val agentConfigRepository: AgentConfigRepository,
 ) : UserGroupService {
-    override fun create(entity: UserGroup): UserGroup = try {
-        userGroupRepository.save(entity)
-    } catch (e: DataIntegrityViolationException) {
-        throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
-    }
+    override fun create(entity: UserGroup): UserGroup =
+        try {
+            userGroupRepository.save(entity)
+        } catch (e: DataIntegrityViolationException) {
+            throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
+        }
 
-    override fun update(entity: UserGroup): UserGroup = try {
-        userGroupRepository.save(entity)
-    } catch (e: DataIntegrityViolationException) {
-        throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
-    }
+    override fun update(entity: UserGroup): UserGroup =
+        try {
+            userGroupRepository.save(entity)
+        } catch (e: DataIntegrityViolationException) {
+            throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
+        }
 
     override fun findByIds(ids: Collection<UUID>): List<UserGroup> = userGroupRepository.findByIds(ids)
 
@@ -40,16 +44,34 @@ class UserGroupServiceImpl(
             namespaceService.findByExternalId(request.namespaceExternalId)
                 ?: throw UnprocessableEntityException("Namespace not found for externalId: ${request.namespaceExternalId}")
 
-        create(
-            UserGroup(
-                namespaceId = namespace.id,
-                name = request.name,
-            ),
-        )
+        validateAgentsInNamespace(request.agentIds.map { UUID.fromString(it) }, namespace.id)
+
+        val group =
+            create(
+                UserGroup(
+                    namespaceId = namespace.id,
+                    name = request.name,
+                ),
+            )
+
+        userGroupRepository.removeAllAgents(group.id)
+        if (request.agentIds.isNotEmpty()) {
+            userGroupRepository.addAgents(group.id, request.agentIds.map { UUID.fromString(it) })
+        }
 
         // TODO: Query user group with counters
         return userGroupRepository
             .findByNamespaceExternalId(request.namespaceExternalId)
             .first { it.name == request.name }
+    }
+
+    private fun validateAgentsInNamespace(agentIds: List<UUID>, namespaceId: UUID) {
+        if (agentIds.isEmpty()) return
+        val found = agentConfigRepository.findByIds(agentIds)
+        val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
+        val invalidIds = agentIds - validIds
+        if (invalidIds.isNotEmpty()) {
+            throw UnprocessableEntityException("Agent configs not found in namespace: $invalidIds")
+        }
     }
 }

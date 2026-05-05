@@ -1,4 +1,5 @@
 @namespaceExternalId=123
+@agentId=cb631ec3-0169-41cf-a4e2-3de4c2eaec5f
 
 ### List user groups
 GET {{apiBaseUrl}}/api/user-groups?namespaceExternalId={{namespaceExternalId}}
@@ -11,5 +12,6 @@ Content-Type: application/json
 
 {
   "namespaceExternalId": "{{namespaceExternalId}}",
-  "name": "User group 1"
+  "name": "User group 3",
+  "agentIds": ["{{agentId}}"]
 }

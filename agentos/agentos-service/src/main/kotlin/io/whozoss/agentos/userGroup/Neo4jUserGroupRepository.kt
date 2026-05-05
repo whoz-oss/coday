@@ -5,7 +5,7 @@ import mu.KLogging
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
+import java.util.*
 
 open class Neo4jUserGroupRepository(
     private val neo4jRepository: UserGroupNodeNeo4jRepository,
@@ -37,6 +37,8 @@ open class Neo4jUserGroupRepository(
                     WHERE ns.externalId = $externalId
                       AND (g.removed IS NULL OR g.removed = false)
                       AND (ns.removed IS NULL OR ns.removed = false)
+                    OPTIONAL MATCH (g)-[:HAS_AGENT]->(a:AgentConfig)
+                      WHERE a.removed IS NULL OR a.removed = false
                     RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name
                     ORDER BY g.name ASC
                 """,
@@ -49,9 +51,28 @@ open class Neo4jUserGroupRepository(
                     namespaceId = UUID.fromString(record["namespaceId"].asString()),
                     namespaceExternalId = record["namespaceExternalId"].asString(),
                     name = record["name"].asString(),
+                    agentIds = record["agentIds"].asList { it.asString() },
                 )
             }.all()
             .toList()
+
+    override fun addAgents(
+        userGroupId: UUID,
+        agentConfigIds: Collection<UUID>,
+    ) {
+        agentConfigIds.forEach { agentConfigId ->
+            childLinkService.link("UserGroup", userGroupId.toString(), "AgentConfig", agentConfigId.toString(), "HAS_AGENT")
+        }
+    }
+
+    override fun removeAllAgents(userGroupId: UUID) {
+        neo4jClient
+            .query(
+                "MATCH (:UserGroup {id: \$groupId})-[r:HAS_AGENT]->(:AgentConfig) DELETE r",
+            ).bind(userGroupId.toString())
+            .to("groupId")
+            .run()
+    }
 
     override fun delete(id: UUID): Boolean =
         neo4jRepository
