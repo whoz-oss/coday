@@ -69,6 +69,9 @@ export class UserFormComponent implements OnInit {
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
           next: () => applySelfEditDisable(),
+          // If we can't resolve the current user, disable the checkbox unconditionally
+          // so the UI never falsely advertises a permission the backend will reject.
+          error: () => this.form.controls.isAdmin.disable(),
         })
     }
 
