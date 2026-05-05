@@ -27,5 +27,7 @@ interface NamespaceService : EntityService<Namespace, String> {
      * instead — the permission system bypass logic stays at the controller layer
      * (cf. PermissionServiceImpl which delegates plainly to the repository).
      */
+    fun findByExternalId(externalId: String): Namespace?
+
     fun findIdsVisibleTo(userId: String, action: Action): List<UUID>
 }

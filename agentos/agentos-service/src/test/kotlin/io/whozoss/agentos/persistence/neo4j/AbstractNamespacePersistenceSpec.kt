@@ -1,5 +1,6 @@
 package io.whozoss.agentos.persistence.neo4j
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -7,6 +8,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import org.springframework.dao.DataIntegrityViolationException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository.Companion.NAMESPACE_PARENT_KEY
@@ -94,6 +96,19 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
             repo.save(ns.copy(configPath = "/opt/coday"))
             val found = repo.findByIds(listOf(ns.id)).first()
             found.configPath shouldBe "/opt/coday"
+        }
+
+        "save throws on duplicate externalId" {
+            repo.save(Namespace(metadata = EntityMetadata(), name = "ns-a", externalId = "ext-1"))
+
+            shouldThrow<DataIntegrityViolationException> {
+                repo.save(Namespace(metadata = EntityMetadata(), name = "ns-b", externalId = "ext-1"))
+            }
+        }
+
+        "multiple namespaces with null externalId are allowed" {
+            repo.save(Namespace(metadata = EntityMetadata(), name = "ns-a", externalId = null))
+            repo.save(Namespace(metadata = EntityMetadata(), name = "ns-b", externalId = null))
         }
     }
 }

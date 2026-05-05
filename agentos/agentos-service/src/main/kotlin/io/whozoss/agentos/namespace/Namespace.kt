@@ -23,4 +23,5 @@ data class Namespace(
     val name: String,
     val description: String? = null,
     val configPath: String? = null,
+    val externalId: String? = null,
 ) : Entity

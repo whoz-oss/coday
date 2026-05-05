@@ -45,6 +45,9 @@ open class Neo4jNamespaceRepository(
                 true
             } ?: false
 
+    override fun findByExternalId(externalId: String): Namespace? =
+        namespaceNodeNeo4jRepository.findActiveByExternalId(externalId)?.toDomain()
+
     @Transactional
     open override fun deleteByParent(parentId: String): Int {
         val active = namespaceNodeNeo4jRepository.findAllActive()

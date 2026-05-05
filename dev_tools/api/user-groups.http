@@ -1,0 +1,15 @@
+@namespaceExternalId=123
+
+### List user groups
+GET {{apiBaseUrl}}/api/user-groups?namespaceExternalId={{namespaceExternalId}}
+Content-Type: application/json
+
+
+### Create a user group
+POST {{apiBaseUrl}}/api/user-groups
+Content-Type: application/json
+
+{
+  "namespaceExternalId": "{{namespaceExternalId}}",
+  "name": "User group 1"
+}

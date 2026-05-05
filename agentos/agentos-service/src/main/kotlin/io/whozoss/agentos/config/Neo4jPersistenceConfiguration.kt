@@ -33,8 +33,12 @@ import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
+import io.whozoss.agentos.userGroup.Neo4jUserGroupRepository
+import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
+import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
+import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -72,6 +76,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.caseEvent",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
+        "io.whozoss.agentos.userGroup",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -143,6 +148,16 @@ class Neo4jPersistenceConfiguration {
     ): AiProviderRepository {
         logger.info { "[Persistence] Neo4jAiProviderRepository active" }
         return Neo4jAiProviderRepository(aiProviderNodeNeo4JRepository, childLinkService)
+    }
+
+    @Bean
+    fun neo4jUserGroupRepository(
+        userGroupNodeNeo4jRepository: UserGroupNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+        neo4jClient: Neo4jClient,
+    ): UserGroupRepository {
+        logger.info { "[Persistence] Neo4jUserGroupRepository active" }
+        return Neo4jUserGroupRepository(userGroupNodeNeo4jRepository, childLinkService, neo4jClient)
     }
 
     @Bean

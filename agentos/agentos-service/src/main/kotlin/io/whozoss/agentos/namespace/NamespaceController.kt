@@ -57,6 +57,7 @@ class NamespaceController(
             name = entity.name,
             description = entity.description,
             configPath = entity.configPath,
+            externalId = entity.externalId,
         )
 
     override fun toDomain(resource: NamespaceResource): Namespace =
@@ -65,6 +66,7 @@ class NamespaceController(
             name = resource.name,
             description = resource.description,
             configPath = resource.configPath?.takeIf { it.isNotBlank() },
+            externalId = resource.externalId?.takeIf { it.isNotBlank() },
         )
 
     @GetMapping("/{id}")
@@ -182,6 +184,7 @@ class NamespaceController(
             name = entity.name,
             description = entity.description,
             configPath = entity.configPath?.takeIf { it.isNotBlank() },
+            externalId = entity.externalId,
             role = role,
         )
 
