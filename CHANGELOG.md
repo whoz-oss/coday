@@ -1,3 +1,13 @@
+## 0.130.0 (2026-05-05)
+
+### 🚀 Features
+
+- tag-based project selection for release pipeline ([#829](https://github.com/whoz-oss/coday/pull/829))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.129.0 (2026-05-05)
 
 ### 🚀 Features
