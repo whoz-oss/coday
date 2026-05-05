@@ -52,9 +52,8 @@ eureka:
     healthcheck:
       enabled: false
   instance:
-    # Register with IP address so other services can reach this instance
-    # regardless of whether the hostname resolves in the Docker network.
-    prefer-ip-address: true
+    prefer-ip-address: false
+    hostname: ${AGENTOS_HOSTNAME:localhost}
     # Absolute health check URL on localhost so Eureka can reach it from
     # within the container without needing DNS resolution of the hostname.
     health-check-url: http://localhost:${server.port:8123}/management/health
