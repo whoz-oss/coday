@@ -1689,6 +1689,7 @@ components:
           type: array
           items:
             type: string
+            format: uuid
         userCount:
           type: integer
           format: int32
