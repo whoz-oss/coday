@@ -55,23 +55,37 @@ export class IntegrationsAllScopesComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(IntegrationConfigStateService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  protected namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   protected readonly listItems$ = this.state.vm$.pipe(map((vm) => this.toListItems(vm)))
 
   /**
-   * Index resolving a list-item id → (config, scope) so the item template can render the
-   * right component variant on the right slot. Maintained alongside `listItems$`.
+   * Index resolving a composite key (`<scope>:<id>`) → (config, scope) so the item template
+   * can render the right component variant. The composite key prevents cross-scope collisions
+   * when the same id exists in two scopes (theoretically possible across NS-shared and
+   * user-overlay tables — UUIDs make it improbable, but the contract doesn't guarantee it).
    */
   private resolved = new Map<string, ResolvedItem>()
 
   ngOnInit(): void {
-    this.state.setNamespace(this.namespaceId)
+    // Reactive on namespaceId — protects against route param changes if RouteReuseStrategy
+    // is later customized to keep the component mounted across navigations.
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const ns = params.get('namespaceId') ?? ''
+      if (ns && ns !== this.namespaceId) this.namespaceId = ns
+      this.state.setNamespace(ns)
+    })
     this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
       const next = new Map<string, ResolvedItem>()
-      vm.namespace.forEach((c) => next.set(c.id ?? '', { config: c, scope: 'namespace' }))
-      vm.userOnNs.forEach((c) => next.set(c.id ?? '', { config: c, scope: 'userOnNs' }))
-      vm.userGlobal.forEach((c) => next.set(c.id ?? '', { config: c, scope: 'userGlobal' }))
+      vm.namespace.forEach((c) => {
+        if (c.id) next.set(this.itemKey('namespace', c.id), { config: c, scope: 'namespace' })
+      })
+      vm.userOnNs.forEach((c) => {
+        if (c.id) next.set(this.itemKey('userOnNs', c.id), { config: c, scope: 'userOnNs' })
+      })
+      vm.userGlobal.forEach((c) => {
+        if (c.id) next.set(this.itemKey('userGlobal', c.id), { config: c, scope: 'userGlobal' })
+      })
       this.resolved = next
     })
   }
@@ -82,6 +96,10 @@ export class IntegrationsAllScopesComponent implements OnInit {
 
   protected resolve(id: string): ResolvedItem | null {
     return this.resolved.get(id) ?? null
+  }
+
+  private itemKey(scope: IntegrationScope, id: string): string {
+    return `${scope}:${id}`
   }
 
   protected goBack(): void {
@@ -104,8 +122,16 @@ export class IntegrationsAllScopesComponent implements OnInit {
   }
 
   protected onDelete(item: ResolvedItem): void {
-    const id = item.config.id ?? ''
-    this.state.delete(id, item.scope).pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+    const id = item.config.id
+    if (!id) return
+    this.state
+      .delete(id, item.scope)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[IntegrationsAllScopes] Delete failed for ${item.scope}:${id}:`, err)
+        },
+      })
   }
 
   protected onOverride(config: IntegrationConfig): void {
@@ -134,12 +160,14 @@ export class IntegrationsAllScopesComponent implements OnInit {
         },
       ]
     }
-    return configs.map((c) => ({
-      id: c.id ?? '',
-      name: c.name,
-      description: c.integrationType,
-      groupKey: scope,
-      groupLabel: SECTION_LABEL[scope],
-    }))
+    return configs
+      .filter((c): c is AnyConfig & { id: string } => !!c.id)
+      .map((c) => ({
+        id: this.itemKey(scope, c.id),
+        name: c.name,
+        description: c.integrationType,
+        groupKey: scope,
+        groupLabel: SECTION_LABEL[scope],
+      }))
   }
 }

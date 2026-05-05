@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { IntegrationConfig, UserIntegrationConfig } from '@whoz-oss/agentos-api-client'
 import { EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, of } from 'rxjs'
+import { convertToParamMap } from '@angular/router'
 import {
   IntegrationConfigStateService,
   IntegrationConfigViewModel,
@@ -59,7 +60,13 @@ describe('IntegrationsAllScopesComponent', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        { provide: ActivatedRoute, useValue: { snapshot: { params: { namespaceId: NS_ID } } } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { params: { namespaceId: NS_ID } },
+            paramMap: of(convertToParamMap({ namespaceId: NS_ID })),
+          },
+        },
         { provide: Router, useValue: routerMock },
         { provide: IntegrationConfigStateService, useValue: stateMock },
         ChangeDetectorRef,
@@ -96,7 +103,8 @@ describe('IntegrationsAllScopesComponent', () => {
       expect(namespacePlaceholder?.name).toBe('Aucune configuration')
       expect(userGlobalPlaceholder?.id).toMatch(/^__empty__userGlobal$/)
       // The non-empty section keeps its real data — no placeholder injected.
-      expect(items.filter((i) => i.groupKey === 'userOnNs').map((i) => i.id)).toEqual(['u-ns-1'])
+      // List item ids are composite (`<scope>:<id>`) to prevent cross-scope collisions.
+      expect(items.filter((i) => i.groupKey === 'userOnNs').map((i) => i.id)).toEqual(['userOnNs:u-ns-1'])
     })
   })
 
@@ -108,9 +116,9 @@ describe('IntegrationsAllScopesComponent', () => {
 
     it('builds the resolved index so the item template can route events to the right scope', () => {
       component.ngOnInit()
-      expect(component['resolve']('ns-1')?.scope).toBe('namespace')
-      expect(component['resolve']('u-ns-1')?.scope).toBe('userOnNs')
-      expect(component['resolve']('u-g-1')?.scope).toBe('userGlobal')
+      expect(component['resolve']('namespace:ns-1')?.scope).toBe('namespace')
+      expect(component['resolve']('userOnNs:u-ns-1')?.scope).toBe('userOnNs')
+      expect(component['resolve']('userGlobal:u-g-1')?.scope).toBe('userGlobal')
       expect(component['resolve']('unknown')).toBeNull()
     })
   })

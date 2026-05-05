@@ -191,8 +191,17 @@ export class IntegrationFormComponent implements OnInit {
             replaceUrl: true,
           })
         },
-        error: () => {
+        error: (err) => {
+          // Template inaccessible (deleted, 403, network) — drop the loading flag, drop the
+          // template param, and stay on a blank create form so the user can still proceed.
+          console.warn(`[IntegrationForm] Could not hydrate from template ${templateId}:`, err)
           this.isLoading.set(false)
+          this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { template: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          })
         },
       })
   }
@@ -212,10 +221,19 @@ export class IntegrationFormComponent implements OnInit {
   protected submit(): void {
     if (this.nameControl.invalid || this.typeControl.invalid || this.isSubmitting()) return
 
+    // Edit-mode without a loaded existingConfig.id is a corrupt state (load failed, or
+    // the id was stripped). Bailing out is safer than firing a PUT on an empty path.
+    if (this.isEditMode() && !this.existingConfig?.id) {
+      this.navigateBack()
+      return
+    }
+
     this.isSubmitting.set(true)
+    const trimmedDescription = this.descriptionControl.value?.trim()
     const draft = {
       name: this.nameControl.value.trim(),
-      description: this.descriptionControl.value?.trim() || undefined,
+      // Send null (not undefined) when the user cleared the field so the backend clears it.
+      description: trimmedDescription ? trimmedDescription : null,
       integrationType: this.typeControl.value,
       parameters: this.paramsValue(),
     }
@@ -223,8 +241,8 @@ export class IntegrationFormComponent implements OnInit {
     const scope = this.scopeControl.value
 
     const call$ =
-      this.isEditMode() && this.existingConfig
-        ? this.state.update(this.existingConfig.id ?? '', draft, scope, this.existingConfig)
+      this.isEditMode() && this.existingConfig?.id
+        ? this.state.update(this.existingConfig.id, draft, scope, this.existingConfig)
         : this.state.create(draft, scope, this.namespaceId)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

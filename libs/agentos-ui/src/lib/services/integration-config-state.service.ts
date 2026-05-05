@@ -25,11 +25,15 @@ export interface IntegrationConfigViewModel {
  * Shape used by callers when creating/updating a config — the fields that the user fills,
  * regardless of scope. The state service is responsible for assembling the final payload
  * (adding namespaceId / userId / id where appropriate) before hitting the controller.
+ *
+ * `description` is `string | null` (no `undefined`) so that an explicit clear (user emptied
+ * the field) reaches the backend as JSON null. With `undefined`, JSON.stringify omits the
+ * key and the backend keeps the previous value — silent broken-clear.
  */
 export interface IntegrationConfigDraft {
   name: string
   integrationType: string
-  description?: string | null
+  description: string | null
   parameters?: unknown
 }
 
@@ -39,6 +43,13 @@ export interface IntegrationConfigDraft {
  * (Kotlin) — kept private here so no other component sees the literal.
  */
 const NAMESPACE_NONE_SENTINEL = 'none'
+
+/**
+ * Page size used for the unified Integrations view. The backend exposes pagination but
+ * the 3-section UI doesn't yet implement an infinite-scroll / pager — pulling a large
+ * page is the pragmatic stop-gap until pagination is added (post-MVP).
+ */
+const LIST_PAGE_SIZE = 1000
 
 /**
  * IntegrationConfigStateService — orchestrates the 3 sources of truth for the unified
@@ -104,7 +115,9 @@ export class IntegrationConfigStateService {
    */
   loadUserConfigs(scope: 'global' | string): Observable<UserIntegrationConfig[]> {
     const namespaceParam = scope === 'global' ? NAMESPACE_NONE_SENTINEL : scope
-    return this.userController.listUserIntegrationConfig(namespaceParam).pipe(map((page) => page.content ?? []))
+    return this.userController
+      .listUserIntegrationConfig(namespaceParam, 0, LIST_PAGE_SIZE)
+      .pipe(map((page) => page.content ?? []))
   }
 
   loadNamespaceConfigs(namespaceId: string): Observable<IntegrationConfig[]> {
@@ -132,17 +145,20 @@ export class IntegrationConfigStateService {
       const payload: IntegrationConfig = {
         name: draft.name,
         integrationType: draft.integrationType,
-        description: draft.description ?? undefined,
+        description: draft.description as string | undefined,
         namespaceId,
         parameters: draft.parameters,
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
+    if (scope === 'userOnNs' && !namespaceId) {
+      throw new Error('Cannot create userOnNs config without a namespaceId')
+    }
     const userPayload: UserIntegrationConfig = {
       name: draft.name,
       integrationType: draft.integrationType,
-      description: draft.description ?? undefined,
-      namespaceId: scope === 'userOnNs' ? (namespaceId ?? undefined) : undefined,
+      description: draft.description as string | undefined,
+      namespaceId: scope === 'userOnNs' ? (namespaceId as string) : undefined,
       parameters: draft.parameters,
     }
     return this.userController.createUserIntegrationConfig(userPayload).pipe(tap(() => this.refresh()))
@@ -154,21 +170,27 @@ export class IntegrationConfigStateService {
     scope: IntegrationScope,
     existing: IntegrationConfig | UserIntegrationConfig
   ): Observable<IntegrationConfig | UserIntegrationConfig> {
+    // Build payloads explicitly — never spread `existing`. Spreading would re-inject `id`
+    // (which lives in the path) and risks leaking stale fields like a previous-scope's
+    // namespaceId on a hypothetical scope-change. Server-side immutable fields
+    // (namespaceId, userId) are preserved by reading them from `existing`.
     if (scope === 'namespace') {
       const payload: IntegrationConfig = {
-        ...(existing as IntegrationConfig),
         name: draft.name,
         integrationType: draft.integrationType,
-        description: draft.description ?? undefined,
+        description: draft.description as string | undefined,
+        namespaceId: (existing as IntegrationConfig).namespaceId,
         parameters: draft.parameters,
       }
       return this.nsController.updateIntegrationConfig(id, payload).pipe(tap(() => this.refresh()))
     }
+    const userExisting = existing as UserIntegrationConfig
     const userPayload: UserIntegrationConfig = {
-      ...(existing as UserIntegrationConfig),
       name: draft.name,
       integrationType: draft.integrationType,
-      description: draft.description ?? undefined,
+      description: draft.description as string | undefined,
+      userId: userExisting.userId,
+      namespaceId: userExisting.namespaceId,
       parameters: draft.parameters,
     }
     return this.userController.updateUserIntegrationConfig(id, userPayload).pipe(tap(() => this.refresh()))

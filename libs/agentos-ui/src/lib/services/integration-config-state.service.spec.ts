@@ -82,8 +82,9 @@ describe('IntegrationConfigStateService', () => {
 
       expect(nsController.listByParentIntegrationConfig).toHaveBeenCalledWith(NS_ID)
       // user-global slice goes through with the "none" sentinel; user×NS uses the UUID.
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith(NS_ID)
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith('none')
+      // Pagination: page 0, large size (UI has no pager yet, see LIST_PAGE_SIZE in service).
+      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith(NS_ID, 0, expect.any(Number))
+      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith('none', 0, expect.any(Number))
     })
   })
 
@@ -91,13 +92,13 @@ describe('IntegrationConfigStateService', () => {
     it('translates "global" into the backend sentinel, never leaking it to callers', async () => {
       const result = await firstValueFrom(service.loadUserConfigs('global'))
       expect(result).toEqual([userGlobalConfig])
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith('none')
+      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith('none', 0, expect.any(Number))
     })
 
     it('passes through a UUID as-is for user × namespace lookups', async () => {
       const result = await firstValueFrom(service.loadUserConfigs(NS_ID))
       expect(result).toEqual([userOnNsConfig])
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith(NS_ID)
+      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith(NS_ID, 0, expect.any(Number))
     })
   })
 
@@ -156,7 +157,9 @@ describe('IntegrationConfigStateService', () => {
       const initialNsCalls = nsController.listByParentIntegrationConfig.mock.calls.length
       const initialUserCalls = userController.listUserIntegrationConfig.mock.calls.length
 
-      await firstValueFrom(service.create({ name: 'x', integrationType: 'slack' }, 'userOnNs', NS_ID))
+      await firstValueFrom(
+        service.create({ name: 'x', integrationType: 'slack', description: null }, 'userOnNs', NS_ID)
+      )
 
       expect(nsController.listByParentIntegrationConfig.mock.calls.length).toBeGreaterThan(initialNsCalls)
       expect(userController.listUserIntegrationConfig.mock.calls.length).toBeGreaterThan(initialUserCalls)

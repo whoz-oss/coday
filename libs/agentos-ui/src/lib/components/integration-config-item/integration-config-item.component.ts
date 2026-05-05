@@ -5,13 +5,19 @@ import { IntegrationScope } from '../../services/integration-config-state.servic
 
 interface ScopeBadge {
   label: string
+  ariaLabel: string
   variant: 'neutral' | 'info' | 'warning'
 }
 
+/**
+ * Badge labels are kept short (NS / USER × NS / USER GLOBAL) so the row stays scannable.
+ * The `ariaLabel` carries the human-readable French translation for screen readers — the
+ * `×` glyph in the visible label would otherwise be announced as "multiplication sign".
+ */
 const SCOPE_BADGES: Readonly<Record<IntegrationScope, ScopeBadge>> = Object.freeze({
-  namespace: { label: 'NS', variant: 'neutral' },
-  userOnNs: { label: 'USER × NS', variant: 'info' },
-  userGlobal: { label: 'USER GLOBAL', variant: 'warning' },
+  namespace: { label: 'NS', ariaLabel: 'Configuration partagée du namespace', variant: 'neutral' },
+  userOnNs: { label: 'USER × NS', ariaLabel: 'Configuration utilisateur sur ce namespace', variant: 'info' },
+  userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Configuration utilisateur globale', variant: 'warning' },
 })
 
 /**
