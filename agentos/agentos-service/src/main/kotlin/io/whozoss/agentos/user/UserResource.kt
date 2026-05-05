@@ -19,6 +19,10 @@ import java.util.UUID
  * [externalId] is a read-only server-managed field (IdP key). HTTP clients may receive
  * it in responses but it is never written from the request body.
  *
+ * [isAdmin] is nullable on the request body so PATCH-like PUT (omitting the field)
+ * preserves the persisted value instead of silently demoting. On responses, the
+ * server always sets a non-null value derived from [User.isAdmin].
+ *
  * Annotated with @Schema(name = "User") so that the generated OpenAPI spec
  * keeps the schema name "User" instead of "UserResource".
  */
@@ -31,5 +35,5 @@ data class UserResource(
     val firstname: String? = null,
     val lastname: String? = null,
     val bio: String? = null,
-    val isAdmin: Boolean = false,
+    val isAdmin: Boolean? = null,
 )

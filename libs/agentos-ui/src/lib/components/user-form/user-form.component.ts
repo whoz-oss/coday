@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
+import { UserStateService } from '../../services/user-state.service'
 
 /**
  * UserFormComponent — create and edit form for a user (admin view).
@@ -31,6 +32,7 @@ export class UserFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly userAdminState = inject(UserAdminStateService)
+  private readonly userState = inject(UserStateService)
 
   private readonly userId = this.route.snapshot.params['userId'] as string | undefined
 
@@ -49,6 +51,26 @@ export class UserFormComponent implements OnInit {
 
   ngOnInit(): void {
     if (!this.isEditMode) return
+
+    // Self-rule: the backend ignores isAdmin changes from the caller on their own
+    // record. Disable the checkbox in self-edit mode so the UX matches the contract.
+    // Fallback: if currentUser hasn't been loaded yet (e.g. direct landing), fetch it
+    // before deciding — without this, a self-edit could leave the checkbox enabled.
+    const applySelfEditDisable = () => {
+      if (this.userState.currentUser()?.id === this.userId) {
+        this.form.controls.isAdmin.disable()
+      }
+    }
+    if (this.userState.currentUser()) {
+      applySelfEditDisable()
+    } else {
+      this.userState
+        .loadMe()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: () => applySelfEditDisable(),
+        })
+    }
 
     // Try to resolve from already-loaded state first (avoids extra HTTP call).
     const existing = this.userAdminState.users().find((u) => u.id === this.userId)

@@ -11,6 +11,7 @@ import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -33,8 +34,10 @@ import java.util.UUID
  * - Super-admin only (list, create, delete, batch fetch): `hasRole('SUPER_ADMIN')`
  * - `/me`: any authenticated user — resolves their own record
  *
- * The `update` override preserves [User.externalId] and [User.isAdmin] from the persisted
- * entity (mass-assignment guard — these are server-managed fields).
+ * The `update` method preserves [User.externalId] always (server-managed IdP key).
+ * [User.isAdmin] is preserved only in self-edit mode (caller == target). When a
+ * super-admin updates another user, [User.isAdmin] from the request body is honored.
+ * Self-rule guarantees no API call can ever leave the DB with zero super-admins.
  */
 @RestController
 @RequestMapping(
@@ -72,7 +75,7 @@ class UserController(
             firstname = resource.firstname,
             lastname = resource.lastname,
             bio = resource.bio,
-            isAdmin = resource.isAdmin,
+            isAdmin = resource.isAdmin ?: false,  // null in request body → default non-admin
         )
 
     @GetMapping("/{id}")
@@ -106,10 +109,8 @@ class UserController(
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     override fun create(@Valid @RequestBody resource: UserResource): UserResource {
-        // Never allow isAdmin promotion from request body — only system/bootstrap can grant super-admin.
-        val newUser = toDomain(resource).copy(isAdmin = false)
-        val created = service.create(newUser)
-        logger.info { "Super-admin created user ${created.id}" }
+        val created = service.create(toDomain(resource))
+        logger.info { "Super-admin created user ${created.id} (isAdmin=${created.isAdmin})" }
         return toResource(created)
     }
 
@@ -121,10 +122,24 @@ class UserController(
     ): UserResource {
         val existing = userService.findById(id)
             ?: throw ResourceNotFoundException("Entity not found: $id")
+        // Self-rule: a user can never change their own isAdmin via the API.
+        // Guarantees the DB never reaches 0 super-admins via API (a super-admin
+        // needs ANOTHER super-admin to be demoted). auth.name is the User's UUID
+        // as a String (cf. AgentOsAuthentication.getName()).
+        //
+        // Body-omitted isAdmin (resource.isAdmin == null) preserves existing.isAdmin too:
+        // protects against silent demotes when a client PUTs a partial body without isAdmin.
+        val callerName = SecurityContextHolder.getContext().authentication?.name
+        val isSelfEdit = callerName != null && id.toString() == callerName
+        val newIsAdmin = when {
+            isSelfEdit -> existing.isAdmin
+            resource.isAdmin != null -> resource.isAdmin
+            else -> existing.isAdmin
+        }
         val updated = toDomain(resource).copy(
             metadata = existing.metadata,
             externalId = existing.externalId,        // server-managed (IdP key)
-            isAdmin = existing.isAdmin,              // server-managed (only system/bootstrap can set)
+            isAdmin = newIsAdmin,                    // self-rule applied above
         )
         logger.info { "User profile $id updated" }
         return toResource(userService.update(updated))
