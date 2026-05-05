@@ -22,7 +22,7 @@
       [readOnly]="resolved.scope === 'namespace'"
       (editRequested)="onEdit(resolved)"
       (deleteRequested)="onDelete(resolved)"
-      (overrideRequested)="onOverride($event)"
+      (duplicateRequested)="onDuplicate(resolved)"
     />
   }
 </ng-template>

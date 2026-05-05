@@ -124,10 +124,24 @@ describe('IntegrationsAllScopesComponent', () => {
   })
 
   describe('navigation events', () => {
-    it('navigates to the form with scope=userOnNs and the selected config id as the template param on Override', () => {
-      component['onOverride'](nsConfig)
+    it('duplicates a namespace card → form opens with scope=namespace and templateScope=namespace (clone strict)', () => {
+      component['onDuplicate']({ config: nsConfig, scope: 'namespace' })
       expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
-        queryParams: { scope: 'userOnNs', template: 'ns-1' },
+        queryParams: { scope: 'namespace', template: 'ns-1', templateScope: 'namespace' },
+      })
+    })
+
+    it('duplicates a userOnNs card → templateScope=userOnNs so the form loads via the user controller', () => {
+      component['onDuplicate']({ config: userOnNsConfig, scope: 'userOnNs' })
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+        queryParams: { scope: 'userOnNs', template: 'u-ns-1', templateScope: 'userOnNs' },
+      })
+    })
+
+    it('duplicates a userGlobal card → templateScope=userGlobal', () => {
+      component['onDuplicate']({ config: userGlobalConfig, scope: 'userGlobal' })
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+        queryParams: { scope: 'userGlobal', template: 'u-g-1', templateScope: 'userGlobal' },
       })
     })
 

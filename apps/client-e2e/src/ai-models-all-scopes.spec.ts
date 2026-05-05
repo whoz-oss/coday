@@ -113,12 +113,14 @@ test.fixme('story 6.6 — AI Models all-scopes golden path with FR3 provider fil
   await expect(page.getByText(/NS Anthropic.*claude-opus-4/)).toBeVisible()
   await expect(page.getByText(/My Global Anthropic.*claude-haiku-4/)).toBeVisible()
 
-  // 2 — Override for me cross-link
+  // 2 — Duplicate cross-link from a namespace model → form opens in clone-strict mode
+  // (scope=namespace, templateScope=namespace).
   await page
-    .getByRole('button', { name: /override for me/i })
+    .getByRole('button', { name: /duplicate/i })
     .first()
     .click()
-  await expect(page).toHaveURL(/scope=userOnNs/)
+  await expect(page).toHaveURL(/scope=namespace/)
+  await expect(page).toHaveURL(/templateScope=namespace/)
   await expect(page).toHaveURL(new RegExp(`template=${NS_MODEL_ID}`))
 
   // 3 — Switch scope radio in the form: provider <select> re-filters

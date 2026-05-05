@@ -29,8 +29,11 @@ const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freez
  * GLOBAL). Edit and delete are dispatched upward via outputs — the container picks the right
  * controller based on `scope`.
  *
- * On `scope === 'namespace'` items, an "Override for me" button is shown so a user can
- * fork an NS provider into a personal override (cross-link to the form with `?template=`).
+ * A "Duplicate" button is exposed on every card regardless of source scope. Clicking it
+ * navigates the user to a new-form pre-filled with this provider's data; the container
+ * decides the default destination scope (currently: same as source) and the user can pick
+ * any destination via the radio in the form. The apiKey is intentionally NOT carried into
+ * the duplicate (NFR-SEC-1: credentials never migrate across resources).
  *
  * Read-only mode hides edit/delete (used for users without write permission on the NS).
  *
@@ -52,13 +55,11 @@ export class AiProviderItemComponent {
 
   readonly editRequested = output<AiProvider | UserAiProvider>()
   readonly deleteRequested = output<AiProvider | UserAiProvider>()
-  readonly overrideRequested = output<AiProvider>()
+  readonly duplicateRequested = output<AiProvider | UserAiProvider>()
 
   protected readonly pendingDelete = signal(false)
 
   protected readonly badge = computed<ScopeBadge>(() => SCOPE_BADGES[this.scope()])
-
-  protected readonly canOverride = computed(() => this.scope() === 'namespace')
 
   protected readonly menuItems = computed<KebabMenuItem[]>(() => [
     { key: 'edit', label: 'Edit provider', icon: 'edit' },
@@ -76,9 +77,8 @@ export class AiProviderItemComponent {
     }
   }
 
-  protected onOverride(): void {
-    // Only NS items expose this action — see canOverride().
-    this.overrideRequested.emit(this.config() as AiProvider)
+  protected onDuplicate(): void {
+    this.duplicateRequested.emit(this.config())
   }
 
   protected onDeleteConfirmed(): void {

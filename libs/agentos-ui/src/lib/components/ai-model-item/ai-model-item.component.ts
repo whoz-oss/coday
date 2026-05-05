@@ -38,8 +38,10 @@ export interface ParentProviderRef {
  * scope badge follows the same convention as `AiProviderItemComponent` and the integration
  * config item from story 6.5.
  *
- * Edit and delete are dispatched upward via outputs; "Override pour moi" is shown on
- * `scope === 'namespace'` only.
+ * Edit and delete are dispatched upward via outputs. A "Duplicate" button is shown on every
+ * card; the container decides the default destination scope and the user can re-target via
+ * the radio in the form (the form's eligibleProviders$ filter handles the FR3 constraint
+ * when the parent provider is no longer compatible with the chosen destination).
  */
 @Component({
   selector: 'agentos-ai-model-item',
@@ -58,13 +60,11 @@ export class AiModelItemComponent {
 
   readonly editRequested = output<AiModel | UserAiModel>()
   readonly deleteRequested = output<AiModel | UserAiModel>()
-  readonly overrideRequested = output<AiModel>()
+  readonly duplicateRequested = output<AiModel | UserAiModel>()
 
   protected readonly pendingDelete = signal(false)
 
   protected readonly badge = computed<ScopeBadge>(() => SCOPE_BADGES[this.scope()])
-
-  protected readonly canOverride = computed(() => this.scope() === 'namespace')
 
   protected readonly displayTitle = computed(() => this.model().alias ?? this.model().apiModelName)
 
@@ -93,8 +93,8 @@ export class AiModelItemComponent {
     }
   }
 
-  protected onOverride(): void {
-    this.overrideRequested.emit(this.model() as AiModel)
+  protected onDuplicate(): void {
+    this.duplicateRequested.emit(this.model())
   }
 
   protected onDeleteConfirmed(): void {

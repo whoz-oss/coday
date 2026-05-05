@@ -134,10 +134,13 @@ export class IntegrationsAllScopesComponent implements OnInit {
       })
   }
 
-  protected onOverride(config: IntegrationConfig): void {
-    // Cross-link: navigate the user to the form pre-seeded with the NS config payload.
+  protected onDuplicate(item: ResolvedItem): void {
+    // Default destination scope = source scope (clone strict). The form's radio lets the
+    // user pick any other destination. `templateScope` tells the form which controller to
+    // use to load the source config for hydration.
+    if (!item.config.id) return
     this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
-      queryParams: { scope: 'userOnNs', template: config.id },
+      queryParams: { scope: item.scope, template: item.config.id, templateScope: item.scope },
     })
   }
 

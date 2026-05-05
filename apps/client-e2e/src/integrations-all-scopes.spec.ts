@@ -102,15 +102,18 @@ test.fixme('story 6.5 — Integrations all-scopes golden path', async ({ page })
   await expect(page.getByText('Slack mine on NS')).toBeVisible()
   await expect(page.getByText('Slack mine global')).toBeVisible()
 
-  // 2 — override-for-me cross-link
+  // 2 — duplicate cross-link from a namespace card → form opens in clone-strict mode
+  // (scope=namespace, templateScope=namespace). The user can re-target via the radio.
   await page
-    .getByRole('button', { name: /override for me/i })
+    .getByRole('button', { name: /duplicate/i })
     .first()
     .click()
-  await expect(page).toHaveURL(/scope=userOnNs/)
+  await expect(page).toHaveURL(/scope=namespace/)
+  await expect(page).toHaveURL(/templateScope=namespace/)
   await expect(page).toHaveURL(new RegExp(`template=${NS_CONFIG_ID}`))
 
-  // 3 — submitting the form lands the new row in the USER × NS section
+  // 3 — switch radio to userOnNs and submit → new row appears in the USER × NS section
+  await page.getByLabel('Pour moi sur ce namespace').click()
   await page.getByLabel('Name').fill('Slack mine forked')
   await page.getByRole('button', { name: /create/i }).click()
   await expect(page.getByText('Mes overrides sur ce namespace')).toBeVisible()

@@ -154,9 +154,10 @@ export class AiModelsAllScopesComponent implements OnInit {
       })
   }
 
-  protected onOverride(config: AiModel): void {
+  protected onDuplicate(item: ResolvedItem): void {
+    if (!item.config.id) return
     this.router.navigate(['/agentos', this.namespaceId, 'ai-models', 'new'], {
-      queryParams: { scope: 'userOnNs', template: config.id },
+      queryParams: { scope: item.scope, template: item.config.id, templateScope: item.scope },
     })
   }
 

@@ -130,10 +130,12 @@ export class AiProvidersAllScopesComponent implements OnInit {
       })
   }
 
-  protected onOverride(config: AiProvider): void {
-    // Cross-link: navigate the user to the form pre-seeded with the NS provider as template.
+  protected onDuplicate(item: ResolvedItem): void {
+    // Default destination = source scope (clone strict). Radio in the form lets the user
+    // re-target. `templateScope` tells the form which controller to use to load the source.
+    if (!item.config.id) return
     this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
-      queryParams: { scope: 'userOnNs', template: config.id },
+      queryParams: { scope: item.scope, template: item.config.id, templateScope: item.scope },
     })
   }
 

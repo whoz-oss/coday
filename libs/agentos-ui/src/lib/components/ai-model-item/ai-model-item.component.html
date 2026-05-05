@@ -21,9 +21,7 @@
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
       <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
     } @else {
-      @if (canOverride()) {
-        <ds-icon-button icon="content_copy" title="Override for me" (action)="onOverride()" />
-      }
+      <ds-icon-button icon="content_copy" title="Duplicate this model" (action)="onDuplicate()" />
       @if (!readOnly()) {
         <ds-kebab-menu [items]="menuItems()" (itemSelected)="onMenuAction($event)" />
       }

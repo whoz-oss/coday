@@ -125,7 +125,8 @@ export class AiProviderFormComponent implements OnInit {
     this.scopeControl.setValue(hintedScope)
     const templateId = queryParams.get('template')
     if (templateId) {
-      this.hydrateFromTemplate(templateId)
+      const templateScope = this.parseScope(queryParams.get('templateScope'))
+      this.hydrateFromTemplate(templateId, templateScope)
     }
   }
 
@@ -162,10 +163,10 @@ export class AiProviderFormComponent implements OnInit {
       })
   }
 
-  private hydrateFromTemplate(templateId: string): void {
+  private hydrateFromTemplate(templateId: string, templateScope: AiProviderScope): void {
     this.isLoading.set(true)
     this.state
-      .getById(templateId, 'namespace')
+      .getById(templateId, templateScope)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -180,7 +181,7 @@ export class AiProviderFormComponent implements OnInit {
           // Strip the template param so a refresh doesn't re-hydrate over user edits.
           this.router.navigate([], {
             relativeTo: this.route,
-            queryParams: { template: null },
+            queryParams: { template: null, templateScope: null },
             queryParamsHandling: 'merge',
             replaceUrl: true,
           })
@@ -190,7 +191,7 @@ export class AiProviderFormComponent implements OnInit {
           this.isLoading.set(false)
           this.router.navigate([], {
             relativeTo: this.route,
-            queryParams: { template: null },
+            queryParams: { template: null, templateScope: null },
             queryParamsHandling: 'merge',
             replaceUrl: true,
           })

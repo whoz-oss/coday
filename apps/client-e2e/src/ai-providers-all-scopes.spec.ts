@@ -106,13 +106,16 @@ test.fixme('story 6.6 — AI Providers all-scopes golden path', async ({ page })
   await expect(page.getByText('My NS Anthropic')).toBeVisible()
   await expect(page.getByText('My Global Anthropic')).toBeVisible()
 
-  // 2 — Override for me cross-link + create
+  // 2 — Duplicate from a namespace card → form opens in clone-strict mode (scope=namespace,
+  // templateScope=namespace). User toggles the radio to userOnNs to create an override.
   await page
-    .getByRole('button', { name: /override for me/i })
+    .getByRole('button', { name: /duplicate/i })
     .first()
     .click()
-  await expect(page).toHaveURL(/scope=userOnNs/)
+  await expect(page).toHaveURL(/scope=namespace/)
+  await expect(page).toHaveURL(/templateScope=namespace/)
   await expect(page).toHaveURL(new RegExp(`template=${NS_PROVIDER_ID}`))
+  await page.getByLabel('Pour moi sur ce namespace').click()
   await page.getByLabel('Name').fill('My Override Anthropic')
   await page.getByLabel('API key').fill('sk-ant-myfreshkey')
   await page.getByRole('button', { name: /create/i }).click()

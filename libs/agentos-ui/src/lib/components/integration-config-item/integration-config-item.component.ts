@@ -27,8 +27,10 @@ const SCOPE_BADGES: Readonly<Record<IntegrationScope, ScopeBadge>> = Object.free
  * action buttons. Edit and delete are dispatched upward — the container picks the right
  * controller based on `scope`.
  *
- * On `scope === 'namespace'` items, an "Override for me" button is shown so a user can
- * fork a NS config into a personal override (cross-link to the form with `?template=`).
+ * A "Duplicate" button is exposed on every card regardless of source scope. Clicking it
+ * navigates the user to a new-form pre-filled with this config's data; the container
+ * decides the default destination scope (currently: same as source) and the user can pick
+ * any destination via the radio in the form.
  *
  * Read-only mode hides edit/delete (used for users without write permission on the NS).
  */
@@ -47,21 +49,18 @@ export class IntegrationConfigItemComponent {
 
   readonly editRequested = output<IntegrationConfig | UserIntegrationConfig>()
   readonly deleteRequested = output<IntegrationConfig | UserIntegrationConfig>()
-  readonly overrideRequested = output<IntegrationConfig>()
+  readonly duplicateRequested = output<IntegrationConfig | UserIntegrationConfig>()
 
   protected readonly pendingDelete = signal(false)
 
   protected readonly badge = computed<ScopeBadge>(() => SCOPE_BADGES[this.scope()])
 
-  protected readonly canOverride = computed(() => this.scope() === 'namespace')
-
   protected onEdit(): void {
     this.editRequested.emit(this.config())
   }
 
-  protected onOverride(): void {
-    // Only NS items expose this action — see canOverride().
-    this.overrideRequested.emit(this.config() as IntegrationConfig)
+  protected onDuplicate(): void {
+    this.duplicateRequested.emit(this.config())
   }
 
   protected onDeleteArmed(): void {
