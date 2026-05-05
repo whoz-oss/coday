@@ -75,7 +75,7 @@ class UserController(
             firstname = resource.firstname,
             lastname = resource.lastname,
             bio = resource.bio,
-            isAdmin = resource.isAdmin ?: false,  // null in request body → default non-admin
+            isAdmin = resource.isAdmin,
         )
 
     @GetMapping("/{id}")
@@ -127,15 +127,12 @@ class UserController(
         // needs ANOTHER super-admin to be demoted). auth.name is the User's UUID
         // as a String (cf. AgentOsAuthentication.getName()).
         //
-        // Body-omitted isAdmin (resource.isAdmin == null) preserves existing.isAdmin too:
-        // protects against silent demotes when a client PUTs a partial body without isAdmin.
+        // PUT is replace-semantic: clients are expected to send the full state.
+        // A partial body that omits isAdmin will reset it to `false` (Kotlin default
+        // on the DTO) — same convention as other resource DTOs in this API.
         val callerName = SecurityContextHolder.getContext().authentication?.name
         val isSelfEdit = callerName != null && id.toString() == callerName
-        val newIsAdmin = when {
-            isSelfEdit -> existing.isAdmin
-            resource.isAdmin != null -> resource.isAdmin
-            else -> existing.isAdmin
-        }
+        val newIsAdmin = if (isSelfEdit) existing.isAdmin else resource.isAdmin
         val updated = toDomain(resource).copy(
             metadata = existing.metadata,
             externalId = existing.externalId,        // server-managed (IdP key)

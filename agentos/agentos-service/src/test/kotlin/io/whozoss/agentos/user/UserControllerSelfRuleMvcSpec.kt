@@ -194,30 +194,33 @@ class UserControllerSelfRuleMvcSpec : StringSpec() {
         }
 
         // -----------------------------------------------------------------
-        // PUT — partial body without isAdmin field preserves existing
-        // (regression cover for adversarial finding F12)
+        // PUT — replace semantic : a body omitting isAdmin resets it to false.
+        // Documents the API contract and aligns with the rest of the API
+        // (e.g. AiModelResource.priority defaulting to 0). Clients on PUT must
+        // send the full state.
         // -----------------------------------------------------------------
 
-        "PUT partial body (no isAdmin field) on OTHER super-admin preserves existing.isAdmin=true" {
+        "PUT partial body (no isAdmin field) on OTHER super-admin resets isAdmin to false (replace-semantic)" {
             val target = User(
                 metadata = EntityMetadata(id = targetUserId),
                 externalId = "other-admin@example.com",
                 email = "other-admin@example.com",
-                isAdmin = true,    // existing target IS a super-admin
+                isAdmin = true,
             )
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
             every { userService.findById(targetUserId) } returns target
             every { userService.update(capture(captured)) } answers { firstArg() }
 
-            // Body intentionally omits isAdmin — must not silently demote the target.
             mockMvc.perform(
                 put("/api/users/$targetUserId")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "id": "$targetUserId", "email": "other-admin@example.com", "firstname": "Renamed" }""")
             ).andExpect(status().isOk)
 
-            captured.captured.isAdmin shouldBe true  // PRESERVED — no silent demote
+            // PUT is replace, not patch — omitted isAdmin field deserialises to default false.
+            // The self-rule does NOT apply here because caller != target.
+            captured.captured.isAdmin shouldBe false
         }
 
         // -----------------------------------------------------------------
