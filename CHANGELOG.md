@@ -1,3 +1,20 @@
+## 0.129.0 (2026-05-05)
+
+### 🚀 Features
+
+- #WZ-31326 use AgentConfig entities in AgentService resolution ([#770](https://github.com/whoz-oss/coday/pull/770))
+
+### 🩹 Fixes
+
+- deployPlugins cleans stale plugin JARs before rebuilding ([#820](https://github.com/whoz-oss/coday/pull/820))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.128.0 (2026-04-30)
 
 ### 🚀 Features
