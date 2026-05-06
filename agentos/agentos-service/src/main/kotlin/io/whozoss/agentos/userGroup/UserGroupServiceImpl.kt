@@ -76,12 +76,6 @@ class UserGroupServiceImpl(
 
     @Transactional
     override fun updateFromRequest(userGroupId: UUID, request: UserGroupUpdateRequest): UserGroupSearchResult {
-        val blankAdded = request.addedUserExternalIds.any { it.isBlank() }
-        val blankRemoved = request.removedUserExternalIds.any { it.isBlank() }
-        if (blankAdded || blankRemoved) {
-            throw UnprocessableEntityException("User external IDs must not be blank")
-        }
-
         val intersection = request.addedUserExternalIds.toSet() intersect request.removedUserExternalIds.toSet()
         if (intersection.isNotEmpty()) {
             throw UnprocessableEntityException("User external IDs cannot appear in both addedUserExternalIds and removedUserExternalIds: $intersection")

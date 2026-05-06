@@ -350,36 +350,6 @@ class UserGroupServiceImplUnitSpec :
             }
         }
 
-        "updateFromRequest throws 422 when addedUserExternalIds contains a blank value" {
-            val groupId = randomUUID()
-            val service = buildService()
-
-            shouldThrow<UnprocessableEntityException> {
-                service.updateFromRequest(
-                    groupId,
-                    UserGroupUpdateRequest(
-                        name = "Team",
-                        addedUserExternalIds = listOf("alice@example.com", "  "),
-                    ),
-                )
-            }
-        }
-
-        "updateFromRequest throws 422 when removedUserExternalIds contains a blank value" {
-            val groupId = randomUUID()
-            val service = buildService()
-
-            shouldThrow<UnprocessableEntityException> {
-                service.updateFromRequest(
-                    groupId,
-                    UserGroupUpdateRequest(
-                        name = "Team",
-                        removedUserExternalIds = listOf(""),
-                    ),
-                )
-            }
-        }
-
         "updateFromRequest throws 404 when group does not exist" {
             val groupId = randomUUID()
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
