@@ -72,7 +72,7 @@ class UserGroupServiceImplUnitSpec :
             every { agentConfigRepository.findByIds(listOf(agentId1, agentId2)) } returns
                 listOf(agentConfig(agentId1), agentConfig(agentId2))
             every { userGroupRepository.save(any()) } returns group
-            every { userGroupRepository.findByNamespaceExternalId(externalId) } returns listOf(searchResult)
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
 
             val service = buildService(userGroupRepository, namespaceService, agentConfigRepository)
             val result =
@@ -192,7 +192,7 @@ class UserGroupServiceImplUnitSpec :
 
             every { namespaceService.findByExternalId(externalId) } returns namespace
             every { userGroupRepository.save(any()) } returns group
-            every { userGroupRepository.findByNamespaceExternalId(externalId) } returns listOf(searchResult)
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
 
             val service = buildService(userGroupRepository = userGroupRepository, namespaceService = namespaceService)
             val result =
