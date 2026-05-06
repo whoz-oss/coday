@@ -1,0 +1,3 @@
+### List users
+GET {{apiBaseUrl}}/api/users
+Content-Type: application/json

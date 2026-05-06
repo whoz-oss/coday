@@ -30,31 +30,48 @@ open class Neo4jUserGroupRepository(
             .map { it.toDomain() }
 
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
-        neo4jClient
-            .query(
-                $$"""
-                    MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
-                    WHERE ns.externalId = $externalId
-                      AND (g.removed IS NULL OR g.removed = false)
-                      AND (ns.removed IS NULL OR ns.removed = false)
-                    OPTIONAL MATCH (g)-[:HAS_AGENT]->(a:AgentConfig)
-                      WHERE a.removed IS NULL OR a.removed = false
-                    RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(a.id) AS agentIds
-                    ORDER BY g.name ASC
-                """,
-            ).bind(externalId)
-            .to("externalId")
-            .fetchAs(UserGroupSearchResult::class.java)
-            .mappedBy { _, record ->
-                UserGroupSearchResult(
-                    userGroupId = UUID.fromString(record["userGroupId"].asString()),
-                    namespaceId = UUID.fromString(record["namespaceId"].asString()),
-                    namespaceExternalId = record["namespaceExternalId"].asString(),
-                    name = record["name"].asString(),
-                    agentIds = record["agentIds"].asList { UUID.fromString(it.asString()) },
-                )
-            }.all()
-            .toList()
+        querySearchResults(
+            whereClause = $$"ns.externalId = $externalId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
+            paramName = "externalId",
+            paramValue = externalId,
+        ).all().toList()
+
+    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
+        querySearchResults(
+            whereClause = $$"g.id = $userGroupId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
+            paramName = "userGroupId",
+            paramValue = id.toString(),
+        ).one().orElse(null)
+
+    private fun querySearchResults(
+        whereClause: String,
+        paramName: String,
+        paramValue: String,
+    ) = neo4jClient
+        .query(
+            """
+                MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
+                WHERE $whereClause
+                OPTIONAL MATCH (g)-[:HAS_AGENT]->(a:AgentConfig)
+                  WHERE a.removed IS NULL OR a.removed = false
+                OPTIONAL MATCH (g)-[:HAS_USER]->(u:User)
+                  WHERE u.removed IS NULL OR u.removed = false
+                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+                ORDER BY g.name ASC
+            """,
+        ).bind(paramValue)
+        .to(paramName)
+        .fetchAs(UserGroupSearchResult::class.java)
+        .mappedBy { _, record ->
+            UserGroupSearchResult(
+                userGroupId = UUID.fromString(record["userGroupId"].asString()),
+                namespaceId = UUID.fromString(record["namespaceId"].asString()),
+                namespaceExternalId = record["namespaceExternalId"].asString(),
+                name = record["name"].asString(),
+                agentIds = record["agentIds"].asList { UUID.fromString(it.asString()) },
+                userCount = record["userCount"].asInt(),
+            )
+        }
 
     override fun addAgents(
         userGroupId: UUID,
@@ -65,6 +82,13 @@ open class Neo4jUserGroupRepository(
 
     override fun removeAllAgents(userGroupId: UUID) {
         neo4jRepository.removeAllAgents(userGroupId.toString())
+    }
+
+    override fun addUsers(
+        userGroupId: UUID,
+        userExternalIds: Collection<String>,
+    ) {
+        neo4jRepository.addUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
     override fun delete(id: UUID): Boolean =

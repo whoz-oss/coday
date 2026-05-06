@@ -3,6 +3,7 @@ package io.whozoss.agentos.userGroup
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -12,6 +13,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserRepository
 import java.util.*
 import java.util.UUID.randomUUID
 
@@ -41,6 +43,7 @@ class UserGroupServiceImplUnitSpec :
             userGroupRepository: UserGroupRepository = mockk(relaxed = true),
             namespaceService: NamespaceService = mockk(),
             agentConfigRepository: AgentConfigRepository = mockk(),
+            userRepository: UserRepository = mockk(relaxed = true),
         ) = UserGroupServiceImpl(userGroupRepository, namespaceService, agentConfigRepository)
 
         // -------------------------------------------------------------------------
@@ -69,7 +72,7 @@ class UserGroupServiceImplUnitSpec :
             every { agentConfigRepository.findByIds(listOf(agentId1, agentId2)) } returns
                 listOf(agentConfig(agentId1), agentConfig(agentId2))
             every { userGroupRepository.save(any()) } returns group
-            every { userGroupRepository.findByNamespaceExternalId(externalId) } returns listOf(searchResult)
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
 
             val service = buildService(userGroupRepository, namespaceService, agentConfigRepository)
             val result =
@@ -166,5 +169,76 @@ class UserGroupServiceImplUnitSpec :
                     ),
                 )
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // createFromRequest — user linking
+        // -------------------------------------------------------------------------
+
+        "createFromRequest with userExternalIds calls addUsers" {
+            val groupId = randomUUID()
+            val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team E")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team E",
+                    userCount = 2,
+                )
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val namespaceService = mockk<NamespaceService>()
+
+            every { namespaceService.findByExternalId(externalId) } returns namespace
+            every { userGroupRepository.save(any()) } returns group
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+
+            val service = buildService(userGroupRepository = userGroupRepository, namespaceService = namespaceService)
+            val result =
+                service.createFromRequest(
+                    UserGroupCreateRequest(
+                        namespaceExternalId = externalId,
+                        name = "Team E",
+                        userExternalIds = listOf("alice@example.com", "bob@example.com"),
+                    ),
+                )
+
+            verify(exactly = 1) {
+                userGroupRepository.addUsers(
+                    groupId,
+                    match { ids -> ids.toSet() == setOf("alice@example.com", "bob@example.com") },
+                )
+            }
+            result.userCount shouldBe 2
+        }
+
+        "createFromRequest with no userExternalIds skips addUsers" {
+            val groupId = randomUUID()
+            val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team F")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team F",
+                )
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val namespaceService = mockk<NamespaceService>()
+
+            every { namespaceService.findByExternalId(externalId) } returns namespace
+            every { userGroupRepository.save(any()) } returns group
+            every { userGroupRepository.findByNamespaceExternalId(externalId) } returns listOf(searchResult)
+
+            val service = buildService(userGroupRepository = userGroupRepository, namespaceService = namespaceService)
+            service.createFromRequest(
+                UserGroupCreateRequest(
+                    namespaceExternalId = externalId,
+                    name = "Team F",
+                ),
+            )
+
+            verify(exactly = 0) { userGroupRepository.addUsers(any(), any()) }
         }
     })

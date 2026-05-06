@@ -1049,6 +1049,25 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/user-groups/{userGroupId}:
+    get:
+      tags:
+      - user-group-controller
+      operationId: getByIdUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
   /api/plugins:
     get:
       tags:
@@ -1658,7 +1677,7 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        userIds:
+        userExternalIds:
           type: array
           items:
             type: string
@@ -1675,7 +1694,7 @@ components:
       - agentIds
       - name
       - namespaceExternalId
-      - userIds
+      - userExternalIds
     UserGroupSearchResult:
       type: object
       properties:

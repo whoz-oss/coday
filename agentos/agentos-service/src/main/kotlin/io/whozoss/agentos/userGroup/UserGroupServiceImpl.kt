@@ -40,6 +40,9 @@ class UserGroupServiceImpl(
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
         userGroupRepository.findByNamespaceExternalId(externalId)
 
+    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
+        userGroupRepository.findByIdWithDetails(id)
+
     @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
         val namespace =
@@ -60,10 +63,12 @@ class UserGroupServiceImpl(
             userGroupRepository.addAgents(group.id, request.agentIds)
         }
 
-        // TODO: Query user group with counters
-        return userGroupRepository
-            .findByNamespaceExternalId(request.namespaceExternalId)
-            .first { it.name == request.name }
+        if (request.userExternalIds.isNotEmpty()) {
+            userGroupRepository.addUsers(group.id, request.userExternalIds)
+        }
+
+        return userGroupRepository.findByIdWithDetails(group.id)
+            ?: throw IllegalStateException("UserGroup ${group.id} not found after creation")
     }
 
     private fun validateAgentsInNamespace(
