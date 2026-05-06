@@ -9,20 +9,10 @@ interface StandardTool<T> {
     val version: String
     val paramType: Class<T>?
 
-    fun execute(input: T?, context: ToolContext): String
-
-    /**
-     * Type-erased execution path for tools.
-     * This method handles the internal cast from Any? to T?, allowing callers
-     * to invoke tool execution without reflection or unsafe casts.
-     *
-     * @param input The input parameter as Any? (will be cast to T? internally)
-     * @param context The execution context for this tool call
-     * @return The execution result as a String
-     * @throws ClassCastException if the input cannot be cast to the expected type T
-     */
-    @Suppress("UNCHECKED_CAST")
-    fun executeWithAny(input: Any?, context: ToolContext): String = execute(input as? T, context)
+    fun execute(
+        input: T?,
+        context: ToolContext,
+    ): String
 
     /**
      * Deserialize raw JSON produced by the LLM and execute the tool.
@@ -36,7 +26,10 @@ interface StandardTool<T> {
      * @param context The execution context for this tool call
      * @return The execution result as a String
      */
-    fun executeWithJson(json: String?, context: ToolContext): String {
+    fun executeWithJson(
+        json: String?,
+        context: ToolContext,
+    ): String {
         val type = paramType
         val input: T? =
             if (type == null || json.isNullOrBlank()) {
@@ -53,10 +46,3 @@ interface StandardTool<T> {
         private val objectMapper = jacksonObjectMapper()
     }
 }
-
-/**
- * Reusable JSON Schema for tools that accept no parameters.
- * The LLM must call such tools with an empty object `{}`.
- */
-val NO_ARGS_INPUT: String =
-    """{"type":"object","properties":{},"required":[],"additionalProperties":false}"""
