@@ -45,7 +45,7 @@ describe('updateTomlVersion', () => {
   describe('does not affect other entries', () => {
     it('leaves other agentos keys untouched when updating agentosSdk', () => {
       const result = updateTomlVersion(MOCK_TOML, 'agentosSdk', '1.0.0')
-      expect(result).toContain('agentosService = "0.0.1-SNAPSHOT" FAIL')
+      expect(result).toContain('agentosService = "0.0.1-SNAPSHOT"')
     })
 
     it('leaves unrelated versions untouched', () => {
