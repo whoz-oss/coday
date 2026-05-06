@@ -359,5 +359,97 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             updated.integrationType shouldBe "JIRA_V2"
             service.findById(original.metadata.id)?.integrationType shouldBe "JIRA_V2"
         }
+
+        // -------------------------------------------------------------------------
+        // IG-3 — cross-layer integrationType consistency at create/update
+        // -------------------------------------------------------------------------
+
+        "create rejects user×ns override with integrationType differing from the NS layer" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // NS-shared layer with type=JIRA
+            service.create(config(namespaceId = nsId, name = "JIRA", integrationType = "JIRA"))
+            // User tries to create a user×ns override with the same name but different type
+            shouldThrow<ResponseStatusException> {
+                service.create(
+                    config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
+                )
+            }
+        }
+
+        "create rejects user-global override with integrationType differing from a user×ns layer of the same user" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // user×ns layer for this user
+            service.create(
+                config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "JIRA"),
+            )
+            // Same user creates a user-global with the same name but different type
+            shouldThrow<ResponseStatusException> {
+                service.create(
+                    config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
+                )
+            }
+        }
+
+        "create rejects user×ns override with integrationType differing from the user-global of the same user" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // user-global layer for this user
+            service.create(
+                config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "JIRA"),
+            )
+            // Same user adds a user×ns override with a different type — would break the merge
+            shouldThrow<ResponseStatusException> {
+                service.create(
+                    config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
+                )
+            }
+        }
+
+        "create accepts user×ns override with the SAME integrationType as the NS layer" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, name = "JIRA", integrationType = "JIRA"))
+            // Should NOT throw — same integrationType is the legitimate override case
+            val override = service.create(
+                config(namespaceId = nsId, userId = userId, name = "JIRA", integrationType = "JIRA"),
+            )
+            override.integrationType shouldBe "JIRA"
+        }
+
+        "create allows two different users to have user-overrides with different integrationTypes (cross-user is by design)" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userA = UUID.randomUUID()
+            val userB = UUID.randomUUID()
+            // user A user-global with type=JIRA
+            service.create(config(namespaceId = null, userId = userA, name = "MAIL", integrationType = "JIRA"))
+            // user B user-global with the same name but type=FILE_ACCESS — no merge between users
+            // → legitimate, must NOT throw
+            val configB = service.create(
+                config(namespaceId = null, userId = userB, name = "MAIL", integrationType = "FILE_ACCESS"),
+            )
+            configB.integrationType shouldBe "FILE_ACCESS"
+        }
+
+        "update rejects rename that introduces an integrationType conflict with another layer" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, name = "JIRA", integrationType = "JIRA"))
+            val userOverride = service.create(
+                config(namespaceId = nsId, userId = userId, name = "FILES", integrationType = "FILE_ACCESS"),
+            )
+            // Rename the user override from "FILES" to "JIRA" — would now collide with the NS
+            // layer's "JIRA"/JIRA but the user override carries integrationType=FILE_ACCESS
+            shouldThrow<ResponseStatusException> {
+                service.update(userOverride.copy(name = "JIRA"))
+            }
+        }
     }
 }

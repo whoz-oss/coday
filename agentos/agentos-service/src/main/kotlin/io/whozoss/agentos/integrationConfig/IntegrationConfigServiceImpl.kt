@@ -37,6 +37,7 @@ class IntegrationConfigServiceImpl(
                 conflictMessage(entity),
             )
         }
+        assertConsistentIntegrationTypeAcrossLayers(entity)
         return saveOrConflict(entity)
     }
 
@@ -50,6 +51,7 @@ class IntegrationConfigServiceImpl(
                     conflictMessage(entity),
                 )
             }
+        assertConsistentIntegrationTypeAcrossLayers(entity)
         return saveOrConflict(entity)
     }
 
@@ -82,6 +84,74 @@ class IntegrationConfigServiceImpl(
                 HttpStatus.BAD_REQUEST,
                 "IntegrationConfig must be scoped to at least a namespace or a user",
             )
+        }
+    }
+
+    /**
+     * Reject create/update when another layer that would merge with this entity at reconciliation
+     * time already carries the same `name` but a different `integrationType` (review IG-3).
+     *
+     * The 3-tier reconciliation merges layers param-by-param **assuming all layers share the same
+     * `integrationType`**. If they diverge, the merged config silently switches the plugin at
+     * runtime — a JIRA-typed entity ends up instantiating a FILE_ACCESS plugin with JIRA params,
+     * which fails opaquely deep in the agent run.
+     *
+     * Layers checked depending on the saved entity's scope:
+     * - `(ns, user)` → NS shared `(ns, null, name)` AND user-global of the same user `(null, user, name)`
+     * - `(ns, null)` (NS-shared write) → no conflict possible against user-only layers (each user's
+     *   own override is private; cross-user comparison is by-design legitimate)
+     * - `(null, user)` (user-global write) → user×ns of the same user `(*, user, name)` for any
+     *   namespace; NS-cross checks are skipped (would require an admin-side check across all
+     *   namespaces the user can read — out of MVP scope, and the conflict would surface again
+     *   when the user creates an explicit user×ns override on the conflicting namespace).
+     */
+    private fun assertConsistentIntegrationTypeAcrossLayers(entity: IntegrationConfig) {
+        val userId = entity.userId
+        val namespaceId = entity.namespaceId
+        val name = entity.name
+        val type = entity.integrationType
+        val entityId = entity.id
+
+        fun reject(other: IntegrationConfig): Nothing =
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "An IntegrationConfig named '$name' already exists in another layer with " +
+                    "integrationType='${other.integrationType}' (this entity wants " +
+                    "integrationType='$type'). Overlay layers for the same name must share the " +
+                    "same integrationType to merge correctly at reconciliation time. Either use " +
+                    "a different name or align the integrationType.",
+            )
+
+        // NS layer (always checked for entities that target a namespace, even pure NS-shared ones —
+        // catches the case of an admin renaming a NS config to a name already used by a user-overlay
+        // with a different type, which would also break the merge for that user).
+        if (namespaceId != null) {
+            repository.findByTriple(namespaceId, null, name)
+                ?.takeIf { it.id != entityId && it.integrationType != type }
+                ?.let(::reject)
+        }
+
+        if (userId != null) {
+            // user-global of the same user
+            repository.findByTriple(null, userId, name)
+                ?.takeIf { it.id != entityId && it.integrationType != type }
+                ?.let(::reject)
+
+            if (namespaceId == null) {
+                // Entity is user-global → also check user×ns of the same user across all
+                // namespaces. Volume bounded by `findByUserId` — a single user's overlay set
+                // is small in practice (single-digit hits typical, capped by app-level pagination
+                // on the user-scope endpoints).
+                repository
+                    .findByUserId(userId)
+                    .firstOrNull {
+                        it.id != entityId &&
+                            it.namespaceId != null &&
+                            it.name == name &&
+                            it.integrationType != type
+                    }
+                    ?.let(::reject)
+            }
         }
     }
 
