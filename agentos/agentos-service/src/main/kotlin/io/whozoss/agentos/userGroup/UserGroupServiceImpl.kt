@@ -72,8 +72,8 @@ class UserGroupServiceImpl(
     ) {
         agentIds
             .takeIf { it.isNotEmpty() }
-            ?.let {
-                val found = agentConfigRepository.findByIds(agentIds)
+            ?.let { nonEmptyAgentIds ->
+                val found = agentConfigRepository.findByIds(nonEmptyAgentIds)
                 val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
                 val invalidIds = agentIds - validIds
                 if (invalidIds.isNotEmpty()) {
