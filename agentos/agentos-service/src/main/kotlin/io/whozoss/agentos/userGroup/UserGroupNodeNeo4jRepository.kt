@@ -28,4 +28,18 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         groupId: String,
         agentIds: List<String>,
     )
+
+    @Query(
+        $$"""
+        UNWIND $userExternalIds AS userExternalId
+        MATCH (g:UserGroup {id: $groupId})
+        MATCH (u:User {externalId: userExternalId})
+          WHERE u.removed IS NULL OR u.removed = false
+        MERGE (g)-[:HAS_USER]->(u)
+        """,
+    )
+    fun addUsers(
+        groupId: String,
+        userExternalIds: List<String>,
+    )
 }

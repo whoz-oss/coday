@@ -38,5 +38,6 @@ class UserGroupController(
             namespaceExternalId = namespaceExternalId,
             name = name,
             agentIds = agentIds,
+            userCount = userCount,
         )
 }

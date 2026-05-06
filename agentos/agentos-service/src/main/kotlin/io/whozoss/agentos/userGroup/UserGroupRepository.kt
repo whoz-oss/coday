@@ -7,4 +7,5 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
     fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult>
     fun addAgents(userGroupId: UUID, agentConfigIds: Collection<UUID>)
     fun removeAllAgents(userGroupId: UUID)
+    fun addUsers(userGroupId: UUID, userExternalIds: Collection<String>)
 }

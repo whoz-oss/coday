@@ -10,6 +10,8 @@ import org.springframework.dao.DataIntegrityViolationException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.userGroup.UserGroup
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import org.neo4j.driver.Driver
@@ -21,6 +23,7 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
 
     @Autowired lateinit var userGroupRepo: UserGroupRepository
     @Autowired lateinit var namespaceRepo: NamespaceRepository
+    @Autowired lateinit var userRepo: UserRepository
     @Autowired lateinit var driver: Driver
 
     fun namespace(externalId: String? = null) = Namespace(
@@ -33,6 +36,12 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
         name = name,
+    )
+
+    fun user(externalId: String) = User(
+        metadata = EntityMetadata(),
+        externalId = externalId,
+        email = externalId,
     )
 
     init {
@@ -114,6 +123,35 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             val ns2 = namespaceRepo.save(namespace())
             userGroupRepo.save(userGroup(ns1.id, "Team Alpha"))
             userGroupRepo.save(userGroup(ns2.id, "Team Alpha"))
+        }
+
+        "findByNamespaceExternalId returns userCount reflecting HAS_USER relations" {
+            val externalId = "fed-usercount"
+            val ns = namespaceRepo.save(namespace(externalId = externalId))
+            val g = userGroupRepo.save(userGroup(ns.id, "Group With Users"))
+            userRepo.save(user("alice@example.com"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+
+            val results = userGroupRepo.findByNamespaceExternalId(externalId)
+
+            results shouldHaveSize 1
+            results.first().userCount shouldBe 2
+        }
+
+        "findByNamespaceExternalId does not count soft-deleted users in userCount" {
+            val externalId = "fed-usercount-deleted"
+            val ns = namespaceRepo.save(namespace(externalId = externalId))
+            val g = userGroupRepo.save(userGroup(ns.id, "Group With Deleted User"))
+            val alice = userRepo.save(user("alice-del@example.com"))
+            userRepo.save(user("bob-del@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice-del@example.com", "bob-del@example.com"))
+            userRepo.delete(alice.id)
+
+            val results = userGroupRepo.findByNamespaceExternalId(externalId)
+
+            results shouldHaveSize 1
+            results.first().userCount shouldBe 1
         }
     }
 }
