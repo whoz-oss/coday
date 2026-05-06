@@ -1,3 +1,19 @@
+## 0.134.0 (2026-05-06)
+
+### 🚀 Features
+
+- #31644 Save users to user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix style ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Remove unused code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi doc ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement get user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Save users to user group ([#844](https://github.com/whoz-oss/coday/pull/844), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.133.0 (2026-05-06)
 
 ### 🚀 Features
