@@ -1658,7 +1658,7 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        userIds:
+        userExternalIds:
           type: array
           items:
             type: string
@@ -1675,7 +1675,7 @@ components:
       - agentIds
       - name
       - namespaceExternalId
-      - userIds
+      - userExternalIds
     UserGroupSearchResult:
       type: object
       properties:
