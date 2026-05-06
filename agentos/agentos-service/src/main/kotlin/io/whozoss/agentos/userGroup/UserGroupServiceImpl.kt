@@ -40,16 +40,22 @@ class UserGroupServiceImpl(
             namespaceService.findByExternalId(request.namespaceExternalId)
                 ?: throw UnprocessableEntityException("Namespace not found for externalId: ${request.namespaceExternalId}")
 
-        create(
+        val created = create(
             UserGroup(
                 namespaceId = namespace.id,
                 name = request.name,
             ),
         )
 
-        // TODO: Query user group with counters
-        return userGroupRepository
-            .findByNamespaceExternalId(request.namespaceExternalId)
-            .first { it.name == request.name }
+        // Project the freshly-created entity into the search-result shape directly. Re-fetching
+        // via `findByNamespaceExternalId` was racy (TOCTOU with concurrent soft-delete) and
+        // unnecessary — agent/user counters are not populated in this story (TODO field tracked
+        // separately) so the projection only carries identity + name, which we already have.
+        return UserGroupSearchResult(
+            userGroupId = created.metadata.id,
+            namespaceId = namespace.id,
+            namespaceExternalId = request.namespaceExternalId,
+            name = created.name,
+        )
     }
 }

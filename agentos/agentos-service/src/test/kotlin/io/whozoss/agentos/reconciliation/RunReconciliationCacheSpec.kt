@@ -14,6 +14,9 @@ import java.util.UUID
  */
 class RunReconciliationCacheSpec : StringSpec({
 
+    val ns = UUID.randomUUID()
+    val user = UUID.randomUUID()
+
     fun config(name: String) = IntegrationConfig(
         metadata = EntityMetadata(),
         namespaceId = UUID.randomUUID(),
@@ -30,11 +33,11 @@ class RunReconciliationCacheSpec : StringSpec({
         val expected = config("jira")
         var callCount = 0
 
-        val r1 = cache.getOrCompute("jira", IntegrationConfig::class.java) {
+        val r1 = cache.getOrCompute("jira", IntegrationConfig::class.java, ns, user) {
             callCount++
             expected
         }
-        val r2 = cache.getOrCompute("jira", IntegrationConfig::class.java) {
+        val r2 = cache.getOrCompute("jira", IntegrationConfig::class.java, ns, user) {
             callCount++
             config("jira-second")
         }
@@ -49,8 +52,8 @@ class RunReconciliationCacheSpec : StringSpec({
         val jira = config("jira")
         val github = config("github")
 
-        val r1 = cache.getOrCompute("jira", IntegrationConfig::class.java) { jira }
-        val r2 = cache.getOrCompute("github", IntegrationConfig::class.java) { github }
+        val r1 = cache.getOrCompute("jira", IntegrationConfig::class.java, ns, user) { jira }
+        val r2 = cache.getOrCompute("github", IntegrationConfig::class.java, ns, user) { github }
 
         r1 shouldBe jira
         r2 shouldBe github
@@ -61,8 +64,8 @@ class RunReconciliationCacheSpec : StringSpec({
         val config = config("jira")
         val otherTypeValue = "other-value"
 
-        val r1 = cache.getOrCompute("jira", IntegrationConfig::class.java) { config }
-        val r2 = cache.getOrCompute("jira", String::class.java) { otherTypeValue }
+        val r1 = cache.getOrCompute("jira", IntegrationConfig::class.java, ns, user) { config }
+        val r2 = cache.getOrCompute("jira", String::class.java, ns, user) { otherTypeValue }
 
         r1 shouldBe config
         r2 shouldBe otherTypeValue
@@ -79,8 +82,8 @@ class RunReconciliationCacheSpec : StringSpec({
         val configA = config("jira-a")
         val configB = config("jira-b")
 
-        val rA = cacheA.getOrCompute("jira", IntegrationConfig::class.java) { configA }
-        val rB = cacheB.getOrCompute("jira", IntegrationConfig::class.java) { configB }
+        val rA = cacheA.getOrCompute("jira", IntegrationConfig::class.java, ns, user) { configA }
+        val rB = cacheB.getOrCompute("jira", IntegrationConfig::class.java, ns, user) { configB }
 
         rA shouldBe configA
         rB shouldBe configB
@@ -93,16 +96,48 @@ class RunReconciliationCacheSpec : StringSpec({
 
         val configFromA = config("shared-name")
 
-        cacheA.getOrCompute("shared-name", IntegrationConfig::class.java) { configFromA }
+        cacheA.getOrCompute("shared-name", IntegrationConfig::class.java, ns, user) { configFromA }
 
         var computeCalled = false
         val configFromB = config("shared-name-b")
-        val rB = cacheB.getOrCompute("shared-name", IntegrationConfig::class.java) {
+        val rB = cacheB.getOrCompute("shared-name", IntegrationConfig::class.java, ns, user) {
             computeCalled = true
             configFromB
         }
 
         computeCalled shouldBe true
         rB shouldBe configFromB
+    }
+
+    // -------------------------------------------------------------------------
+    // Defence-in-depth — same name/type but different (namespaceId, userId) → distinct slots
+    // -------------------------------------------------------------------------
+
+    "getOrCompute uses separate slots for different namespaceId" {
+        val cache = RunReconciliationCache()
+        val nsA = UUID.randomUUID()
+        val nsB = UUID.randomUUID()
+        val configA = config("jira")
+        val configB = config("jira")
+
+        val rA = cache.getOrCompute("jira", IntegrationConfig::class.java, nsA, user) { configA }
+        val rB = cache.getOrCompute("jira", IntegrationConfig::class.java, nsB, user) { configB }
+
+        rA shouldBe configA
+        rB shouldBe configB
+    }
+
+    "getOrCompute uses separate slots for different userId" {
+        val cache = RunReconciliationCache()
+        val userA = UUID.randomUUID()
+        val userB = UUID.randomUUID()
+        val configA = config("jira")
+        val configB = config("jira")
+
+        val rA = cache.getOrCompute("jira", IntegrationConfig::class.java, ns, userA) { configA }
+        val rB = cache.getOrCompute("jira", IntegrationConfig::class.java, ns, userB) { configB }
+
+        rA shouldBe configA
+        rB shouldBe configB
     }
 })

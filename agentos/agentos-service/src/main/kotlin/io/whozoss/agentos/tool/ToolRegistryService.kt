@@ -170,8 +170,14 @@ class ToolRegistryService(
      * When [agentIntegrations] is non-null, the same two-level filter as [resolveToolsForNamespace]
      * applies: integrations not listed are skipped, and tool-level filtering uses [isToolAllowed].
      *
-     * A [ConfigNotFoundException] for a given name is swallowed (warning logged, name skipped).
-     * This preserves the posture "a dormant override must not break the run" (FR30).
+     * Discriminated [ConfigNotFoundException] handling (review H-8 / NFR-REL-1 vs FR30):
+     * - When the failing `name` comes EXCLUSIVELY from `findByUserId` (no matching
+     *   `findByNamespaceShared`), it is a **dormant user override** — the user persisted an
+     *   override that no longer matches any namespace-shared config. Swallow the exception,
+     *   warn, and skip the name (FR30: "remains dormant without raising an error").
+     * - When the failing `name` comes from `findByNamespaceShared` (the namespace itself
+     *   declares the integration), reconciliation MUST succeed. **Fail-closed**: rethrow so
+     *   the run aborts rather than silently producing a partial toolset (NFR-REL-1).
      *
      * [resolveToolsForNamespace] is preserved unchanged for legacy callers without userId (AC1).
      */
@@ -204,7 +210,8 @@ class ToolRegistryService(
         val sharedConfigs = integrationConfigService.findByNamespaceShared(namespaceId)
         val userOverrides = integrationConfigService.findByUserId(userId)
             .filter { it.namespaceId == null || it.namespaceId == namespaceId }
-        val distinctNames = (sharedConfigs.map { it.name } + userOverrides.map { it.name }).toSet()
+        val sharedNames = sharedConfigs.map { it.name }.toSet()
+        val distinctNames = sharedNames + userOverrides.map { it.name }
 
         logger.info {
             "[ToolRegistry] resolveToolsForRun namespace=$namespaceId user=$userId: " +
@@ -232,11 +239,19 @@ class ToolRegistryService(
             }
 
             val resolvedConfig = try {
-                cache?.getOrCompute(name, IntegrationConfig::class.java) {
+                cache?.getOrCompute(name, IntegrationConfig::class.java, namespaceId, userId) {
                     integrationConfigReconciliationService.resolve(namespaceId, userId, name)
                 } ?: integrationConfigReconciliationService.resolve(namespaceId, userId, name)
             } catch (e: ConfigNotFoundException) {
-                logger.warn { "[ToolRegistry] Reconciliation failed for name='$name': ${e.message}" }
+                if (name in sharedNames) {
+                    // The namespace itself declares this integration → reconciliation MUST
+                    // succeed. Fail-closed per NFR-REL-1 (no silent partial toolset).
+                    logger.error { "[ToolRegistry] Reconciliation failed for namespace-shared name='$name' — failing the run" }
+                    throw e
+                }
+                // Dormant user override (FR30): user persisted an override targeting a name
+                // that no longer matches any shared config. Skip silently.
+                logger.warn { "[ToolRegistry] Dormant user override for name='$name' (no matching shared config): ${e.message}" }
                 return@forEach
             }
 

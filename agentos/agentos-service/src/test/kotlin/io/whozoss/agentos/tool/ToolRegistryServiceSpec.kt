@@ -1,11 +1,13 @@
 package io.whozoss.agentos.tool
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.whozoss.agentos.reconciliation.ConfigNotFoundException
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
@@ -409,7 +411,10 @@ class ToolRegistryServiceSpec : StringSpec({
         tools shouldHaveSize 1
     }
 
-    "resolveToolsForRun swallows ConfigNotFoundException and continues with other names (AC2)" {
+    "resolveToolsForRun fails fast when a namespace-shared name fails reconciliation (NFR-REL-1)" {
+        // A name enumerated from findByNamespaceShared MUST resolve - if reconciliation
+        // throws ConfigNotFoundException for it, the run aborts rather than silently
+        // producing a partial toolset (review H-8). This is the fail-closed posture.
         val namespaceId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         val plugin = makeConfiguredPlugin("GITHUB", "CreatePR")
@@ -419,12 +424,35 @@ class ToolRegistryServiceSpec : StringSpec({
             plugins = listOf(plugin),
             sharedConfigs = listOf(shared1, shared2),
             reconciledConfigs = mapOf("github" to shared2),
-            // "jira" not in reconciledConfigs → ConfigNotFoundException
+            // "jira" is in sharedConfigs but not in reconciledConfigs → throws.
+        )
+
+        shouldThrow<ConfigNotFoundException> {
+            service.resolveToolsForRun(namespaceId, userId)
+        }
+    }
+
+    "resolveToolsForRun silently skips dormant user overrides whose name has no shared config (FR30)" {
+        // Dormant override path: user persisted an override targeting a name that no longer
+        // exists in any shared config. The reconciliation throws but the run continues —
+        // FR30: "remains dormant without raising an error".
+        val namespaceId = UUID.randomUUID()
+        val userId = UUID.randomUUID()
+        val plugin = makeConfiguredPlugin("GITHUB", "CreatePR")
+        val shared = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "github", integrationType = "GITHUB")
+        // dormant: targets "ghost-name" but no shared config has that name.
+        val dormantOverride = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, userId = userId, name = "ghost-name", integrationType = "JIRA")
+        val service = buildServiceForRun(
+            plugins = listOf(plugin),
+            sharedConfigs = listOf(shared),
+            userOverrides = listOf(dormantOverride),
+            reconciledConfigs = mapOf("github" to shared),
+            // "ghost-name" not in reconciledConfigs → throws but is dormant → skipped silently.
         )
 
         val tools = service.resolveToolsForRun(namespaceId, userId)
 
-        // "jira" swallowed, "github" resolved
+        // dormant "ghost-name" silently skipped, "github" resolved
         tools shouldHaveSize 1
         tools.first().name shouldBe "CreatePR"
     }

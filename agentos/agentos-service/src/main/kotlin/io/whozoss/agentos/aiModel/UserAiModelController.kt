@@ -65,9 +65,13 @@ class UserAiModelController(
         // fall through the guard's string comparison and surface as 404, hiding the
         // real auth issue from the caller.
         currentUserId(auth)
+        // Defence-in-depth against a regression dropping @Valid on the body: surface a
+        // descriptive 400 instead of a 500 NPE if `aiProviderId` ever reaches here as null.
+        val aiProviderId = body.aiProviderId
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "aiProviderId is required")
         val target = AiModel(
             metadata = EntityMetadata(id = UUID.randomUUID()),
-            aiProviderId = body.aiProviderId!!,
+            aiProviderId = aiProviderId,
             namespaceId = null,
             userId = null,
             apiModelName = body.apiModelName,
@@ -135,7 +139,7 @@ class UserAiModelController(
             page = safePage,
             size = safeSize,
             totalElements = total.toLong(),
-            totalPages = (total + safeSize - 1) / safeSize,
+            totalPages = ((total.toLong() + safeSize - 1) / safeSize).toInt(),
         )
     }
 

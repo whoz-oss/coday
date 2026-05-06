@@ -132,7 +132,8 @@ class UserIntegrationConfigController(
         // Force userId=me — any client-supplied userId param is ignored (mass-assignment guard, FR20).
         val all = service.findByUserId(me).filter { filter.accepts(it.namespaceId) }
         val total = all.size
-        val from = (safePage * safeSize).coerceAtMost(total)
+        // Long arithmetic: safePage can be Int.MAX_VALUE → safePage*safeSize would overflow Int.
+        val from = (safePage.toLong() * safeSize).coerceAtMost(total.toLong()).toInt()
         val to = min(from + safeSize, total)
         val pageItems = if (from >= to) emptyList() else all.subList(from, to)
         return UserIntegrationConfigPage(
@@ -140,7 +141,7 @@ class UserIntegrationConfigController(
             page = safePage,
             size = safeSize,
             totalElements = total.toLong(),
-            totalPages = if (safeSize == 0) 0 else (total + safeSize - 1) / safeSize,
+            totalPages = ((total.toLong() + safeSize - 1) / safeSize).toInt(),
         )
     }
 

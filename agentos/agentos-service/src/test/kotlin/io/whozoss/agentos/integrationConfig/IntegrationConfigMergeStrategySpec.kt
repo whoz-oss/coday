@@ -181,4 +181,40 @@ class IntegrationConfigMergeStrategySpec : StringSpec({
         base.parameters?.get("shared")?.get("a")?.asInt() shouldBe 1
         override.parameters?.get("shared")?.get("a")?.asInt() shouldBe 99
     }
+
+    // -------------------------------------------------------------------------
+    // NullNode handling — explicit JSON null in override means "inherit base"
+    // (P6 / IG-2 protection against silent credential blanking on round-trip)
+    // -------------------------------------------------------------------------
+
+    "explicit null in override does NOT wipe base value (inherit-base semantics)" {
+        val base = config("""{"apiKey":"sk-real","baseUrl":"https://x"}""")
+        val override = config("""{"apiKey":null}""")
+        val result = strategy.merge(base, override)
+        result.parameters?.get("apiKey")?.asText() shouldBe "sk-real"
+        result.parameters?.get("baseUrl")?.asText() shouldBe "https://x"
+    }
+
+    "explicit null in nested override does NOT wipe nested base value" {
+        val base = config("""{"auth":{"token":"sk-real","scheme":"Bearer"}}""")
+        val override = config("""{"auth":{"token":null}}""")
+        val result = strategy.merge(base, override)
+        result.parameters?.get("auth")?.get("token")?.asText() shouldBe "sk-real"
+        result.parameters?.get("auth")?.get("scheme")?.asText() shouldBe "Bearer"
+    }
+
+    "explicit null parameters root in override falls back to base parameters" {
+        val base = config("""{"a":1}""")
+        val override = config("""null""")
+        val result = strategy.merge(base, override)
+        result.parameters?.get("a")?.asInt() shouldBe 1
+    }
+
+    "empty string in override DOES override (only JSON null inherits)" {
+        // Documented escape hatch: to clear a string value, send "" not null.
+        val base = config("""{"hint":"old"}""")
+        val override = config("""{"hint":""}""")
+        val result = strategy.merge(base, override)
+        result.parameters?.get("hint")?.asText() shouldBe ""
+    }
 })

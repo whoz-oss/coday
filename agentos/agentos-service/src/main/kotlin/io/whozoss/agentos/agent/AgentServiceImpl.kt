@@ -133,6 +133,13 @@ class AgentServiceImpl(
      * Apply 3-tier reconciliation on a pre-resolved [baseModel] (alias-first key for the
      * model, provider name for the provider). When [userId] is null, falls back to direct
      * repository lookup with no overlay — preserves Epic 4 behaviour exactly (NFR-INT-1, AC11).
+     *
+     * Fail-closed posture (review H-8 / NFR-REL-1): a [io.whozoss.agentos.reconciliation.ConfigNotFoundException]
+     * thrown by either reconciliation step is intentionally propagated — `baseModel` is the
+     * row we just looked up by namespace, so reconciliation cannot legitimately fail to find
+     * it. A failure here means corrupted state (orphan child after parent soft-delete, race
+     * with cleanup, etc.) and the LLM run must abort rather than silently fall back. This
+     * mirrors the namespace-shared posture in [ToolRegistryService.resolveToolsForRun].
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -142,12 +149,12 @@ class AgentServiceImpl(
     ): Pair<AiModel, AiProvider> {
         val (modelConfig, providerConfig) = if (userId != null) {
             val reconciliationName = baseModel.alias ?: baseModel.apiModelName
-            val resolvedModel = cache?.getOrCompute(reconciliationName, AiModel::class.java) {
+            val resolvedModel = cache?.getOrCompute(reconciliationName, AiModel::class.java, namespaceId, userId) {
                 aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
             } ?: aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
 
             val baseProvider = aiProviderService.getById(resolvedModel.aiProviderId)
-            val resolvedProvider = cache?.getOrCompute(baseProvider.name, AiProvider::class.java) {
+            val resolvedProvider = cache?.getOrCompute(baseProvider.name, AiProvider::class.java, namespaceId, userId) {
                 aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
             } ?: aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
             resolvedModel to resolvedProvider

@@ -43,11 +43,39 @@ class IntegrationConfigSchemaInitializer(
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
+        assertNoBlankNames()
         backfillTripleKey()
         assertTripleKeyComplete()
+        assertNoTripleKeyDuplicates()
         ensureTripleKeyUniqueConstraint()
         ensureUserIdIndex()
         dropLegacyCompositeIndex()
+    }
+
+    /**
+     * Pre-flight: reject any row with a NULL/blank `name`. Without this, the backfill below
+     * concatenates a NULL name into the `tripleKey` (Cypher `+ NULL = NULL`) and the next
+     * step ([assertTripleKeyComplete]) trips with a vague error. Surfacing the distinct cause
+     * upfront gives operators an actionable message ("which row is broken") rather than the
+     * downstream symptom ("constraint cannot be created").
+     */
+    private fun assertNoBlankNames() {
+        val broken =
+            neo4jClient
+                .query(
+                    "MATCH (c:IntegrationConfig) WHERE c.name IS NULL OR trim(c.name) = '' " +
+                        "RETURN count(c) AS broken",
+                )
+                .fetchAs(Long::class.java)
+                .one()
+                .orElse(0L)
+        if (broken > 0L) {
+            error(
+                "[IntegrationConfigSchema] aborting: $broken IntegrationConfig row(s) have " +
+                    "a NULL or blank `name` — these violate @NotBlank and cannot produce a " +
+                    "valid tripleKey. Investigate or remediate the rows before next start.",
+            )
+        }
     }
 
     private fun backfillTripleKey() {
@@ -86,6 +114,37 @@ class IntegrationConfigSchemaInitializer(
             error(
                 "[IntegrationConfigSchema] aborting: $pending IntegrationConfig row(s) still " +
                     "have a NULL tripleKey after backfill — refusing to create unique constraint",
+            )
+        }
+    }
+
+    /**
+     * Pre-flight: detect duplicate `tripleKey` rows BEFORE invoking `CREATE CONSTRAINT`.
+     * Without this guard, pre-existing duplicates surface as an opaque
+     * `EquivalentSchemaRuleAlreadyExistsException` from Neo4j during constraint creation,
+     * which gives operators no way to identify the offending rows. The query returns the
+     * up-to-3 first offending keys to make remediation actionable.
+     */
+    private fun assertNoTripleKeyDuplicates() {
+        val offendingKeys =
+            neo4jClient
+                .query(
+                    """
+                    MATCH (c:IntegrationConfig)
+                    WHERE c.tripleKey IS NOT NULL
+                    WITH c.tripleKey AS key, count(c) AS dups
+                    WHERE dups > 1
+                    RETURN key ORDER BY dups DESC LIMIT 3
+                    """.trimIndent(),
+                )
+                .fetchAs(String::class.java)
+                .all()
+        if (offendingKeys.isNotEmpty()) {
+            error(
+                "[IntegrationConfigSchema] aborting: found duplicate tripleKey row(s) " +
+                    "(${offendingKeys.size} group(s) shown, possibly more). Remediate the " +
+                    "offending rows (soft-delete the loser then re-run) before next start. " +
+                    "Sample keys: ${offendingKeys.joinToString(prefix = "[", postfix = "]")}",
             )
         }
     }

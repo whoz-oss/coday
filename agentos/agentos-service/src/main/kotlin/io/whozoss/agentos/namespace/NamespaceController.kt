@@ -69,6 +69,25 @@ class NamespaceController(
             externalId = resource.externalId?.takeIf { it.isNotBlank() },
         )
 
+    /**
+     * `externalId` is the federation identifier — it links the namespace to an upstream IdP /
+     * federation entry. Allowing PUT to mutate it would let any namespace ADMIN hijack/spoof
+     * the federation identity of a namespace, breaking the trust relationship with the IdP.
+     * It is therefore preserved from the existing row on update; setting it is only allowed
+     * at create time (SUPER_ADMIN). To change a namespace's `externalId` deliberately,
+     * delete + recreate.
+     */
+    private fun toDomainForUpdate(
+        resource: NamespaceResource,
+        existing: Namespace,
+    ): Namespace =
+        existing.copy(
+            name = resource.name,
+            description = resource.description,
+            configPath = resource.configPath?.takeIf { it.isNotBlank() },
+            // externalId intentionally preserved — see KDoc above.
+        )
+
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Namespace', 'READ')")
     @HideOnAccessDenied
@@ -102,7 +121,10 @@ class NamespaceController(
     override fun update(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: NamespaceResource,
-    ): NamespaceResource = super.update(id, resource)
+    ): NamespaceResource {
+        val existing = service.findById(id) ?: throw ResourceNotFoundException("Entity not found: $id")
+        return toResource(service.update(toDomainForUpdate(resource, existing)))
+    }
 
     /**
      * DELETE /api/namespaces/{id} — SUPER_ADMIN only (FR2). Cascade-revokes all

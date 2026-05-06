@@ -24,7 +24,8 @@ import java.util.UUID
 class NamespaceServiceImplSpec : StringSpec({
     val namespaceRepository = mockk<NamespaceRepository>(relaxed = true)
     val permissionService = mockk<PermissionService>()
-    val service = NamespaceServiceImpl(namespaceRepository, permissionService)
+    val userGroupRepository = mockk<io.whozoss.agentos.userGroup.UserGroupRepository>(relaxed = true)
+    val service = NamespaceServiceImpl(namespaceRepository, permissionService, userGroupRepository)
 
     val userId = UUID.randomUUID().toString()
 

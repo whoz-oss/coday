@@ -98,7 +98,12 @@ class IntegrationConfigServiceImpl(
             if (!isTripleKeyConflict(e)) {
                 throw e
             }
-            logger.warn(e) {
+            // Do NOT chain `e` to the logger: the Neo4j driver's `DataIntegrityViolationException`
+            // message can echo property values (incl. the offending row's `parameters` JSON which
+            // may contain credentials, cf. NFR-SEC-4). The exception is preserved as the cause of
+            // the rethrown `ResponseStatusException` for stack-trace continuity at the framework
+            // boundary.
+            logger.warn {
                 "[IntegrationConfigService] tripleKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
             }

@@ -109,7 +109,7 @@ class UserAiProviderController(
             page = safePage,
             size = safeSize,
             totalElements = total.toLong(),
-            totalPages = (total + safeSize - 1) / safeSize,
+            totalPages = ((total.toLong() + safeSize - 1) / safeSize).toInt(),
         )
     }
 

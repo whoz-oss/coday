@@ -80,6 +80,11 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
      *
      * `name` matches [AiModelNode.alias] first; when alias is null, falls back to
      * [AiModelNode.apiModelName]. Matches `(namespaceId, userId, name)` with NULL parity.
+     *
+     * Determinism: when both an alias-match and an apiName-fallback row are eligible in the
+     * same scope (legal — alias-only uniqueness, cf. PR #797), `ORDER BY m.alias DESC` puts
+     * the explicit alias-match first (`alias != null` sorts before `alias IS NULL` under
+     * `DESC`). The `m.id ASC` tie-breaker keeps the LIMIT 1 stable across query plans.
      */
     @Query(
         $$"""MATCH (m:AiModel)
@@ -87,7 +92,7 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
               AND (m.userId = $userId OR (m.userId IS NULL AND $userId IS NULL))
               AND ((m.alias = $name) OR (m.alias IS NULL AND m.apiName = $name))
               AND (m.removed IS NULL OR m.removed = false)
-            RETURN m LIMIT 1
+            RETURN m ORDER BY m.alias DESC, m.id ASC LIMIT 1
             """,
     )
     fun findActiveByTriple(
