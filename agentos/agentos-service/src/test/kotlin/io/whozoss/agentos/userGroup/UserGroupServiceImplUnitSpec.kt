@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -299,12 +300,14 @@ class UserGroupServiceImplUnitSpec :
                 ),
             )
 
-            verify(exactly = 1) { userGroupRepository.save(match { it.name == "New Name" }) }
-            verify(exactly = 1) { userGroupRepository.removeAllAgents(groupId) }
-            verify(exactly = 1) { userGroupRepository.addAgents(groupId, listOf(agentId)) }
-            verify(exactly = 1) { userService.resolveOrCreateByExternalId("alice@example.com") }
-            verify(exactly = 1) { userGroupRepository.addUsers(groupId, listOf("alice@example.com")) }
-            verify(exactly = 1) { userGroupRepository.removeUsers(groupId, listOf("bob@example.com")) }
+            verifyOrder {
+                userGroupRepository.save(match { it.name == "New Name" })
+                userGroupRepository.removeAllAgents(groupId)
+                userGroupRepository.addAgents(groupId, listOf(agentId))
+                userService.resolveOrCreateByExternalId("alice@example.com")
+                userGroupRepository.addUsers(groupId, listOf("alice@example.com"))
+                userGroupRepository.removeUsers(groupId, listOf("bob@example.com"))
+            }
             result.name shouldBe "New Name"
             result.agentIds shouldContainExactlyInAnyOrder listOf(agentId)
         }
@@ -329,6 +332,52 @@ class UserGroupServiceImplUnitSpec :
 
             verify(exactly = 1) { userGroupRepository.removeAllAgents(groupId) }
             verify(exactly = 0) { userGroupRepository.addAgents(any(), any()) }
+        }
+
+        "updateFromRequest throws 422 when same externalId appears in added and removed" {
+            val groupId = randomUUID()
+            val service = buildService()
+
+            shouldThrow<UnprocessableEntityException> {
+                service.updateFromRequest(
+                    groupId,
+                    UserGroupUpdateRequest(
+                        name = "Team",
+                        addedUserExternalIds = listOf("alice@example.com", "carol@example.com"),
+                        removedUserExternalIds = listOf("carol@example.com", "bob@example.com"),
+                    ),
+                )
+            }
+        }
+
+        "updateFromRequest throws 422 when addedUserExternalIds contains a blank value" {
+            val groupId = randomUUID()
+            val service = buildService()
+
+            shouldThrow<UnprocessableEntityException> {
+                service.updateFromRequest(
+                    groupId,
+                    UserGroupUpdateRequest(
+                        name = "Team",
+                        addedUserExternalIds = listOf("alice@example.com", "  "),
+                    ),
+                )
+            }
+        }
+
+        "updateFromRequest throws 422 when removedUserExternalIds contains a blank value" {
+            val groupId = randomUUID()
+            val service = buildService()
+
+            shouldThrow<UnprocessableEntityException> {
+                service.updateFromRequest(
+                    groupId,
+                    UserGroupUpdateRequest(
+                        name = "Team",
+                        removedUserExternalIds = listOf(""),
+                    ),
+                )
+            }
         }
 
         "updateFromRequest throws 404 when group does not exist" {
