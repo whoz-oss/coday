@@ -44,7 +44,7 @@ class UserGroupServiceImplUnitSpec :
             namespaceService: NamespaceService = mockk(),
             agentConfigRepository: AgentConfigRepository = mockk(),
             userRepository: UserRepository = mockk(relaxed = true),
-        ) = UserGroupServiceImpl(userGroupRepository, namespaceService, agentConfigRepository, userRepository)
+        ) = UserGroupServiceImpl(userGroupRepository, namespaceService, agentConfigRepository)
 
         // -------------------------------------------------------------------------
         // createFromRequest — agent validation
@@ -178,13 +178,14 @@ class UserGroupServiceImplUnitSpec :
         "createFromRequest with userExternalIds calls addUsers" {
             val groupId = randomUUID()
             val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team E")
-            val searchResult = UserGroupSearchResult(
-                userGroupId = groupId,
-                namespaceId = namespaceId,
-                namespaceExternalId = externalId,
-                name = "Team E",
-                userCount = 2,
-            )
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team E",
+                    userCount = 2,
+                )
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val namespaceService = mockk<NamespaceService>()
@@ -194,13 +195,14 @@ class UserGroupServiceImplUnitSpec :
             every { userGroupRepository.findByNamespaceExternalId(externalId) } returns listOf(searchResult)
 
             val service = buildService(userGroupRepository = userGroupRepository, namespaceService = namespaceService)
-            val result = service.createFromRequest(
-                UserGroupCreateRequest(
-                    namespaceExternalId = externalId,
-                    name = "Team E",
-                    userExternalIds = listOf("alice@example.com", "bob@example.com"),
-                ),
-            )
+            val result =
+                service.createFromRequest(
+                    UserGroupCreateRequest(
+                        namespaceExternalId = externalId,
+                        name = "Team E",
+                        userExternalIds = listOf("alice@example.com", "bob@example.com"),
+                    ),
+                )
 
             verify(exactly = 1) {
                 userGroupRepository.addUsers(
@@ -214,12 +216,13 @@ class UserGroupServiceImplUnitSpec :
         "createFromRequest with no userExternalIds skips addUsers" {
             val groupId = randomUUID()
             val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team F")
-            val searchResult = UserGroupSearchResult(
-                userGroupId = groupId,
-                namespaceId = namespaceId,
-                namespaceExternalId = externalId,
-                name = "Team F",
-            )
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team F",
+                )
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val namespaceService = mockk<NamespaceService>()
