@@ -154,9 +154,14 @@ export class IntegrationsAllScopesComponent implements OnInit {
     // Default destination scope = source scope (clone strict). The form's radio lets the
     // user pick any other destination. `templateScope` tells the form which controller to
     // use to load the source config for hydration.
+    //
+    // Smart-redirect for non-admins: cloning a NS item into NS scope would 403 at submit
+    // for a non-admin (the form's radio also disables that option). Steer directly to
+    // `userOnNs` so the user lands on a usable scope without manual re-pick.
     if (!item.config.id) return
+    const destinationScope = item.scope === 'namespace' && !this.isAdmin() ? 'userOnNs' : item.scope
     this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
-      queryParams: { scope: item.scope, template: item.config.id, templateScope: item.scope },
+      queryParams: { scope: destinationScope, template: item.config.id, templateScope: item.scope },
     })
   }
 

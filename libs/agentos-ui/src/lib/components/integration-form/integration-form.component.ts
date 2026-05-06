@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
@@ -10,6 +10,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
+import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
 const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
 
@@ -50,8 +51,21 @@ export class IntegrationFormComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
+  private readonly namespaceRole = inject(NamespaceRoleStateService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  /**
+   * Whether the current user can write at namespace scope (super-admin OR namespace ADMIN
+   * by Neo4j relation, resolved by [NamespaceRoleStateService]). Drives the namespace radio
+   * option's disabled state — non-admins cannot pick `scope='namespace'` because the backend
+   * would reject the create/update with 403. Defaults to `false` until the lookup resolves;
+   * during that window the namespace option stays disabled (safe default — flickers admin
+   * options on once the role lands, but never lets a non-admin slip through).
+   */
+  protected readonly isAdmin = toSignal(this.namespaceRole.isAdminOfNamespace$(this.namespaceId), {
+    initialValue: false,
+  })
 
   protected readonly form = new FormGroup({
     name: new FormControl<string>('', {
@@ -115,6 +129,21 @@ export class IntegrationFormComponent implements OnInit {
 
   /** Kept for the update payload (preserves server-side fields like userId). */
   private existingConfig: IntegrationConfig | UserIntegrationConfig | null = null
+
+  constructor() {
+    // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
+    // default, or via a hand-crafted URL), bounce the radio to `userOnNs` once the role
+    // lookup resolves. We watch `isAdmin` reactively rather than reading it once at mount
+    // because the service is async — at mount time the signal is still at its `false`
+    // initial value and we cannot tell admin from not-yet-resolved.
+    effect(() => {
+      const admin = this.isAdmin()
+      if (admin || this.isEditMode()) return
+      if (this.scopeControl.value === 'namespace') {
+        this.scopeControl.setValue('userOnNs')
+      }
+    })
+  }
 
   ngOnInit(): void {
     this.state.setNamespace(this.namespaceId)

@@ -130,10 +130,20 @@ describe('IntegrationsAllScopesComponent', () => {
   })
 
   describe('navigation events', () => {
-    it('duplicates a namespace card → form opens with scope=namespace and templateScope=namespace (clone strict)', () => {
+    it('duplicates a namespace card AS ADMIN → form opens with scope=namespace (clone strict)', () => {
+      component['isAdmin'].set(true)
       component['onDuplicate']({ config: nsConfig, scope: 'namespace' })
       expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
         queryParams: { scope: 'namespace', template: 'ns-1', templateScope: 'namespace' },
+      })
+    })
+
+    it('duplicates a namespace card AS NON-ADMIN → form opens with scope=userOnNs (smart-redirect, avoids silent 403)', () => {
+      // isAdmin defaults to false in this spec.
+      component['onDuplicate']({ config: nsConfig, scope: 'namespace' })
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+        // destination scope flips to userOnNs but templateScope stays at the source.
+        queryParams: { scope: 'userOnNs', template: 'ns-1', templateScope: 'namespace' },
       })
     })
 

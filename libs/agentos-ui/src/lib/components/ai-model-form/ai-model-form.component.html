@@ -15,7 +15,12 @@
         <legend class="ai-model-form__label">Portée de la configuration</legend>
         @for (opt of scopeOptions; track trackByScope($index, opt)) {
           <label class="ai-model-form__scope-option">
-            <input type="radio" [formControl]="scopeControl" [value]="opt.value" />
+            <input
+              type="radio"
+              [formControl]="scopeControl"
+              [value]="opt.value"
+              [disabled]="opt.value === 'namespace' && !isAdmin()"
+            />
             <span>{{ opt.label }}</span>
           </label>
         }

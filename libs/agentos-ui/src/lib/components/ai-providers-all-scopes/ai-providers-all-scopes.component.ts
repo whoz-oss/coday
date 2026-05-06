@@ -148,9 +148,13 @@ export class AiProvidersAllScopesComponent implements OnInit {
   protected onDuplicate(item: ResolvedItem): void {
     // Default destination = source scope (clone strict). Radio in the form lets the user
     // re-target. `templateScope` tells the form which controller to use to load the source.
+    //
+    // Smart-redirect for non-admins: a non-admin cloning a NS item into NS scope would 403
+    // at submit (the form's radio also disables that option). Steer directly to `userOnNs`.
     if (!item.config.id) return
+    const destinationScope = item.scope === 'namespace' && !this.isAdmin() ? 'userOnNs' : item.scope
     this.router.navigate(['/agentos', this.namespaceId, 'ai-providers', 'new'], {
-      queryParams: { scope: item.scope, template: item.config.id, templateScope: item.scope },
+      queryParams: { scope: destinationScope, template: item.config.id, templateScope: item.scope },
     })
   }
 

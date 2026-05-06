@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, effect, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider, AiProviderApiTypeEnum, UserAiProvider } from '@whoz-oss/agentos-api-client'
 import { AiProviderConfigStateService, AiProviderScope } from '../../services/ai-provider-config-state.service'
+import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
 const VALID_SCOPES: ReadonlySet<AiProviderScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
 
@@ -47,8 +48,19 @@ export class AiProviderFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(AiProviderConfigStateService)
+  private readonly namespaceRole = inject(NamespaceRoleStateService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  /**
+   * Whether the current user can write at namespace scope (super-admin OR namespace ADMIN
+   * by Neo4j relation). Drives the namespace radio option's disabled state — non-admins
+   * cannot pick `scope='namespace'` because the backend would 403. Defaults to `false`
+   * until the lookup resolves; safe — admins see options enable as soon as the role lands.
+   */
+  protected readonly isAdmin = toSignal(this.namespaceRole.isAdminOfNamespace$(this.namespaceId), {
+    initialValue: false,
+  })
 
   protected readonly apiTypeOptions = Object.values(AiProviderApiTypeEnum)
 
@@ -105,6 +117,19 @@ export class AiProviderFormComponent implements OnInit {
    * tell the state service to omit the apiKey field from the update payload (FR25).
    */
   private initialApiKey = ''
+
+  constructor() {
+    // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
+    // default, or via a hand-crafted URL), bounce the radio to `userOnNs` once the role
+    // lookup resolves. We watch reactively because the role lookup is async.
+    effect(() => {
+      const admin = this.isAdmin()
+      if (admin || this.isEditMode()) return
+      if (this.scopeControl.value === 'namespace') {
+        this.scopeControl.setValue('userOnNs')
+      }
+    })
+  }
 
   ngOnInit(): void {
     this.state.setNamespace(this.namespaceId)

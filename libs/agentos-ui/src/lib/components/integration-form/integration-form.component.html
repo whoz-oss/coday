@@ -15,7 +15,12 @@
         <legend class="integration-form__label">Scope</legend>
         @for (opt of scopeOptions; track trackByScope($index, opt)) {
           <label class="integration-form__scope-option">
-            <input type="radio" [value]="opt.value" [formControl]="scopeControl" />
+            <input
+              type="radio"
+              [value]="opt.value"
+              [formControl]="scopeControl"
+              [disabled]="opt.value === 'namespace' && !isAdmin()"
+            />
             <span>{{ opt.label }}</span>
           </label>
         }
