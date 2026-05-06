@@ -1669,6 +1669,8 @@ components:
           items:
             type: string
             format: uuid
+          maxItems: 200
+          minItems: 0
       required:
       - agentIds
       - name

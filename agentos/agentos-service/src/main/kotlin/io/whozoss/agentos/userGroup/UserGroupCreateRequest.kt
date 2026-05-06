@@ -14,5 +14,6 @@ data class UserGroupCreateRequest(
     val name: String,
     @field:Size(max = 200)
     val userIds: List<String> = emptyList(),
+    @field:Size(max = 200)
     val agentIds: List<UUID> = emptyList(),
 )
