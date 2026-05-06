@@ -1,3 +1,14 @@
+## 0.132.2 (2026-05-06)
+
+### 🚀 Features
+
+- set up nx workspace ([#839](https://github.com/whoz-oss/coday/pull/839))
+- **nx-cloud:** setup nx cloud workspace ([28ea00b9](https://github.com/whoz-oss/coday/commit/28ea00b9))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.132.1 (2026-05-05)
 
 ### 🩹 Fixes
