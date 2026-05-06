@@ -1,3 +1,25 @@
+## 0.133.0 (2026-05-06)
+
+### 🚀 Features
+
+- #31644 Save agents to user groups ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix rebase ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi spec ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Clean code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Clean code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Add constraint ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Save agents to user groups ([#835](https://github.com/whoz-oss/coday/pull/835), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+- **ci:** split validate workflow into parallel ts/jvm jobs with merge gate ([#842](https://github.com/whoz-oss/coday/pull/842), [#841](https://github.com/whoz-oss/coday/issues/841))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.132.2 (2026-05-06)
 
 ### 🚀 Features
