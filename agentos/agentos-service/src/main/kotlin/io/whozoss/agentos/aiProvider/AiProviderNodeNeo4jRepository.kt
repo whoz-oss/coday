@@ -37,24 +37,18 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
     fun findActiveByUserId(userId: String): List<AiProviderNode>
 
     /**
-     * NULL-tolerant triple lookup used by the 3-tier reconciliation service (story 6.4).
+     * Find a single non-removed config matched by its [AiProviderNode.tripleKey] discriminator.
      *
-     * Matches `(namespaceId, userId, name)` where each nullable component uses
-     * `IS NULL` parity when the corresponding parameter is null.
+     * The unique constraint on `tripleKey` provisions an index that backs this lookup with
+     * an exact seek (vs the legacy [findActiveByTriple] which falls back to a label scan
+     * on the NULL-arms because Neo4j 5.x indexes do not seek on `IS NULL`).
      */
     @Query(
         $$"""
-            MATCH (c:AiProvider)
-            WHERE (c.namespaceId = $namespaceId OR (c.namespaceId IS NULL AND $namespaceId IS NULL))
-              AND (c.userId = $userId OR (c.userId IS NULL AND $userId IS NULL))
-              AND c.name = $name
-              AND (c.removed IS NULL OR c.removed = false)
+            MATCH (c:AiProvider {tripleKey: $tripleKey})
+            WHERE (c.removed IS NULL OR c.removed = false)
             RETURN c LIMIT 1
             """,
     )
-    fun findActiveByTriple(
-        namespaceId: String?,
-        userId: String?,
-        name: String,
-    ): AiProviderNode?
+    fun findActiveByTripleKey(tripleKey: String): AiProviderNode?
 }

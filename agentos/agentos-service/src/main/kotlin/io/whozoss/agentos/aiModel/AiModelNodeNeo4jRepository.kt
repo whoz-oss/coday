@@ -76,28 +76,18 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
     fun findActiveByUserId(userId: String): List<AiModelNode>
 
     /**
-     * NULL-tolerant triple lookup for the 3-tier reconciliation service (story 6.4).
+     * Find a single non-removed model matched by its [AiModelNode.tripleKey] discriminator.
      *
-     * `name` matches [AiModelNode.alias] first; when alias is null, falls back to
-     * [AiModelNode.apiModelName]. Matches `(namespaceId, userId, name)` with NULL parity.
-     *
-     * Determinism: when both an alias-match and an apiName-fallback row are eligible in the
-     * same scope (legal — alias-only uniqueness, cf. PR #797), `ORDER BY m.alias DESC` puts
-     * the explicit alias-match first (`alias != null` sorts before `alias IS NULL` under
-     * `DESC`). The `m.id ASC` tie-breaker keeps the LIMIT 1 stable across query plans.
+     * The unique constraint on `tripleKey` provisions an index that backs this lookup with
+     * an exact seek. Mirrors [io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository.findActiveByTripleKey]
+     * and [io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository.findActiveByTripleKey].
      */
     @Query(
-        $$"""MATCH (m:AiModel)
-            WHERE (m.namespaceId = $namespaceId OR (m.namespaceId IS NULL AND $namespaceId IS NULL))
-              AND (m.userId = $userId OR (m.userId IS NULL AND $userId IS NULL))
-              AND ((m.alias = $name) OR (m.alias IS NULL AND m.apiName = $name))
-              AND (m.removed IS NULL OR m.removed = false)
-            RETURN m ORDER BY m.alias DESC, m.id ASC LIMIT 1
+        $$"""
+            MATCH (m:AiModel {tripleKey: $tripleKey})
+            WHERE (m.removed IS NULL OR m.removed = false)
+            RETURN m LIMIT 1
             """,
     )
-    fun findActiveByTriple(
-        namespaceId: String?,
-        userId: String?,
-        name: String,
-    ): AiModelNode?
+    fun findActiveByTripleKey(tripleKey: String): AiModelNode?
 }

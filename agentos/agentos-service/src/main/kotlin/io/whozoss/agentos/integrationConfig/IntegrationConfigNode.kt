@@ -2,6 +2,7 @@ package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.persistence.TripleKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -76,28 +77,13 @@ data class IntegrationConfigNode(
         )
 
     companion object {
-        /**
-         * Sentinel substituted for a NULL id component when computing [tripleKey]. `_` is
-         * outside the UUID alphabet (hex + dashes), so it cannot collide with a real UUID
-         * string and the resulting key remains injective across the three triple modes.
-         */
-        const val NULL_ID_SENTINEL: String = "_"
-
-        /**
-         * Prefix for tombstone keys. Distinct from any active key (no active key starts with
-         * a non-UUID/non-`_` segment), so soft-deleted rows never compete for the unique slot
-         * with their would-be replacements. Each tombstone embeds the row id, which is itself
-         * unique, so multiple tombstones never collide either.
-         */
-        private const val TOMBSTONE_PREFIX: String = "tombstone:"
-
         fun computeTripleKey(
             namespaceId: UUID?,
             userId: UUID?,
             name: String,
-        ): String = "${namespaceId?.toString() ?: NULL_ID_SENTINEL}:${userId?.toString() ?: NULL_ID_SENTINEL}:$name"
+        ): String = TripleKeyEncoding.activeKey(namespaceId, userId, name)
 
-        fun tombstoneTripleKey(id: String): String = "$TOMBSTONE_PREFIX$id"
+        fun tombstoneTripleKey(id: String): String = TripleKeyEncoding.tombstoneKey(id)
 
         fun fromDomain(
             config: IntegrationConfig,

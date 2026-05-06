@@ -1,5 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.persistence.TripleKeyEncoding
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -84,13 +85,19 @@ class IntegrationConfigSchemaInitializer(
         // same triple — a NULL-out + active-key migration would otherwise reintroduce the very
         // collision the constraint is meant to prevent (multiple soft-deleted rows can legally
         // pre-date the constraint with identical triples).
+        // Cypher mirrors `IntegrationConfigNode.computeTripleKey` / `tombstoneTripleKey` and
+        // pulls the literals from the shared `TripleKeyEncoding` object — keeping the two
+        // sides in sync if a maintainer later renames the sentinel or the prefix.
+        val nullSentinel = TripleKeyEncoding.NULL_ID_SENTINEL
+        val separator = TripleKeyEncoding.SEPARATOR
+        val tombstonePrefix = TripleKeyEncoding.TOMBSTONE_PREFIX
         val cypher =
             """
             MATCH (c:IntegrationConfig)
             WHERE c.tripleKey IS NULL
             SET c.tripleKey = CASE
-                WHEN c.removed = true THEN 'tombstone:' + c.id
-                ELSE coalesce(c.namespaceId, '_') + ':' + coalesce(c.userId, '_') + ':' + c.name
+                WHEN c.removed = true THEN '$tombstonePrefix' + c.id
+                ELSE coalesce(c.namespaceId, '$nullSentinel') + '$separator' + coalesce(c.userId, '$nullSentinel') + '$separator' + c.name
             END
             RETURN count(c) AS migrated
             """.trimIndent()

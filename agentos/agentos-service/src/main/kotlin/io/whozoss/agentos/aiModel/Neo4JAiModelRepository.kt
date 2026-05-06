@@ -68,21 +68,38 @@ open class Neo4JAiModelRepository(
             .findActiveByUserId(userId.toString())
             .map { it.toDomain() }
 
+    /**
+     * Triple lookup matches by `coalesce(alias, apiName)` — the runtime resolves a model
+     * by alias-first with apiName fallback, and the tripleKey discriminator is computed
+     * from the same `<matching name>` so a single key indexes both arms (cf.
+     * [AiModelNode.computeTripleKey]).
+     *
+     * The caller passes the `name` it wants to resolve; we use it directly as the matching
+     * name. The constraint guarantees at most one row per `(namespaceId, userId, name)`.
+     */
     override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,
     ): AiModel? =
         neo4jRepository
-            .findActiveByTriple(namespaceId?.toString(), userId?.toString(), name)
+            .findActiveByTripleKey(AiModelNode.computeTripleKey(namespaceId, userId, alias = name, apiModelName = name))
             ?.toDomain()
 
-    override fun delete(id: UUID): Boolean =
+    @Transactional
+    open override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
-                neo4jRepository.save(node.copy(removed = true))
+                // Tombstone the tripleKey at soft-delete so the unique slot is freed for
+                // immediate re-creation of `(ns, user, name)`. Cf. RFC §D11.
+                neo4jRepository.save(
+                    node.copy(
+                        removed = true,
+                        tripleKey = AiModelNode.tombstoneTripleKey(node.id),
+                    ),
+                )
                 logger.debug { "[Neo4jAiModelRepository] Soft-deleted AiModel $id" }
                 true
             } ?: false
@@ -90,7 +107,9 @@ open class Neo4JAiModelRepository(
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByAiProviderId(parentId.toString())
-        neo4jRepository.saveAll(active.map { it.copy(removed = true) })
+        neo4jRepository.saveAll(
+            active.map { it.copy(removed = true, tripleKey = AiModelNode.tombstoneTripleKey(it.id)) },
+        )
         logger.debug { "[Neo4jAiModelRepository] Soft-deleted ${active.size} AiModels under AiProvider $parentId" }
         return active.size
     }
