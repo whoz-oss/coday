@@ -170,8 +170,31 @@ export class UserProfileComponent implements OnInit {
     this.isOverridesExpanded.update((v) => !v)
   }
 
-  protected deleteEntry(entry: UserGlobalEntry): void {
+  /**
+   * Composite key of the entry that is currently in "armed" state (first click on
+   * Delete). When non-null, the row template swaps the Delete button for
+   * Confirm/Cancel. Mirrors the 2-step pattern used by the in-list items
+   * ([io.whozoss.agentos.aiModel.AiModelItemComponent] etc.) so the UX is consistent
+   * across the recap and the namespace-page lists.
+   */
+  protected readonly pendingDeleteKey = signal<string | null>(null)
+
+  protected isPendingDelete(entry: UserGlobalEntry): boolean {
+    return this.pendingDeleteKey() === this.entryKey(entry)
+  }
+
+  protected armDelete(entry: UserGlobalEntry): void {
     if (!entry.id) return
+    this.pendingDeleteKey.set(this.entryKey(entry))
+  }
+
+  protected cancelDelete(): void {
+    this.pendingDeleteKey.set(null)
+  }
+
+  protected confirmDelete(entry: UserGlobalEntry): void {
+    if (!entry.id) return
+    this.pendingDeleteKey.set(null)
     const call$ =
       entry.category === 'integration'
         ? this.integrationState.delete(entry.id, 'userGlobal')
@@ -186,6 +209,10 @@ export class UserProfileComponent implements OnInit {
     })
   }
 
+  private entryKey(entry: UserGlobalEntry): string {
+    return `${entry.category}:${entry.id}`
+  }
+
   protected goBack(): void {
     if (window.history.length > 1) {
       this.location.back()
@@ -195,7 +222,7 @@ export class UserProfileComponent implements OnInit {
   }
 
   protected trackEntry(_index: number, entry: UserGlobalEntry): string {
-    return `${entry.category}:${entry.id}`
+    return this.entryKey(entry)
   }
 
   private syncFormFromState(): void {
