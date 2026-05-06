@@ -32,9 +32,9 @@ open class Neo4jUserGroupRepository(
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
         neo4jClient
             .query(
-                """
+                $$"""
                     MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
-                    WHERE ns.externalId = ${'$'}externalId
+                    WHERE ns.externalId = $externalId
                       AND (g.removed IS NULL OR g.removed = false)
                       AND (ns.removed IS NULL OR ns.removed = false)
                     OPTIONAL MATCH (g)-[:HAS_AGENT]->(a:AgentConfig)
