@@ -54,6 +54,7 @@ class AgentConfigController(
             instructions = entity.instructions,
             modelName = entity.modelName,
             integrations = entity.integrations,
+            advancedExecution = entity.advancedExecution,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -65,6 +66,7 @@ class AgentConfigController(
             instructions = resource.instructions,
             modelName = resource.modelName,
             integrations = resource.integrations,
+            advancedExecution = resource.advancedExecution,
         )
 
     /**
@@ -81,6 +83,8 @@ class AgentConfigController(
             description = resource.description,
             instructions = resource.instructions,
             modelName = resource.modelName,
+            integrations = resource.integrations,
+            advancedExecution = resource.advancedExecution,
         )
 
     @GetMapping("/{id}")

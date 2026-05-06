@@ -29,4 +29,5 @@ data class AgentConfigResource(
     val instructions: String? = null,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
+    val advancedExecution: Boolean = false,
 )
