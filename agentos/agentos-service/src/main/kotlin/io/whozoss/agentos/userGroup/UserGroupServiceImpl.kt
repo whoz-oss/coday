@@ -4,6 +4,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.user.UserService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -14,6 +15,7 @@ class UserGroupServiceImpl(
     private val userGroupRepository: UserGroupRepository,
     private val namespaceService: NamespaceService,
     private val agentConfigRepository: AgentConfigRepository,
+    private val userService: UserService,
 ) : UserGroupService {
     override fun create(entity: UserGroup): UserGroup =
         try {
@@ -64,6 +66,7 @@ class UserGroupServiceImpl(
         }
 
         if (request.userExternalIds.isNotEmpty()) {
+            request.userExternalIds.forEach { userService.resolveOrCreateByExternalId(it) }
             userGroupRepository.addUsers(group.id, request.userExternalIds)
         }
 

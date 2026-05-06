@@ -28,6 +28,12 @@ class Neo4jSchemaInitializer(private val driver: Driver) {
                     "FOR (n:Namespace) REQUIRE n.externalId IS UNIQUE",
             )
             logger.info { "[Neo4jSchemaInitializer] Constraint namespace_external_id_unique ensured" }
+
+            session.run(
+                "CREATE CONSTRAINT user_external_id_unique IF NOT EXISTS " +
+                    "FOR (u:User) REQUIRE u.externalId IS UNIQUE",
+            )
+            logger.info { "[Neo4jSchemaInitializer] Constraint user_external_id_unique ensured" }
         }
     }
 

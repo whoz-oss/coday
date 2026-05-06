@@ -13,7 +13,8 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.UserRepository
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
 import java.util.*
 import java.util.UUID.randomUUID
 
@@ -39,12 +40,18 @@ class UserGroupServiceImplUnitSpec :
             name = "agent-$id",
         )
 
+        fun makeUser(externalId: String) = User(
+            metadata = EntityMetadata(id = randomUUID()),
+            externalId = externalId,
+            isAdmin = false,
+        )
+
         fun buildService(
             userGroupRepository: UserGroupRepository = mockk(relaxed = true),
             namespaceService: NamespaceService = mockk(),
             agentConfigRepository: AgentConfigRepository = mockk(),
-            userRepository: UserRepository = mockk(relaxed = true),
-        ) = UserGroupServiceImpl(userGroupRepository, namespaceService, agentConfigRepository)
+            userService: UserService = mockk(relaxed = true),
+        ) = UserGroupServiceImpl(userGroupRepository, namespaceService, agentConfigRepository, userService)
 
         // -------------------------------------------------------------------------
         // createFromRequest — agent validation
@@ -174,6 +181,45 @@ class UserGroupServiceImplUnitSpec :
         // -------------------------------------------------------------------------
         // createFromRequest — user linking
         // -------------------------------------------------------------------------
+
+        "createFromRequest resolves or creates each user before calling addUsers" {
+            val groupId = randomUUID()
+            val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team E")
+            val searchResult = UserGroupSearchResult(
+                userGroupId = groupId,
+                namespaceId = namespaceId,
+                namespaceExternalId = externalId,
+                name = "Team E",
+                userCount = 2,
+            )
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val namespaceService = mockk<NamespaceService>()
+            val userService = mockk<UserService>()
+
+            every { namespaceService.findByExternalId(externalId) } returns namespace
+            every { userGroupRepository.save(any()) } returns group
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userService.resolveOrCreateByExternalId(any()) } answers { makeUser(firstArg()) }
+
+            val service = buildService(userGroupRepository, namespaceService, userService = userService)
+            service.createFromRequest(
+                UserGroupCreateRequest(
+                    namespaceExternalId = externalId,
+                    name = "Team E",
+                    userExternalIds = listOf("alice@example.com", "bob@example.com"),
+                ),
+            )
+
+            verify(exactly = 1) { userService.resolveOrCreateByExternalId("alice@example.com") }
+            verify(exactly = 1) { userService.resolveOrCreateByExternalId("bob@example.com") }
+            verify(exactly = 1) {
+                userGroupRepository.addUsers(
+                    groupId,
+                    match { ids -> ids.toSet() == setOf("alice@example.com", "bob@example.com") },
+                )
+            }
+        }
 
         "createFromRequest with userExternalIds calls addUsers" {
             val groupId = randomUUID()
