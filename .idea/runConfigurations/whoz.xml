@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="whoz" type="CompoundRunConfigurationType">
+    <toRun name="client" type="js.build_tools.npm" />
+    <toRun name="server" type="js.build_tools.npm" />
+    <toRun name="AgentOSRegisteredOnWhoz" type="SpringBootApplicationConfigurationType" />
+    <method v="2" />
+  </configuration>
+</component>
