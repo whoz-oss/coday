@@ -206,7 +206,14 @@ export class AiModelFormComponent implements OnInit {
         next: (model) => {
           this.existingModel = model
           const scope = this.deriveScopeFromConfig(model)
-          this.scopeControl.setValue(scope)
+          // `emitEvent: false`: prevent the scopeControl.valueChanges subscriber from racing
+          // with applyModelToForm. Without this, the subscriber refetches eligibleProviders$
+          // for `scope` async; if the resolved list arrives AFTER applyModelToForm has set
+          // `aiProviderId`, but doesn't yet contain the loaded provider, the subscriber
+          // wipes `aiProviderIdControl` to '' — and the resulting submit is invalid (review
+          // chunk 2a finding #18). In edit-mode the `<select>` is anyway hidden behind a
+          // read-only label, so we don't need eligibleProviders to refresh on scope load.
+          this.scopeControl.setValue(scope, { emitEvent: false })
           this.applyModelToForm(model)
           this.isLoading.set(false)
         },
