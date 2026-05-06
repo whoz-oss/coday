@@ -59,6 +59,10 @@ class McpConnectionPool {
     /**
      * Returns a healthy [McpConnection] for [config], creating one if needed.
      *
+     * Uses [ConcurrentHashMap.compute] to ensure the check-then-create sequence is atomic:
+     * only one thread will ever create a connection for a given config hash, even under
+     * concurrent calls.
+     *
      * If an existing pooled connection for the same config hash is found but its
      * process has died, it is replaced with a fresh connection transparently.
      *
@@ -67,35 +71,36 @@ class McpConnectionPool {
      */
     fun acquire(config: McpServerConfig): McpConnection {
         val hash = config.configHash()
+        var result: McpConnection? = null
 
-        // Fast path: reuse existing healthy connection
-        pool[hash]?.let { pooled ->
-            return when {
-                pooled.connection.isAlive() -> {
+        pool.compute(hash) { _, existing ->
+            result = when {
+                existing != null && existing.connection.isAlive() -> {
                     logger.debug { "[McpPool] Reusing connection ${hash.take(8)} for '${config.label}'" }
-                    pooled.connection
+                    existing.connection
+                }
+                existing != null -> {
+                    logger.warn { "[McpPool] Connection ${hash.take(8)} is dead, reconnecting" }
+                    existing.connection.close()
+                    createConnection(config, hash)
                 }
                 else -> {
-                    logger.warn { "[McpPool] Connection ${hash.take(8)} is dead, reconnecting" }
-                    pooled.connection.close()
-                    pool.remove(hash)
-                    createAndStore(config, hash)
+                    check(pool.size < MAX_POOL_SIZE) {
+                        "[McpPool] Pool capacity reached ($MAX_POOL_SIZE). Cannot create new connection for '${config.label}'."
+                    }
+                    createConnection(config, hash)
                 }
             }
+            PooledConnection(connection = result!!, config = config)
         }
 
-        // New connection needed
-        return createAndStore(config, hash)
+        return result!!
     }
 
-    private fun createAndStore(config: McpServerConfig, hash: String): McpConnection {
-        check(pool.size < MAX_POOL_SIZE) {
-            "[McpPool] Pool capacity reached ($MAX_POOL_SIZE). Cannot create new connection for '${config.command}'."
-        }
+    private fun createConnection(config: McpServerConfig, hash: String): McpConnection {
         val connection = McpConnection(config, hash)
         connection.connect()
-        pool[hash] = PooledConnection(connection = connection, config = config)
-        logger.info { "[McpPool] New connection ${hash.take(8)} for '${config.label}' (pool size=${pool.size})" }
+        logger.info { "[McpPool] New connection ${hash.take(8)} for '${config.label}' (pool size=${pool.size + 1})" }
         return connection
     }
 

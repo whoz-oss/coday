@@ -3,7 +3,11 @@ package io.whozoss.agentos.plugins.mcp
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.fasterxml.jackson.databind.cfg.CoercionAction
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape
+import com.fasterxml.jackson.databind.type.LogicalType
+import com.fasterxml.jackson.module.kotlin.KotlinFeature
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 
 /**
  * Parses and validates a [JsonNode] config into a [McpServerConfig].
@@ -21,8 +25,26 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 object McpConfigParser {
 
     private val mapper = ObjectMapper()
-        .registerKotlinModule()
+        .registerModule(
+            KotlinModule.Builder()
+                // When Jackson coerces an empty string to null for a Map/Collection field,
+                // the Kotlin module would normally throw MissingKotlinParameterException
+                // because the field is non-nullable. These two features tell it to substitute
+                // an empty collection/map instead, honouring the Kotlin default values.
+                .enable(KotlinFeature.NullToEmptyCollection)
+                .enable(KotlinFeature.NullToEmptyMap)
+                .build()
+        )
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        // Treat empty strings as null for Maps and Collections so that a frontend
+        // sending env="" or args="" degrades gracefully to the default empty value
+        // rather than throwing InvalidFormatException.
+        .apply {
+            coercionConfigFor(LogicalType.Map)
+                .setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull)
+            coercionConfigFor(LogicalType.Collection)
+                .setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull)
+        }
 
     fun parse(config: JsonNode): McpServerConfig {
         val raw = mapper.treeToValue(config, McpServerConfig::class.java)

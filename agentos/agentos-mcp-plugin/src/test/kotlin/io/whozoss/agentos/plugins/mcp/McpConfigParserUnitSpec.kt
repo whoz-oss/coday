@@ -110,6 +110,20 @@ class McpConfigParserUnitSpec : StringSpec({
         ex.message shouldContain "authToken"
     }
 
+    // ----- empty string coercion (frontend sends "" for optional fields) -----
+
+    "treats empty string env as empty map" {
+        val json = mapper.readTree("""{ "command": "docker", "env": "" }""")
+        val config = McpConfigParser.parse(json)
+        config.env shouldBe emptyMap()
+    }
+
+    "treats empty string args as empty list" {
+        val json = mapper.readTree("""{ "command": "docker", "args": "" }""")
+        val config = McpConfigParser.parse(json)
+        config.args shouldBe emptyList()
+    }
+
     // ----- mutual exclusion / missing transport -----
 
     "rejects config with neither command nor url" {

@@ -19,6 +19,7 @@ import java.security.MessageDigest
  */
 private const val HASH_SEPARATOR = "|"
 private const val HASH_KEY_VALUE_SEPARATOR = "="
+private const val HASH_ALGORITHM = "SHA-256"
 
 fun McpServerConfig.configHash(): String {
     val sb = StringBuilder()
@@ -40,6 +41,6 @@ fun McpServerConfig.configHash(): String {
     }
     sb.append(HASH_SEPARATOR).append(timeoutSeconds)
     sb.append(HASH_SEPARATOR).append(toolCallTimeoutSeconds)
-    val digest = MessageDigest.getInstance("SHA-256").digest(sb.toString().toByteArray())
+    val digest = MessageDigest.getInstance(HASH_ALGORITHM).digest(sb.toString().toByteArray())
     return digest.joinToString("") { "%02x".format(it) }
 }

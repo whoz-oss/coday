@@ -25,12 +25,12 @@ tasks.named("build") {
 // Plugin deployment
 // ========================================
 
-// Non-plugin included builds -- excluded from deployPlugins.
-// All other included builds are assumed to be plugins.
-val nonPluginBuilds = setOf("agentos-sdk", "agentos-service")
+// Plugin builds are identified by convention: their name must contain "plugin".
+// This is more robust than a blacklist approach, which requires manual updates
+// whenever a non-plugin included build is added.
 val pluginBuilds: List<String> = gradle.includedBuilds
     .map { it.name }
-    .filter { it !in nonPluginBuilds }
+    .filter { it.contains("plugin") }
 
 // Resolve all paths at configuration time into plain File values
 // so that doLast closures are configuration-cache compatible.
