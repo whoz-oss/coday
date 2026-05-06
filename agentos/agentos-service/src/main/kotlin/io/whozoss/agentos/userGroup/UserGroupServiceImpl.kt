@@ -74,6 +74,32 @@ class UserGroupServiceImpl(
             ?: throw IllegalStateException("UserGroup ${group.id} not found after creation")
     }
 
+    @Transactional
+    override fun updateFromRequest(userGroupId: UUID, request: UserGroupUpdateRequest): UserGroupSearchResult {
+        val existing = getById(userGroupId)
+
+        validateAgentsInNamespace(request.agentIds, existing.namespaceId)
+
+        update(existing.copy(name = request.name))
+
+        userGroupRepository.removeAllAgents(userGroupId)
+        if (request.agentIds.isNotEmpty()) {
+            userGroupRepository.addAgents(userGroupId, request.agentIds)
+        }
+
+        if (request.addedUserExternalIds.isNotEmpty()) {
+            request.addedUserExternalIds.forEach { userService.resolveOrCreateByExternalId(it) }
+            userGroupRepository.addUsers(userGroupId, request.addedUserExternalIds)
+        }
+
+        if (request.removedUserExternalIds.isNotEmpty()) {
+            userGroupRepository.removeUsers(userGroupId, request.removedUserExternalIds)
+        }
+
+        return userGroupRepository.findByIdWithDetails(userGroupId)
+            ?: throw IllegalStateException("UserGroup $userGroupId not found after update")
+    }
+
     private fun validateAgentsInNamespace(
         agentIds: List<UUID>,
         namespaceId: UUID,

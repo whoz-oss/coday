@@ -6,6 +6,7 @@ import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -40,6 +41,13 @@ class UserGroupController(
         @Valid @RequestBody request: UserGroupCreateRequest,
     ): UserGroupSearchResultResource =
         userGroupService.createFromRequest(request).toResource()
+
+    @PutMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    fun update(
+        @PathVariable userGroupId: UUID,
+        @Valid @RequestBody request: UserGroupUpdateRequest,
+    ): UserGroupSearchResultResource =
+        userGroupService.updateFromRequest(userGroupId, request).toResource()
 
     private fun UserGroupSearchResult.toResource() =
         UserGroupSearchResultResource(

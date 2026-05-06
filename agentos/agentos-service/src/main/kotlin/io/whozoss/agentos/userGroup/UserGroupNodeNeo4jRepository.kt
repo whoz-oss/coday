@@ -42,4 +42,16 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         groupId: String,
         userExternalIds: List<String>,
     )
+
+    @Query(
+        $$"""
+        UNWIND $userExternalIds AS userExternalId
+        MATCH (g:UserGroup {id: $groupId})-[r:HAS_USER]->(u:User {externalId: userExternalId})
+        DELETE r
+        """,
+    )
+    fun removeUsers(
+        groupId: String,
+        userExternalIds: List<String>,
+    )
 }
