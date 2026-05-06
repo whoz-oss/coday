@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effec
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
+import { catchError, Observable } from 'rxjs'
 import {
   IntegrationConfig,
   IntegrationTypeControllerService,
@@ -187,8 +188,11 @@ export class IntegrationFormComponent implements OnInit {
 
   private loadConfig(id: string, hintedScope: IntegrationScope): void {
     this.isLoading.set(true)
-    this.state
-      .getById(id, hintedScope)
+    // Try the hinted scope first; if the GET 404s (id exists but as a different-scope
+    // resource — stale link, copy-pasted URL, scope-switch via delete+recreate) fall back
+    // to the other two scopes before giving up. The actual scope is then derived from the
+    // loaded resource so the radio reflects the truth, not the URL hint.
+    this.tryLoadAcrossScopes(id, hintedScope)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -199,9 +203,30 @@ export class IntegrationFormComponent implements OnInit {
         },
         error: () => {
           this.isLoading.set(false)
+          // All three scopes failed — id is genuinely unknown. Bail with a navigateBack
+          // (a toast service would be nicer but the design system doesn't yet expose one
+          // here — tracked separately).
+          console.warn(`[IntegrationForm] Could not load config '${id}' in any scope — navigating back`)
           this.navigateBack()
         },
       })
+  }
+
+  /**
+   * Attempt `state.getById(id, scope)` starting with `hint`, falling back to the other
+   * two scopes on 4xx error. The order is `[hint, ...others]` so the happy path stays
+   * one round-trip; mismatch = at most three round-trips before bail.
+   */
+  private tryLoadAcrossScopes(
+    id: string,
+    hint: IntegrationScope
+  ): Observable<IntegrationConfig | UserIntegrationConfig> {
+    const allScopes: ReadonlyArray<IntegrationScope> = ['namespace', 'userOnNs', 'userGlobal']
+    const ordered: ReadonlyArray<IntegrationScope> = [hint, ...allScopes.filter((s) => s !== hint)]
+    return ordered.reduce<Observable<IntegrationConfig | UserIntegrationConfig>>(
+      (acc, scope, idx) => (idx === 0 ? acc : acc.pipe(catchError(() => this.state.getById(id, scope)))),
+      this.state.getById(id, ordered[0])
+    )
   }
 
   private hydrateFromTemplate(templateId: string, templateScope: IntegrationScope): void {

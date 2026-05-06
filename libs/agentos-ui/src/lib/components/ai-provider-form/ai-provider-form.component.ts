@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, effect, inject,
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
+import { catchError, Observable } from 'rxjs'
 import { AiProvider, AiProviderApiTypeEnum, UserAiProvider } from '@whoz-oss/agentos-api-client'
 import { AiProviderConfigStateService, AiProviderScope } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
@@ -171,8 +172,10 @@ export class AiProviderFormComponent implements OnInit {
 
   private loadConfig(id: string, hintedScope: AiProviderScope): void {
     this.isLoading.set(true)
-    this.state
-      .getById(id, hintedScope)
+    // Try the hinted scope first; fall back to the other two scopes on 4xx (stale link,
+    // copy-pasted URL, scope-switch via delete+recreate). The actual scope is derived from
+    // the loaded resource so the radio reflects truth, not the URL hint.
+    this.tryLoadAcrossScopes(id, hintedScope)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -183,9 +186,19 @@ export class AiProviderFormComponent implements OnInit {
         },
         error: () => {
           this.isLoading.set(false)
+          console.warn(`[AiProviderForm] Could not load provider '${id}' in any scope — navigating back`)
           this.navigateBack()
         },
       })
+  }
+
+  private tryLoadAcrossScopes(id: string, hint: AiProviderScope): Observable<AiProvider | UserAiProvider> {
+    const allScopes: ReadonlyArray<AiProviderScope> = ['namespace', 'userOnNs', 'userGlobal']
+    const ordered: ReadonlyArray<AiProviderScope> = [hint, ...allScopes.filter((s) => s !== hint)]
+    return ordered.reduce<Observable<AiProvider | UserAiProvider>>(
+      (acc, scope, idx) => (idx === 0 ? acc : acc.pipe(catchError(() => this.state.getById(id, scope)))),
+      this.state.getById(id, ordered[0])
+    )
   }
 
   private hydrateFromTemplate(templateId: string, templateScope: AiProviderScope): void {
