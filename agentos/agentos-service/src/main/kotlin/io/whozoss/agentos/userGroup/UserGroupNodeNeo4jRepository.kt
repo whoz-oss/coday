@@ -4,7 +4,6 @@ import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
 
 interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> {
-
     @Query(
         $$"""
             MATCH (g:UserGroup)
@@ -13,4 +12,20 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<UserGroupNode>
+
+    @Query($$"MATCH (:UserGroup {id: $groupId})-[r:HAS_AGENT]->(:AgentConfig) DELETE r")
+    fun removeAllAgents(groupId: String)
+
+    @Query(
+        $$"""
+        UNWIND $agentIds AS agentId
+        MATCH (g:UserGroup {id: $groupId})
+        MATCH (a:AgentConfig {id: agentId})
+        MERGE (g)-[:HAS_AGENT]->(a)
+        """,
+    )
+    fun addAgents(
+        groupId: String,
+        agentIds: List<String>,
+    )
 }

@@ -1662,11 +1662,15 @@ components:
           type: array
           items:
             type: string
+          maxItems: 200
+          minItems: 0
         agentIds:
           type: array
           items:
             type: string
             format: uuid
+          maxItems: 200
+          minItems: 0
       required:
       - agentIds
       - name
@@ -1689,6 +1693,7 @@ components:
           type: array
           items:
             type: string
+            format: uuid
         userCount:
           type: integer
           format: int32
