@@ -285,12 +285,20 @@ export class IntegrationFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
     const trimmedDescription = this.descriptionControl.value?.trim()
+    // Round-trip masking guard (review IG-5): in edit-mode, if the user did not touch
+    // the JSON form, omit `parameters` from the payload entirely so the backend keeps
+    // the persisted value. Without this, the form would re-post the response payload
+    // verbatim — including any masked secret (e.g. `bearerToken: "***"`) — and the
+    // backend would write the mask over the real credential. Sending `undefined` here
+    // is what we want: JSON.stringify drops undefined fields, so the key is absent
+    // from the wire payload (≠ null which would clear the field server-side).
+    const parametersUnchanged = this.isEditMode() && this.paramsAreEqual(this.initialParams(), this.paramsValue())
     const draft = {
       name: this.nameControl.value.trim(),
       // Send null (not undefined) when the user cleared the field so the backend clears it.
       description: trimmedDescription ? trimmedDescription : null,
       integrationType: this.typeControl.value,
-      parameters: this.paramsValue(),
+      parameters: parametersUnchanged ? undefined : this.paramsValue(),
     }
     // getRawValue() includes the scope control even when disabled in edit mode.
     const scope = this.form.getRawValue().scope
@@ -320,5 +328,18 @@ export class IntegrationFormComponent implements OnInit {
 
   protected trackByScope(_index: number, opt: { value: IntegrationScope }): string {
     return opt.value
+  }
+
+  /**
+   * Structural equality check on the `parameters` JSON used to detect untouched payloads
+   * at submit time. Relies on `JSON.stringify` key-order being insertion-stable (true on
+   * V8 / SpiderMonkey / WebKit for non-numeric keys); both `initialParams` and
+   * `paramsValue` emanate from the same `ds-json-schema-form` schema seed so insertion
+   * order is consistent between the loaded payload and the user-edited one.
+   */
+  private paramsAreEqual(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
+    if (a === b) return true
+    if (a === null || b === null) return false
+    return JSON.stringify(a) === JSON.stringify(b)
   }
 }
