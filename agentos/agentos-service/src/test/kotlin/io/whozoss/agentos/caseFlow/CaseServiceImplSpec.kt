@@ -554,7 +554,24 @@ class CaseServiceImplSpec :
         }
 
         "first message without @mention produces WarnEvent and stops when namespace has no default agent" {
-            val service = buildService(defaultAgentName = null)
+            // Wire the service manually to keep a reference to the event store.
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = null,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            // resolveAgentName is never reached because selectDefaultAgent short-circuits on null
+            val agentService = mockk<AgentService>(relaxed = true)
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(
+                agentService,
+                InMemoryCaseRepository(),
+                caseEventService,
+                userService,
+                namespaceService,
+            )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
@@ -567,20 +584,13 @@ class CaseServiceImplSpec :
             )
             awaiter.join()
 
-            // Case must be IDLE (not ERROR): no default is a clean stop, not a crash
+            // Case must be IDLE (not ERROR): no default is a configuration issue, not a crash
             service.getById(case.id).status shouldBe CaseStatus.IDLE
-            // A WarnEvent must be in the persisted store
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            val events = runtime.let {
-                // read from the service's event store via findByParent
-                service.let { svc ->
-                    // We can't access caseEventService directly, so verify via SSE events
-                    // collected before the status change.
-                    Unit
-                }
-            }
-            // The key assertion: case reached IDLE cleanly (no ERROR), confirming the
-            // WarnEvent path was taken and the runtime stopped without crashing.
+            // A WarnEvent must have been persisted — it is the only event besides the MessageEvent
+            val persistedEvents = caseEventService.findByParent(case.id)
+            persistedEvents.filterIsInstance<WarnEvent>() shouldHaveAtLeastSize 1
+            // No AgentSelectedEvent: routing stopped at the WarnEvent
+            persistedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()
         }
 
         "last active agent unavailable falls back to namespace default" {
