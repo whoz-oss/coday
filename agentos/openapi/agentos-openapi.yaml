@@ -625,6 +625,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
+    delete:
+      tags:
+      - user-group-controller
+      operationId: deleteUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/plugins/{pluginId}/stop:
     post:
       tags:
