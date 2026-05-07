@@ -56,18 +56,4 @@ data class AgentConfig(
      * Defaults to false so existing agents are unaffected.
      */
     val advancedExecution: Boolean = false,
-) : Entity {
-    /**
-     * Returns true when this config was not loaded from a real namespace — i.e. it is the
-     * built-in fallback produced by [AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG].
-     *
-     * The fallback carries [NO_NAMESPACE_ID] as a sentinel so callers can detect it and
-     * substitute the real namespace at runtime.
-     */
-    fun hasNoRealNamespace(): Boolean = namespaceId == NO_NAMESPACE_ID
-
-    companion object {
-        /** Sentinel UUID used by the built-in fallback [AgentConfig] when no real namespace is known yet. */
-        val NO_NAMESPACE_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
-    }
-}
+) : Entity
