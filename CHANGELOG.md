@@ -1,3 +1,22 @@
+## 0.137.0 (2026-05-07)
+
+### 🚀 Features
+
+- #31644 Create user if not existing when creating a user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement user group edit ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 address review - POST instead of PUT, intersection validation, blank check, verifyOrder ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 add schema ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement user group edit ([#845](https://github.com/whoz-oss/coday/pull/845), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.136.0 (2026-05-07)
 
 ### 🚀 Features
