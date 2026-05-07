@@ -222,19 +222,19 @@ class AgentSimple(
                 }
                 logger.info { "[AgentSimple] $name redirecting to '${e.targetAgentName}'" }
                 emit(
-                    AgentSelectedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
-                        agentName = e.targetAgentName,
-                    ),
-                )
-                emit(
                     AgentFinishedEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                    ),
+                )
+                emit(
+                    AgentSelectedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
+                        agentName = e.targetAgentName,
                     ),
                 )
             } catch (e: Exception) {
