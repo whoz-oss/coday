@@ -8,7 +8,7 @@
   </header>
 
   @if (isLoading()) {
-    <p class="namespace-form__loading">Loading…</p>
+    <p class="namespace-form__loading">Loading&hellip;</p>
   } @else {
     <form class="namespace-form__form" [formGroup]="form" (ngSubmit)="submit()">
       <div class="namespace-form__field">
@@ -31,6 +31,30 @@
           type="text"
           placeholder="Optional description"
           [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-external-id">External ID</label>
+        <input
+          id="ns-external-id"
+          class="namespace-form__input"
+          type="text"
+          placeholder="Optional federation ID from an external system"
+          [formControl]="externalIdControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-default-agent">Default agent</label>
+        <input
+          id="ns-default-agent"
+          class="namespace-form__input"
+          type="text"
+          placeholder="Logical name of the default agent (e.g. coday)"
+          [formControl]="defaultAgentNameControl"
           autocomplete="off"
         />
       </div>
