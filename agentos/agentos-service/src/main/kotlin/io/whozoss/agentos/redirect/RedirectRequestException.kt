@@ -13,4 +13,4 @@ package io.whozoss.agentos.redirect
  * @param targetAgentName The exact name of the agent to redirect to, as it appears
  *   in the [io.whozoss.agentos.agentConfig.AgentConfig] of the namespace.
  */
-class RedirectRequestException(val targetAgentName: String) : Exception("Redirect to '$targetAgentName'")
+class RedirectRequestException(val targetAgentName: String) : RuntimeException("Redirect to '$targetAgentName'")

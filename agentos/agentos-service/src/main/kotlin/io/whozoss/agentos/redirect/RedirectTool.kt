@@ -80,8 +80,7 @@ class RedirectTool(
      */
     override fun execute(input: Input?, context: ToolContext): String {
         val target = input?.agentName
-            ?: eligibleAgents.firstOrNull()?.name
-            ?: error("RedirectTool: no eligible agents configured")
+            ?: error("RedirectTool: agentName is required but was not provided by the LLM")
         throw RedirectRequestException(target)
     }
 }

@@ -13,8 +13,8 @@ import java.util.UUID
  * Internal Spring-managed [ToolPlugin] that provides the REDIRECT integration.
  *
  * Unlike PF4J plugins, this class is NOT annotated with `@Component` — it is
- * instantiated as a `@Bean` in [io.whozoss.agentos.agent.AgentServiceImpl] so that
- * the [agentResolver] lambda can be wired without creating a circular Spring dependency.
+ * instantiated as a `@Bean` in [io.whozoss.agentos.redirect.RedirectConfiguration] so
+ * that the [agentResolver] lambda can be wired without creating a circular Spring dependency.
  * [io.whozoss.agentos.tool.ToolRegistryService] collects it via the `List<ToolPlugin>`
  * constructor injection alongside any PF4J-loaded plugins.
  *
@@ -29,10 +29,12 @@ import java.util.UUID
  * `*` matches any sequence of characters (converted to `.*` regex, case-insensitive).
  * Example values: `["*"]`, `["Github*", "Jira*"]`.
  *
- * The final list of eligible agents is computed at [provideTools] time by intersecting
- * the patterns with the agents actually configured in the namespace, via [agentResolver].
- * Agents that do not exist in the namespace are silently excluded — the LLM never
- * receives a stale or inaccessible name.
+ * The final list of eligible agents is computed at [provideTools] time (i.e. when the
+ * tool set is built for an agent run) by intersecting the patterns with the agents
+ * actually configured in the namespace via [agentResolver]. This is a snapshot: agents
+ * added to the namespace after the run starts will not appear in the redirect list for
+ * that run. Agents that do not exist in the namespace are silently excluded — the LLM
+ * never receives a stale or inaccessible name.
  *
  * @param agentResolver Lambda injected by [io.whozoss.agentos.agent.AgentServiceImpl]
  *   to avoid a circular Spring dependency. Given a namespace UUID and a list of glob

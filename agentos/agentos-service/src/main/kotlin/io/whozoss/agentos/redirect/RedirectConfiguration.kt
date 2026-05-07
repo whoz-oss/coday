@@ -60,7 +60,6 @@ class RedirectConfiguration(
                 .replace("^", "\\^")
                 .replace("$", "\\$")
                 .replace("|", "\\|")
-                .replace("?", ".")
                 .replace("*", ".*")
             return Regex("^$escaped$", RegexOption.IGNORE_CASE)
         }
