@@ -65,7 +65,9 @@ class UserGroupServiceImpl(
         }
 
         if (request.userExternalIds.isNotEmpty()) {
-            request.userExternalIds.forEach { userService.resolveOrCreateByExternalId(it) }
+            val existingIds = userService.findByExternalIds(request.userExternalIds).map { it.externalId }.toSet()
+            val missingIds = request.userExternalIds - existingIds
+            missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
             userGroupRepository.addUsers(group.id, request.userExternalIds)
         }
 
@@ -97,7 +99,9 @@ class UserGroupServiceImpl(
         }
 
         if (request.addedUserExternalIds.isNotEmpty()) {
-            request.addedUserExternalIds.forEach { userService.resolveOrCreateByExternalId(it) }
+            val existingIds = userService.findByExternalIds(request.addedUserExternalIds).map { it.externalId }.toSet()
+            val missingIds = request.addedUserExternalIds - existingIds
+            missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
             userGroupRepository.addUsers(userGroupId, request.addedUserExternalIds)
         }
 

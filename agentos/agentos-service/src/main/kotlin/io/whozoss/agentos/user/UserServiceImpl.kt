@@ -34,6 +34,8 @@ class UserServiceImpl(
 
     override fun findByExternalId(externalId: String): User? = userRepository.findByExternalId(externalId)
 
+    override fun findByExternalIds(externalIds: Set<String>): List<User> = userRepository.findByExternalIds(externalIds)
+
     override fun resolveOrCreateByExternalId(externalId: String): User =
         findByExternalId(externalId) ?: bootstrapLock.withLock {
             // Double-check after acquiring lock to prevent TOCTOU race condition

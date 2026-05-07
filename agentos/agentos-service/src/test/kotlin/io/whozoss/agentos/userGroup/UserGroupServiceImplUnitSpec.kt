@@ -185,7 +185,7 @@ class UserGroupServiceImplUnitSpec :
         // createFromRequest — user linking
         // -------------------------------------------------------------------------
 
-        "createFromRequest resolves or creates each user before calling addUsers" {
+        "createFromRequest resolves or creates only missing users before calling addUsers" {
             val groupId = randomUUID()
             val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team E")
             val searchResult =
@@ -204,7 +204,10 @@ class UserGroupServiceImplUnitSpec :
             every { namespaceService.findByExternalId(externalId) } returns namespace
             every { userGroupRepository.save(any()) } returns group
             every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
-            every { userService.resolveOrCreateByExternalId(any()) } answers { makeUser(firstArg()) }
+            // alice already exists, bob does not
+            every { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) } returns
+                listOf(makeUser("alice@example.com"))
+            every { userService.resolveOrCreateByExternalId("bob@example.com") } returns makeUser("bob@example.com")
 
             val service = buildService(userGroupRepository, namespaceService, userService = userService)
             service.createFromRequest(
@@ -215,7 +218,7 @@ class UserGroupServiceImplUnitSpec :
                 ),
             )
 
-            verify(exactly = 1) { userService.resolveOrCreateByExternalId("alice@example.com") }
+            verify(exactly = 0) { userService.resolveOrCreateByExternalId("alice@example.com") }
             verify(exactly = 1) { userService.resolveOrCreateByExternalId("bob@example.com") }
             verify(exactly = 1) {
                 userGroupRepository.addUsers(
@@ -290,7 +293,9 @@ class UserGroupServiceImplUnitSpec :
             every { agentConfigRepository.findByIds(setOf(agentId)) } returns listOf(agentConfig(agentId))
             every { userGroupRepository.save(any()) } returns updated
             every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
-            every { userService.resolveOrCreateByExternalId(any()) } answers { makeUser(firstArg()) }
+            // alice is being added and does not exist yet
+            every { userService.findByExternalIds(setOf("alice@example.com")) } returns emptyList()
+            every { userService.resolveOrCreateByExternalId("alice@example.com") } returns makeUser("alice@example.com")
 
             val service = buildService(userGroupRepository, agentConfigRepository = agentConfigRepository, userService = userService)
             val result =
