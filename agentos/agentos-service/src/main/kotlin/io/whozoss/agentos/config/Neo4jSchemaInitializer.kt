@@ -33,19 +33,19 @@ class Neo4jSchemaInitializer(private val driver: Driver) {
         driver.session().use { session ->
             session.run(
                 "CREATE CONSTRAINT user_group_name_namespace_unique IF NOT EXISTS " +
-                    "FOR (g:UserGroup) REQUIRE (g.name, g.namespaceId) IS UNIQUE",
+                    "FOR (g:ActiveUserGroup) REQUIRE (g.name, g.namespaceId) IS UNIQUE",
             )
             logger.info { "[Neo4jSchemaInitializer] Constraint user_group_name_namespace_unique ensured" }
 
             session.run(
                 "CREATE CONSTRAINT namespace_external_id_unique IF NOT EXISTS " +
-                    "FOR (n:Namespace) REQUIRE n.externalId IS UNIQUE",
+                    "FOR (n:ActiveNamespace) REQUIRE n.externalId IS UNIQUE",
             )
             logger.info { "[Neo4jSchemaInitializer] Constraint namespace_external_id_unique ensured" }
 
             session.run(
                 "CREATE CONSTRAINT user_external_id_unique IF NOT EXISTS " +
-                    "FOR (u:User) REQUIRE u.externalId IS UNIQUE",
+                    "FOR (u:ActiveUser) REQUIRE u.externalId IS UNIQUE",
             )
             logger.info { "[Neo4jSchemaInitializer] Constraint user_external_id_unique ensured" }
         }
