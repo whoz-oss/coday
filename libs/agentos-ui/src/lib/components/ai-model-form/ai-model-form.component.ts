@@ -232,7 +232,7 @@ export class AiModelFormComponent implements OnInit {
     const ordered: ReadonlyArray<AiModelScope> = [hint, ...allScopes.filter((s) => s !== hint)]
     return ordered.reduce<Observable<AiModel | UserAiModel>>(
       (acc, scope, idx) => (idx === 0 ? acc : acc.pipe(catchError(() => this.state.getById(id, scope)))),
-      this.state.getById(id, ordered[0])
+      this.state.getById(id, hint)
     )
   }
 
