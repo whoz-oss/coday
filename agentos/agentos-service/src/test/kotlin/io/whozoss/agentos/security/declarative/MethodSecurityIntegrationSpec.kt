@@ -7,12 +7,14 @@ import io.mockk.every
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.test.context.ActiveProfiles
@@ -39,7 +41,8 @@ import java.util.UUID
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles("test", "embedded-neo4j")
+@Import(EmbeddedNeo4jTestConfiguration::class)
 class MethodSecurityIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 

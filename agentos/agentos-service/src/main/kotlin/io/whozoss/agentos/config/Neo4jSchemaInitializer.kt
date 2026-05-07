@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component
 
 @Component
 @ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
+    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
+        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
 )
 class Neo4jSchemaInitializer(private val driver: Driver) {
 
