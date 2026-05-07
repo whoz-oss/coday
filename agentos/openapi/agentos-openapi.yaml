@@ -1707,6 +1707,7 @@ components:
             type: string
           maxItems: 200
           minItems: 0
+          uniqueItems: true
         agentIds:
           type: array
           items:
@@ -1714,6 +1715,7 @@ components:
             format: uuid
           maxItems: 200
           minItems: 0
+          uniqueItems: true
       required:
       - agentIds
       - name
@@ -1760,12 +1762,14 @@ components:
             type: string
           maxItems: 200
           minItems: 0
+          uniqueItems: true
         removedUserExternalIds:
           type: array
           items:
             type: string
           maxItems: 200
           minItems: 0
+          uniqueItems: true
         agentIds:
           type: array
           items:
@@ -1773,6 +1777,7 @@ components:
             format: uuid
           maxItems: 200
           minItems: 0
+          uniqueItems: true
       required:
       - addedUserExternalIds
       - agentIds
