@@ -36,15 +36,16 @@
       </div>
 
       <div class="agent-config-form__field">
-        <label class="agent-config-form__label" for="agent-config-model-name">Model name</label>
-        <input
-          id="agent-config-model-name"
-          class="agent-config-form__input"
-          type="text"
-          placeholder="Optional — model alias or name to use"
-          [formControl]="modelNameControl"
-          autocomplete="off"
-        />
+        <label class="agent-config-form__label" for="agent-config-model-name">LLM model</label>
+        <select id="agent-config-model-name" class="agent-config-form__select" [formControl]="modelNameControl">
+          <option [ngValue]="null">&mdash; default &mdash;</option>
+          @for (alias of availableAliases(); track alias) {
+            <option [value]="alias">{{ alias }}</option>
+          }
+        </select>
+        <span class="agent-config-form__field-hint"
+          >Optional — leave as default to use the namespace’s default LLM model</span
+        >
       </div>
 
       <div class="agent-config-form__field">
