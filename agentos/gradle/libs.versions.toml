@@ -9,7 +9,7 @@ java = "25"
 # Kotlin 2.3.x supports JVM target 25 natively.
 kotlinJvmTarget = "25"
 kotlin = "2.3.20"
-springBoot = "3.5.7"
+springBoot = "3.5.9"
 springDependencyManagement = "1.1.7"
 springAi = "1.1.2"
 pf4j = "3.13.0"
@@ -19,7 +19,7 @@ mockk = "1.13.5"
 mockk-spring = "3.1.2"
 kotest = "5.9.1"
 kotest-spring = "1.3.0"
-jackson = "2.17.0"
+jackson = "2.19.4"
 klogger = "2.0.4"
 springdoc = "2.8.9"
 springdocPlugin = "1.9.0"
@@ -46,7 +46,9 @@ jersey = "3.1.9"
 eurekaClientJersey3 = "2.0.4"
 
 # MCP Java SDK — version shipped by Spring AI 1.1.x BOM
-mcpSdk = "0.17.0"
+# NOTE: MCP SDK 1.1.x requires Jackson 3 (tools.jackson.*), incompatible with Spring Boot 3.x
+# which is pinned on Jackson 2 (com.fasterxml.jackson.*). Stay on 0.17.0 until Spring AI 2.x.
+mcpSdk = "0.17.2"
 
 # AgentOS modules versions
 agentosSdk = "0.131.0"
