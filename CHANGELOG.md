@@ -1,3 +1,15 @@
+## 0.137.3 (2026-05-07)
+
+### 🚀 Features
+
+- wz-31595: add run configuration for whoz registered agentos ([#849](https://github.com/whoz-oss/coday/pull/849))
+- **agentos:** agent advanced execution mode part 1  (WZ-31597) ([#846](https://github.com/whoz-oss/coday/pull/846))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.137.2 (2026-05-07)
 
 ### 🩹 Fixes
