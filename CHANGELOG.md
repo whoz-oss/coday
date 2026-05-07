@@ -1,3 +1,15 @@
+## 0.137.1 (2026-05-07)
+
+### 🩹 Fixes
+
+- **agentos-service:** publish bootJar instead of plain jar for docker and maven ([466c8762](https://github.com/whoz-oss/coday/commit/466c8762))
+- **agentos-service:** publish bootJar instead of plain jar for docker and maven ([#848](https://github.com/whoz-oss/coday/pull/848))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.137.0 (2026-05-07)
 
 ### 🚀 Features
