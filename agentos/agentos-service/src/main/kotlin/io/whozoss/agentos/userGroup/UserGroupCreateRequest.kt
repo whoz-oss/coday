@@ -13,7 +13,7 @@ data class UserGroupCreateRequest(
     @field:Size(max = 250)
     val name: String,
     @field:Size(max = 200)
-    val userExternalIds: List<@NotBlank String> = emptyList(),
+    val userExternalIds: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
-    val agentIds: List<UUID> = emptyList(),
+    val agentIds: Set<UUID> = emptySet(),
 )

@@ -42,11 +42,12 @@ class UserGroupServiceImplUnitSpec :
             name = "agent-$id",
         )
 
-        fun makeUser(externalId: String) = User(
-            metadata = EntityMetadata(id = randomUUID()),
-            externalId = externalId,
-            isAdmin = false,
-        )
+        fun makeUser(externalId: String) =
+            User(
+                metadata = EntityMetadata(id = randomUUID()),
+                externalId = externalId,
+                isAdmin = false,
+            )
 
         fun buildService(
             userGroupRepository: UserGroupRepository = mockk(relaxed = true),
@@ -78,7 +79,7 @@ class UserGroupServiceImplUnitSpec :
             val agentConfigRepository = mockk<AgentConfigRepository>()
 
             every { namespaceService.findByExternalId(externalId) } returns namespace
-            every { agentConfigRepository.findByIds(listOf(agentId1, agentId2)) } returns
+            every { agentConfigRepository.findByIds(setOf(agentId1, agentId2)) } returns
                 listOf(agentConfig(agentId1), agentConfig(agentId2))
             every { userGroupRepository.save(any()) } returns group
             every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
@@ -89,7 +90,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team A",
-                        agentIds = listOf(agentId1, agentId2),
+                        agentIds = setOf(agentId1, agentId2),
                     ),
                 )
 
@@ -142,7 +143,7 @@ class UserGroupServiceImplUnitSpec :
             val agentConfigRepository = mockk<AgentConfigRepository>()
 
             every { namespaceService.findByExternalId(externalId) } returns namespace
-            every { agentConfigRepository.findByIds(listOf(agentId)) } returns
+            every { agentConfigRepository.findByIds(setOf(agentId)) } returns
                 listOf(agentConfig(agentId, nsId = otherNamespaceId))
 
             val service = buildService(namespaceService = namespaceService, agentConfigRepository = agentConfigRepository)
@@ -152,7 +153,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team C",
-                        agentIds = listOf(agentId),
+                        agentIds = setOf(agentId),
                     ),
                 )
             }
@@ -165,7 +166,7 @@ class UserGroupServiceImplUnitSpec :
             val agentConfigRepository = mockk<AgentConfigRepository>()
 
             every { namespaceService.findByExternalId(externalId) } returns namespace
-            every { agentConfigRepository.findByIds(listOf(agentId)) } returns emptyList()
+            every { agentConfigRepository.findByIds(setOf(agentId)) } returns emptyList()
 
             val service = buildService(namespaceService = namespaceService, agentConfigRepository = agentConfigRepository)
 
@@ -174,7 +175,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team D",
-                        agentIds = listOf(agentId),
+                        agentIds = setOf(agentId),
                     ),
                 )
             }
@@ -187,13 +188,14 @@ class UserGroupServiceImplUnitSpec :
         "createFromRequest resolves or creates each user before calling addUsers" {
             val groupId = randomUUID()
             val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team E")
-            val searchResult = UserGroupSearchResult(
-                userGroupId = groupId,
-                namespaceId = namespaceId,
-                namespaceExternalId = externalId,
-                name = "Team E",
-                userCount = 2,
-            )
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team E",
+                    userCount = 2,
+                )
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val namespaceService = mockk<NamespaceService>()
@@ -209,7 +211,7 @@ class UserGroupServiceImplUnitSpec :
                 UserGroupCreateRequest(
                     namespaceExternalId = externalId,
                     name = "Team E",
-                    userExternalIds = listOf("alice@example.com", "bob@example.com"),
+                    userExternalIds = setOf("alice@example.com", "bob@example.com"),
                 ),
             )
 
@@ -248,7 +250,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team E",
-                        userExternalIds = listOf("alice@example.com", "bob@example.com"),
+                        userExternalIds = setOf("alice@example.com", "bob@example.com"),
                     ),
                 )
 
@@ -270,57 +272,60 @@ class UserGroupServiceImplUnitSpec :
             val agentId = randomUUID()
             val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Old Name")
             val updated = existing.copy(name = "New Name")
-            val searchResult = UserGroupSearchResult(
-                userGroupId = groupId,
-                namespaceId = namespaceId,
-                namespaceExternalId = externalId,
-                name = "New Name",
-                agentIds = listOf(agentId),
-                userCount = 1,
-            )
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "New Name",
+                    agentIds = listOf(agentId),
+                    userCount = 1,
+                )
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val agentConfigRepository = mockk<AgentConfigRepository>()
             val userService = mockk<UserService>()
 
             every { userGroupRepository.findByIds(listOf(groupId)) } returns listOf(existing)
-            every { agentConfigRepository.findByIds(listOf(agentId)) } returns listOf(agentConfig(agentId))
+            every { agentConfigRepository.findByIds(setOf(agentId)) } returns listOf(agentConfig(agentId))
             every { userGroupRepository.save(any()) } returns updated
             every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
             every { userService.resolveOrCreateByExternalId(any()) } answers { makeUser(firstArg()) }
 
             val service = buildService(userGroupRepository, agentConfigRepository = agentConfigRepository, userService = userService)
-            val result = service.updateFromRequest(
-                groupId,
-                UserGroupUpdateRequest(
-                    name = "New Name",
-                    agentIds = listOf(agentId),
-                    addedUserExternalIds = listOf("alice@example.com"),
-                    removedUserExternalIds = listOf("bob@example.com"),
-                ),
-            )
+            val result =
+                service.updateFromRequest(
+                    groupId,
+                    UserGroupUpdateRequest(
+                        name = "New Name",
+                        agentIds = setOf(agentId),
+                        addedUserExternalIds = setOf("alice@example.com"),
+                        removedUserExternalIds = setOf("bob@example.com"),
+                    ),
+                )
 
             verifyOrder {
                 userGroupRepository.save(match { it.name == "New Name" })
                 userGroupRepository.removeAllAgents(groupId)
-                userGroupRepository.addAgents(groupId, listOf(agentId))
+                userGroupRepository.addAgents(groupId, setOf(agentId))
                 userService.resolveOrCreateByExternalId("alice@example.com")
-                userGroupRepository.addUsers(groupId, listOf("alice@example.com"))
-                userGroupRepository.removeUsers(groupId, listOf("bob@example.com"))
+                userGroupRepository.addUsers(groupId, setOf("alice@example.com"))
+                userGroupRepository.removeUsers(groupId, setOf("bob@example.com"))
             }
             result.name shouldBe "New Name"
-            result.agentIds shouldContainExactlyInAnyOrder listOf(agentId)
+            result.agentIds shouldContainExactlyInAnyOrder setOf(agentId)
         }
 
         "updateFromRequest with empty agentIds removes all agents" {
             val groupId = randomUUID()
             val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
-            val searchResult = UserGroupSearchResult(
-                userGroupId = groupId,
-                namespaceId = namespaceId,
-                namespaceExternalId = externalId,
-                name = "Team",
-            )
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                )
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             every { userGroupRepository.findByIds(listOf(groupId)) } returns listOf(existing)
@@ -343,8 +348,8 @@ class UserGroupServiceImplUnitSpec :
                     groupId,
                     UserGroupUpdateRequest(
                         name = "Team",
-                        addedUserExternalIds = listOf("alice@example.com", "carol@example.com"),
-                        removedUserExternalIds = listOf("carol@example.com", "bob@example.com"),
+                        addedUserExternalIds = setOf("alice@example.com", "carol@example.com"),
+                        removedUserExternalIds = setOf("carol@example.com", "bob@example.com"),
                     ),
                 )
             }
@@ -370,12 +375,12 @@ class UserGroupServiceImplUnitSpec :
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val agentConfigRepository = mockk<AgentConfigRepository>()
             every { userGroupRepository.findByIds(listOf(groupId)) } returns listOf(existing)
-            every { agentConfigRepository.findByIds(listOf(agentId)) } returns listOf(agentConfig(agentId, nsId = randomUUID()))
+            every { agentConfigRepository.findByIds(setOf(agentId)) } returns listOf(agentConfig(agentId, nsId = randomUUID()))
 
             val service = buildService(userGroupRepository, agentConfigRepository = agentConfigRepository)
 
             shouldThrow<UnprocessableEntityException> {
-                service.updateFromRequest(groupId, UserGroupUpdateRequest(name = "Team", agentIds = listOf(agentId)))
+                service.updateFromRequest(groupId, UserGroupUpdateRequest(name = "Team", agentIds = setOf(agentId)))
             }
         }
 

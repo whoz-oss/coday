@@ -42,8 +42,7 @@ class UserGroupServiceImpl(
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
         userGroupRepository.findByNamespaceExternalId(externalId)
 
-    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
-        userGroupRepository.findByIdWithDetails(id)
+    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? = userGroupRepository.findByIdWithDetails(id)
 
     @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
@@ -75,10 +74,15 @@ class UserGroupServiceImpl(
     }
 
     @Transactional
-    override fun updateFromRequest(userGroupId: UUID, request: UserGroupUpdateRequest): UserGroupSearchResult {
+    override fun updateFromRequest(
+        userGroupId: UUID,
+        request: UserGroupUpdateRequest,
+    ): UserGroupSearchResult {
         val intersection = request.addedUserExternalIds.toSet() intersect request.removedUserExternalIds.toSet()
         if (intersection.isNotEmpty()) {
-            throw UnprocessableEntityException("User external IDs cannot appear in both addedUserExternalIds and removedUserExternalIds: $intersection")
+            throw UnprocessableEntityException(
+                "User external IDs cannot appear in both addedUserExternalIds and removedUserExternalIds: $intersection",
+            )
         }
 
         val existing = getById(userGroupId)
@@ -106,7 +110,7 @@ class UserGroupServiceImpl(
     }
 
     private fun validateAgentsInNamespace(
-        agentIds: List<UUID>,
+        agentIds: Set<UUID>,
         namespaceId: UUID,
     ) {
         agentIds
