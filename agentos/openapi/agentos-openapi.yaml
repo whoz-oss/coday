@@ -1691,7 +1691,6 @@ components:
         advancedExecution:
           type: boolean
       required:
-      - advancedExecution
       - name
       - namespaceId
     UserGroupCreateRequest:

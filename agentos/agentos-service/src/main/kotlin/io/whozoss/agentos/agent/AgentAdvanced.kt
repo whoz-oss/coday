@@ -77,6 +77,7 @@ class AgentAdvanced(
             var iteration = 0
             var continueLoop = true
             var lastIntention: IntentionGeneratedEvent? = null
+            val accumulatedEvents = events.toMutableList()
 
             try {
                 while (continueLoop && iteration < maxIterations && shouldContinue()) {
@@ -88,8 +89,9 @@ class AgentAdvanced(
                     // iteration to complete.
                     if (!shouldContinue()) break
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
-                    val intention = resolveIntentionAndTool(events, namespaceId, caseId)
+                    val intention = resolveIntentionAndTool(accumulatedEvents, namespaceId, caseId)
                     emit(intention)
+                    accumulatedEvents.add(intention)
                     lastIntention = intention
 
                     // Check if we should stop (Answer tool = done)
@@ -102,13 +104,15 @@ class AgentAdvanced(
                     if (!shouldContinue()) break
                     val toolRequestId = UUID.randomUUID().toString()
                     val parameters =
-                        generateParameters(events, intention, namespaceId, caseId, toolRequestId)
+                        generateParameters(accumulatedEvents, intention, namespaceId, caseId, toolRequestId)
                     emit(parameters)
+                    accumulatedEvents.add(parameters)
 
                     // 3. Execute tool
                     if (!shouldContinue()) break
                     val response = executeTool(parameters, namespaceId, caseId)
                     emit(response)
+                    accumulatedEvents.add(response)
                 }
 
                 if (iteration >= maxIterations) {
@@ -125,7 +129,7 @@ class AgentAdvanced(
                 if (shouldContinue()) {
                     val finalPromptText = "Based on the above conversation and your analysis, provide your response to the user."
                     val intentionContext = lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
-                    val messages = buildMessages(events) + UserMessage(intentionContext)
+                    val messages = buildMessages(accumulatedEvents) + UserMessage(intentionContext)
 
                     val contentBuilder = StringBuilder()
                     chatClient
@@ -140,14 +144,14 @@ class AgentAdvanced(
                         }
                     val content = contentBuilder.toString()
                     if (content.isNotEmpty()) {
-                        emit(
-                            MessageEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                actor = Actor(id.toString(), name, ActorRole.AGENT),
-                                content = listOf(MessageContent.Text(content)),
-                            ),
+                        val msg = MessageEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            actor = Actor(id.toString(), name, ActorRole.AGENT),
+                            content = listOf(MessageContent.Text(content)),
                         )
+                        emit(msg)
+                        accumulatedEvents.add(msg)
                     }
                 }
 
