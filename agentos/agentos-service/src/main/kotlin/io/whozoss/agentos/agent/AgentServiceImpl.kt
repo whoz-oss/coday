@@ -171,6 +171,10 @@ class AgentServiceImpl(
                 "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
         }
 
+        // Resolve user identity once here so plugins receive it via ToolContext without
+        // needing access to UserService themselves.
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
         val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
 
@@ -180,6 +184,9 @@ class AgentServiceImpl(
             chatClient = chatClient,
             tools = tools,
             instructions = instructions,
+            userId = resolvedUser?.metadata?.id,
+            userExternalId = resolvedUser?.externalId,
+            caseEventsProvider = context.caseEventsProvider,
         )
     }
 

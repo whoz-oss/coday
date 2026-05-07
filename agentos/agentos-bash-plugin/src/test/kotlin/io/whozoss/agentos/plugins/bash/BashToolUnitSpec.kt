@@ -4,6 +4,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import io.whozoss.agentos.sdk.tool.ToolContext
+import java.util.UUID
 
 /**
  * Unit tests for [BashTool].
@@ -18,6 +20,7 @@ class BashToolUnitSpec : StringSpec({
         workingDirectory = System.getProperty("java.io.tmpdir"),
         defaultTimeoutSeconds = 10L,
     )
+    val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
     // --- name ---
 
@@ -96,7 +99,7 @@ class BashToolUnitSpec : StringSpec({
             toolConfig = BashToolConfig(name = "greet", description = "Greets", command = "echo hello"),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input())
+        val result = tool.execute(BashTool.Input(), ctx)
         result shouldContain "hello"
     }
 
@@ -105,7 +108,7 @@ class BashToolUnitSpec : StringSpec({
             toolConfig = BashToolConfig(name = "fail", description = "Fails", command = "sh -c 'exit 42'"),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input())
+        val result = tool.execute(BashTool.Input(), ctx)
         result shouldContain "42"
     }
 
@@ -114,7 +117,7 @@ class BashToolUnitSpec : StringSpec({
             toolConfig = BashToolConfig(name = "silent", description = "Silent", command = "true"),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input())
+        val result = tool.execute(BashTool.Input(), ctx)
         result shouldBe "(no output)"
     }
 
@@ -130,7 +133,7 @@ class BashToolUnitSpec : StringSpec({
             ),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input(parameters = "world"))
+        val result = tool.execute(BashTool.Input(parameters = "world"), ctx)
         result shouldContain "world"
     }
 
@@ -144,7 +147,7 @@ class BashToolUnitSpec : StringSpec({
             ),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input(parameters = null))
+        val result = tool.execute(BashTool.Input(parameters = null), ctx)
         result shouldContain "Error"
         result shouldContain "parameters"
     }
@@ -159,7 +162,7 @@ class BashToolUnitSpec : StringSpec({
             ),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input(parameters = "   "))
+        val result = tool.execute(BashTool.Input(parameters = "   "), ctx)
         result shouldContain "Error"
     }
 
@@ -173,7 +176,7 @@ class BashToolUnitSpec : StringSpec({
             ),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input(parameters = "echo raw_output"))
+        val result = tool.execute(BashTool.Input(parameters = "echo raw_output"), ctx)
         result shouldContain "raw_output"
     }
 
@@ -186,7 +189,7 @@ class BashToolUnitSpec : StringSpec({
             toolConfig = BashToolConfig(name = "fast", description = "Fast", command = "echo ok"),
             integrationConfig = baseConfig.copy(defaultTimeoutSeconds = 10L),
         )
-        tool.execute(BashTool.Input()) shouldContain "ok"
+        tool.execute(BashTool.Input(), ctx) shouldContain "ok"
     }
 
     "tool with per-tool timeout should use it instead of default" {
@@ -200,7 +203,7 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig.copy(defaultTimeoutSeconds = 60L),
         )
         // The per-tool timeout is 5s, the command finishes instantly — should succeed.
-        tool.execute(BashTool.Input()) shouldContain "ok"
+        tool.execute(BashTool.Input(), ctx) shouldContain "ok"
     }
 
     "command that exceeds timeout should return timeout error" {
@@ -213,7 +216,7 @@ class BashToolUnitSpec : StringSpec({
             ),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input())
+        val result = tool.execute(BashTool.Input(), ctx)
         result shouldContain "timed out"
         result shouldContain "1"
     }
@@ -225,7 +228,7 @@ class BashToolUnitSpec : StringSpec({
             toolConfig = BashToolConfig(name = "pwd", description = "Print dir", command = "pwd"),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input())
+        val result = tool.execute(BashTool.Input(), ctx)
         // The output should be the resolved real path of java.io.tmpdir
         val expectedDir = java.io.File(System.getProperty("java.io.tmpdir")).canonicalPath
         result.trim() shouldBe expectedDir
@@ -245,7 +248,7 @@ class BashToolUnitSpec : StringSpec({
                 ),
                 integrationConfig = baseConfig,
             )
-            val result = tool.execute(BashTool.Input())
+            val result = tool.execute(BashTool.Input(), ctx)
             result.trim() shouldContain subDir.name
         } finally {
             subDir.delete()
@@ -263,7 +266,7 @@ class BashToolUnitSpec : StringSpec({
             ),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input())
+        val result = tool.execute(BashTool.Input(), ctx)
         result shouldContain "error_message"
         result shouldContain "Stderr"
     }
@@ -277,7 +280,7 @@ class BashToolUnitSpec : StringSpec({
             ),
             integrationConfig = baseConfig,
         )
-        val result = tool.execute(BashTool.Input())
+        val result = tool.execute(BashTool.Input(), ctx)
         result shouldContain "out_line"
         result shouldContain "err_line"
     }

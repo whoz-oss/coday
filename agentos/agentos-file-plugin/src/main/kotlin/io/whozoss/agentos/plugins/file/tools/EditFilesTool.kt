@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
 import java.nio.charset.StandardCharsets
@@ -130,7 +131,7 @@ class EditFilesTool(
         val edits: List<Edit> = emptyList(),
     )
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val params = input ?: Input()
 
         return try {

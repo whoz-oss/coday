@@ -13,6 +13,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import java.util.UUID
 
@@ -35,7 +36,7 @@ class ToolRegistryServiceSpec : StringSpec({
             override val inputSchema = """{"type":"object"}"""
             override val version = "1.0.0"
             override val paramType: Class<Nothing>? = null
-            override fun execute(input: Nothing?): String = name
+            override fun execute(input: Nothing?, context: ToolContext): String = name
         }
 
     fun makeConfigLessPlugin(integrationType: String, vararg toolNames: String): ToolPlugin =

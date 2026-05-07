@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
@@ -57,7 +58,7 @@ class AgentAdvancedSpec :
             every { answerTool.inputSchema } returns "{}"
             every { answerTool.version } returns "1.0"
             every { answerTool.paramType } returns null
-            every { answerTool.execute(null) } returns "Hello! How can I help you?"
+            every { answerTool.execute(null, any<ToolContext>()) } returns "Hello! How can I help you?"
 
             val tools = listOf(answerTool)
 
