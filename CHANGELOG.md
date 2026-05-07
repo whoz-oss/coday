@@ -1,3 +1,15 @@
+## 0.137.2 (2026-05-07)
+
+### 🩹 Fixes
+
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([28e60d4d](https://github.com/whoz-oss/coday/commit/28e60d4d))
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([#850](https://github.com/whoz-oss/coday/pull/850))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.137.1 (2026-05-07)
 
 ### 🩹 Fixes
