@@ -595,18 +595,25 @@ class CaseServiceImplSpec :
 
         "last active agent unavailable falls back to namespace default" {
             val unavailableAgentName = "old-agent"
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val namespace = Namespace(
                 metadata = EntityMetadata(id = namespaceId),
                 name = "test-namespace",
                 defaultAgentName = agentName,
             )
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            // resolveAgentName call sequence:
+            //   turn 1, @mention path: resolveAgentName(unavailableAgentName) -> unavailableAgentName (found)
+            //   turn 2, sticky-agent availability check: resolveAgentName(unavailableAgentName) -> null (gone)
+            //   turn 2, default resolution: resolveAgentName(agentName) -> agentName (found)
+            val resolveCallCount = java.util.concurrent.atomic.AtomicInteger(0)
             val agentService = mockk<AgentService> {
-                // First call: @mention resolves the old agent
-                every { resolveAgentName(unavailableAgentName, namespaceId) } returns unavailableAgentName
-                // Second call (sticky-agent check): old agent no longer available
-                every { resolveAgentName(unavailableAgentName, namespaceId) } returns unavailableAgentName andThen null
-                // Default agent resolution
+                every { resolveAgentName(unavailableAgentName, namespaceId) } answers {
+                    when (resolveCallCount.incrementAndGet()) {
+                        1 -> unavailableAgentName  // turn 1: @mention resolves
+                        else -> null              // turn 2: sticky-agent check fails
+                    }
+                }
                 every { resolveAgentName(agentName, namespaceId) } returns agentName
                 every { findAgentByName(any(), any()) } returns finishingAgent()
             }
@@ -614,7 +621,7 @@ class CaseServiceImplSpec :
             val service = CaseServiceImpl(
                 agentService,
                 InMemoryCaseRepository(),
-                CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                caseEventService,
                 userServiceMock,
                 namespaceService,
             )
@@ -622,7 +629,7 @@ class CaseServiceImplSpec :
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
 
-            // First turn: explicit @mention of the old agent
+            // First turn: explicit @mention of the old agent — resolves and runs normally
             val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
@@ -632,7 +639,7 @@ class CaseServiceImplSpec :
             firstIdle.join()
             awaitNotRunning(runtime)
 
-            // Second turn: no @mention, old agent is gone -> should fall back to default
+            // Second turn: no @mention, old agent is gone -> WarnEvent + fallback to default
             val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
@@ -642,6 +649,11 @@ class CaseServiceImplSpec :
             secondIdle.join()
 
             service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // WarnEvent must have been persisted during the second turn
+            val persistedEvents = caseEventService.findByParent(case.id)
+            persistedEvents.filterIsInstance<WarnEvent>() shouldHaveAtLeastSize 1
+            // Default agent was ultimately selected after the warn
+            persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe agentName
         }
 
         "second message without @mention uses the same agent as the first" {
