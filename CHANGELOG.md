@@ -1,3 +1,14 @@
+## 0.136.0 (2026-05-07)
+
+### 🚀 Features
+
+- #WZ-31607 add ToolContext to StandardTool.execute signature ([#823](https://github.com/whoz-oss/coday/pull/823))
+
+### ❤️ Thank You
+
+- m1
+- vincent-audibert-whoz
+
 ## 0.135.0 (2026-05-07)
 
 ### 🚀 Features
