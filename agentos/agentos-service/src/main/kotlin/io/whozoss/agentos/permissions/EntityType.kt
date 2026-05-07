@@ -33,9 +33,6 @@ enum class EntityType(val label: String) {
     INTEGRATION_CONFIG("IntegrationConfig"),
     NAMESPACE("Namespace"),
     USER("User"),
-    USER_AI_MODEL("UserAiModel"),
-    USER_AI_PROVIDER("UserAiProvider"),
-    USER_INTEGRATION_CONFIG("UserIntegrationConfig"),
     ;
 
     override fun toString(): String = label
