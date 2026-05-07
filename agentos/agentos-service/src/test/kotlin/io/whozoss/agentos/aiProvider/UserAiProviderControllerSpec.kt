@@ -357,22 +357,42 @@ class UserAiProviderControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // 19) update apiKey blank/null → preserves existing
+    // 19a) update apiKey null (field absent in JSON, preserved by Jackson) → preserves existing
+    //
+    // The wire contract: omitting `apiKey` from the request body means "I did not touch it,
+    // keep the persisted credential". Jackson collapses both JSON-null and field-absent to a
+    // Kotlin `null`, so this branch handles both — the FE never sends an explicit `apiKey: null`
+    // (it omits the field entirely on untouched).
     // -------------------------------------------------------------------------
-    "update with blank or null apiKey preserves existing key" {
+    "update with null apiKey preserves existing key" {
         val existingKey = "sk-ant-existingkey12345"
         val p = provider(userId = aliceId, apiKey = existingKey)
-        val capturedBlank = slot<AiProvider>()
-        val capturedNull = slot<AiProvider>()
+        val captured = slot<AiProvider>()
         every { service.findById(p.metadata.id) } returns p
-        every { service.update(capture(capturedBlank)) } answers { firstArg() }
+        every { service.update(capture(captured)) } answers { firstArg() }
+
+        controller.update(id = p.metadata.id, body = resource(apiKey = null), auth = authFor(aliceId))
+
+        captured.captured.apiKey shouldBe existingKey
+    }
+
+    // -------------------------------------------------------------------------
+    // 19b) update apiKey blank ("") → clears the persisted credential
+    //
+    // The wire contract: explicit empty string in the request body means "the user cleared the
+    // field deliberately, drop the credential". Backend persists `apiKey = null` in the DB.
+    // Required by FR25 to support credential rotation/revocation without recreating the row.
+    // -------------------------------------------------------------------------
+    "update with empty-string apiKey clears the persisted key" {
+        val existingKey = "sk-ant-existingkey12345"
+        val p = provider(userId = aliceId, apiKey = existingKey)
+        val captured = slot<AiProvider>()
+        every { service.findById(p.metadata.id) } returns p
+        every { service.update(capture(captured)) } answers { firstArg() }
 
         controller.update(id = p.metadata.id, body = resource(apiKey = ""), auth = authFor(aliceId))
-        capturedBlank.captured.apiKey shouldBe existingKey
 
-        every { service.update(capture(capturedNull)) } answers { firstArg() }
-        controller.update(id = p.metadata.id, body = resource(apiKey = null), auth = authFor(aliceId))
-        capturedNull.captured.apiKey shouldBe existingKey
+        captured.captured.apiKey shouldBe null
     }
 
     // -------------------------------------------------------------------------

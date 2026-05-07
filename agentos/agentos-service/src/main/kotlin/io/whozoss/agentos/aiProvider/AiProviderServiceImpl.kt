@@ -34,6 +34,7 @@ class AiProviderServiceImpl(
         findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
         }
+        assertConsistentApiTypeAcrossLayers(entity)
         return saveOrConflict(entity)
     }
 
@@ -44,6 +45,7 @@ class AiProviderServiceImpl(
             ?.let {
                 throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
             }
+        assertConsistentApiTypeAcrossLayers(entity)
         return saveOrConflict(entity)
     }
 
@@ -71,6 +73,60 @@ class AiProviderServiceImpl(
                 HttpStatus.BAD_REQUEST,
                 "AiProvider must be scoped to at least a namespace or a user",
             )
+        }
+    }
+
+    /**
+     * Reject create/update when another layer that would merge with this entity at reconciliation
+     * time already carries the same `name` but a different `apiType`. Mirrors the IG-3 guard in
+     * [io.whozoss.agentos.integrationConfig.IntegrationConfigServiceImpl].
+     *
+     * The 3-tier reconciliation merges layers param-by-param assuming all layers share the same
+     * `apiType`. If they diverge, the merged provider silently switches the chat client at
+     * runtime — an Anthropic-typed entity ends up instantiating an OpenAI client with Anthropic
+     * params, failing opaquely deep in the agent run.
+     *
+     * Cross-user comparison is intentionally not a conflict: each user's overlay is private and
+     * never merges into another user's resolution.
+     */
+    private fun assertConsistentApiTypeAcrossLayers(entity: AiProvider) {
+        val userId = entity.userId
+        val namespaceId = entity.namespaceId
+        val name = entity.name
+        val type = entity.apiType
+        val entityId = entity.metadata.id
+
+        fun reject(other: AiProvider): Nothing =
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "An AiProvider named '$name' already exists in another layer with " +
+                    "apiType='${other.apiType}' (this entity wants apiType='$type'). Overlay " +
+                    "layers for the same name must share the same apiType to merge correctly at " +
+                    "reconciliation time. Either use a different name or align the apiType.",
+            )
+
+        if (namespaceId != null) {
+            repository.findByTriple(namespaceId, null, name)
+                ?.takeIf { it.metadata.id != entityId && it.apiType != type }
+                ?.let(::reject)
+        }
+
+        if (userId != null) {
+            repository.findByTriple(null, userId, name)
+                ?.takeIf { it.metadata.id != entityId && it.apiType != type }
+                ?.let(::reject)
+
+            if (namespaceId == null) {
+                repository
+                    .findByUserId(userId)
+                    .firstOrNull {
+                        it.metadata.id != entityId &&
+                            it.namespaceId != null &&
+                            it.name == name &&
+                            it.apiType != type
+                    }
+                    ?.let(::reject)
+            }
         }
     }
 

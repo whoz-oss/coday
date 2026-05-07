@@ -168,6 +168,7 @@ export class UserProfileComponent implements OnInit {
 
   protected toggleOverrides(): void {
     this.isOverridesExpanded.update((v) => !v)
+    this.pendingDeleteKey.set(null)
   }
 
   /**

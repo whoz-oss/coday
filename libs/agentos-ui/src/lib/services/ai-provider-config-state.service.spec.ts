@@ -165,11 +165,14 @@ describe('AiProviderConfigStateService', () => {
       expect(payload.apiKey).toBe('sk-ant-fresh')
     })
 
-    it('sends apiKey:null when draft.apiKey is the empty string (explicit clear)', async () => {
+    it('sends apiKey as empty string when draft.apiKey is the empty string (explicit clear)', async () => {
+      // Wire contract: empty string on the wire signals "clear" to the backend. We do not use
+      // JSON-null because Jackson collapses null and field-absent into the same Kotlin null,
+      // leaving the backend unable to tell preserve from clear.
       await firstValueFrom(service.update(ITEM_ID, { ...baseDraft, apiKey: '' }, 'userOnNs', userOnNsProvider))
       const payload = userController.updateUserAiProvider.mock.calls[0][1]
       expect('apiKey' in payload).toBe(true)
-      expect(payload.apiKey).toBeNull()
+      expect(payload.apiKey).toBe('')
     })
   })
 

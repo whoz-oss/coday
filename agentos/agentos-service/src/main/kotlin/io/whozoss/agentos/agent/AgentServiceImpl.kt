@@ -111,25 +111,6 @@ class AgentServiceImpl(
     }
 
     /**
-     * Resolve a [AiModel] + [AiProvider] pair by name lookup, then apply user overlays.
-     * Throws when no AiModel matches [name] in [namespaceId].
-     */
-    private fun resolveModelPair(
-        name: String,
-        namespaceId: UUID,
-        userId: UUID? = null,
-        cache: RunReconciliationCache? = null,
-    ): Pair<AiModel, AiProvider> {
-        val baseModel =
-            aiModelService.findAiModel(namespaceId, name)
-                ?: throw IllegalArgumentException(
-                    "No AiModel found for name '$name' in namespace $namespaceId. " +
-                        "Configure an AiModel with alias or apiName matching '$name'.",
-                )
-        return applyOverlaysToModel(baseModel, namespaceId, userId, cache)
-    }
-
-    /**
      * Apply 3-tier reconciliation on a pre-resolved [baseModel] (alias-first key for the
      * model, provider name for the provider). When [userId] is null, falls back to direct
      * repository lookup with no overlay — preserves Epic 4 behaviour exactly (NFR-INT-1, AC11).

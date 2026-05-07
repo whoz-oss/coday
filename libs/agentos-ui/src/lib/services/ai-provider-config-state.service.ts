@@ -27,13 +27,15 @@ export interface AiProviderConfigViewModel {
  * regardless of scope. The state service assembles the final payload (adding namespaceId /
  * userId / id / preserving masked apiKey on update) before hitting the controller.
  *
- * `description` and `apiKey` are `string | null` (no `undefined`) so that an explicit clear
- * reaches the backend as JSON null. With `undefined`, JSON.stringify omits the key and the
- * backend keeps the previous value — silent broken-clear (lesson learned from story 6.5).
+ * `description` and `apiKey` are `string | null` (no `undefined`) so the state service can
+ * distinguish "untouched" from "deliberately cleared". With `undefined`, JSON.stringify omits
+ * the key and the backend keeps the previous value — silent broken-clear (lesson learned from
+ * story 6.5).
  *
  * `apiKey` semantics:
- *   - non-null string  → caller wants to set the key to this value
- *   - empty string ''  → caller wants to clear the key
+ *   - non-blank string → caller wants to set the key to this value
+ *   - empty string ''  → caller wants to clear the key (sent on the wire as `apiKey: ""`;
+ *                         the backend treats blank as explicit clear and persists null)
  *   - null             → caller did NOT touch the field (keep previous value);
  *                         the state service omits apiKey from the update payload (FR25 / NFR-SEC-1)
  */
@@ -182,7 +184,10 @@ export class AiProviderConfigStateService {
    * Update a provider. `draft.apiKey === null` means "user did not touch the field" — the
    * apiKey is omitted from the payload and the backend keeps the persisted credential (FR25,
    * NFR-SEC-1; pattern from PR #811 on `AiProviderController.update`). Passing an empty string
-   * means "clear the key" (sent as JSON null).
+   * means "clear the key" (sent on the wire as `apiKey: ""`; the backend interprets a blank
+   * incoming value as an explicit clear and persists `apiKey = null`). We don't use JSON-null
+   * for clear because Jackson collapses JSON-null and field-absent into the same Kotlin null,
+   * leaving the backend unable to distinguish preserve from clear.
    *
    * Build payloads explicitly — never spread `existing`. Spreading would re-inject `id`
    * (which lives in the path) and risks leaking stale fields across hypothetical scope swaps.
@@ -194,8 +199,7 @@ export class AiProviderConfigStateService {
     scope: AiProviderScope,
     existing: AiProvider | UserAiProvider
   ): Observable<AiProvider | UserAiProvider> {
-    const apiKeyField =
-      draft.apiKey === null ? {} : { apiKey: (draft.apiKey === '' ? null : draft.apiKey) as string | undefined }
+    const apiKeyField = draft.apiKey === null ? {} : { apiKey: draft.apiKey }
 
     if (scope === 'namespace') {
       const payload: AiProvider = {

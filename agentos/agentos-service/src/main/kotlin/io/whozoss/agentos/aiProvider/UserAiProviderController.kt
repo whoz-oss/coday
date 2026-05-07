@@ -159,9 +159,22 @@ class UserAiProviderController(
             apiKey = maskApiKey(entity.apiKey),
         )
 
+    /**
+     * Three-way semantics for the `apiKey` field on update (FR25, NFR-SEC-1):
+     *
+     * - The masked sentinel ("****" pattern returned by [maskApiKey]) → preserve the persisted
+     *   credential. This guards round-trips where the FE re-sends a value it loaded from a GET.
+     * - `null` → preserve. Wire contract: the FE omits the field entirely when the user did not
+     *   touch the input. Jackson collapses JSON-null and field-absent into a Kotlin `null`, so
+     *   this branch handles both transparently.
+     * - Blank string ("") → clear the persisted credential. Wire contract: an explicit empty
+     *   string in the body means the user deliberately wiped the field.
+     * - Non-blank string → replace.
+     */
     private fun resolveApiKey(incoming: String?, current: String?): String? = when {
         isMasked(incoming) -> current
-        incoming.isNullOrBlank() -> current
+        incoming == null -> current
+        incoming.isBlank() -> null
         else -> incoming
     }
 
