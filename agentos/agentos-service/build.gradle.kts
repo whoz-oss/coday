@@ -28,7 +28,8 @@ java {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            from(components["java"])
+            artifact(tasks.named("bootJar"))
+            artifact(tasks.named("sourcesJar"))
 
             pom {
                 name.set("AgentOS Service")
@@ -301,13 +302,6 @@ configurations.all {
             because("neo4j-embedded 2026.x requires Netty 4.2.x; Spring Boot BOM pins 4.1.x")
         }
     }
-}
-
-// Disable the plain JAR — agentos-service is a runnable service, not a library.
-// Disabling jar() makes components["java"] use the bootJar as the sole published variant,
-// so Maven publish sends the correct executable JAR to GitHub Packages.
-tasks.named<Jar>("jar") {
-    enabled = false
 }
 
 // Configure the bootJar task
