@@ -113,8 +113,8 @@ open class Neo4jUserGroupRepository(
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
-        neo4jRepository.saveAll(active.map { it.copy(removed = true) })
         neo4jRepository.setInactiveByNamespaceId(parentId.toString())
+        neo4jRepository.saveAll(active.map { it.copy(removed = true) })
         return active.size
     }
 
