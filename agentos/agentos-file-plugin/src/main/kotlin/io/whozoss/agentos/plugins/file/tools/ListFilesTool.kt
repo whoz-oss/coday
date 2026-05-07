@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -59,7 +60,7 @@ class ListFilesTool(
         val relPath: String = "",
     )
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val params = input ?: Input()
 
         return try {

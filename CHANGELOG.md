@@ -1,3 +1,67 @@
+## 0.137.2 (2026-05-07)
+
+### 🩹 Fixes
+
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([28e60d4d](https://github.com/whoz-oss/coday/commit/28e60d4d))
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([#850](https://github.com/whoz-oss/coday/pull/850))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.137.1 (2026-05-07)
+
+### 🩹 Fixes
+
+- **agentos-service:** publish bootJar instead of plain jar for docker and maven ([466c8762](https://github.com/whoz-oss/coday/commit/466c8762))
+- **agentos-service:** publish bootJar instead of plain jar for docker and maven ([#848](https://github.com/whoz-oss/coday/pull/848))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.137.0 (2026-05-07)
+
+### 🚀 Features
+
+- #31644 Create user if not existing when creating a user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement user group edit ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 address review - POST instead of PUT, intersection validation, blank check, verifyOrder ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 add schema ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement user group edit ([#845](https://github.com/whoz-oss/coday/pull/845), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.136.0 (2026-05-07)
+
+### 🚀 Features
+
+- #WZ-31607 add ToolContext to StandardTool.execute signature ([#823](https://github.com/whoz-oss/coday/pull/823))
+
+### ❤️ Thank You
+
+- m1
+- vincent-audibert-whoz
+
+## 0.135.0 (2026-05-07)
+
+### 🚀 Features
+
+- add possibility to provide agentos hostname ([#847](https://github.com/whoz-oss/coday/pull/847))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.134.0 (2026-05-06)
 
 ### 🚀 Features

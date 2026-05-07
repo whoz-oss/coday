@@ -4,7 +4,9 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.plugins.file.tools.MoveFileTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
+import java.util.UUID
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -12,6 +14,7 @@ import kotlin.io.path.writeText
 
 class MoveFileToolSpec : StringSpec() {
     private lateinit var tempDir: Path
+    private val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
     init {
         beforeEach {
@@ -27,7 +30,7 @@ class MoveFileToolSpec : StringSpec() {
             val source = tempDir.resolve("source.txt").also { it.writeText("content") }
             val dest = tempDir.resolve("dest.txt")
 
-            val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "dest.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "dest.txt"), ctx)
 
             result shouldBe "File moved successfully"
             source.exists() shouldBe false
@@ -38,7 +41,7 @@ class MoveFileToolSpec : StringSpec() {
         "move to non-existent source should error" {
             val tool = MoveFileTool(tempDir)
 
-            val result = tool.execute(MoveFileTool.Input(from = "nonexistent.txt", to = "dest.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "nonexistent.txt", to = "dest.txt"), ctx)
 
             result shouldContain "Path does not exist"
         }
@@ -48,7 +51,7 @@ class MoveFileToolSpec : StringSpec() {
             tempDir.resolve("source.txt").writeText("source")
             tempDir.resolve("dest.txt").writeText("dest")
 
-            val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "dest.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "dest.txt"), ctx)
 
             result shouldContain "Destination already exists"
         }
@@ -57,7 +60,7 @@ class MoveFileToolSpec : StringSpec() {
             val tool = MoveFileTool(tempDir)
             tempDir.resolve("source.txt").writeText("content")
 
-            val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "a/b/c/dest.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "a/b/c/dest.txt"), ctx)
 
             result shouldBe "File moved successfully"
             tempDir.resolve("a/b/c/dest.txt").exists() shouldBe true
@@ -68,7 +71,7 @@ class MoveFileToolSpec : StringSpec() {
             val tool = MoveFileTool(tempDir)
             val source = tempDir.resolve("old-name.txt").also { it.writeText("content") }
 
-            val result = tool.execute(MoveFileTool.Input(from = "old-name.txt", to = "new-name.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "old-name.txt", to = "new-name.txt"), ctx)
 
             result shouldBe "File moved successfully"
             source.exists() shouldBe false
@@ -80,7 +83,7 @@ class MoveFileToolSpec : StringSpec() {
             tempDir.resolve("file.txt").writeText("content")
             Files.createDirectories(tempDir.resolve("subdir"))
 
-            val result = tool.execute(MoveFileTool.Input(from = "file.txt", to = "subdir/file.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "file.txt", to = "subdir/file.txt"), ctx)
 
             result shouldBe "File moved successfully"
             tempDir.resolve("file.txt").exists() shouldBe false
@@ -92,7 +95,7 @@ class MoveFileToolSpec : StringSpec() {
             Files.createDirectories(tempDir.resolve("subdir"))
             tempDir.resolve("subdir/file.txt").writeText("content")
 
-            val result = tool.execute(MoveFileTool.Input(from = "subdir/file.txt", to = "file.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "subdir/file.txt", to = "file.txt"), ctx)
 
             result shouldBe "File moved successfully"
             tempDir.resolve("subdir/file.txt").exists() shouldBe false
@@ -102,7 +105,7 @@ class MoveFileToolSpec : StringSpec() {
         "path traversal in source should error" {
             val tool = MoveFileTool(tempDir)
 
-            val result = tool.execute(MoveFileTool.Input(from = "../outside.txt", to = "dest.txt"))
+            val result = tool.execute(MoveFileTool.Input(from = "../outside.txt", to = "dest.txt"), ctx)
 
             result shouldContain "path traversal not allowed"
         }

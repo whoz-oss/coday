@@ -28,7 +28,8 @@ java {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            from(components["java"])
+            artifact(tasks.named("bootJar"))
+            artifact(tasks.named("sourcesJar"))
 
             pom {
                 name.set("AgentOS Service")

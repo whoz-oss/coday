@@ -4,12 +4,16 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.plugins.file.tools.ReadFileTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
+import java.util.UUID
 import kotlin.io.path.createFile
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 
 class ReadFileToolSpec : StringSpec() {
+    private val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
+
     init {
         "reading UTF-8 text file should return content correctly" {
             val tempDir = Files.createTempDirectory("test")
@@ -18,7 +22,7 @@ class ReadFileToolSpec : StringSpec() {
                 val file = tempDir.resolve("test.txt")
                 file.writeText("Hello, World!\nLine 2\nLine 3")
 
-                val result = tool.execute(ReadFileTool.Input("test.txt"))
+                val result = tool.execute(ReadFileTool.Input("test.txt"), ctx)
 
                 result shouldBe "Hello, World!\nLine 2\nLine 3"
             } finally {
@@ -31,7 +35,7 @@ class ReadFileToolSpec : StringSpec() {
             try {
                 val tool = ReadFileTool(tempDir)
 
-                val result = tool.execute(ReadFileTool.Input("nonexistent.txt"))
+                val result = tool.execute(ReadFileTool.Input("nonexistent.txt"), ctx)
 
                 result shouldContain "Path does not exist"
             } finally {
@@ -45,7 +49,7 @@ class ReadFileToolSpec : StringSpec() {
                 val tool = ReadFileTool(tempDir)
                 tempDir.resolve("empty.txt").createFile()
 
-                val result = tool.execute(ReadFileTool.Input("empty.txt"))
+                val result = tool.execute(ReadFileTool.Input("empty.txt"), ctx)
 
                 result shouldBe ""
             } finally {
@@ -60,7 +64,7 @@ class ReadFileToolSpec : StringSpec() {
                 val file = tempDir.resolve("binary.bin")
                 file.writeBytes(byteArrayOf(0x00, 0xFF.toByte(), 0xFE.toByte(), 0x00, 0x01))
 
-                val result = tool.execute(ReadFileTool.Input("binary.bin"))
+                val result = tool.execute(ReadFileTool.Input("binary.bin"), ctx)
 
                 result shouldBe "[binary or unreadable file]"
             } finally {
@@ -76,7 +80,7 @@ class ReadFileToolSpec : StringSpec() {
                 val largeContent = "x".repeat(11 * 1024 * 1024) // 11 MB
                 file.writeText(largeContent)
 
-                val result = tool.execute(ReadFileTool.Input("large.txt"))
+                val result = tool.execute(ReadFileTool.Input("large.txt"), ctx)
 
                 result shouldContain "exceeds maximum size"
                 result shouldContain "10"
@@ -92,7 +96,7 @@ class ReadFileToolSpec : StringSpec() {
                 val file = tempDir.resolve("unicode.txt")
                 file.writeText("Hello 世界 🌍 émoji")
 
-                val result = tool.execute(ReadFileTool.Input("unicode.txt"))
+                val result = tool.execute(ReadFileTool.Input("unicode.txt"), ctx)
 
                 result shouldBe "Hello 世界 🌍 émoji"
             } finally {
@@ -109,7 +113,7 @@ class ReadFileToolSpec : StringSpec() {
                 val linkFile = tempDir.resolve("link.txt")
                 Files.createSymbolicLink(linkFile, targetFile)
 
-                val result = tool.execute(ReadFileTool.Input("link.txt"))
+                val result = tool.execute(ReadFileTool.Input("link.txt"), ctx)
 
                 result shouldBe "target content"
             } finally {
@@ -125,7 +129,7 @@ class ReadFileToolSpec : StringSpec() {
                 val content = "Line 1\nLine 2\r\nLine 3\n\nLine 5"
                 file.writeText(content)
 
-                val result = tool.execute(ReadFileTool.Input("multi.txt"))
+                val result = tool.execute(ReadFileTool.Input("multi.txt"), ctx)
 
                 result shouldBe content
             } finally {
@@ -142,7 +146,7 @@ class ReadFileToolSpec : StringSpec() {
                 val content = "x".repeat(2 * 1024) // 2 KB
                 file.writeText(content)
 
-                val result = tool.execute(ReadFileTool.Input("twoKb.txt"))
+                val result = tool.execute(ReadFileTool.Input("twoKb.txt"), ctx)
 
                 result shouldContain "exceeds maximum size"
             } finally {
@@ -159,7 +163,7 @@ class ReadFileToolSpec : StringSpec() {
                 val content = "x".repeat(5 * 1024 * 1024) // 5 MB
                 file.writeText(content)
 
-                val result = tool.execute(ReadFileTool.Input("fiveMb.txt"))
+                val result = tool.execute(ReadFileTool.Input("fiveMb.txt"), ctx)
 
                 // Should succeed and return the content (we'll just check it's not an error)
                 result shouldBe content

@@ -5,15 +5,15 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.util.*
 
-@Schema(name = "UserGroupCreateRequest")
-data class UserGroupCreateRequest(
-    @field:NotBlank
-    val namespaceExternalId: String,
+@Schema(name = "UserGroupUpdateRequest")
+data class UserGroupUpdateRequest(
     @field:NotBlank
     @field:Size(max = 250)
     val name: String,
     @field:Size(max = 200)
-    val userExternalIds: Set<@NotBlank String> = emptySet(),
+    val addedUserExternalIds: Set<@NotBlank String> = emptySet(),
+    @field:Size(max = 200)
+    val removedUserExternalIds: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
     val agentIds: Set<UUID> = emptySet(),
 )

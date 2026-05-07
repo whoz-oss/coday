@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -57,6 +58,12 @@ class AgentSimple(
     private val tools: Collection<StandardTool<*>>,
     /** The effective system instructions passed to the LLM, after namespace context injection. */
     val instructions: String? = null,
+    /** AgentOS UUID of the user who initiated the case, or null when unresolvable. */
+    private val userId: UUID? = null,
+    /** Identity-provider key of the user (e.g. email). Used by plugins that manage their own auth. */
+    private val userExternalId: String? = null,
+    /** Returns the live event list of the current case at the moment of invocation. */
+    private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
 ) : Agent {
 
     override fun run(
@@ -117,6 +124,7 @@ class AgentSimple(
                             llmTurnIndex,
                         )
                     }
+
 
                 // Make single LLM call with tools
                 val prompt = chatClient.prompt(Prompt(allMessages))
@@ -412,12 +420,38 @@ class AgentSimple(
                     )
                 }
 
+                // Filter case events to only those belonging to this integration.
+                // Tool names follow the "INTEGRATION_NAME__toolName" convention, so the
+                // prefix before "__" is the integration identity. Events from other
+                // integrations are not visible to this tool — no cross-integration leakage.
+                val integrationPrefix = tool.name.substringBefore("__", missingDelimiterValue = "")
+                val filteredEvents =
+                    caseEventsProvider().let { all ->
+                        if (integrationPrefix.isEmpty()) {
+                            all
+                        } else {
+                            all.filter { event ->
+                                when (event) {
+                                    is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
+                                    is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
+                                    else -> true
+                                }
+                            }
+                        }
+                    }
+                val context = ToolContext(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    userExternalId = userExternalId,
+                    caseEvents = filteredEvents,
+                )
+
                 val result: String
                 val toolDuration =
                     measureTime {
                         result =
                             try {
-                                tool.executeWithJson(toolInput)
+                                tool.executeWithJson(toolInput, context)
                             } catch (e: Exception) {
                                 runBlocking {
                                     eventChannel.send(

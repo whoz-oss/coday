@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.tool
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import java.util.UUID
 
 /**
  * Tests for [StandardTool.executeWithJson] argument-parsing contract.
@@ -18,6 +19,13 @@ class StandardToolSpec : StringSpec() {
         val timezone: String = "UTC",
     )
 
+    private val dummyContext = ToolContext(
+        namespaceId = UUID.randomUUID(),
+        userId = null,
+        userExternalId = null,
+        caseEvents = emptyList(),
+    )
+
     val testTool =
         object : StandardTool<TimezoneInput> {
             override val name = "TestTool"
@@ -26,7 +34,7 @@ class StandardToolSpec : StringSpec() {
             override val paramType: Class<TimezoneInput> = TimezoneInput::class.java
             override val inputSchema = "{}"
 
-            override fun execute(input: TimezoneInput?): String = input?.timezone ?: "null-input"
+            override fun execute(input: TimezoneInput?, context: ToolContext): String = input?.timezone ?: "null-input"
         }
 
     init {
@@ -35,18 +43,18 @@ class StandardToolSpec : StringSpec() {
         // The tool under test returns "null-input" to signal no args were received.
         // Real tools (e.g. GetCurrentDateTime) return an error to force the LLM to retry.
         "executeWithJson with null calls execute with null input" {
-            testTool.executeWithJson(null) shouldBe "null-input"
+            testTool.executeWithJson(null, dummyContext) shouldBe "null-input"
         }
 
         "executeWithJson with blank string calls execute with null input" {
-            testTool.executeWithJson("") shouldBe "null-input"
-            testTool.executeWithJson("   ") shouldBe "null-input"
+            testTool.executeWithJson("", dummyContext) shouldBe "null-input"
+            testTool.executeWithJson("   ", dummyContext) shouldBe "null-input"
         }
 
         "executeWithJson with empty object uses data-class defaults" {
             // Previously '{}' was short-circuited to null; now it must be deserialized
             // so Kotlin data-class defaults (timezone = 'UTC') kick in.
-            testTool.executeWithJson("{}") shouldBe "UTC"
+            testTool.executeWithJson("{}", dummyContext) shouldBe "UTC"
         }
 
         "executeWithJson with explicit timezone uses that value" {
@@ -55,6 +63,7 @@ class StandardToolSpec : StringSpec() {
                     // Use the unescaped JSON directly
                     "{\"timezone\":\"America/New_York\"}"
                 },
+                dummyContext,
             ) shouldBe "America/New_York"
         }
     }

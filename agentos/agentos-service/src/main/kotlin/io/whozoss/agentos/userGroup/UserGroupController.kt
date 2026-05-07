@@ -41,6 +41,13 @@ class UserGroupController(
     ): UserGroupSearchResultResource =
         userGroupService.createFromRequest(request).toResource()
 
+    @PostMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    fun update(
+        @PathVariable userGroupId: UUID,
+        @Valid @RequestBody request: UserGroupUpdateRequest,
+    ): UserGroupSearchResultResource =
+        userGroupService.updateFromRequest(userGroupId, request).toResource()
+
     private fun UserGroupSearchResult.toResource() =
         UserGroupSearchResultResource(
             userGroupId = userGroupId,

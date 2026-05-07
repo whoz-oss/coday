@@ -582,6 +582,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
+  /api/user-groups/{userGroupId}:
+    get:
+      tags:
+      - user-group-controller
+      operationId: getByIdUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+    post:
+      tags:
+      - user-group-controller
+      operationId: updateUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -1049,25 +1092,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-  /api/user-groups/{userGroupId}:
-    get:
-      tags:
-      - user-group-controller
-      operationId: getByIdUserGroup
-      parameters:
-      - name: userGroupId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserGroupSearchResult"
   /api/plugins:
     get:
       tags:
@@ -1683,6 +1707,7 @@ components:
             type: string
           maxItems: 200
           minItems: 0
+          uniqueItems: true
         agentIds:
           type: array
           items:
@@ -1690,6 +1715,7 @@ components:
             format: uuid
           maxItems: 200
           minItems: 0
+          uniqueItems: true
       required:
       - agentIds
       - name
@@ -1723,6 +1749,40 @@ components:
       - namespaceId
       - userCount
       - userGroupId
+    UserGroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        addedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        removedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - addedUserExternalIds
+      - agentIds
+      - name
+      - removedUserExternalIds
     PluginActionResponse:
       type: object
       properties:

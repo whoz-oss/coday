@@ -91,6 +91,13 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.addUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
+    override fun removeUsers(
+        userGroupId: UUID,
+        userExternalIds: Collection<String>,
+    ) {
+        neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
+    }
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
