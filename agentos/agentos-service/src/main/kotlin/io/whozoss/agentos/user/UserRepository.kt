@@ -20,6 +20,8 @@ interface UserRepository : EntityRepository<User, String> {
      */
     fun findByExternalId(externalId: String): User?
 
+    fun findByExternalIds(externalIds: Set<String>): List<User>
+
     /**
      * Count the total number of non-removed users in the system.
      *

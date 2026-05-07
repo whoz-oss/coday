@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.bash
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import mu.KLogging
 import java.io.File
 
@@ -77,7 +78,7 @@ class BashTool(
         private val objectMapper = jacksonObjectMapper()
     }
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val resolvedCommand =
             resolveCommand(input)
                 ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"

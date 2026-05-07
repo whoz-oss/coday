@@ -15,6 +15,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import mu.KLogging
@@ -289,7 +290,12 @@ Generate the JSON parameters for this tool call.
                 )
 
         return try {
-            val result = tool.executeWithJson(toolRequest.args)
+            val result = tool.executeWithJson(toolRequest.args, ToolContext(
+                namespaceId = namespaceId,
+                userId = null,
+                userExternalId = null,
+                caseEvents = emptyList(),
+            ))
 
             ToolResponseEvent(
                 namespaceId = namespaceId,

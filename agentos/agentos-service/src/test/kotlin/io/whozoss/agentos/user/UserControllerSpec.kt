@@ -4,11 +4,29 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.security.core.Authentication
+import org.springframework.security.core.context.SecurityContextHolder
 import java.util.UUID
+
+/**
+ * Run [block] with [auth] installed in the SecurityContextHolder, then clear.
+ * Mirrors what AgentOsAuthenticationFilter does at runtime so unit tests of
+ * UserController.update can exercise the self-rule branch.
+ */
+private inline fun <T> withAuthContext(auth: Authentication, block: () -> T): T {
+    val previous = SecurityContextHolder.getContext().authentication
+    SecurityContextHolder.getContext().authentication = auth
+    try {
+        return block()
+    } finally {
+        SecurityContextHolder.getContext().authentication = previous
+    }
+}
 
 /**
  * Unit tests for [UserController].
@@ -73,7 +91,7 @@ class UserControllerSpec : StringSpec({
 
         val result = controller.toResource(u)
 
-        result shouldBe UserResource(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev")
+        result shouldBe UserResource(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false)
     }
 
     "toResource returns null email when user has no email (local mode)" {
@@ -213,23 +231,23 @@ class UserControllerSpec : StringSpec({
     // update (inherited from EntityController)
     // -------------------------------------------------------------------------
 
-    "update delegates to service when user exists and returns mapped resource" {
-        val u = user()
-        val updatedResource = resource(id = u.id, email = u.email, firstname = "Updated")
-        // toDomain produces externalId=""; update() replaces it with the existing entity's externalId
-        val updatedDomain = controller.toDomain(updatedResource).copy(
-            metadata = u.metadata,
-            externalId = u.externalId,
-            isAdmin = u.isAdmin,
-        )
+    "update delegates to service and preserves isAdmin via self-rule" {
+        // u.isAdmin = true and the body sends isAdmin = false (attempt self-demote).
+        // The self-rule MUST keep isAdmin = true on the persisted entity.
+        val u = user(isAdmin = true)
+        val updatedResource = resource(id = u.id, email = u.email, firstname = "Updated", isAdmin = false)
+        val captured = slot<User>()
+        val auth = mockk<Authentication> { every { name } returns u.id.toString() }
         every { userService.getCurrentUser() } returns u
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
         every { userService.findById(u.id) } returns u
-        every { userService.update(any()) } returns updatedDomain
+        every { userService.update(capture(captured)) } answers { firstArg() }
 
-        val result = controller.update(u.id, updatedResource)
+        val result = withAuthContext(auth) { controller.update(u.id, updatedResource) }
 
-        result shouldBe controller.toResource(updatedDomain)
+        captured.captured.isAdmin shouldBe true        // PRESERVED — self-rule active
+        captured.captured.externalId shouldBe u.externalId  // server-managed, never from body
+        result.isAdmin shouldBe true
         verify(exactly = 1) { userService.update(any()) }
     }
 
@@ -237,13 +255,108 @@ class UserControllerSpec : StringSpec({
         val id = UUID.randomUUID()
         val currentUser = user(id = id)  // Current user is updating their own profile
         val r = resource(id = id)
+        val auth = mockk<Authentication> { every { name } returns id.toString() }
         every { userService.getCurrentUser() } returns currentUser
         every { userService.findByIds(listOf(id)) } returns emptyList()
         every { userService.findById(id) } returns null
 
-        val ex = runCatching { controller.update(id, r) }.exceptionOrNull()
+        val ex = runCatching { withAuthContext(auth) { controller.update(id, r) } }.exceptionOrNull()
 
         (ex is ResourceNotFoundException) shouldBe true
+    }
+
+    // -------------------------------------------------------------------------
+    // create — isAdmin promotion (relaxed in this story)
+    // -------------------------------------------------------------------------
+
+    "create with isAdmin=true persists isAdmin=true (super-admin can promote)" {
+        val adminUser = user(isAdmin = true)
+        val r = resource(id = null, email = "promoted@example.com", isAdmin = true)
+        val captured = slot<User>()
+        every { userService.getCurrentUser() } returns adminUser
+        every { userService.create(capture(captured)) } answers { firstArg() }
+
+        val result = controller.create(r)
+
+        captured.captured.isAdmin shouldBe true
+        result.isAdmin shouldBe true
+    }
+
+    "create with isAdmin=false persists isAdmin=false (default)" {
+        val adminUser = user(isAdmin = true)
+        val r = resource(id = null, email = "regular@example.com", isAdmin = false)
+        val captured = slot<User>()
+        every { userService.getCurrentUser() } returns adminUser
+        every { userService.create(capture(captured)) } answers { firstArg() }
+
+        controller.create(r)
+
+        captured.captured.isAdmin shouldBe false
+    }
+
+    // -------------------------------------------------------------------------
+    // update — self-rule (isAdmin preservation when caller == target)
+    // -------------------------------------------------------------------------
+
+    "update super-admin on OTHER user with isAdmin=true persists isAdmin=true (promote)" {
+        val adminId = UUID.randomUUID()
+        val targetId = UUID.randomUUID()
+        val target = user(id = targetId, isAdmin = false)
+        val r = resource(id = targetId, email = target.email, isAdmin = true)
+        val auth = mockk<Authentication> { every { name } returns adminId.toString() }
+        val captured = slot<User>()
+        every { userService.findById(targetId) } returns target
+        every { userService.update(capture(captured)) } answers { firstArg() }
+
+        val result = withAuthContext(auth) { controller.update(targetId, r) }
+
+        captured.captured.isAdmin shouldBe true
+        result.isAdmin shouldBe true
+    }
+
+    "update super-admin on OTHER user with isAdmin=false persists isAdmin=false (demote)" {
+        val adminId = UUID.randomUUID()
+        val targetId = UUID.randomUUID()
+        val target = user(id = targetId, isAdmin = true)
+        val r = resource(id = targetId, email = target.email, isAdmin = false)
+        val auth = mockk<Authentication> { every { name } returns adminId.toString() }
+        val captured = slot<User>()
+        every { userService.findById(targetId) } returns target
+        every { userService.update(capture(captured)) } answers { firstArg() }
+
+        withAuthContext(auth) { controller.update(targetId, r) }
+
+        captured.captured.isAdmin shouldBe false
+    }
+
+    "update self with isAdmin=false on existing super-admin preserves isAdmin=true (self-rule blocks demote)" {
+        val selfId = UUID.randomUUID()
+        val self = user(id = selfId, isAdmin = true)
+        val r = resource(id = selfId, email = self.email, isAdmin = false)  // attempt self-demote
+        val auth = mockk<Authentication> { every { name } returns selfId.toString() }
+        val captured = slot<User>()
+        every { userService.findById(selfId) } returns self
+        every { userService.update(capture(captured)) } answers { firstArg() }
+
+        val result = withAuthContext(auth) { controller.update(selfId, r) }
+
+        captured.captured.isAdmin shouldBe true   // PRESERVED
+        result.isAdmin shouldBe true
+    }
+
+    "update self with isAdmin=true on existing non-admin preserves isAdmin=false (self-rule blocks promote)" {
+        val selfId = UUID.randomUUID()
+        val self = user(id = selfId, isAdmin = false)
+        val r = resource(id = selfId, email = self.email, isAdmin = true)  // attempt self-promote
+        val auth = mockk<Authentication> { every { name } returns selfId.toString() }
+        val captured = slot<User>()
+        every { userService.findById(selfId) } returns self
+        every { userService.update(capture(captured)) } answers { firstArg() }
+
+        val result = withAuthContext(auth) { controller.update(selfId, r) }
+
+        captured.captured.isAdmin shouldBe false  // PRESERVED
+        result.isAdmin shouldBe false
     }
 
     // -------------------------------------------------------------------------

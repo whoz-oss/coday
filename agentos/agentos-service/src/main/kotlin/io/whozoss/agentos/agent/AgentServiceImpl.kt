@@ -64,7 +64,7 @@ class AgentServiceImpl(
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
         val config = agentConfigService.findDefault(context.namespaceId)
-            .let { if (it.namespaceId == BOGUS_NAMESPACE_ID) it.copy(namespaceId = context.namespaceId) else it }
+            .let { if (it.hasNoRealNamespace()) it.copy(namespaceId = context.namespaceId) else it }
         return runCatching { createAgentFromConfig(config, context) }
             .onFailure { logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" } }
             .getOrNull()
@@ -171,6 +171,10 @@ class AgentServiceImpl(
                 "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
         }
 
+        // Resolve user identity once here so plugins receive it via ToolContext without
+        // needing access to UserService themselves.
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
         val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
 
@@ -180,6 +184,9 @@ class AgentServiceImpl(
             chatClient = chatClient,
             tools = tools,
             instructions = instructions,
+            userId = resolvedUser?.metadata?.id,
+            userExternalId = resolvedUser?.externalId,
+            caseEventsProvider = context.caseEventsProvider,
         )
     }
 
@@ -253,8 +260,5 @@ class AgentServiceImpl(
             .joinToString("\n")
     }
 
-    companion object : KLogging() {
-        /** Sentinel namespace UUID emitted by [AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG]. */
-        private val BOGUS_NAMESPACE_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
-    }
+    companion object : KLogging()
 }

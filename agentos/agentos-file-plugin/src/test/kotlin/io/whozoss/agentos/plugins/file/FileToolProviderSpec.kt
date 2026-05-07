@@ -6,13 +6,16 @@ import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.UUID
 import kotlin.io.path.pathString
 import kotlin.io.path.writeText
 
 class FileToolProviderSpec : StringSpec() {
     private lateinit var tempDir: Path
+    private val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
     init {
         beforeEach {
@@ -66,7 +69,7 @@ class FileToolProviderSpec : StringSpec() {
             val tools = FileToolProvider().provideTools(config, "TEST")
             val readTool = tools.first { it.name.contains("readFile") }
 
-            val result = readTool.executeWithJson("""{"filePath": "big.txt"}""")
+            val result = readTool.executeWithJson("""{"filePath": "big.txt"}""", ctx)
             result shouldContain "exceeds maximum size"
         }
 
@@ -80,7 +83,7 @@ class FileToolProviderSpec : StringSpec() {
             val tools = FileToolProvider().provideTools(config, "TEST")
             val readTool = tools.first { it.name.contains("readFile") }
 
-            val result = readTool.executeWithJson("""{"filePath": "data.custom-secret"}""")
+            val result = readTool.executeWithJson("""{"filePath": "data.custom-secret"}""", ctx)
             result shouldContain "Access denied"
         }
 

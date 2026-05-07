@@ -33,6 +33,8 @@ interface UserService : EntityService<User, String> {
      */
     fun findByExternalId(externalId: String): User?
 
+    fun findByExternalIds(externalIds: Set<String>): List<User>
+
     /**
      * Resolve the user matching [externalId], auto-creating one on first access.
      *

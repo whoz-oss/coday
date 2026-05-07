@@ -9,19 +9,10 @@ interface StandardTool<T> {
     val version: String
     val paramType: Class<T>?
 
-    fun execute(input: T?): String
-
-    /**
-     * Type-erased execution path for tools.
-     * This method handles the internal cast from Any? to T?, allowing callers
-     * to invoke tool execution without reflection or unsafe casts.
-     *
-     * @param input The input parameter as Any? (will be cast to T? internally)
-     * @return The execution result as a String
-     * @throws ClassCastException if the input cannot be cast to the expected type T
-     */
-    @Suppress("UNCHECKED_CAST")
-    fun executeWithAny(input: Any?): String = execute(input as? T)
+    fun execute(
+        input: T?,
+        context: ToolContext,
+    ): String
 
     /**
      * Deserialize raw JSON produced by the LLM and execute the tool.
@@ -32,10 +23,13 @@ interface StandardTool<T> {
      * crossing classloader boundaries.
      *
      * @param json Raw JSON string from the LLM (e.g. `{"timezone":"UTC"}`)
+     * @param context The execution context for this tool call
      * @return The execution result as a String
      */
-
-    fun executeWithJson(json: String?): String {
+    fun executeWithJson(
+        json: String?,
+        context: ToolContext,
+    ): String {
         val type = paramType
         val input: T? =
             if (type == null || json.isNullOrBlank()) {
@@ -45,18 +39,10 @@ interface StandardTool<T> {
                 // Parse JSON (including "{}" so that Kotlin data-class defaults kick in)
                 objectMapper.readValue(json, type)
             }
-        return execute(input)
+        return execute(input, context)
     }
 
     companion object {
         private val objectMapper = jacksonObjectMapper()
     }
 }
-
-const val NO_ARGS_INPUT = """{
-                            "${"$"}schema" : "https://json-schema.org/draft/2020-12/schema",
-                            "type" : "object",
-                            "properties" : { "input": { "type": "null" } },
-                            "required" : [ ],
-                            "additionalProperties" : false
-                        }"""

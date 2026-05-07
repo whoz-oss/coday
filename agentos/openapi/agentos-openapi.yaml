@@ -545,6 +545,86 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/user-groups:
+    get:
+      tags:
+      - user-group-controller
+      operationId: searchByNamespaceExternalIdUserGroup
+      parameters:
+      - name: namespaceExternalId
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGroupSearchResult"
+    post:
+      tags:
+      - user-group-controller
+      operationId: createUserGroup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupCreateRequest"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+  /api/user-groups/{userGroupId}:
+    get:
+      tags:
+      - user-group-controller
+      operationId: getByIdUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+    post:
+      tags:
+      - user-group-controller
+      operationId: updateUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -1467,6 +1547,10 @@ components:
           type: string
           description: "Optional filesystem path to a directory containing base configuration\
             \ for this namespace (agents, tools, etc.)"
+        externalId:
+          type: string
+          description: "Optional external identifier for this namespace, e.g. a federation\
+            \ id from an external system"
       required:
       - name
     IntegrationConfig:
@@ -1607,6 +1691,98 @@ components:
       required:
       - name
       - namespaceId
+    UserGroupCreateRequest:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        userExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - agentIds
+      - name
+      - namespaceExternalId
+      - userExternalIds
+    UserGroupSearchResult:
+      type: object
+      properties:
+        userGroupId:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        namespaceExternalId:
+          type: string
+        name:
+          type: string
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        userCount:
+          type: integer
+          format: int32
+      required:
+      - agentIds
+      - name
+      - namespaceExternalId
+      - namespaceId
+      - userCount
+      - userGroupId
+    UserGroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        addedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        removedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - addedUserExternalIds
+      - agentIds
+      - name
+      - removedUserExternalIds
     PluginActionResponse:
       type: object
       properties:
@@ -2077,6 +2253,10 @@ components:
           type: string
           description: Optional filesystem path to a directory containing base configuration
             for this namespace
+        externalId:
+          type: string
+          description: "Optional external identifier for this namespace, e.g. a federation\
+            \ id from an external system"
         role:
           type: string
           description: The caller's effective role on this namespace
