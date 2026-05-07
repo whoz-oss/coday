@@ -1,9 +1,11 @@
 package io.whozoss.agentos.namespace
 
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import mu.KLogging
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -19,15 +21,25 @@ class NamespaceServiceImpl(
     private val namespaceRepository: NamespaceRepository,
     private val permissionService: PermissionService,
 ) : NamespaceService {
-    override fun create(entity: Namespace): Namespace = namespaceRepository.save(entity)
+    override fun create(entity: Namespace): Namespace = try {
+        namespaceRepository.save(entity)
+    } catch (e: DataIntegrityViolationException) {
+        throw ConflictException("A namespace with externalId '${entity.externalId}' already exists", e)
+    }
 
-    override fun update(entity: Namespace): Namespace = namespaceRepository.save(entity)
+    override fun update(entity: Namespace): Namespace = try {
+        namespaceRepository.save(entity)
+    } catch (e: DataIntegrityViolationException) {
+        throw ConflictException("A namespace with externalId '${entity.externalId}' already exists", e)
+    }
 
     override fun findByIds(ids: Collection<UUID>): List<Namespace> = namespaceRepository.findByIds(ids)
 
     override fun findByParent(parentId: String): List<Namespace> = namespaceRepository.findByParent(parentId)
 
     override fun findAll(): List<Namespace> = namespaceRepository.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+
+    override fun findByExternalId(externalId: String): Namespace? = namespaceRepository.findByExternalId(externalId)
 
     override fun delete(id: UUID): Boolean = namespaceRepository.delete(id)
 

@@ -48,7 +48,7 @@ class AgentConfigServiceImpl(
         val DEFAULT_AGENT_CONFIG =
             AgentConfig(
                 metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("default-agent".toByteArray())),
-                namespaceId = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+                namespaceId = AgentConfig.NO_NAMESPACE_ID,
                 name = "Default Agent",
                 description = "General-purpose agent. Delegates to specialised agents when appropriate.",
                 instructions = null,

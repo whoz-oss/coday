@@ -23,6 +23,8 @@ data class NamespaceListItem(
     val description: String? = null,
     @Schema(description = "Optional filesystem path to a directory containing base configuration for this namespace")
     val configPath: String? = null,
+    @Schema(description = "Optional external identifier for this namespace, e.g. a federation id from an external system")
+    val externalId: String? = null,
     @Schema(description = "The caller's effective role on this namespace", allowableValues = ["SUPER-ADMIN", "ADMIN", "MEMBER"])
     val role: String,
 )

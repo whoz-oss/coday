@@ -1,3 +1,120 @@
+## 0.134.0 (2026-05-06)
+
+### 🚀 Features
+
+- #31644 Save users to user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix style ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Remove unused code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi doc ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement get user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Save users to user group ([#844](https://github.com/whoz-oss/coday/pull/844), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.133.0 (2026-05-06)
+
+### 🚀 Features
+
+- #31644 Save agents to user groups ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix rebase ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi spec ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Clean code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Clean code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Add constraint ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Save agents to user groups ([#835](https://github.com/whoz-oss/coday/pull/835), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+- **ci:** split validate workflow into parallel ts/jvm jobs with merge gate ([#842](https://github.com/whoz-oss/coday/pull/842), [#841](https://github.com/whoz-oss/coday/issues/841))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.132.2 (2026-05-06)
+
+### 🚀 Features
+
+- set up nx workspace ([#839](https://github.com/whoz-oss/coday/pull/839))
+- **nx-cloud:** setup nx cloud workspace ([28ea00b9](https://github.com/whoz-oss/coday/commit/28ea00b9))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.132.1 (2026-05-05)
+
+### 🩹 Fixes
+
+- #826 replace Thread.sleep polling with coroutine flow-based waiting in tests ([#831](https://github.com/whoz-oss/coday/pull/831), [#826](https://github.com/whoz-oss/coday/issues/826))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.132.0 (2026-05-05)
+
+### 🚀 Features
+
+- #31424 Add UserGroup model ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add externalId to Namespace ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement GET user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement POST user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add integrity constraints ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31644 Fix after code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Generate open api documentation ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement get and create user group ([#821](https://github.com/whoz-oss/coday/pull/821), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.131.2 (2026-05-05)
+
+### 🩹 Fixes
+
+- PR #832 review follow-ups (audit log, UX fallback, test pin, rename) ([#834](https://github.com/whoz-oss/coday/pull/834), [#832](https://github.com/whoz-oss/coday/issues/832))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.131.1 (2026-05-05)
+
+### 🩹 Fixes
+
+- relax super-admin creation/update via API with self-rule ([#832](https://github.com/whoz-oss/coday/pull/832), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.131.0 (2026-05-05)
+
+### 🚀 Features
+
+- wz-31595: register agentos on eureka ([#822](https://github.com/whoz-oss/coday/pull/822))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.130.0 (2026-05-05)
+
+### 🚀 Features
+
+- tag-based project selection for release pipeline ([#829](https://github.com/whoz-oss/coday/pull/829))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.129.0 (2026-05-05)
 
 ### 🚀 Features
