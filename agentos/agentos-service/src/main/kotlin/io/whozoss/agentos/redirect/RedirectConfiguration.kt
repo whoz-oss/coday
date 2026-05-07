@@ -1,6 +1,7 @@
 package io.whozoss.agentos.redirect
 
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.sdk.tool.ToolPlugin
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
@@ -33,7 +34,7 @@ class RedirectConfiguration(
      * [RedirectToolPlugin.provideTools] time, ensuring the list is always current.
      */
     @Bean
-    fun redirectToolPlugin(): RedirectToolPlugin =
+    fun redirectToolPlugin(): ToolPlugin =
         RedirectToolPlugin { namespaceId, patterns ->
             val regexes = patterns.map { globToRegex(it) }
             agentConfigService
