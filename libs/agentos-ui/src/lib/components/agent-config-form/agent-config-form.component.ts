@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
-  AiModelAliasService,
+  AiModelControllerService,
   IntegrationConfig,
   IntegrationConfigControllerService,
 } from '@whoz-oss/agentos-api-client'
@@ -35,7 +35,7 @@ interface IntegrationRow {
  * ## LLM model field
  *
  * The `modelName` field is rendered as an optional dropdown populated from
- * `GET /api/ai-models/aliases-by-namespaceId/{namespaceId}`. Selecting no alias
+ * `GET /api/ai-models/aliases/by-namespaceId/{namespaceId}`. Selecting no alias
  * (the empty “— default —” option) leaves the field null, letting the backend apply
  * the namespace’s default alias. If the aliases endpoint is unavailable (e.g.
  * backend not yet deployed), the dropdown degrades gracefully to an empty list
@@ -69,7 +69,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
   private readonly integrationConfigController = inject(IntegrationConfigControllerService)
-  private readonly aiModelAliasService = inject(AiModelAliasService)
+  private readonly aiModelController = inject(AiModelControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -134,8 +134,8 @@ export class AgentConfigFormComponent implements OnInit {
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
       integrations: this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId),
-      aliases: this.aiModelAliasService
-        .listAliasesByNamespace(this.namespaceId)
+      aliases: this.aiModelController
+        .listAliasesByNamespaceIdAiModel(this.namespaceId)
         .pipe(catchError(() => of([] as string[]))),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -161,8 +161,8 @@ export class AgentConfigFormComponent implements OnInit {
   private loadIntegrationsAndAliases(existingIntegrations: AgentConfig['integrations']): void {
     forkJoin({
       integrations: this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId),
-      aliases: this.aiModelAliasService
-        .listAliasesByNamespace(this.namespaceId)
+      aliases: this.aiModelController
+        .listAliasesByNamespaceIdAiModel(this.namespaceId)
         .pipe(catchError(() => of([] as string[]))),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))

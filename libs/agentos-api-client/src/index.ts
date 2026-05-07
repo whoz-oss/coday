@@ -3,4 +3,3 @@ export * from './lib/index'
 
 // Custom — hand-written, safe from regeneration
 export { CaseEventSseService } from './custom/case-event-sse.service'
-export { AiModelAliasService } from './custom/ai-model-alias.service'
