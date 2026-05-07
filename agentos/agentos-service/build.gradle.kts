@@ -303,6 +303,13 @@ configurations.all {
     }
 }
 
+// Disable the plain JAR — agentos-service is a runnable service, not a library.
+// Disabling jar() makes components["java"] use the bootJar as the sole published variant,
+// so Maven publish sends the correct executable JAR to GitHub Packages.
+tasks.named<Jar>("jar") {
+    enabled = false
+}
+
 // Configure the bootJar task
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("agentos-service.jar")
