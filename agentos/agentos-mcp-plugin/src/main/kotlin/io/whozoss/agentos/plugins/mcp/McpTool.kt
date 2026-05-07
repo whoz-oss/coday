@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import mu.KLogging
 
 /**
@@ -21,6 +22,7 @@ class McpTool(
     private val connection: McpConnectionPort,
     configName: String?,
 ) : StandardTool<McpTool.Input> {
+
     override val name: String = if (configName != null) "${configName}__${mcpTool.name()}" else mcpTool.name()
 
     override val description: String = mcpTool.description() ?: "Tool '${mcpTool.name()}' from MCP server"
@@ -37,11 +39,9 @@ class McpTool(
      * the MCP tool schema is dynamic — it varies per server and per tool.
      * The actual deserialization into a [Map] happens in [execute].
      */
-    data class Input(
-        val args: String? = null,
-    )
+    data class Input(val args: String? = null)
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val arguments: Map<String, Any?> =
             when {
                 input?.args.isNullOrBlank() -> {
@@ -68,7 +68,8 @@ class McpTool(
      * wrap the raw JSON string in [Input] and re-serialize it inside [execute].
      * This keeps deserialization inside the plugin classloader as required.
      */
-    override fun executeWithJson(json: String?): String = execute(Input(args = json))
+    override fun executeWithJson(json: String?, context: ToolContext): String =
+        execute(Input(args = json), context)
 
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()

@@ -7,8 +7,12 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.modelcontextprotocol.spec.McpSchema.Tool
+import io.whozoss.agentos.sdk.tool.ToolContext
+import java.util.UUID
 
 class McpToolUnitSpec : StringSpec({
+
+    val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
     fun makeTool(
         name: String = "search_repos",
@@ -45,7 +49,7 @@ class McpToolUnitSpec : StringSpec({
         every { connection.callTool(any(), capture(argsSlot)) } returns "result"
 
         val tool = makeTool(connection = connection)
-        tool.execute(McpTool.Input(args = """{"query":"kotlin"}"""))
+        tool.execute(McpTool.Input(args = """{"query":"kotlin"}"""), ctx)
 
         argsSlot.captured["query"] shouldBe "kotlin"
     }
@@ -56,7 +60,7 @@ class McpToolUnitSpec : StringSpec({
         every { connection.callTool(any(), capture(argsSlot)) } returns "ok"
 
         val tool = makeTool(connection = connection)
-        tool.execute(null)
+        tool.execute(null, ctx)
 
         argsSlot.captured shouldBe emptyMap()
     }
@@ -67,7 +71,7 @@ class McpToolUnitSpec : StringSpec({
         every { connection.callTool(any(), capture(argsSlot)) } returns "ok"
 
         val tool = makeTool(connection = connection)
-        tool.execute(McpTool.Input(args = "  "))
+        tool.execute(McpTool.Input(args = "  "), ctx)
 
         argsSlot.captured shouldBe emptyMap()
     }
@@ -78,7 +82,7 @@ class McpToolUnitSpec : StringSpec({
         every { connection.callTool(any(), capture(argsSlot)) } returns "ok"
 
         val tool = makeTool(connection = connection)
-        tool.executeWithJson("""{"query":"test"}""")
+        tool.executeWithJson("""{"query":"test"}""", ctx)
 
         argsSlot.captured["query"] shouldBe "test"
     }
@@ -88,7 +92,7 @@ class McpToolUnitSpec : StringSpec({
         every { connection.callTool(any(), any()) } returns "search results here"
 
         val tool = makeTool(connection = connection)
-        val result = tool.execute(McpTool.Input(args = "{}"))
+        val result = tool.execute(McpTool.Input(args = "{}"), ctx)
         result shouldBe "search results here"
     }
 })
