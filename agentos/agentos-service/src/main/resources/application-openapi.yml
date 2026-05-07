@@ -1,0 +1,24 @@
+# Profile activated during OpenAPI spec generation (generate-openapi-spec task).
+#
+# The springdoc-openapi-gradle-plugin starts a forked Spring Boot process with
+# --spring.profiles.active=openapi to generate the spec. That process runs in
+# build/tmp/forkedSpringBootRun/ and its working directory persists across runs.
+#
+# Two problems are addressed here:
+#
+# 1. The embedded Neo4j data directory defaults to data/neo4j/ relative to the
+#    working directory. Across repeated runs the database accumulates state and
+#    may contain duplicate User nodes (created before the uniqueness constraint
+#    was introduced), causing Neo4jSchemaInitializer to fail when it tries to
+#    enforce user_external_id_unique on already-conflicting data.
+#    Fix: use a fresh subdirectory under build/ that is wiped by `./gradlew clean`.
+#
+# 2. The bootstrap service creates a default admin user on startup. For OpenAPI
+#    generation this is unnecessary and can cause issues when the database already
+#    has users. Fix: disable the bootstrap service entirely for this profile.
+
+agentos:
+  persistence:
+    data-dir: build/openapi-neo4j-data/
+  bootstrap:
+    enabled: false
