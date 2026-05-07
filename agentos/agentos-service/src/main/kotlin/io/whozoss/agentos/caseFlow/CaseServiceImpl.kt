@@ -174,29 +174,14 @@ class CaseServiceImpl(
         namespaceId: UUID,
         caseId: UUID,
     ): List<CaseEvent> {
-        val firstText =
+        val mentionedName =
             content
                 .filterIsInstance<MessageContent.Text>()
                 .firstOrNull()
                 ?.content
                 ?.trim()
+                ?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
 
-        val mentionedName = firstText?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
-
-        if (mentionedName != null) {
-            val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
-            if (resolvedName != null) {
-                logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
-                return listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
-            }
-            logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
-            val warn = WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")
-            return listOf(warn) + selectDefaultAgent(namespaceId, caseId)
-        }
-
-        // No explicit mention: re-use the last selected agent so the conversation
-        // stays with the same agent across turns without requiring the user to
-        // repeat the @mention on every message.
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
         val lastSelectedName =
             pastEvents
@@ -205,18 +190,37 @@ class CaseServiceImpl(
                 .lastOrNull()
                 ?.agentName
 
-        if (lastSelectedName != null) {
-            val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
-            if (stillAvailable) {
-                logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
-                return listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
+        return when {
+            mentionedName != null -> {
+                val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
+                when {
+                    resolvedName != null -> {
+                        logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
+                        listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+                    }
+                    else -> {
+                        logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
+                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")) +
+                            selectDefaultAgent(namespaceId, caseId)
+                    }
+                }
             }
-            logger.warn { "[CaseService] Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
-            val warn = WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$lastSelectedName' is no longer available")
-            return listOf(warn) + selectDefaultAgent(namespaceId, caseId)
+            lastSelectedName != null -> {
+                val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
+                when {
+                    stillAvailable -> {
+                        logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
+                        listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
+                    }
+                    else -> {
+                        logger.warn { "[CaseService] Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
+                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$lastSelectedName' is no longer available")) +
+                            selectDefaultAgent(namespaceId, caseId)
+                    }
+                }
+            }
+            else -> selectDefaultAgent(namespaceId, caseId)
         }
-
-        return selectDefaultAgent(namespaceId, caseId)
     }
 
     /**
