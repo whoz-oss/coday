@@ -40,7 +40,7 @@
         <select id="agent-config-model-name" class="agent-config-form__select" [formControl]="modelNameControl">
           <option [ngValue]="null">&mdash; default &mdash;</option>
           @for (alias of availableAliases(); track alias) {
-            <option [value]="alias">{{ alias }}</option>
+            <option [ngValue]="alias">{{ alias }}</option>
           }
         </select>
         <span class="agent-config-form__field-hint"

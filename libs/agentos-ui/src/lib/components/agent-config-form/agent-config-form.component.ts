@@ -246,9 +246,9 @@ export class AgentConfigFormComponent implements OnInit {
       ...(this.existingConfig ?? {}),
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
-      description: this.descriptionControl.value?.trim() ?? undefined,
+      description: this.descriptionControl.value?.trim() || undefined,
       modelName: this.modelNameControl.value?.trim() ?? undefined,
-      instructions: this.instructionsControl.value?.trim() ?? undefined,
+      instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
     }
 

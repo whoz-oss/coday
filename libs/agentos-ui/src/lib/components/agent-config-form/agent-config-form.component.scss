@@ -66,26 +66,6 @@
     color: var(--color-text, #1d1d1f);
   }
 
-  &__select {
-    width: 100%;
-    padding: 0.625rem 0.875rem;
-    border-radius: 8px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    background: transparent;
-    color: var(--color-text, #1d1d1f);
-    font-size: 0.9375rem;
-    font-family: inherit;
-    outline: none;
-    box-sizing: border-box;
-    cursor: pointer;
-    transition: border-color 0.15s ease;
-    appearance: auto;
-
-    &:focus {
-      border-color: var(--color-primary, #007aff);
-    }
-  }
-
   &__field-hint {
     font-size: 0.8rem;
     color: var(--color-text-secondary, #6e6e73);
@@ -93,6 +73,7 @@
   }
 
   &__input,
+  &__select,
   &__textarea {
     width: 100%;
     padding: 0.625rem 0.875rem;
@@ -113,6 +94,11 @@
     &::placeholder {
       color: var(--color-text-secondary, #6e6e73);
     }
+  }
+
+  &__select {
+    cursor: pointer;
+    appearance: auto;
   }
 
   &__textarea {
