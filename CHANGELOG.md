@@ -1,3 +1,13 @@
+## 0.135.0 (2026-05-07)
+
+### 🚀 Features
+
+- add possibility to provide agentos hostname ([#847](https://github.com/whoz-oss/coday/pull/847))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.134.0 (2026-05-06)
 
 ### 🚀 Features
