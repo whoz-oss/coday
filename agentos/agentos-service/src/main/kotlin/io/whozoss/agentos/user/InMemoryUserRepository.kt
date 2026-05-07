@@ -30,6 +30,10 @@ class InMemoryUserRepository :
         findByParent(UserRepository.USER_PARENT_KEY)
             .firstOrNull { !it.metadata.removed && it.externalId == externalId }
 
+    override fun findByExternalIds(externalIds: Set<String>): List<User> =
+        findByParent(UserRepository.USER_PARENT_KEY)
+            .filter { !it.metadata.removed && it.externalId in externalIds }
+
     override fun count(): Long =
         findByParent(UserRepository.USER_PARENT_KEY)
             .count { !it.metadata.removed }

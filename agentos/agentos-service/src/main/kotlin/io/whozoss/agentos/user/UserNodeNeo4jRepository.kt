@@ -38,6 +38,15 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     )
     fun findActiveByExternalId(externalId: String): UserNode?
 
+    @Query(
+        $$"""
+            MATCH (u:User)
+            WHERE u.externalId IN $externalIds AND (u.removed IS NULL OR u.removed = false)
+            RETURN u
+            """,
+    )
+    fun findActiveByExternalIds(externalIds: Collection<String>): List<UserNode>
+
     /**
      * Count all non-removed users.
      * Used to determine if this is the first user in the system.

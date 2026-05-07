@@ -4,6 +4,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.user.UserService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -14,6 +15,7 @@ class UserGroupServiceImpl(
     private val userGroupRepository: UserGroupRepository,
     private val namespaceService: NamespaceService,
     private val agentConfigRepository: AgentConfigRepository,
+    private val userService: UserService,
 ) : UserGroupService {
     override fun create(entity: UserGroup): UserGroup =
         try {
@@ -40,8 +42,7 @@ class UserGroupServiceImpl(
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
         userGroupRepository.findByNamespaceExternalId(externalId)
 
-    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
-        userGroupRepository.findByIdWithDetails(id)
+    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? = userGroupRepository.findByIdWithDetails(id)
 
     @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
@@ -64,6 +65,9 @@ class UserGroupServiceImpl(
         }
 
         if (request.userExternalIds.isNotEmpty()) {
+            val existingIds = userService.findByExternalIds(request.userExternalIds).map { it.externalId }.toSet()
+            val missingIds = request.userExternalIds - existingIds
+            missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
             userGroupRepository.addUsers(group.id, request.userExternalIds)
         }
 
@@ -71,8 +75,46 @@ class UserGroupServiceImpl(
             ?: throw IllegalStateException("UserGroup ${group.id} not found after creation")
     }
 
+    @Transactional
+    override fun updateFromRequest(
+        userGroupId: UUID,
+        request: UserGroupUpdateRequest,
+    ): UserGroupSearchResult {
+        val intersection = request.addedUserExternalIds.toSet() intersect request.removedUserExternalIds.toSet()
+        if (intersection.isNotEmpty()) {
+            throw UnprocessableEntityException(
+                "User external IDs cannot appear in both addedUserExternalIds and removedUserExternalIds: $intersection",
+            )
+        }
+
+        val existing = getById(userGroupId)
+
+        validateAgentsInNamespace(request.agentIds, existing.namespaceId)
+
+        update(existing.copy(name = request.name))
+
+        userGroupRepository.removeAllAgents(userGroupId)
+        if (request.agentIds.isNotEmpty()) {
+            userGroupRepository.addAgents(userGroupId, request.agentIds)
+        }
+
+        if (request.addedUserExternalIds.isNotEmpty()) {
+            val existingIds = userService.findByExternalIds(request.addedUserExternalIds).map { it.externalId }.toSet()
+            val missingIds = request.addedUserExternalIds - existingIds
+            missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
+            userGroupRepository.addUsers(userGroupId, request.addedUserExternalIds)
+        }
+
+        if (request.removedUserExternalIds.isNotEmpty()) {
+            userGroupRepository.removeUsers(userGroupId, request.removedUserExternalIds)
+        }
+
+        return userGroupRepository.findByIdWithDetails(userGroupId)
+            ?: throw IllegalStateException("UserGroup $userGroupId not found after update")
+    }
+
     private fun validateAgentsInNamespace(
-        agentIds: List<UUID>,
+        agentIds: Set<UUID>,
         namespaceId: UUID,
     ) {
         agentIds
