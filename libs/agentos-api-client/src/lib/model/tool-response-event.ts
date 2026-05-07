@@ -17,6 +17,7 @@ export interface ToolResponseEvent {
   namespaceId: string
   timestamp: string
   type: 'ToolResponseEvent'
+  durationMs?: number
   output: ToolResponseEventAllOfOutput
   success: boolean
   toolName: string

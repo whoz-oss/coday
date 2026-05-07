@@ -1688,6 +1688,8 @@ components:
             type: array
             items:
               type: string
+        advancedExecution:
+          type: boolean
       required:
       - name
       - namespaceId
@@ -2026,6 +2028,8 @@ components:
             format: uuid
           intention:
             type: string
+          toolName:
+            type: string
       required:
       - agentId
       - caseId
@@ -2034,6 +2038,7 @@ components:
       - metadata
       - namespaceId
       - timestamp
+      - toolName
       - type
     MessageContent:
       discriminator:
@@ -2150,6 +2155,9 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
+          durationMs:
+            type: integer
+            format: int64
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"

@@ -50,6 +50,12 @@ data class AgentConfig(
      * Map value = allowed tool names, or null for all tools of that integration.
      */
     val integrations: Map<String, List<String>?>? = null,
+    /**
+     * When true, this agent runs with the advanced multi-step orchestration loop
+     * ([AgentAdvanced]) instead of the default single-call mode ([AgentSimple]).
+     * Defaults to false so existing agents are unaffected.
+     */
+    val advancedExecution: Boolean = false,
 ) : Entity {
     /**
      * Returns true when this config was not loaded from a real namespace — i.e. it is the

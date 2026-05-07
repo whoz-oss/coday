@@ -63,11 +63,14 @@ class AgentServiceImpl(
     }
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
-        val config = agentConfigService.findDefault(context.namespaceId)
-            .let { if (it.hasNoRealNamespace()) it.copy(namespaceId = context.namespaceId) else it }
+        val config =
+            agentConfigService
+                .findDefault(context.namespaceId)
+                .let { if (it.hasNoRealNamespace()) it.copy(namespaceId = context.namespaceId) else it }
         return runCatching { createAgentFromConfig(config, context) }
-            .onFailure { logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" } }
-            .getOrNull()
+            .onFailure {
+                logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" }
+            }.getOrNull()
     }
 
     override fun getDefaultAgentName(namespaceId: UUID): String = agentConfigService.findDefault(namespaceId).name
@@ -97,7 +100,10 @@ class AgentServiceImpl(
         val modelLookupName = config.modelName
         val (modelConfig, providerConfig) =
             when {
-                modelLookupName != null -> resolveModelPair(modelLookupName, context.namespaceId)
+                modelLookupName != null -> {
+                    resolveModelPair(modelLookupName, context.namespaceId)
+                }
+
                 else -> {
                     val defaultModel =
                         findDefaultModelConfig(context.namespaceId)
@@ -108,7 +114,15 @@ class AgentServiceImpl(
                     defaultModel to aiProviderService.getById(defaultModel.aiProviderId)
                 }
             }
-        return createAgentInstance(config.name, config.instructions, config.integrations, modelConfig, providerConfig, context)
+        return createAgentInstance(
+            config.name,
+            config.instructions,
+            config.integrations,
+            config.advancedExecution,
+            modelConfig,
+            providerConfig,
+            context,
+        )
     }
 
     /**
@@ -148,7 +162,7 @@ class AgentServiceImpl(
     // -------------------------------------------------------------------------
 
     /**
-     * Build a live [AgentSimple] instance from the resolved entity pair, scoped to [context].
+     * Build a live [AgentSimple] or [AgentAdvanced] instance from the resolved entity pair, scoped to [context].
      *
      * [agentName] is the logical name used to identify this agent.
      * [baseInstructions] are the agent-level instructions from [AgentConfig], if any.
@@ -159,6 +173,7 @@ class AgentServiceImpl(
         agentName: String,
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
+        advancedExecution: Boolean,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
@@ -178,16 +193,29 @@ class AgentServiceImpl(
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
         val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
 
-        return AgentSimple(
-            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
-            name = agentName,
-            chatClient = chatClient,
-            tools = tools,
-            instructions = instructions,
-            userId = resolvedUser?.metadata?.id,
-            userExternalId = resolvedUser?.externalId,
-            caseEventsProvider = context.caseEventsProvider,
-        )
+        return if (advancedExecution) {
+            AgentAdvanced(
+                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                name = agentName,
+                chatClient = chatClient,
+                tools = tools.toList(),
+                instructions = instructions,
+                userId = resolvedUser?.metadata?.id,
+                userExternalId = resolvedUser?.externalId,
+                caseEventsProvider = context.caseEventsProvider,
+            )
+        } else {
+            AgentSimple(
+                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                name = agentName,
+                chatClient = chatClient,
+                tools = tools,
+                instructions = instructions,
+                userId = resolvedUser?.metadata?.id,
+                userExternalId = resolvedUser?.externalId,
+                caseEventsProvider = context.caseEventsProvider,
+            )
+        }
     }
 
     /**
@@ -221,15 +249,21 @@ class AgentServiceImpl(
 
         val integrationsBlock =
             when {
-                agentIntegrations == null -> null
+                agentIntegrations == null -> {
+                    null
+                }
+
                 else -> {
                     val listed =
                         integrationConfigService
                             .findByParent(context.namespaceId)
                             .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
                     when {
-                        listed.isEmpty() -> null
-                        else ->
+                        listed.isEmpty() -> {
+                            null
+                        }
+
+                        else -> {
                             buildString {
                                 appendLine()
                                 appendLine("## Integrations")
@@ -237,6 +271,7 @@ class AgentServiceImpl(
                                     appendLine("- ${config.name}: ${config.description}")
                                 }
                             }.trimEnd()
+                        }
                     }
                 }
             }

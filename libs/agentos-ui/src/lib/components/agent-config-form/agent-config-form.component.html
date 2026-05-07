@@ -92,6 +92,15 @@
           }
         </fieldset>
       }
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__toggle-label">
+          <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="advancedExecutionControl" />
+          <span class="agent-config-form__toggle-text">Advanced mode</span>
+        </label>
+        <p class="agent-config-form__toggle-hint">
+          When enabled, this agent uses a multi-step reasoning loop instead of a single LLM call.
+        </p>
+      </div>
 
       <div class="agent-config-form__actions">
         <button

@@ -17,6 +17,10 @@ export interface NamespaceListItem {
    */
   configPath?: string
   /**
+   * Optional external identifier for this namespace, e.g. a federation id from an external system
+   */
+  externalId?: string
+  /**
    * The caller\'s effective role on this namespace
    */
   role: NamespaceListItemRoleEnum

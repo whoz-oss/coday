@@ -16,4 +16,5 @@ export interface AgentConfig {
   instructions?: string
   modelName?: string
   integrations?: { [key: string]: Array<string> }
+  advancedExecution?: boolean
 }

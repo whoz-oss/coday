@@ -197,6 +197,8 @@ data class ToolResponseEvent(
     val toolName: String,
     val output: MessageContent,
     val success: Boolean = true,
+    /** Wall-clock duration of the tool execution in milliseconds, null when not measured. */
+    val durationMs: Long? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_RESPONSE
 }
@@ -263,7 +265,9 @@ data class AnswerEvent(
 }
 
 /**
- * Emitted when an agent generates an intention for the next step.
+ * Emitted when an agent generates an intention for the next step and selects the tool to call.
+ * Replaces the separate ToolSelectedEvent in the advanced execution flow — both are produced
+ * by a single LLM call so they are always consistent.
  * Used for observability and potential resumption of interrupted runs.
  */
 data class IntentionGeneratedEvent(
@@ -273,6 +277,8 @@ data class IntentionGeneratedEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val intention: String,
+    /** Name of the tool selected by the LLM in the same call that produced [intention]. */
+    val toolName: String,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.INTENTION_GENERATED
 }

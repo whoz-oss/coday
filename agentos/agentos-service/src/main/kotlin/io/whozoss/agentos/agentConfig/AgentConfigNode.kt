@@ -33,6 +33,7 @@ data class AgentConfigNode(
     val instructions: String? = null,
     val modelName: String? = null,
     val integrationsJson: String? = null,
+    val advancedExecution: Boolean = false,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -59,6 +60,7 @@ data class AgentConfigNode(
             instructions = instructions,
             modelName = modelName,
             integrations = integrationsJson?.let { MAPPER.readValue(it, INTEGRATIONS_TYPE) },
+            advancedExecution = advancedExecution,
         )
 
     companion object {
@@ -74,6 +76,7 @@ data class AgentConfigNode(
                 instructions = config.instructions,
                 modelName = config.modelName,
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
+                advancedExecution = config.advancedExecution,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,

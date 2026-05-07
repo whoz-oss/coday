@@ -9,71 +9,173 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
-import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.*
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
-import java.util.UUID
+import reactor.core.publisher.Flux
+import java.util.*
 
 class AgentAdvancedSpec :
     StringSpec({
         timeout = 5000
 
-        "should complete full orchestration loop with Answer tool" {
-            // Given
+        // -------------------------------------------------------------------------
+        // Parsing unit tests — no ChatClient involved
+        // -------------------------------------------------------------------------
+
+        fun makeParserAgent(): AgentAdvanced {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            return AgentAdvanced(
+                name = "ParserAgent",
+                chatClient = mockChatClient,
+                tools = emptyList(),
+            )
+        }
+
+        val validTools = listOf("FILES__ReadFile", "JIRA__GetIssue", "Answer")
+
+        "parseIntentionAndTool — nominal XML format" {
+            val agent = makeParserAgent()
+            val response =
+                """
+                <intention>I need to read the file to answer the question.</intention>
+                <toolName>FILES__ReadFile</toolName>
+                """.trimIndent()
+
+            val (intention, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            intention shouldBe "I need to read the file to answer the question."
+            toolName shouldBe "FILES__ReadFile"
+        }
+
+        "parseIntentionAndTool — tags on a single line" {
+            val agent = makeParserAgent()
+            val response = "<intention>Done.</intention><toolName>Answer</toolName>"
+
+            val (intention, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            intention shouldBe "Done."
+            toolName shouldBe "Answer"
+        }
+
+        "parseIntentionAndTool — extra text outside tags is ignored" {
+            val agent = makeParserAgent()
+            val response =
+                """
+                Here is my response:
+                <intention>Fetching the Jira issue for context.</intention>
+                <toolName>JIRA__GetIssue</toolName>
+                Let me know if you need more.
+                """.trimIndent()
+
+            val (intention, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            intention shouldBe "Fetching the Jira issue for context."
+            toolName shouldBe "JIRA__GetIssue"
+        }
+
+        "parseIntentionAndTool — multi-line intention content" {
+            val agent = makeParserAgent()
+            val response =
+                """
+                <intention>
+                Step 1: check state.
+                Step 2: call the tool.
+                </intention>
+                <toolName>FILES__ReadFile</toolName>
+                """.trimIndent()
+
+            val (intention, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            intention shouldContain "Step 1"
+            intention shouldContain "Step 2"
+            toolName shouldBe "FILES__ReadFile"
+        }
+
+        "parseIntentionAndTool — unknown tool name falls back to Answer" {
+            val agent = makeParserAgent()
+            val response =
+                """
+                <intention>Trying a non-existent tool.</intention>
+                <toolName>UNKNOWN__Tool</toolName>
+                """.trimIndent()
+
+            val (_, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            toolName shouldBe "Answer"
+        }
+
+        "parseIntentionAndTool — missing toolName tag falls back to Answer" {
+            val agent = makeParserAgent()
+            val response = "<intention>No tool tag present.</intention>"
+
+            val (intention, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            intention shouldBe "No tool tag present."
+            toolName shouldBe "Answer"
+        }
+
+        "parseIntentionAndTool — missing intention tag uses full response as intention" {
+            val agent = makeParserAgent()
+            val response = "<toolName>Answer</toolName>"
+
+            val (intention, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            intention shouldBe response.trim()
+            toolName shouldBe "Answer"
+        }
+
+        "parseIntentionAndTool — completely empty response falls back gracefully" {
+            val agent = makeParserAgent()
+
+            val (_, toolName) = agent.parseIntentionAndTool("", validTools)
+
+            toolName shouldBe "Answer"
+        }
+
+        "parseIntentionAndTool — tool name matching is case-insensitive" {
+            val agent = makeParserAgent()
+            val response =
+                """
+                <intention>Reading the file.</intention>
+                <toolName>files__readfile</toolName>
+                """.trimIndent()
+
+            val (_, toolName) = agent.parseIntentionAndTool(response, validTools)
+
+            toolName shouldBe "FILES__ReadFile"
+        }
+
+        // -------------------------------------------------------------------------
+        // Orchestration integration test
+        // -------------------------------------------------------------------------
+
+        "should complete full orchestration loop when LLM returns Answer tool in XML" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            // Mock ChatClient with relaxed mocking
             val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
 
-            // Create a response counter to return different values
-            var callCount = 0
+            // call() is used for intention generation; stream() is used for the final answer
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
-            } answers {
-                when (callCount++) {
-                    0 -> "I should call the Answer tool to respond to the user" // Intention
-                    else -> "Answer" // Tool selection
-                }
-            }
+            } returns "<intention>No further tool calls needed.</intention><toolName>Answer</toolName>"
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Here is ", "my answer.")
 
-            // Mock IAgentService
-            val mockAgentService = mockk<AgentService>()
-
-            // Mock Answer tool
-            val answerTool = mockk<StandardTool<Nothing>>()
-            every { answerTool.name } returns "Answer"
-            every { answerTool.description } returns "Provides the final answer to the user"
-            every { answerTool.inputSchema } returns "{}"
-            every { answerTool.version } returns "1.0"
-            every { answerTool.paramType } returns null
-            every { answerTool.execute(null, any<ToolContext>()) } returns "Hello! How can I help you?"
-
-            val tools = listOf(answerTool)
-
-            // Create agent
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
                     name = "TestAgent",
                     chatClient = mockChatClient,
-                    tools = tools,
-                    agentService = mockAgentService,
+                    tools = emptyList(),
                     maxIterations = 5,
                 )
 
-            // Initial user message
             val initialEvents =
                 listOf(
                     MessageEvent(
@@ -84,36 +186,37 @@ class AgentAdvancedSpec :
                     ),
                 )
 
-            // When
             val events = agent.run(initialEvents).toList()
 
-            // Then - Verify event sequence
-            events shouldHaveSize 5
+            // AgentRunningEvent + ThinkingEvent + IntentionGeneratedEvent
+            // + TextChunkEvent(x2) + MessageEvent + AgentFinishedEvent
+            events shouldHaveSize 7
 
-            // Event 0: AgentRunningEvent
             val runningEvent = events[0] as? AgentRunningEvent
             runningEvent shouldNotBe null
             runningEvent!!.agentId shouldBe agentId
-            runningEvent.agentName shouldBe "TestAgent"
 
-            // Event 1: ThinkingEvent
             val thinkingEvent = events[1] as? ThinkingEvent
             thinkingEvent shouldNotBe null
 
-            // Event 2: IntentionGeneratedEvent
             val intentionEvent = events[2] as? IntentionGeneratedEvent
             intentionEvent shouldNotBe null
             intentionEvent!!.agentId shouldBe agentId
-            intentionEvent.intention shouldContain "Answer"
+            intentionEvent.intention shouldContain "No further tool calls needed"
+            intentionEvent.toolName shouldBe "Answer"
 
-            // Event 3: ToolSelectedEvent
-            val toolSelectedEvent = events[3] as? ToolSelectedEvent
-            toolSelectedEvent shouldNotBe null
-            toolSelectedEvent!!.agentId shouldBe agentId
-            toolSelectedEvent.toolName shouldBe "Answer"
+            val chunks = events.filterIsInstance<TextChunkEvent>()
+            chunks shouldHaveSize 2
+            chunks[0].chunk shouldBe "Here is "
+            chunks[1].chunk shouldBe "my answer."
 
-            // Event 4: AgentFinishedEvent
-            val finishedEvent = events[4] as? AgentFinishedEvent
+            val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
+            messageEvent shouldNotBe null
+            messageEvent!!.actor.id shouldBe agentId.toString()
+            messageEvent.actor.role shouldBe ActorRole.AGENT
+            (messageEvent.content.first() as MessageContent.Text).content shouldBe "Here is my answer."
+
+            val finishedEvent = events.last() as? AgentFinishedEvent
             finishedEvent shouldNotBe null
             finishedEvent!!.agentId shouldBe agentId
             finishedEvent.agentName shouldBe "TestAgent"
