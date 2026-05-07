@@ -7,10 +7,10 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import mu.KLogging
 
 /**
- * A [StandardTool] that delegates execution to a live [McpConnection].
+ * A [StandardTool] that delegates execution to a live [StdioMcpConnection].
  *
  * Each instance represents one tool advertised by a remote MCP server.
- * The [McpConnection] is owned by [McpConnectionPool] and outlives individual
+ * The [StdioMcpConnection] is owned by [McpConnectionPool] and outlives individual
  * agent runs — this tool holds only a reference, never closes the connection.
  *
  * The [inputSchema] is taken verbatim from the MCP server's tool definition so
@@ -21,7 +21,6 @@ class McpTool(
     private val connection: McpConnectionPort,
     configName: String?,
 ) : StandardTool<McpTool.Input> {
-
     override val name: String = if (configName != null) "${configName}__${mcpTool.name()}" else mcpTool.name()
 
     override val description: String = mcpTool.description() ?: "Tool '${mcpTool.name()}' from MCP server"
@@ -38,17 +37,25 @@ class McpTool(
      * the MCP tool schema is dynamic — it varies per server and per tool.
      * The actual deserialization into a [Map] happens in [execute].
      */
-    data class Input(val args: String? = null)
+    data class Input(
+        val args: String? = null,
+    )
 
     override fun execute(input: Input?): String {
-        val arguments: Map<String, Any?> = when {
-            input?.args.isNullOrBlank() -> emptyMap()
-            else -> runCatching { objectMapper.readValue<Map<String, Any?>>(input!!.args!!) }
-                .getOrElse { e ->
-                    logger.warn { "[MCP] Could not parse args for tool '${mcpTool.name()}': ${e.message}" }
+        val arguments: Map<String, Any?> =
+            when {
+                input?.args.isNullOrBlank() -> {
                     emptyMap()
                 }
-        }
+
+                else -> {
+                    runCatching { objectMapper.readValue<Map<String, Any?>>(input!!.args!!) }
+                        .getOrElse { e ->
+                            logger.warn { "[MCP] Could not parse args for tool '${mcpTool.name()}': ${e.message}" }
+                            emptyMap()
+                        }
+                }
+            }
         logger.debug { "[MCP] Calling '${mcpTool.name()}' with args: $arguments" }
         return connection.callTool(mcpTool.name(), arguments)
     }
@@ -75,16 +82,21 @@ class McpTool(
         private fun buildInputSchema(tool: Tool): String {
             val schema = tool.inputSchema()
             return when {
-                schema == null -> """
+                schema == null -> {
+                    """
                     {
                         "\$schema": "https://json-schema.org/draft/2020-12/schema",
                         "type": "object",
                         "properties": {},
                         "additionalProperties": false
                     }
-                """.trimIndent()
-                else -> runCatching { objectMapper.writeValueAsString(schema) }
-                    .getOrElse { objectMapper.writeValueAsString(mapOf("type" to "object")) }
+                    """.trimIndent()
+                }
+
+                else -> {
+                    runCatching { objectMapper.writeValueAsString(schema) }
+                        .getOrElse { objectMapper.writeValueAsString(mapOf("type" to "object")) }
+                }
             }
         }
     }

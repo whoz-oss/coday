@@ -15,7 +15,7 @@ import java.security.MessageDigest
  * not server identity.
  *
  * Two configs with identical behaviour produce the same hash and will share
- * a pooled [McpConnection].
+ * a pooled [StdioMcpConnection].
  */
 private const val HASH_SEPARATOR = "|"
 private const val HASH_KEY_VALUE_SEPARATOR = "="
@@ -29,10 +29,15 @@ fun McpServerConfig.configHash(): String {
             sb.append(HASH_SEPARATOR).append(command)
             args.forEach { sb.append(HASH_SEPARATOR).append(it) }
             env.entries.sortedBy { it.key }.forEach {
-                sb.append(HASH_SEPARATOR).append(it.key).append(HASH_KEY_VALUE_SEPARATOR).append(it.value)
+                sb
+                    .append(HASH_SEPARATOR)
+                    .append(it.key)
+                    .append(HASH_KEY_VALUE_SEPARATOR)
+                    .append(it.value)
             }
             cwd?.let { sb.append(HASH_SEPARATOR).append(it) }
         }
+
         McpTransport.HTTP -> {
             sb.append("http")
             sb.append(HASH_SEPARATOR).append(url)

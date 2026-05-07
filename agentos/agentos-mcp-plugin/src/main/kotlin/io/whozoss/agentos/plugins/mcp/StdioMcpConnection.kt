@@ -7,7 +7,6 @@ import io.modelcontextprotocol.client.transport.StdioClientTransport
 import io.modelcontextprotocol.json.McpJsonMapper
 import io.modelcontextprotocol.spec.McpSchema
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest
-import io.modelcontextprotocol.spec.McpSchema.Content
 import io.modelcontextprotocol.spec.McpSchema.TextContent
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import mu.KLogging
@@ -25,7 +24,7 @@ import java.time.Instant
  *
  * Instances are created and owned exclusively by [McpConnectionPool].
  */
-class McpConnection(
+class StdioMcpConnection(
     private val config: McpServerConfig,
     val configHash: String,
 ) : McpConnectionPort {
@@ -51,8 +50,10 @@ class McpConnection(
         val command = config.command!!
         logger.info { "[MCP] Connecting to server: $command ${config.args.joinToString(" ")}" }
 
-        val paramsBuilder = ServerParameters.builder(command)
-            .args(config.args)
+        val paramsBuilder =
+            ServerParameters
+                .builder(command)
+                .args(config.args)
         if (config.env.isNotEmpty()) {
             paramsBuilder.env(config.env)
         }
@@ -60,9 +61,11 @@ class McpConnection(
 
         transport = StdioClientTransport(params, McpJsonMapper.getDefault())
 
-        client = McpClient.sync(transport)
-            .requestTimeout(Duration.ofSeconds(config.timeoutSeconds))
-            .build()
+        client =
+            McpClient
+                .sync(transport)
+                .requestTimeout(Duration.ofSeconds(config.timeoutSeconds))
+                .build()
 
         try {
             val initResult = client.initialize()
@@ -72,12 +75,13 @@ class McpConnection(
             throw McpConnectionException("Failed to initialise MCP session for command '$command': ${e.message}", e)
         }
 
-        tools = try {
-            client.listTools()?.tools ?: emptyList()
-        } catch (e: Exception) {
-            logger.warn { "[MCP] Could not list tools for '${config.command}': ${e.message}" }
-            emptyList()
-        }
+        tools =
+            try {
+                client.listTools()?.tools ?: emptyList()
+            } catch (e: Exception) {
+                logger.warn { "[MCP] Could not list tools for '${config.command}': ${e.message}" }
+                emptyList()
+            }
         logger.info { "[MCP] Discovered ${tools.size} tool(s): ${tools.map { it.name() }.joinToString()}" }
     }
 
@@ -88,14 +92,18 @@ class McpConnection(
      * @param arguments Parsed arguments map (may be empty for no-arg tools).
      * @return The tool result as a plain string.
      */
-    override fun callTool(toolName: String, arguments: Map<String, Any?>): String {
+    override fun callTool(
+        toolName: String,
+        arguments: Map<String, Any?>,
+    ): String {
         lastUsed = Instant.now()
         val request = CallToolRequest(toolName, arguments as Map<String, Any>)
-        val result = try {
-            client.callTool(request)
-        } catch (e: Exception) {
-            throw McpConnectionException("Tool call '$toolName' failed: ${e.message}", e)
-        }
+        val result =
+            try {
+                client.callTool(request)
+            } catch (e: Exception) {
+                throw McpConnectionException("Tool call '$toolName' failed: ${e.message}", e)
+            }
         return formatResult(result)
     }
 
@@ -117,12 +125,13 @@ class McpConnection(
 
     private fun formatResult(result: McpSchema.CallToolResult): String {
         val content = result.content() ?: return "(no output)"
-        val parts = content.mapNotNull { item ->
-            when (item) {
-                is TextContent -> item.text()
-                else -> "[${item.type()}: unsupported content type]"
+        val parts =
+            content.mapNotNull { item ->
+                when (item) {
+                    is TextContent -> item.text()
+                    else -> "[${item.type()}: unsupported content type]"
+                }
             }
-        }
         return when {
             parts.isEmpty() -> "(no output)"
             parts.size == 1 -> parts[0]
@@ -133,4 +142,7 @@ class McpConnection(
     companion object : KLogging()
 }
 
-class McpConnectionException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+class McpConnectionException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

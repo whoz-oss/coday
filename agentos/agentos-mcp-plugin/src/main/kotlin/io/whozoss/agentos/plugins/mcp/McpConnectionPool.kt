@@ -11,7 +11,7 @@ private const val EVICTION_PERIOD_MINUTES = 2L
 private const val MAX_POOL_SIZE = 20
 
 /**
- * Plugin-internal pool of live [McpConnection] instances.
+ * Plugin-internal pool of live [StdioMcpConnection] instances.
  *
  * Responsibilities:
  * - Share a single child process across all agent runs that use the same MCP server config.
@@ -31,14 +31,15 @@ class McpConnectionPool {
     private lateinit var evictionExecutor: ScheduledExecutorService
 
     private data class PooledConnection(
-        val connection: McpConnection,
+        val connection: StdioMcpConnection,
         val config: McpServerConfig,
     )
 
     fun start() {
-        evictionExecutor = Executors.newSingleThreadScheduledExecutor { r ->
-            Thread(r, "mcp-pool-eviction").also { it.isDaemon = true }
-        }
+        evictionExecutor =
+            Executors.newSingleThreadScheduledExecutor { r ->
+                Thread(r, "mcp-pool-eviction").also { it.isDaemon = true }
+            }
         evictionExecutor.scheduleAtFixedRate(
             ::evictIdleConnections,
             EVICTION_PERIOD_MINUTES,
@@ -57,7 +58,7 @@ class McpConnectionPool {
     }
 
     /**
-     * Returns a healthy [McpConnection] for [config], creating one if needed.
+     * Returns a healthy [StdioMcpConnection] for [config], creating one if needed.
      *
      * Uses [ConcurrentHashMap.compute] to ensure the check-then-create sequence is atomic:
      * only one thread will ever create a connection for a given config hash, even under
@@ -69,36 +70,42 @@ class McpConnectionPool {
      * @throws McpConnectionException if a new connection cannot be established.
      * @throws IllegalStateException if the pool is at capacity.
      */
-    fun acquire(config: McpServerConfig): McpConnection {
+    fun acquire(config: McpServerConfig): StdioMcpConnection {
         val hash = config.configHash()
-        var result: McpConnection? = null
+        var result: StdioMcpConnection? = null
 
         pool.compute(hash) { _, existing ->
-            result = when {
-                existing != null && existing.connection.isAlive() -> {
-                    logger.debug { "[McpPool] Reusing connection ${hash.take(8)} for '${config.label}'" }
-                    existing.connection
-                }
-                existing != null -> {
-                    logger.warn { "[McpPool] Connection ${hash.take(8)} is dead, reconnecting" }
-                    existing.connection.close()
-                    createConnection(config, hash)
-                }
-                else -> {
-                    check(pool.size < MAX_POOL_SIZE) {
-                        "[McpPool] Pool capacity reached ($MAX_POOL_SIZE). Cannot create new connection for '${config.label}'."
+            result =
+                when {
+                    existing != null && existing.connection.isAlive() -> {
+                        logger.debug { "[McpPool] Reusing connection ${hash.take(8)} for '${config.label}'" }
+                        existing.connection
                     }
-                    createConnection(config, hash)
+
+                    existing != null -> {
+                        logger.warn { "[McpPool] Connection ${hash.take(8)} is dead, reconnecting" }
+                        existing.connection.close()
+                        createConnection(config, hash)
+                    }
+
+                    else -> {
+                        check(pool.size < MAX_POOL_SIZE) {
+                            "[McpPool] Pool capacity reached ($MAX_POOL_SIZE). Cannot create new connection for '${config.label}'."
+                        }
+                        createConnection(config, hash)
+                    }
                 }
-            }
             PooledConnection(connection = result!!, config = config)
         }
 
         return result!!
     }
 
-    private fun createConnection(config: McpServerConfig, hash: String): McpConnection {
-        val connection = McpConnection(config, hash)
+    private fun createConnection(
+        config: McpServerConfig,
+        hash: String,
+    ): StdioMcpConnection {
+        val connection = StdioMcpConnection(config, hash)
         connection.connect()
         logger.info { "[McpPool] New connection ${hash.take(8)} for '${config.label}' (pool size=${pool.size + 1})" }
         return connection
@@ -106,10 +113,14 @@ class McpConnectionPool {
 
     private fun evictIdleConnections() {
         val now = Instant.now()
-        val toEvict = pool.entries.filter { (_, pooled) ->
-            val idleSeconds = java.time.Duration.between(pooled.connection.lastUsed, now).toSeconds()
-            idleSeconds > pooled.config.idleTimeoutMinutes * 60
-        }
+        val toEvict =
+            pool.entries.filter { (_, pooled) ->
+                val idleSeconds =
+                    java.time.Duration
+                        .between(pooled.connection.lastUsed, now)
+                        .toSeconds()
+                idleSeconds > pooled.config.idleTimeoutMinutes * 60
+            }
         toEvict.forEach { (hash, pooled) ->
             logger.info { "[McpPool] Evicting idle connection ${hash.take(8)} for '${pooled.config.command}'" }
             pool.remove(hash)
