@@ -153,5 +153,66 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(1)))
         }
+
+        // -------------------------------------------------------------------------
+        // GET /api/ai-models/aliases/by-namespaceId/{namespaceId}
+        // -------------------------------------------------------------------------
+
+        "GET /api/ai-models/aliases/by-namespaceId/{namespaceId} returns 200 with alias list" {
+            val aliasNs = UUID.randomUUID()
+            val parent = createParentAiProvider(nsId = aliasNs)
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = aliasNs,
+                    apiModelName = "claude-opus-4-6",
+                    alias = "BIG",
+                ),
+            )
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = aliasNs,
+                    apiModelName = "claude-haiku-4-5",
+                    alias = "SMALL",
+                ),
+            )
+            // A model without an alias — must not appear in the alias list.
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = aliasNs,
+                    apiModelName = "gpt-4o-mini",
+                    alias = null,
+                ),
+            )
+
+            mockMvc.perform(get("/api/ai-models/aliases/by-namespaceId/$aliasNs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+                .andExpect(jsonPath("$[0]").value("BIG"))
+                .andExpect(jsonPath("$[1]").value("SMALL"))
+        }
+
+        "GET /api/ai-models/aliases/by-namespaceId/{namespaceId} returns empty list when no aliases defined" {
+            val emptyAliasNs = UUID.randomUUID()
+            val parent = createParentAiProvider(nsId = emptyAliasNs)
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = emptyAliasNs,
+                    apiModelName = "gpt-4o-no-alias",
+                    alias = null,
+                ),
+            )
+
+            mockMvc.perform(get("/api/ai-models/aliases/by-namespaceId/$emptyAliasNs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
     }
 }

@@ -109,4 +109,39 @@ class AiModelControllerSpec : StringSpec({
 
         shouldThrow<ResourceNotFoundException> { controller.update(id, resource(id = id)) }
     }
+
+    // -------------------------------------------------------------------------
+    // listAliasesByNamespaceId
+    // -------------------------------------------------------------------------
+
+    "listAliasesByNamespaceId returns distinct sorted aliases for models that have one" {
+        every { service.findByNamespaceId(namespaceId) } returns listOf(
+            model(apiName = "claude-opus-4-6").copy(alias = "BIG"),
+            model(apiName = "claude-haiku-4-5").copy(alias = "SMALL"),
+            model(apiName = "gpt-4o").copy(alias = "BIG"),   // duplicate alias — must be deduplicated
+            model(apiName = "no-alias-model").copy(alias = null), // no alias — excluded
+        )
+
+        val result = controller.listAliasesByNamespaceId(namespaceId)
+
+        result shouldBe listOf("BIG", "SMALL")
+    }
+
+    "listAliasesByNamespaceId returns empty list when no models have aliases" {
+        every { service.findByNamespaceId(namespaceId) } returns listOf(
+            model(apiName = "gpt-4o").copy(alias = null),
+        )
+
+        val result = controller.listAliasesByNamespaceId(namespaceId)
+
+        result shouldBe emptyList()
+    }
+
+    "listAliasesByNamespaceId returns empty list when namespace has no models" {
+        every { service.findByNamespaceId(namespaceId) } returns emptyList()
+
+        val result = controller.listAliasesByNamespaceId(namespaceId)
+
+        result shouldBe emptyList()
+    }
 })
