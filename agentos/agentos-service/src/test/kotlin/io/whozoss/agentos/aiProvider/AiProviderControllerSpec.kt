@@ -166,13 +166,29 @@ class AiProviderControllerSpec : StringSpec({
         result.apiKey shouldBe maskApiKey("sk-ant-api03-real-secret")
     }
 
-    "update keeps the persisted apiKey when client sends a blank apiKey" {
+    "update keeps the persisted apiKey when client omits it (null)" {
+        val existing = config(apiKey = "real-key")
+        val payload = resource(id = existing.metadata.id, apiKey = null)
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers {
+            val saved = firstArg<AiProvider>()
+            saved.apiKey shouldBe "real-key"
+            saved
+        }
+
+        controller.update(existing.metadata.id, payload)
+    }
+
+    "update clears the persisted apiKey when client sends a blank apiKey" {
+        // Aligned with UserAiProviderController: empty string is the wire signal for an
+        // explicit clear (FE form's cleared input). Required for credential rotation/
+        // revocation without recreating the row.
         val existing = config(apiKey = "real-key")
         val payload = resource(id = existing.metadata.id, apiKey = "")
         every { service.findById(existing.metadata.id) } returns existing
         every { service.update(any()) } answers {
             val saved = firstArg<AiProvider>()
-            saved.apiKey shouldBe "real-key"
+            saved.apiKey shouldBe null
             saved
         }
 

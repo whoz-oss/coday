@@ -94,10 +94,11 @@ class AiProviderController(
             description = resource.description,
             apiType = resource.apiType ?: existing.apiType,
             baseUrl = resource.baseUrl,
-            apiKey = if (isMasked(resource.apiKey)) {
-                existing.apiKey
-            } else {
-                resource.apiKey?.takeIf { it.isNotBlank() } ?: existing.apiKey
+            apiKey = when {
+                isMasked(resource.apiKey) -> existing.apiKey
+                resource.apiKey == null -> existing.apiKey
+                resource.apiKey.isBlank() -> null
+                else -> resource.apiKey
             },
         )
 
