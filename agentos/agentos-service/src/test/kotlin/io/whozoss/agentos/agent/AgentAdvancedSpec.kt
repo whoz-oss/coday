@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
+import reactor.core.publisher.Flux
 import java.util.*
 
 class AgentAdvancedSpec :
@@ -157,9 +158,14 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+
+            // call() is used for intention generation; stream() is used for the final answer
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns "<intention>No further tool calls needed.</intention><toolName>Answer</toolName>"
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Here is ", "my answer.")
 
             val agent =
                 AgentAdvanced(
@@ -182,8 +188,9 @@ class AgentAdvancedSpec :
 
             val events = agent.run(initialEvents).toList()
 
-            // AgentRunningEvent + ThinkingEvent + IntentionGeneratedEvent + AgentFinishedEvent
-            events shouldHaveSize 4
+            // AgentRunningEvent + ThinkingEvent + IntentionGeneratedEvent
+            // + TextChunkEvent(x2) + MessageEvent + AgentFinishedEvent
+            events shouldHaveSize 7
 
             val runningEvent = events[0] as? AgentRunningEvent
             runningEvent shouldNotBe null
@@ -198,7 +205,18 @@ class AgentAdvancedSpec :
             intentionEvent.intention shouldContain "No further tool calls needed"
             intentionEvent.toolName shouldBe "Answer"
 
-            val finishedEvent = events[3] as? AgentFinishedEvent
+            val chunks = events.filterIsInstance<TextChunkEvent>()
+            chunks shouldHaveSize 2
+            chunks[0].chunk shouldBe "Here is "
+            chunks[1].chunk shouldBe "my answer."
+
+            val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
+            messageEvent shouldNotBe null
+            messageEvent!!.actor.id shouldBe agentId.toString()
+            messageEvent.actor.role shouldBe ActorRole.AGENT
+            (messageEvent.content.first() as MessageContent.Text).content shouldBe "Here is my answer."
+
+            val finishedEvent = events.last() as? AgentFinishedEvent
             finishedEvent shouldNotBe null
             finishedEvent!!.agentId shouldBe agentId
             finishedEvent.agentName shouldBe "TestAgent"

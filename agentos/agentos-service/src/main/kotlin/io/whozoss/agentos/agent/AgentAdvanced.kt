@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -8,6 +9,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
@@ -17,6 +19,8 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
@@ -72,6 +76,7 @@ class AgentAdvanced(
 
             var iteration = 0
             var continueLoop = true
+            var lastIntention: IntentionGeneratedEvent? = null
 
             try {
                 while (continueLoop && iteration < maxIterations && shouldContinue()) {
@@ -85,6 +90,7 @@ class AgentAdvanced(
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
                     val intention = resolveIntentionAndTool(events, namespaceId, caseId)
                     emit(intention)
+                    lastIntention = intention
 
                     // Check if we should stop (Answer tool = done)
                     if (intention.toolName == ANSWER_TOOL) {
@@ -113,6 +119,36 @@ class AgentAdvanced(
                             message = "Agent reached maximum iterations ($maxIterations) without completing",
                         ),
                     )
+                }
+
+                // Generate final streamed answer before finishing
+                if (shouldContinue()) {
+                    val finalPromptText = "Based on the above conversation and your analysis, provide your response to the user."
+                    val intentionContext = lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
+                    val messages = buildMessages(events) + UserMessage(intentionContext)
+
+                    val contentBuilder = StringBuilder()
+                    chatClient
+                        .prompt(Prompt(messages))
+                        .stream()
+                        .content()
+                        .asFlow()
+                        .takeWhile { shouldContinue() }
+                        .collect { chunk ->
+                            contentBuilder.append(chunk)
+                            emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+                        }
+                    val content = contentBuilder.toString()
+                    if (content.isNotEmpty()) {
+                        emit(
+                            MessageEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                actor = Actor(id.toString(), name, ActorRole.AGENT),
+                                content = listOf(MessageContent.Text(content)),
+                            ),
+                        )
+                    }
                 }
 
                 emit(
@@ -147,10 +183,6 @@ class AgentAdvanced(
      * The LLM must respond with XML-tagged fields:
      *   <intention>free-text reasoning</intention>
      *   <toolName>ToolName</toolName>
-     *
-     * This replaces the former separate [generateIntention] + [selectTool] calls,
-     * halving the LLM round-trips per iteration and guaranteeing consistency between
-     * the stated reasoning and the chosen tool.
      */
     private fun resolveIntentionAndTool(
         events: List<CaseEvent>,
