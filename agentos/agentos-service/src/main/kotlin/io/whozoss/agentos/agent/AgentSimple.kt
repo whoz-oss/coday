@@ -1,9 +1,11 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.redirect.RedirectRequestException
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -201,6 +203,32 @@ class AgentSimple(
                     )
                 }
 
+                emit(
+                    AgentFinishedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = id,
+                        agentName = name,
+                    ),
+                )
+            } catch (e: RedirectRequestException) {
+                // Not an error: the redirect tool requested a hand-off to another agent.
+                // Drain any pending tool events (ToolRequestEvent + ToolResponseEvent for the
+                // redirect call itself) before emitting the agent-selection events, so the
+                // event stream is always well-ordered: request → response → selection → finished.
+                toolEventChannel.close()
+                for (toolEvent in toolEventChannel) {
+                    emit(toolEvent)
+                }
+                logger.info { "[AgentSimple] $name redirecting to '${e.targetAgentName}'" }
+                emit(
+                    AgentSelectedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
+                        agentName = e.targetAgentName,
+                    ),
+                )
                 emit(
                     AgentFinishedEvent(
                         namespaceId = namespaceId,
@@ -452,6 +480,22 @@ class AgentSimple(
                         result =
                             try {
                                 tool.executeWithJson(toolInput, context)
+                            } catch (e: RedirectRequestException) {
+                                // Redirect is not an error: emit a successful response so traces
+                                // are complete, then re-throw the signal for the flow catch block.
+                                runBlocking {
+                                    eventChannel.send(
+                                        ToolResponseEvent(
+                                            namespaceId = namespaceId,
+                                            caseId = caseId,
+                                            toolRequestId = toolRequestId,
+                                            toolName = tool.name,
+                                            output = MessageContent.Text("Redirecting to agent '${e.targetAgentName}'."),
+                                            success = true,
+                                        ),
+                                    )
+                                }
+                                throw e
                             } catch (e: Exception) {
                                 runBlocking {
                                     eventChannel.send(
