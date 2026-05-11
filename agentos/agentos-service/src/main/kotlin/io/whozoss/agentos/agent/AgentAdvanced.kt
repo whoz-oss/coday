@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -163,6 +164,29 @@ class AgentAdvanced(
                         agentName = name,
                     ),
                 )
+            } catch (e: AgentInterrupt) {
+                // Not an error: a tool requested a structured interruption of this agent run.
+                when (e) {
+                    is AgentInterrupt.Redirect -> {
+                        logger.info { "[AgentAdvanced] $name redirecting to '${e.targetAgentName}'" }
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = id,
+                                agentName = name,
+                            ),
+                        )
+                        emit(
+                            AgentSelectedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
+                                agentName = e.targetAgentName,
+                            ),
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -382,6 +406,9 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
                 success = true,
                 durationMs = System.currentTimeMillis() - startMs,
             )
+        } catch (e: AgentInterrupt) {
+            // Re-throw so the run() catch block can handle it — do not swallow as a tool error.
+            throw e
         } catch (e: Exception) {
             ToolResponseEvent(
                 namespaceId = namespaceId,

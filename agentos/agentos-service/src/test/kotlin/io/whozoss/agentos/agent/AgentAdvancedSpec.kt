@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.*
@@ -146,6 +147,110 @@ class AgentAdvancedSpec :
             val (_, toolName) = agent.parseIntentionAndTool(response, validTools)
 
             toolName shouldBe "FILES__ReadFile"
+        }
+
+        // -------------------------------------------------------------------------
+        // Redirect contract
+        // -------------------------------------------------------------------------
+
+        "on redirect, AgentFinishedEvent is emitted before AgentSelectedEvent" {
+            // AgentAdvanced.executeTool() must re-throw AgentInterrupt so run()'s catch block
+            // handles it. The catch block must emit AgentFinishedEvent then AgentSelectedEvent
+            // in that order — CaseRuntime.processNextStep scans newest-first, so
+            // AgentSelectedEvent must appear after AgentFinishedEvent.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool = RedirectTool(
+                configName = "REDIRECT",
+                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            // First call() → intention selects the redirect tool
+            // Second call() → parameter generation returns valid JSON for the tool
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany listOf(
+                "<intention>Redirect to TargetAgent.</intention><toolName>REDIRECT__redirect</toolName>",
+                """{"agentName":"TargetAgent"}""",
+            )
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                chatClient = mockChatClient,
+                tools = listOf(redirectTool),
+                maxIterations = 5,
+            )
+
+            val events = agent.run(
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("do the thing")),
+                    ),
+                ),
+            ).toList()
+
+            val finishedIndex = events.indexOfFirst { it is AgentFinishedEvent }
+            val selectedIndex = events.indexOfFirst { it is AgentSelectedEvent }
+
+            (finishedIndex >= 0) shouldBe true
+            (selectedIndex >= 0) shouldBe true
+            // AgentFinishedEvent must come before AgentSelectedEvent
+            (finishedIndex < selectedIndex) shouldBe true
+            (events[selectedIndex] as AgentSelectedEvent).agentName shouldBe "TargetAgent"
+        }
+
+        "on redirect, no WarnEvent is emitted" {
+            // AgentInterrupt is not an error — the catch block must not emit WarnEvent.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool = RedirectTool(
+                configName = "REDIRECT",
+                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany listOf(
+                "<intention>Redirect to TargetAgent.</intention><toolName>REDIRECT__redirect</toolName>",
+                """{"agentName":"TargetAgent"}""",
+            )
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                chatClient = mockChatClient,
+                tools = listOf(redirectTool),
+                maxIterations = 5,
+            )
+
+            val events = agent.run(
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("do the thing")),
+                    ),
+                ),
+            ).toList()
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
         }
 
         // -------------------------------------------------------------------------
