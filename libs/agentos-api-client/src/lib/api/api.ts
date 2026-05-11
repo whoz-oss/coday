@@ -22,6 +22,8 @@ export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
+export * from './user-group-controller.service'
+import { UserGroupControllerService } from './user-group-controller.service'
 export const APIS = [
   AgentConfigControllerService,
   AiModelControllerService,
@@ -35,4 +37,5 @@ export const APIS = [
   PluginControllerService,
   SseService,
   UserControllerService,
+  UserGroupControllerService,
 ]
