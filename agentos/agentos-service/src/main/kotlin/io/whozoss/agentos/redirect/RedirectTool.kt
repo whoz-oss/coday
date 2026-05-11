@@ -1,5 +1,6 @@
 package io.whozoss.agentos.redirect
 
+import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 
@@ -13,12 +14,12 @@ import io.whozoss.agentos.sdk.tool.ToolContext
  *
  * ## Execution contract
  *
- * [execute] always throws [RedirectRequestException] after recording the intent.
+ * [execute] always throws [AgentInterrupt.Redirect] after recording the intent.
  * The exception is a control-flow signal, not an error:
  * - The [io.whozoss.agentos.agent.AgentSimple] wrapper emits [ToolRequestEvent] and
  *   [ToolResponseEvent] (success=true) **before** calling [execute], so traces are
  *   always complete regardless of the exception.
- * - [io.whozoss.agentos.agent.AgentSimple.run] catches [RedirectRequestException]
+ * - [io.whozoss.agentos.agent.AgentSimple.run] catches [AgentInterrupt]
  *   before the generic error handler and emits [AgentSelectedEvent] + [AgentFinishedEvent].
  *
  * @param configName The [IntegrationConfig.name] used as tool-name prefix.
@@ -73,15 +74,16 @@ class RedirectTool(
     override val paramType: Class<Input> = Input::class.java
 
     /**
-     * Always throws [RedirectRequestException] — this is the intended behaviour.
+     * Always throws [AgentInterrupt.Redirect] — this is the intended behaviour.
      *
-     * The caller ([AgentSimple]'s tool callback wrapper) emits [ToolRequestEvent] and
-     * [ToolResponseEvent] before invoking [executeWithJson], so traces are complete
-     * before the exception propagates.
+     * The caller ([io.whozoss.agentos.agent.AgentSimple]'s tool callback wrapper) emits
+     * [io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent] and
+     * [io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent] before invoking [executeWithJson],
+     * so traces are complete before the exception propagates.
      */
     override fun execute(input: Input?, context: ToolContext): String {
         val target = input?.agentName
             ?: error("RedirectTool: agentName is required but was not provided by the LLM")
-        throw RedirectRequestException(target)
+        throw AgentInterrupt.Redirect(target)
     }
 }

@@ -8,7 +8,6 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import io.whozoss.agentos.redirect.RedirectRequestException
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.actor.Actor
@@ -270,7 +269,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream()
             } answers {
                 val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "REDIRECT__redirect" }
-                // Let RedirectRequestException propagate — AgentSimple catches it in its flow
+                // Let AgentInterrupt.Redirect propagate — AgentSimple catches it in its flow
                 // and emits AgentFinishedEvent + AgentSelectedEvent in the correct order.
                 cb.call("{\"agentName\":\"TargetAgent\"}")
                 mockStreamSpec
