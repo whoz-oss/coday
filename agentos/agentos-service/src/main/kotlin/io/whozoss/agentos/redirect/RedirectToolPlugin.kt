@@ -36,7 +36,7 @@ import java.util.UUID
  * that run. Agents that do not exist in the namespace are silently excluded — the LLM
  * never receives a stale or inaccessible name.
  *
- * @param agentResolver Lambda injected by [io.whozoss.agentos.agent.AgentServiceImpl]
+ * @param agentResolver Lambda injected by [io.whozoss.agentos.redirect.RedirectConfiguration]
  *   to avoid a circular Spring dependency. Given a namespace UUID and a list of glob
  *   patterns, returns the matching [AgentConfig]s from that namespace.
  */
@@ -66,16 +66,16 @@ class RedirectToolPlugin(
             ?.takeIf { it.isNotEmpty() }
             ?: listOf("*")
 
-        val eligible = agentResolver(namespaceId, patterns)
+        val eligibleAgents = agentResolver(namespaceId, patterns)
             .map { RedirectTool.EligibleAgent(name = it.name, description = it.description) }
 
-        if (eligible.isEmpty()) {
+        if (eligibleAgents.isEmpty()) {
             logger.warn { "[RedirectToolPlugin] No eligible agents found for namespace $namespaceId with patterns $patterns" }
             return emptyList()
         }
 
-        logger.info { "[RedirectToolPlugin] Resolved ${eligible.size} eligible agent(s) for namespace $namespaceId" }
-        return listOf(RedirectTool(configName = configName, eligibleAgents = eligible))
+        logger.info { "[RedirectToolPlugin] Resolved ${eligibleAgents.size} eligible agent(s) for namespace $namespaceId" }
+        return listOf(RedirectTool(configName = configName, eligibleAgents = eligibleAgents))
     }
 
     companion object : KLogging() {

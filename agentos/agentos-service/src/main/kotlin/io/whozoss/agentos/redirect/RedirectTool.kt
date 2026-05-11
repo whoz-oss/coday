@@ -46,8 +46,9 @@ class RedirectTool(
         appendLine("Route the current request to another agent. Use this when the request is better handled by a specialised agent.")
         appendLine("Available agents:")
         eligibleAgents.forEach { agent ->
-            val desc = agent.description?.takeIf { it.isNotBlank() }
-            if (desc != null) appendLine("  - ${agent.name}: $desc") else appendLine("  - ${agent.name}")
+            agent.description?.takeIf { it.isNotBlank() }
+                ?.also { desc -> appendLine("  - ${agent.name}: $desc") }
+                ?: run { appendLine("  - ${agent.name}") }
         }
     }.trimEnd()
 

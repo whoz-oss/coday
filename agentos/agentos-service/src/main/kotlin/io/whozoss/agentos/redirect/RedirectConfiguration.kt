@@ -41,27 +41,4 @@ class RedirectConfiguration(
                 .findByParent(namespaceId)
                 .filter { config -> regexes.any { it.matches(config.name) } }
         }
-
-    companion object {
-        /**
-         * Converts a glob pattern (only `*` as wildcard) to a case-insensitive [Regex].
-         * All regex metacharacters in the pattern are escaped before substituting `*`.
-         */
-        internal fun globToRegex(pattern: String): Regex {
-            val escaped = pattern
-                .replace("\\", "\\\\")
-                .replace(".", "\\.")
-                .replace("[", "\\[")
-                .replace("]", "\\]")
-                .replace("{", "\\{")
-                .replace("}", "\\}")
-                .replace("(", "\\(")
-                .replace(")", "\\)")
-                .replace("^", "\\^")
-                .replace("$", "\\$")
-                .replace("|", "\\|")
-                .replace("*", ".*")
-            return Regex("^$escaped$", RegexOption.IGNORE_CASE)
-        }
-    }
 }
