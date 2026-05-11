@@ -1,3 +1,13 @@
+## 0.140.1 (2026-05-11)
+
+### 🚀 Features
+
+- **agentos:** add retry mechanism on resolveIntentionAndTool (WZ-31597) ([4708dfc2](https://github.com/whoz-oss/coday/commit/4708dfc2))
+
+### ❤️ Thank You
+
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.140.0 (2026-05-11)
 
 ### 🚀 Features
