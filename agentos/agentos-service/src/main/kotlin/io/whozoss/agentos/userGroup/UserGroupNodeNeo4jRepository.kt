@@ -13,6 +13,15 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
     )
     fun findActiveByNamespaceId(namespaceId: String): List<UserGroupNode>
 
+    @Query($$"MATCH (g:UserGroup {id: $id}) SET g:ActiveUserGroup")
+    fun setActive(id: String)
+
+    @Query($$"MATCH (g:UserGroup {id: $id}) REMOVE g:ActiveUserGroup")
+    fun setInactive(id: String)
+
+    @Query($$"MATCH (g:UserGroup) WHERE g.namespaceId = $namespaceId AND (g.removed IS NULL OR g.removed = false) REMOVE g:ActiveUserGroup")
+    fun setInactiveByNamespaceId(namespaceId: String)
+
     @Query($$"MATCH (:UserGroup {id: $groupId})-[r:HAS_AGENT]->(:AgentConfig) DELETE r")
     fun removeAllAgents(groupId: String)
 

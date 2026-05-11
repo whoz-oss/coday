@@ -20,6 +20,7 @@ open class Neo4jNamespaceRepository(
     override fun save(entity: Namespace): Namespace =
         namespaceNodeNeo4jRepository
             .save(NamespaceNode.fromDomain(entity))
+            .also { if (!entity.metadata.removed) namespaceNodeNeo4jRepository.setActive(it.id) }
             .toDomain()
             .also { logger.debug { "[Neo4jNamespaceRepository] Saved namespace ${it.id}" } }
 
@@ -41,6 +42,7 @@ open class Neo4jNamespaceRepository(
             ?.takeIf { it.removed != true }
             ?.let { node ->
                 namespaceNodeNeo4jRepository.save(node.copy(removed = true))
+                namespaceNodeNeo4jRepository.setInactive(node.id)
                 logger.debug { "[Neo4jNamespaceRepository] Soft-deleted namespace $id" }
                 true
             } ?: false
@@ -52,6 +54,7 @@ open class Neo4jNamespaceRepository(
     open override fun deleteByParent(parentId: String): Int {
         val active = namespaceNodeNeo4jRepository.findAllActive()
         namespaceNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
+        namespaceNodeNeo4jRepository.setInactiveByIds(active.map { it.id })
         logger.debug { "[Neo4jNamespaceRepository] Soft-deleted ${active.size} namespaces" }
         return active.size
     }

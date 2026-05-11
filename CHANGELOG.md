@@ -1,3 +1,18 @@
+## 0.140.0 (2026-05-11)
+
+### 🚀 Features
+
+- #31644 Implement DELETE user group endpoint ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix unique indices in case of soft deletion ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Add missing transactions ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix after coday review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement DELETE user group endpoint ([#851](https://github.com/whoz-oss/coday/pull/851), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.139.0 (2026-05-11)
 
 ### 🚀 Features
