@@ -40,6 +40,7 @@ class AgentServiceImpl(
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
     private val agentConfigService: AgentConfigService,
+    private val intentionGenerator: AgentIntentionGenerator,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -172,12 +173,18 @@ class AgentServiceImpl(
         val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
 
         return if (advancedExecution) {
-            AgentAdvanced(
-                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
-                name = agentName,
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val advancedContext = AgentAdvancedContext(
                 chatClient = chatClient,
                 tools = tools.toList(),
                 instructions = instructions,
+                agentId = agentId,
+            )
+            AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = agentName,
+                context = advancedContext,
+                intentionGenerator = intentionGenerator,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
