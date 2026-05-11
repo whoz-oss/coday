@@ -1,3 +1,15 @@
+## 0.139.0 (2026-05-11)
+
+### 🚀 Features
+
+- #858 Add button "open in full view" on the card ([#858](https://github.com/whoz-oss/coday/issues/858))
+- #858 Add button "open in full view" on the card ([#859](https://github.com/whoz-oss/coday/pull/859), [#858](https://github.com/whoz-oss/coday/issues/858))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.138.0 (2026-05-11)
 
 ### 🚀 Features
