@@ -5,7 +5,6 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -166,27 +165,7 @@ class AgentAdvanced(
                 )
             } catch (e: AgentInterrupt) {
                 // Not an error: a tool requested a structured interruption of this agent run.
-                when (e) {
-                    is AgentInterrupt.Redirect -> {
-                        logger.info { "[AgentAdvanced] $name redirecting to '${e.targetAgentName}'" }
-                        emit(
-                            AgentFinishedEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                agentId = id,
-                                agentName = name,
-                            ),
-                        )
-                        emit(
-                            AgentSelectedEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
-                                agentName = e.targetAgentName,
-                            ),
-                        )
-                    }
-                }
+                emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(

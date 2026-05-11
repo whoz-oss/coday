@@ -1,11 +1,9 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -219,27 +217,7 @@ class AgentSimple(
                 for (toolEvent in toolEventChannel) {
                     emit(toolEvent)
                 }
-                when (e) {
-                    is AgentInterrupt.Redirect -> {
-                        logger.info { "[AgentSimple] $name redirecting to '${e.targetAgentName}'" }
-                        emit(
-                            AgentFinishedEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                agentId = id,
-                                agentName = name,
-                            ),
-                        )
-                        emit(
-                            AgentSelectedEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
-                                agentName = e.targetAgentName,
-                            ),
-                        )
-                    }
-                }
+                emitInterruptEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(

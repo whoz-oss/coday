@@ -12,7 +12,7 @@ package io.whozoss.agentos.agent
  * value without leaking control-flow semantics into the tool result string. Throwing an
  * exception is the only mechanism that exits `ToolCallback.call` without returning a
  * result and propagates cleanly through Spring AI's internal tool-calling loop up to the
- * [AgentSimple] catch block.
+ * [AgentSimple] or [AgentAdvanced] catch block.
  *
  * ## Exhaustiveness
  *
@@ -29,8 +29,9 @@ package io.whozoss.agentos.agent
  * - `SyncDelegation`: suspend the current agent and wait for a sub-case to finish.
  * - `AwaitAnswer`: suspend and wait for a human answer to a QuestionEvent.
  */
-sealed class AgentInterrupt(message: String) : RuntimeException(message) {
-
+sealed class AgentInterrupt(
+    message: String,
+) : RuntimeException(message) {
     /**
      * Request a hand-off to another agent.
      *
@@ -42,5 +43,7 @@ sealed class AgentInterrupt(message: String) : RuntimeException(message) {
      * @param targetAgentName The exact name of the agent to redirect to, as it appears
      *   in the [io.whozoss.agentos.agentConfig.AgentConfig] of the namespace.
      */
-    class Redirect(val targetAgentName: String) : AgentInterrupt("Redirect to '\$targetAgentName'")
+    class Redirect(
+        val targetAgentName: String,
+    ) : AgentInterrupt("Redirect to '\$targetAgentName'")
 }
