@@ -216,7 +216,7 @@
               aria-label="Open thread in full view"
               type="button"
             >
-              <mat-icon>open_in_full</mat-icon>
+              <mat-icon>open_in_new</mat-icon>
             </button>
             <button
               class="preview-action-btn"
@@ -231,7 +231,7 @@
         </header>
 
         <!-- Thread content -->
-        <div class="gtc-preview-body">
+        <div class="gtc-preview-body thread-preview-host">
           <app-thread [projectName]="previewProjectId()!" [threadId]="previewThreadId()!" />
         </div>
       </div>
