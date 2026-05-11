@@ -42,6 +42,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   notificationSoundEnabled = true
   browserNotificationEnabled = false
   browserNotificationDenied = false
+  missionPreviewEnabled = false
 
   availableVoices: VoiceInfo[] = []
   selectedVoiceId: string | null = null
@@ -84,6 +85,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.agentNotificationEnabled = this.preferencesService.getAgentNotificationEnabled()
     this.notificationSoundEnabled = this.preferencesService.getNotificationSoundEnabled()
     this.browserNotificationEnabled = this.preferencesService.getBrowserNotificationEnabled()
+    this.missionPreviewEnabled = this.preferencesService.getMissionPreviewEnabled()
 
     this.loadAvailableVoices()
 
@@ -157,6 +159,10 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
       this.browserNotificationEnabled = enabled
       // Check permission status whenever the preference changes
       this.checkNotificationPermission()
+    })
+
+    this.preferencesService.missionPreviewEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
+      this.missionPreviewEnabled = enabled
     })
   }
 
@@ -266,6 +272,11 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   onBrowserNotificationEnabledChange(): void {
     console.log('[OPTIONS] Browser notification enabled changed to:', this.browserNotificationEnabled)
     this.preferencesService.setBrowserNotificationEnabled(this.browserNotificationEnabled)
+  }
+
+  onMissionPreviewEnabledChange(): void {
+    console.log('[OPTIONS] Mission preview panel enabled changed to:', this.missionPreviewEnabled)
+    this.preferencesService.setMissionPreviewEnabled(this.missionPreviewEnabled)
   }
 
   /**
