@@ -1,17 +1,13 @@
 import { TestBed } from '@angular/core/testing'
-import {
-  AiProvider,
-  AiProviderApiTypeEnum,
-  AiProviderControllerService,
-  UserAiProvider,
-  UserAiProviderControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { AiProvider, AiProviderApiTypeEnum, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
 import { firstValueFrom, of } from 'rxjs'
 import { AiProviderConfigStateService } from './ai-provider-config-state.service'
+import { UserStateService } from './user-state.service'
 
 describe('AiProviderConfigStateService', () => {
   const NS_ID = '11111111-1111-1111-1111-111111111111'
   const ITEM_ID = '22222222-2222-2222-2222-222222222222'
+  const ME_ID = '33333333-3333-3333-3333-333333333333'
 
   const nsProvider: AiProvider = {
     id: 'ns-1',
@@ -19,63 +15,62 @@ describe('AiProviderConfigStateService', () => {
     name: 'NS Anthropic',
     apiType: AiProviderApiTypeEnum.Anthropic,
   }
-  const userOnNsProvider: UserAiProvider = {
+  const userOnNsProvider: AiProvider = {
     id: 'u-ns-1',
     namespaceId: NS_ID,
-    userId: 'me',
+    userId: ME_ID,
     name: 'My NS Anthropic',
     apiType: AiProviderApiTypeEnum.Anthropic,
     apiKey: 'sk-ant-•••••',
   }
-  const userGlobalProvider: UserAiProvider = {
+  const userGlobalProvider: AiProvider = {
     id: 'u-g-1',
-    userId: 'me',
+    userId: ME_ID,
     name: 'My Global Anthropic',
     apiType: AiProviderApiTypeEnum.Anthropic,
     apiKey: 'sk-ant-•••••',
   }
 
   let nsController: jest.Mocked<AiProviderControllerService>
-  let userController: jest.Mocked<UserAiProviderControllerService>
+  let userStateMock: { currentUser: jest.Mock<{ id: string } | null, []> }
   let service: AiProviderConfigStateService
 
   beforeEach(() => {
     nsController = {
-      listByNamespaceIdAiProvider: jest.fn().mockReturnValue(of([nsProvider])),
+      // Unified `listAiProvider(namespaceId, userId, page, size)` returns a paginated envelope.
+      // The mock dispatches by query params : `userId === undefined` → NS-shared layer ;
+      // `namespaceId === 'none'` → user-global ; both present → user × ns.
+      listAiProvider: jest.fn().mockImplementation((namespaceId?: string, userId?: string) => {
+        if (!userId) {
+          return of({ content: [nsProvider], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+        }
+        if (namespaceId === 'none') {
+          return of({ content: [userGlobalProvider], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+        }
+        return of({ content: [userOnNsProvider], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+      }),
       createAiProvider: jest.fn().mockReturnValue(of(nsProvider)),
       updateAiProvider: jest.fn().mockReturnValue(of(nsProvider)),
       deleteAiProvider: jest.fn().mockReturnValue(of(undefined)),
       getByIdAiProvider: jest.fn().mockReturnValue(of(nsProvider)),
     } as unknown as jest.Mocked<AiProviderControllerService>
 
-    userController = {
-      listUserAiProvider: jest.fn().mockImplementation((namespaceId: string) =>
-        of({
-          content: namespaceId === 'none' ? [userGlobalProvider] : [userOnNsProvider],
-          page: 0,
-          size: 20,
-          totalElements: 1,
-          totalPages: 1,
-        })
-      ),
-      createUserAiProvider: jest.fn().mockReturnValue(of(userOnNsProvider)),
-      updateUserAiProvider: jest.fn().mockReturnValue(of(userOnNsProvider)),
-      deleteUserAiProvider: jest.fn().mockReturnValue(of(undefined)),
-      getByIdUserAiProvider: jest.fn().mockReturnValue(of(userOnNsProvider)),
-    } as unknown as jest.Mocked<UserAiProviderControllerService>
+    userStateMock = {
+      currentUser: jest.fn().mockReturnValue({ id: ME_ID }),
+    }
 
     TestBed.configureTestingModule({
       providers: [
         AiProviderConfigStateService,
         { provide: AiProviderControllerService, useValue: nsController },
-        { provide: UserAiProviderControllerService, useValue: userController },
+        { provide: UserStateService, useValue: userStateMock },
       ],
     })
     service = TestBed.inject(AiProviderConfigStateService)
   })
 
   describe('vm$', () => {
-    it('merges the 3 sources into a structured view model and hides the "none" sentinel', async () => {
+    it('merges the 3 sources into a structured view model and hides the "none" / "me" sentinels', async () => {
       service.setNamespace(NS_ID)
       const vm = await firstValueFrom(service.vm$)
 
@@ -83,23 +78,26 @@ describe('AiProviderConfigStateService', () => {
       expect(vm.userOnNs).toEqual([userOnNsProvider])
       expect(vm.userGlobal).toEqual([userGlobalProvider])
 
-      expect(nsController.listByNamespaceIdAiProvider).toHaveBeenCalledWith(NS_ID)
-      expect(userController.listUserAiProvider).toHaveBeenCalledWith(NS_ID, 0, expect.any(Number))
-      expect(userController.listUserAiProvider).toHaveBeenCalledWith('none', 0, expect.any(Number))
+      // NS-shared layer : namespaceId set, userId omitted.
+      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, undefined, 0, expect.any(Number))
+      // user × namespace : both NS and userId='me' sentinel.
+      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
+      // user-global : namespaceId='none', userId='me'.
+      expect(nsController.listAiProvider).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
     })
   })
 
   describe('loadUserProviders wrapper', () => {
-    it('translates "global" into the backend sentinel, never leaking it to callers', async () => {
+    it('translates "global" into the backend sentinel pair (none, me), never leaking it to callers', async () => {
       const result = await firstValueFrom(service.loadUserProviders('global'))
       expect(result).toEqual([userGlobalProvider])
-      expect(userController.listUserAiProvider).toHaveBeenCalledWith('none', 0, expect.any(Number))
+      expect(nsController.listAiProvider).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
     })
 
-    it('passes through a UUID as-is for user × namespace lookups', async () => {
+    it('passes a UUID for user × namespace and pins userId to "me"', async () => {
       const result = await firstValueFrom(service.loadUserProviders(NS_ID))
       expect(result).toEqual([userOnNsProvider])
-      expect(userController.listUserAiProvider).toHaveBeenCalledWith(NS_ID, 0, expect.any(Number))
+      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
     })
   })
 
@@ -112,26 +110,26 @@ describe('AiProviderConfigStateService', () => {
       apiKey: 'sk-ant-newkey',
     }
 
-    it('routes namespace creates to the namespace controller with the namespaceId', async () => {
+    it('routes namespace creates to the unified controller with NS only (no userId)', async () => {
       await firstValueFrom(service.create(draft, 'namespace', NS_ID))
-      expect(nsController.createAiProvider).toHaveBeenCalledWith(
+      const payload = nsController.createAiProvider.mock.calls[0][0]
+      expect(payload).toEqual(
         expect.objectContaining({ name: 'New', apiType: AiProviderApiTypeEnum.Anthropic, namespaceId: NS_ID })
       )
-      expect(userController.createUserAiProvider).not.toHaveBeenCalled()
+      expect(payload.userId).toBeUndefined()
     })
 
-    it('routes userOnNs creates to the user controller with the namespaceId set', async () => {
+    it('routes userOnNs creates with both namespaceId and userId=currentUser.id', async () => {
       await firstValueFrom(service.create(draft, 'userOnNs', NS_ID))
-      expect(userController.createUserAiProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'New', namespaceId: NS_ID })
-      )
+      const payload = nsController.createAiProvider.mock.calls[0][0]
+      expect(payload).toEqual(expect.objectContaining({ name: 'New', namespaceId: NS_ID, userId: ME_ID }))
     })
 
-    it('routes userGlobal creates to the user controller WITHOUT a namespaceId', async () => {
+    it('routes userGlobal creates with userId=currentUser.id and NO namespaceId', async () => {
       await firstValueFrom(service.create(draft, 'userGlobal', NS_ID))
-      const arg = userController.createUserAiProvider.mock.calls[0][0]
-      expect(arg.namespaceId).toBeUndefined()
-      expect(arg.name).toBe('New')
+      const payload = nsController.createAiProvider.mock.calls[0][0]
+      expect(payload.userId).toBe(ME_ID)
+      expect(payload.namespaceId).toBeUndefined()
     })
 
     it('throws when creating a namespace-scoped provider without a namespaceId', () => {
@@ -140,6 +138,11 @@ describe('AiProviderConfigStateService', () => {
 
     it('throws when creating a userOnNs provider without a namespaceId', () => {
       expect(() => service.create(draft, 'userOnNs', null)).toThrow(/namespaceId/i)
+    })
+
+    it('throws when creating a user-scope provider before UserStateService.loadMe() resolves', () => {
+      userStateMock.currentUser.mockReturnValueOnce(null)
+      expect(() => service.create(draft, 'userGlobal', NS_ID)).toThrow(/loadMe/i)
     })
   })
 
@@ -153,7 +156,7 @@ describe('AiProviderConfigStateService', () => {
 
     it('omits apiKey from the payload when draft.apiKey is null (user did not touch the field)', async () => {
       await firstValueFrom(service.update(ITEM_ID, { ...baseDraft, apiKey: null }, 'userOnNs', userOnNsProvider))
-      const payload = userController.updateUserAiProvider.mock.calls[0][1]
+      const payload = nsController.updateAiProvider.mock.calls[0][1]
       expect('apiKey' in payload).toBe(false)
     })
 
@@ -161,32 +164,33 @@ describe('AiProviderConfigStateService', () => {
       await firstValueFrom(
         service.update(ITEM_ID, { ...baseDraft, apiKey: 'sk-ant-fresh' }, 'userOnNs', userOnNsProvider)
       )
-      const payload = userController.updateUserAiProvider.mock.calls[0][1]
+      const payload = nsController.updateAiProvider.mock.calls[0][1]
       expect(payload.apiKey).toBe('sk-ant-fresh')
     })
 
-    it('sends apiKey as empty string when draft.apiKey is the empty string (explicit clear)', async () => {
-      // Wire contract: empty string on the wire signals "clear" to the backend. We do not use
-      // JSON-null because Jackson collapses null and field-absent into the same Kotlin null,
-      // leaving the backend unable to tell preserve from clear.
+    it('sends apiKey as empty string when draft.apiKey is "" (explicit clear)', async () => {
+      // Wire contract : empty string signals clear ; the backend persists `apiKey = null`.
+      // JSON-null cannot be used because Jackson collapses it with field-absent.
       await firstValueFrom(service.update(ITEM_ID, { ...baseDraft, apiKey: '' }, 'userOnNs', userOnNsProvider))
-      const payload = userController.updateUserAiProvider.mock.calls[0][1]
+      const payload = nsController.updateAiProvider.mock.calls[0][1]
       expect('apiKey' in payload).toBe(true)
       expect(payload.apiKey).toBe('')
+    })
+
+    it('echoes the persisted (namespaceId, userId) tuple so the backend keeps the scope on PUT', async () => {
+      await firstValueFrom(service.update(ITEM_ID, { ...baseDraft, apiKey: null }, 'userOnNs', userOnNsProvider))
+      const payload = nsController.updateAiProvider.mock.calls[0][1]
+      expect(payload.namespaceId).toBe(NS_ID)
+      expect(payload.userId).toBe(ME_ID)
     })
   })
 
   describe('delete dispatch', () => {
-    it('routes namespace deletes to the namespace controller', async () => {
+    it('routes all scopes to the unified deleteAiProvider', async () => {
       await firstValueFrom(service.delete(ITEM_ID, 'namespace'))
-      expect(nsController.deleteAiProvider).toHaveBeenCalledWith(ITEM_ID)
-      expect(userController.deleteUserAiProvider).not.toHaveBeenCalled()
-    })
-
-    it('routes userOnNs and userGlobal deletes to the user controller', async () => {
       await firstValueFrom(service.delete(ITEM_ID, 'userOnNs'))
       await firstValueFrom(service.delete(ITEM_ID, 'userGlobal'))
-      expect(userController.deleteUserAiProvider).toHaveBeenCalledTimes(2)
+      expect(nsController.deleteAiProvider).toHaveBeenCalledTimes(3)
     })
   })
 
@@ -194,8 +198,7 @@ describe('AiProviderConfigStateService', () => {
     it('refetches the 3 sources after a successful create', async () => {
       service.setNamespace(NS_ID)
       const sub = service.vm$.subscribe()
-      const initialNsCalls = nsController.listByNamespaceIdAiProvider.mock.calls.length
-      const initialUserCalls = userController.listUserAiProvider.mock.calls.length
+      const initialCalls = nsController.listAiProvider.mock.calls.length
 
       await firstValueFrom(
         service.create(
@@ -211,22 +214,22 @@ describe('AiProviderConfigStateService', () => {
         )
       )
 
-      expect(nsController.listByNamespaceIdAiProvider.mock.calls.length).toBeGreaterThan(initialNsCalls)
-      expect(userController.listUserAiProvider.mock.calls.length).toBeGreaterThan(initialUserCalls)
+      expect(nsController.listAiProvider.mock.calls.length).toBeGreaterThan(initialCalls)
       sub.unsubscribe()
     })
   })
 
   describe('getById dispatch', () => {
-    it('routes namespace lookups to the namespace controller', async () => {
+    it('routes all scopes to the unified getByIdAiProvider (single overload)', async () => {
       await firstValueFrom(service.getById(ITEM_ID, 'namespace'))
-      expect(nsController.getByIdAiProvider).toHaveBeenCalledWith(ITEM_ID)
-    })
-
-    it('routes user-scope lookups to the user controller for both userOnNs and userGlobal', async () => {
       await firstValueFrom(service.getById(ITEM_ID, 'userOnNs'))
       await firstValueFrom(service.getById(ITEM_ID, 'userGlobal'))
-      expect(userController.getByIdUserAiProvider).toHaveBeenCalledTimes(2)
+      expect(nsController.getByIdAiProvider).toHaveBeenCalledTimes(3)
+    })
+
+    it('accepts the no-scope overload (form simplification, G10)', async () => {
+      await firstValueFrom(service.getById(ITEM_ID))
+      expect(nsController.getByIdAiProvider).toHaveBeenCalledWith(ITEM_ID)
     })
   })
 })

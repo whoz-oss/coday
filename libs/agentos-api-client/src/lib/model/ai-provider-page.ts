@@ -7,10 +7,10 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { UserAiProvider } from './user-ai-provider'
+import { AiProvider } from './ai-provider'
 
-export interface UserAiProviderPage {
-  content: Array<UserAiProvider>
+export interface AiProviderPage {
+  content: Array<AiProvider>
   page: number
   size: number
   totalElements: number

@@ -4,6 +4,8 @@ import com.ninjasquad.springmockk.MockkBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
+import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -26,19 +28,24 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * Cross-user isolation matrix for [UserAiProviderController] (NFR-SEC-1, AR19).
+ * Cross-user isolation matrix for the unified [AiProviderController] (NFR-SEC-1, AR19).
  *
- * For each (verb × mode) pair where `verb ∈ {GET, PUT, DELETE}` and
- * `mode ∈ {user-global, user × namespace}`, alice attempts to access bob's resource.
- * **Every cell must return 404** — never 403 — because 403 leaks existence.
+ * For each (verb × scope) pair where `verb ∈ {GET, PUT, DELETE}` and
+ * `scope ∈ {user-global, user × namespace}`, alice attempts to access bob's resource.
+ * **Every cell must return 404** — never 403 — because 403 leaks existence
+ * (Decision 11 / Decision 20 — H4 breaking change : even NS-shared writes by
+ * non-admin users now surface as 404 via [io.whozoss.agentos.security.declarative.HideOnAccessDenied]).
  *
- * Plus two LIST scenarios: alice never sees bob's rows in either mode,
- * even when she explicitly supplies `?userId=bob.id` (mass-assignment guard FR20).
+ * Plus two LIST scenarios that verify alice never sees bob's rows in either listing
+ * mode, and that the unified controller rejects `?userId=<bob>` with `400` (only the
+ * `me` sentinel is exposed — Decision 15 mass-assignment guard, post-fusion behaviour).
+ *
+ * Migrated from `UserAiProviderCrossUserIsolationSpec` (Decision 19 + Task 5).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class UserAiProviderCrossUserIsolationSpec : StringSpec() {
+class AiProviderCrossUserIsolationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
@@ -46,6 +53,7 @@ class UserAiProviderCrossUserIsolationSpec : StringSpec() {
 
     @MockkBean(relaxed = true) lateinit var userService: UserService
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
+    @MockkBean(relaxed = true) lateinit var namespaceService: NamespaceService
 
     private val aliceId = UUID.randomUUID()
     private val bobId = UUID.randomUUID()
@@ -55,17 +63,17 @@ class UserAiProviderCrossUserIsolationSpec : StringSpec() {
         email = "alice@example.com",
         isAdmin = false,
     )
-    private val bob = User(
-        metadata = EntityMetadata(id = bobId),
-        externalId = "bob@example.com",
-        email = "bob@example.com",
-        isAdmin = false,
-    )
     private val sharedNamespaceId = UUID.randomUUID()
+    private val sharedNamespace = Namespace(
+        metadata = EntityMetadata(id = sharedNamespaceId),
+        externalId = "ns-${sharedNamespaceId}",
+        name = "shared",
+    )
 
     init {
         beforeEach {
             every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
+            every { namespaceService.findById(sharedNamespaceId) } returns sharedNamespace
             every {
                 permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, sharedNamespaceId.toString(), Action.READ)
             } returns true
@@ -86,14 +94,14 @@ class UserAiProviderCrossUserIsolationSpec : StringSpec() {
                 ),
             )
 
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         // GET — both modes
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         "GET alice → bob.user-global returns 404 not 403" {
             val bobProvider = createBobProvider(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/user-ai-providers/${bobProvider.id}"))
+            mockMvc.perform(get("/api/ai-providers/${bobProvider.id}"))
                 .andExpect(status().isNotFound)
         }
 
@@ -101,19 +109,19 @@ class UserAiProviderCrossUserIsolationSpec : StringSpec() {
             val bobProvider = createBobProvider(namespaceId = sharedNamespaceId, name = "BOB_NS_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/user-ai-providers/${bobProvider.id}"))
+            mockMvc.perform(get("/api/ai-providers/${bobProvider.id}"))
                 .andExpect(status().isNotFound)
         }
 
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         // PUT — both modes
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         "PUT alice → bob.user-global returns 404 not 403" {
             val bobProvider = createBobProvider(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
             mockMvc.perform(
-                put("/api/user-ai-providers/${bobProvider.id}")
+                put("/api/ai-providers/${bobProvider.id}")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "name": "ATTACK", "apiType": "Anthropic" }"""),
             ).andExpect(status().isNotFound)
@@ -124,20 +132,20 @@ class UserAiProviderCrossUserIsolationSpec : StringSpec() {
             every { userService.getCurrentUser() } returns alice
 
             mockMvc.perform(
-                put("/api/user-ai-providers/${bobProvider.id}")
+                put("/api/ai-providers/${bobProvider.id}")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "name": "ATTACK", "apiType": "Anthropic" }"""),
             ).andExpect(status().isNotFound)
         }
 
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         // DELETE — both modes
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         "DELETE alice → bob.user-global returns 404 not 403" {
             val bobProvider = createBobProvider(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(delete("/api/user-ai-providers/${bobProvider.id}"))
+            mockMvc.perform(delete("/api/ai-providers/${bobProvider.id}"))
                 .andExpect(status().isNotFound)
         }
 
@@ -145,30 +153,29 @@ class UserAiProviderCrossUserIsolationSpec : StringSpec() {
             val bobProvider = createBobProvider(namespaceId = sharedNamespaceId, name = "BOB_NS_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(delete("/api/user-ai-providers/${bobProvider.id}"))
+            mockMvc.perform(delete("/api/ai-providers/${bobProvider.id}"))
                 .andExpect(status().isNotFound)
         }
 
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         // LIST — alice never sees bob's rows
-        // -----------------------------------------------------------------
+        // ---------------------------------------------------------------------
         "LIST as alice never includes bob's rows in either mode" {
             createBobProvider(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             createBobProvider(namespaceId = sharedNamespaceId, name = "BOB_NS_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/user-ai-providers?size=100"))
+            mockMvc.perform(get("/api/ai-providers?size=100"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.content[?(@.userId != '$aliceId')]").isEmpty)
         }
 
-        "LIST as alice with ?userId=bob still filters on alice" {
+        "LIST as alice with ?userId=<bob.id> returns 400 (only 'me' sentinel exposed)" {
             createBobProvider(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/user-ai-providers?userId=$bobId&size=100"))
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$.content[?(@.userId != '$aliceId')]").isEmpty)
+            mockMvc.perform(get("/api/ai-providers?userId=$bobId&size=100"))
+                .andExpect(status().isBadRequest)
         }
     }
 }

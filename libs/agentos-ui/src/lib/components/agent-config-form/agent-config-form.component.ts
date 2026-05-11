@@ -8,7 +8,7 @@ import {
   IntegrationConfig,
   IntegrationConfigControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { forkJoin } from 'rxjs'
+import { forkJoin, map } from 'rxjs'
 
 /**
  * Tracks the per-integration state within the form:
@@ -112,7 +112,9 @@ export class AgentConfigFormComponent implements OnInit {
     this.isLoading.set(true)
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
-      integrations: this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId),
+      integrations: this.integrationConfigController
+        .listIntegrationConfig(this.namespaceId, undefined, 0, 1000)
+        .pipe(map((page) => page.content ?? [])),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -135,8 +137,11 @@ export class AgentConfigFormComponent implements OnInit {
   /** In create mode: only load the namespace integrations (undefined = no existing filter). */
   private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
     this.integrationConfigController
-      .listByParentIntegrationConfig(this.namespaceId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .listIntegrationConfig(this.namespaceId, undefined, 0, 1000)
+      .pipe(
+        map((page) => page.content ?? []),
+        takeUntilDestroyed(this.destroyRef)
+      )
       .subscribe({
         next: (integrations) => {
           this.integrationRows.set(this.buildIntegrationRows(integrations, existingIntegrations ?? undefined))

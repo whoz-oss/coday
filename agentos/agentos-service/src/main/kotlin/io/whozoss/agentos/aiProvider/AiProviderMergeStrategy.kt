@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component
  * from `base` (the lower-precedence layer). Functional fields apply override-wins semantics:
  *
  * - `apiKey`: override wins when non-null and non-blank; otherwise `base.apiKey` is preserved.
- *   This mirrors [UserAiProviderController.resolveApiKey] — a blank or null override must not
+ *   This mirrors [AiProviderController]'s `resolveApiKey` 4-way contract — a blank or null override must not
  *   accidentally zero-out the effective API key (would cause a 401 at the provider, story 6.4 AC8).
  * - `baseUrl`: override wins when non-null and non-blank.
  * - `description`: override wins when non-null.

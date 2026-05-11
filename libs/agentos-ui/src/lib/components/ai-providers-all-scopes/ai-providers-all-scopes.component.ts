@@ -2,7 +2,7 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AiProvider, UserAiProvider } from '@whoz-oss/agentos-api-client'
+import { AiProvider } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
@@ -22,7 +22,7 @@ const SECTION_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
 
 const EMPTY_PREFIX = '__empty__'
 
-type AnyProvider = AiProvider | UserAiProvider
+type AnyProvider = AiProvider
 
 interface ResolvedItem {
   config: AnyProvider

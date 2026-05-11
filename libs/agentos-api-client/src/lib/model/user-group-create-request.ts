@@ -8,12 +8,7 @@
  * Do not edit the class manually.
  */
 
-export interface UserIntegrationConfig {
-  id?: string
-  namespaceId?: string
-  userId?: string
+export interface UserGroupCreateRequest {
+  namespaceExternalId: string
   name: string
-  integrationType: string
-  description?: string
-  parameters?: any | null
 }

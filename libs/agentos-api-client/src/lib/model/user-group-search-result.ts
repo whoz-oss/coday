@@ -8,12 +8,11 @@
  * Do not edit the class manually.
  */
 
-export interface IntegrationConfig {
-  id?: string
-  namespaceId?: string
-  userId?: string
+export interface UserGroupSearchResult {
+  userGroupId: string
+  namespaceId: string
+  namespaceExternalId: string
   name: string
-  integrationType: string
-  description?: string
-  parameters?: any | null
+  agentIds: Array<string>
+  userCount: number
 }

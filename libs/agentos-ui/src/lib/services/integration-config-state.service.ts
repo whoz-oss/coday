@@ -1,12 +1,8 @@
 import { inject, Injectable } from '@angular/core'
-import {
-  IntegrationConfig,
-  IntegrationConfigControllerService,
-  UserIntegrationConfig,
-  UserIntegrationConfigControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
 import { multicastRefreshable } from './rxjs-state.utils'
+import { UserStateService } from './user-state.service'
 
 /**
  * Scope of an integration config row in the unified 3-section view.
@@ -18,8 +14,8 @@ export type IntegrationScope = 'namespace' | 'userOnNs' | 'userGlobal'
 
 export interface IntegrationConfigViewModel {
   namespace: IntegrationConfig[]
-  userOnNs: UserIntegrationConfig[]
-  userGlobal: UserIntegrationConfig[]
+  userOnNs: IntegrationConfig[]
+  userGlobal: IntegrationConfig[]
 }
 
 /**
@@ -38,37 +34,30 @@ export interface IntegrationConfigDraft {
   parameters?: unknown
 }
 
-/**
- * Sentinel string accepted by the backend's `?namespaceId=` query param to filter on
- * `namespaceId IS NULL` (user-global only). Defined by `UserIntegrationConfigController`
- * (Kotlin) — kept private here so no other component sees the literal.
- */
+/** Backend sentinel: `?namespaceId=none` means `namespaceId IS NULL` (user-global rows). */
 const NAMESPACE_NONE_SENTINEL = 'none'
+/** Backend sentinel: `?userId=me` means "the authenticated user". */
+const USER_ME_SENTINEL = 'me'
 
-/**
- * Page size used for the unified Integrations view. The backend exposes pagination but
- * the 3-section UI doesn't yet implement an infinite-scroll / pager — pulling a large
- * page is the pragmatic stop-gap until pagination is added (post-MVP).
- */
 const LIST_PAGE_SIZE = 1000
 
 /**
  * IntegrationConfigStateService — orchestrates the 3 sources of truth for the unified
- * Integrations page (story 6.5):
- *   1. NS-shared configs    → `IntegrationConfigControllerService.listByParent…`
- *   2. user × namespace     → `UserIntegrationConfigController.list(?namespaceId=<uuid>)`
- *   3. user-global          → `UserIntegrationConfigController.list(?namespaceId=none)`
+ * Integrations page. Post-PR-#838 (`unify-ns-user-crud-controllers`) all 3 calls land on
+ * `IntegrationConfigControllerService.listIntegrationConfig(namespaceId, userId, …)` :
  *
- * Components MUST inject this service rather than the generated controllers — that's the
- * contract from `apps/client/docs/entity-crud-pattern.md`. The service hides:
- *   - the `none` sentinel (callers speak `'global' | UUID` only — see `loadUserConfigs`)
- *   - the dispatch logic (callers pick a `scope`; the service routes to the right controller)
- *   - the refresh fan-out (a single `refresh()` re-fetches all 3 sources)
+ *   1. NS-shared        → `listIntegrationConfig(namespaceId=<uuid>)` (no `userId`)
+ *   2. user × namespace → `listIntegrationConfig(namespaceId=<uuid>, userId='me')`
+ *   3. user-global      → `listIntegrationConfig(namespaceId='none', userId='me')`
+ *
+ * The implicit-scope dispatch on `POST` (Decision 15) lives server-side ; on the FE the
+ * payload's `(namespaceId, userId)` pair encodes the intent — the create method assembles
+ * it explicitly per scope.
  */
 @Injectable({ providedIn: 'root' })
 export class IntegrationConfigStateService {
   private readonly nsController = inject(IntegrationConfigControllerService)
-  private readonly userController = inject(UserIntegrationConfigControllerService)
+  private readonly userState = inject(UserStateService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   private readonly namespaceId$ = new BehaviorSubject<string | null>(null)
@@ -88,13 +77,13 @@ export class IntegrationConfigStateService {
       if (!namespaceId) {
         return combineLatest([
           this.loadNamespaceConfigs('').pipe(catchError(() => of([] as IntegrationConfig[]))),
-          this.loadUserConfigs('global').pipe(catchError(() => of([] as UserIntegrationConfig[]))),
-        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as UserIntegrationConfig[], userGlobal })))
+          this.loadUserConfigs('global').pipe(catchError(() => of([] as IntegrationConfig[]))),
+        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as IntegrationConfig[], userGlobal })))
       }
       return combineLatest([
         this.loadNamespaceConfigs(namespaceId).pipe(catchError(() => of([] as IntegrationConfig[]))),
-        this.loadUserConfigs(namespaceId).pipe(catchError(() => of([] as UserIntegrationConfig[]))),
-        this.loadUserConfigs('global').pipe(catchError(() => of([] as UserIntegrationConfig[]))),
+        this.loadUserConfigs(namespaceId).pipe(catchError(() => of([] as IntegrationConfig[]))),
+        this.loadUserConfigs('global').pipe(catchError(() => of([] as IntegrationConfig[]))),
       ]).pipe(map(([namespace, userOnNs, userGlobal]) => ({ namespace, userOnNs, userGlobal })))
     }),
     shareReplay({ bufferSize: 1, refCount: true })
@@ -111,43 +100,54 @@ export class IntegrationConfigStateService {
   }
 
   /**
-   * Wrapper around `listUserIntegrationConfig` that hides the `'none'` sentinel from callers.
-   * Pass `'global'` for user-global rows, or a UUID for the user × namespace slice.
+   * Wrapper around the unified `listIntegrationConfig` for the user-overlay slices. Callers
+   * speak `'global'` (user-global rows) or a UUID (user × ns). Sentinels stay private.
    */
-  loadUserConfigs(scope: 'global' | string): Observable<UserIntegrationConfig[]> {
+  loadUserConfigs(scope: 'global' | string): Observable<IntegrationConfig[]> {
     const namespaceParam = scope === 'global' ? NAMESPACE_NONE_SENTINEL : scope
-    return this.userController
-      .listUserIntegrationConfig(namespaceParam, 0, LIST_PAGE_SIZE)
+    return this.nsController
+      .listIntegrationConfig(namespaceParam, USER_ME_SENTINEL, 0, LIST_PAGE_SIZE)
       .pipe(map((page) => page.content ?? []))
   }
 
   /** User-global slice consumed by `UserProfileComponent.recap` — see `multicastRefreshable`. */
-  readonly userGlobal$: Observable<UserIntegrationConfig[]> = multicastRefreshable(
+  readonly userGlobal$: Observable<IntegrationConfig[]> = multicastRefreshable(
     this.refresh$,
     () => this.loadUserConfigs('global'),
-    [] as UserIntegrationConfig[]
+    [] as IntegrationConfig[]
   )
 
   loadNamespaceConfigs(namespaceId: string): Observable<IntegrationConfig[]> {
     if (!namespaceId) return of([])
-    return this.nsController.listByParentIntegrationConfig(namespaceId)
+    return this.nsController
+      .listIntegrationConfig(namespaceId, undefined, 0, LIST_PAGE_SIZE)
+      .pipe(map((page) => page.content ?? []))
   }
 
   /**
-   * Fetch a single config by id, dispatching on scope.
-   * Used by the form for hydration from `?template=<id>` (cross-link override).
+   * Fetch a single config by id. With the unified controller all scopes share the same
+   * `GET /api/integration-configs/{id}` route. The legacy `getById(id, scope)` overload
+   * is kept for back-compat ; it now ignores `scope`.
    */
-  getById(id: string, scope: IntegrationScope): Observable<IntegrationConfig | UserIntegrationConfig> {
-    return scope === 'namespace'
-      ? this.nsController.getByIdIntegrationConfig(id)
-      : this.userController.getByIdUserIntegrationConfig(id)
+  getById(id: string): Observable<IntegrationConfig>
+  getById(id: string, scope: IntegrationScope): Observable<IntegrationConfig>
+  getById(id: string, _scope?: IntegrationScope): Observable<IntegrationConfig> {
+    return this.nsController.getByIdIntegrationConfig(id)
   }
 
   create(
     draft: IntegrationConfigDraft,
     scope: IntegrationScope,
     namespaceId: string | null
-  ): Observable<IntegrationConfig | UserIntegrationConfig> {
+  ): Observable<IntegrationConfig> {
+    const me = this.userState.currentUser()
+    const myId = me?.id
+    if ((scope === 'userOnNs' || scope === 'userGlobal') && !myId) {
+      throw new Error(
+        `Cannot create ${scope} config before UserStateService.loadMe() resolves — call loadMe() at app init`
+      )
+    }
+
     if (scope === 'namespace') {
       if (!namespaceId) throw new Error('Cannot create namespace-scoped config without a namespaceId')
       const payload: IntegrationConfig = {
@@ -159,56 +159,47 @@ export class IntegrationConfigStateService {
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
+
     if (scope === 'userOnNs' && !namespaceId) {
       throw new Error('Cannot create userOnNs config without a namespaceId')
     }
-    const userPayload: UserIntegrationConfig = {
+
+    // Decision 15 (Phase 2): scope inferred server-side from the (namespaceId, userId) pair.
+    // userId MUST equal the authenticated principal — sending another user is a 400.
+    const payload: IntegrationConfig = {
       name: draft.name,
       integrationType: draft.integrationType,
       description: draft.description as string | undefined,
+      userId: myId,
       namespaceId: scope === 'userOnNs' ? (namespaceId as string) : undefined,
       parameters: draft.parameters,
     }
-    return this.userController.createUserIntegrationConfig(userPayload).pipe(tap(() => this.refresh()))
+    return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
   }
 
   update(
     id: string,
     draft: IntegrationConfigDraft,
     scope: IntegrationScope,
-    existing: IntegrationConfig | UserIntegrationConfig
-  ): Observable<IntegrationConfig | UserIntegrationConfig> {
-    // Build payloads explicitly — never spread `existing`. Spreading would re-inject `id`
-    // (which lives in the path) and risks leaking stale fields like a previous-scope's
-    // namespaceId on a hypothetical scope-change. Server-side immutable fields
-    // (namespaceId, userId) are preserved by reading them from `existing`.
-    if (scope === 'namespace') {
-      const payload: IntegrationConfig = {
-        name: draft.name,
-        integrationType: draft.integrationType,
-        description: draft.description as string | undefined,
-        namespaceId: (existing as IntegrationConfig).namespaceId,
-        parameters: draft.parameters,
-      }
-      return this.nsController.updateIntegrationConfig(id, payload).pipe(tap(() => this.refresh()))
-    }
-    const userExisting = existing as UserIntegrationConfig
-    const userPayload: UserIntegrationConfig = {
+    existing: IntegrationConfig
+  ): Observable<IntegrationConfig> {
+    // Build payloads explicitly — never spread `existing`. Server-side immutable fields
+    // (namespaceId, userId, integrationType) are preserved by the backend regardless of
+    // what the body sends, but echoing the persisted scope keeps the wire payload clean.
+    const payload: IntegrationConfig = {
       name: draft.name,
       integrationType: draft.integrationType,
       description: draft.description as string | undefined,
-      userId: userExisting.userId,
-      namespaceId: userExisting.namespaceId,
+      userId: existing.userId,
+      namespaceId: existing.namespaceId,
       parameters: draft.parameters,
     }
-    return this.userController.updateUserIntegrationConfig(id, userPayload).pipe(tap(() => this.refresh()))
+    void scope
+    return this.nsController.updateIntegrationConfig(id, payload).pipe(tap(() => this.refresh()))
   }
 
   delete(id: string, scope: IntegrationScope): Observable<unknown> {
-    const call$ =
-      scope === 'namespace'
-        ? this.nsController.deleteIntegrationConfig(id)
-        : this.userController.deleteUserIntegrationConfig(id)
-    return call$.pipe(tap(() => this.refresh()))
+    void scope
+    return this.nsController.deleteIntegrationConfig(id).pipe(tap(() => this.refresh()))
   }
 }

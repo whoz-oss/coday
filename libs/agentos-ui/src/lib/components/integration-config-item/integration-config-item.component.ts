@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
-import { IntegrationConfig, UserIntegrationConfig } from '@whoz-oss/agentos-api-client'
+import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { IntegrationScope } from '../../services/integration-config-state.service'
 
@@ -43,13 +43,13 @@ const SCOPE_BADGES: Readonly<Record<IntegrationScope, ScopeBadge>> = Object.free
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IntegrationConfigItemComponent {
-  readonly config = input.required<IntegrationConfig | UserIntegrationConfig>()
+  readonly config = input.required<IntegrationConfig>()
   readonly scope = input.required<IntegrationScope>()
   readonly readOnly = input<boolean>(false)
 
-  readonly editRequested = output<IntegrationConfig | UserIntegrationConfig>()
-  readonly deleteRequested = output<IntegrationConfig | UserIntegrationConfig>()
-  readonly duplicateRequested = output<IntegrationConfig | UserIntegrationConfig>()
+  readonly editRequested = output<IntegrationConfig>()
+  readonly deleteRequested = output<IntegrationConfig>()
+  readonly duplicateRequested = output<IntegrationConfig>()
 
   protected readonly pendingDelete = signal(false)
 

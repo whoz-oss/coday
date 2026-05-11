@@ -9,6 +9,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -30,23 +32,27 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * Log scan test ensuring that raw apiKey values are never written to log output
+ * Log-scan test ensuring that raw apiKey values are never written to log output
  * anywhere in the `io.whozoss.agentos` logger hierarchy (NFR-SEC-4).
  *
  * Attaches a Logback [ListAppender] to the root logger of the agentos package, then
- * exercises POST/GET/LIST/PUT/DELETE endpoints. After each operation, all captured
- * log messages are scanned for the raw secret string.
+ * exercises POST/GET/LIST/PUT/DELETE on the unified `/api/ai-providers` route.
+ * After each operation, all captured log messages are scanned for the raw secret
+ * string.
+ *
+ * Migrated from `UserAiProviderApiKeyLogScanSpec` (Decision 19 + Task 5).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class UserAiProviderApiKeyLogScanSpec : StringSpec() {
+class AiProviderApiKeyLogScanSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
 
     @MockkBean(relaxed = true) lateinit var userService: UserService
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
+    @MockkBean(relaxed = true) lateinit var namespaceService: NamespaceService
 
     private val aliceId = UUID.randomUUID()
     private val alice = User(
@@ -55,11 +61,21 @@ class UserAiProviderApiKeyLogScanSpec : StringSpec() {
         email = "alice@example.com",
         isAdmin = false,
     )
+    private val namespaceId = UUID.randomUUID()
+    private val ns = Namespace(
+        metadata = EntityMetadata(id = namespaceId),
+        externalId = "ns-${namespaceId}",
+        name = "ns",
+    )
 
     init {
         "apiKey raw value must never appear in log output across all CRUD verbs" {
             every { userService.getCurrentUser() } returns alice
             every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
+            every { namespaceService.findById(namespaceId) } returns ns
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+            } returns true
 
             val secret = "sk-ant-${UUID.randomUUID()}-leak-canary"
 
@@ -68,11 +84,11 @@ class UserAiProviderApiKeyLogScanSpec : StringSpec() {
             logger.addAppender(logCaptor)
 
             try {
-                // POST
+                // POST — user-global (does not need a namespace permission)
                 val postResult = mockMvc.perform(
-                    post("/api/user-ai-providers")
+                    post("/api/ai-providers")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "name": "LOG_SCAN_${UUID.randomUUID()}", "apiType": "Anthropic", "apiKey": "$secret" }"""),
+                        .content("""{ "userId": "$aliceId", "name": "LOG_SCAN_${UUID.randomUUID()}", "apiType": "Anthropic", "apiKey": "$secret" }"""),
                 ).andExpect(status().isCreated)
                     .andReturn()
 
@@ -81,22 +97,22 @@ class UserAiProviderApiKeyLogScanSpec : StringSpec() {
                     .get("id")?.asText() ?: error("No id in response")
 
                 // GET
-                mockMvc.perform(get("/api/user-ai-providers/$createdId"))
+                mockMvc.perform(get("/api/ai-providers/$createdId"))
                     .andExpect(status().isOk)
 
                 // LIST
-                mockMvc.perform(get("/api/user-ai-providers?size=100"))
+                mockMvc.perform(get("/api/ai-providers?size=100"))
                     .andExpect(status().isOk)
 
                 // PUT with masked apiKey (round-trip)
                 mockMvc.perform(
-                    put("/api/user-ai-providers/$createdId")
+                    put("/api/ai-providers/$createdId")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""{ "name": "LOG_SCAN_UPDATED", "apiType": "Anthropic", "apiKey": "sk-a****wxyz" }"""),
                 ).andExpect(status().isOk)
 
                 // DELETE
-                mockMvc.perform(delete("/api/user-ai-providers/$createdId"))
+                mockMvc.perform(delete("/api/ai-providers/$createdId"))
                     .andExpect(status().isNoContent)
             } finally {
                 logger.detachAppender(logCaptor)

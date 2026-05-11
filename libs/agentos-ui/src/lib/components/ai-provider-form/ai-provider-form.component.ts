@@ -2,8 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, effect, inject,
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { catchError, Observable } from 'rxjs'
-import { AiProvider, AiProviderApiTypeEnum, UserAiProvider } from '@whoz-oss/agentos-api-client'
+import { AiProvider, AiProviderApiTypeEnum } from '@whoz-oss/agentos-api-client'
 import { AiProviderConfigStateService, AiProviderScope } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
@@ -110,7 +109,7 @@ export class AiProviderFormComponent implements OnInit {
   protected readonly isLoading = signal(false)
 
   /** Kept for the update payload (preserves server-side userId/namespaceId). */
-  private existingConfig: AiProvider | UserAiProvider | null = null
+  private existingConfig: AiProvider | null = null
 
   /**
    * Snapshot of the apiKey value loaded from the server (typically a masked sentinel).
@@ -144,15 +143,14 @@ export class AiProviderFormComponent implements OnInit {
       this.isEditMode.set(true)
       // Edit-mode: scope is immutable — disable the radio so the user cannot change it.
       this.scopeControl.disable()
-      this.loadConfig(aiProviderId, hintedScope)
+      this.loadConfig(aiProviderId)
       return
     }
 
     this.scopeControl.setValue(hintedScope)
     const templateId = queryParams.get('template')
     if (templateId) {
-      const templateScope = this.parseScope(queryParams.get('templateScope'))
-      this.hydrateFromTemplate(templateId, templateScope)
+      this.hydrateFromTemplate(templateId)
     }
   }
 
@@ -164,18 +162,21 @@ export class AiProviderFormComponent implements OnInit {
    * In edit-mode, the scope is **derived from the loaded resource**, not from the URL —
    * a forged `?scope=` would otherwise route the update to the wrong controller.
    */
-  private deriveScopeFromConfig(config: AiProvider | UserAiProvider): AiProviderScope {
-    const isUserScope = !!(config as UserAiProvider).userId
+  private deriveScopeFromConfig(config: AiProvider): AiProviderScope {
+    const isUserScope = !!config.userId
     if (!isUserScope) return 'namespace'
     return config.namespaceId ? 'userOnNs' : 'userGlobal'
   }
 
-  private loadConfig(id: string, hintedScope: AiProviderScope): void {
+  private loadConfig(id: string): void {
     this.isLoading.set(true)
-    // Try the hinted scope first; fall back to the other two scopes on 4xx (stale link,
-    // copy-pasted URL, scope-switch via delete+recreate). The actual scope is derived from
-    // the loaded resource so the radio reflects truth, not the URL hint.
-    this.tryLoadAcrossScopes(id, hintedScope)
+    // The unified `GET /api/ai-providers/{id}` returns the row regardless of scope —
+    // the evaluator's ownership branch grants access to the caller's overlays without
+    // namespace membership. Scope is derived from the loaded resource (presence of
+    // userId / namespaceId), never from the URL hint, so a forged `?scope=` cannot
+    // misroute the update.
+    this.state
+      .getById(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -186,25 +187,16 @@ export class AiProviderFormComponent implements OnInit {
         },
         error: () => {
           this.isLoading.set(false)
-          console.warn(`[AiProviderForm] Could not load provider '${id}' in any scope — navigating back`)
+          console.warn(`[AiProviderForm] Could not load provider '${id}' — navigating back`)
           this.navigateBack()
         },
       })
   }
 
-  private tryLoadAcrossScopes(id: string, hint: AiProviderScope): Observable<AiProvider | UserAiProvider> {
-    const allScopes: ReadonlyArray<AiProviderScope> = ['namespace', 'userOnNs', 'userGlobal']
-    const ordered: ReadonlyArray<AiProviderScope> = [hint, ...allScopes.filter((s) => s !== hint)]
-    return ordered.reduce<Observable<AiProvider | UserAiProvider>>(
-      (acc, scope, idx) => (idx === 0 ? acc : acc.pipe(catchError(() => this.state.getById(id, scope)))),
-      this.state.getById(id, hint)
-    )
-  }
-
-  private hydrateFromTemplate(templateId: string, templateScope: AiProviderScope): void {
+  private hydrateFromTemplate(templateId: string): void {
     this.isLoading.set(true)
     this.state
-      .getById(templateId, templateScope)
+      .getById(templateId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -238,7 +230,7 @@ export class AiProviderFormComponent implements OnInit {
       })
   }
 
-  private applyConfigToForm(config: AiProvider | UserAiProvider): void {
+  private applyConfigToForm(config: AiProvider): void {
     this.nameControl.setValue(config.name)
     this.descriptionControl.setValue(config.description ?? null)
     this.apiTypeControl.setValue(config.apiType as AiProviderApiTypeEnum)

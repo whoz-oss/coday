@@ -6,7 +6,6 @@ import {
   AiProviderApiTypeEnum,
   UserAiModel,
   UserAiModelControllerService,
-  UserAiProvider,
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, firstValueFrom, of } from 'rxjs'
 import { AiProviderConfigStateService, AiProviderConfigViewModel } from './ai-provider-config-state.service'
@@ -45,14 +44,14 @@ describe('AiModelConfigStateService', () => {
     name: 'NS Anthropic',
     apiType: AiProviderApiTypeEnum.Anthropic,
   }
-  const userOnNsProvider: UserAiProvider = {
+  const userOnNsProvider: AiProvider = {
     id: 'p-uns-1',
     namespaceId: NS_ID,
     userId: 'me',
     name: 'My NS Provider',
     apiType: AiProviderApiTypeEnum.Anthropic,
   }
-  const userGlobalProvider: UserAiProvider = {
+  const userGlobalProvider: AiProvider = {
     id: 'p-ug-1',
     userId: 'me',
     name: 'My Global Provider',

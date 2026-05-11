@@ -2,12 +2,10 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effec
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { catchError, Observable } from 'rxjs'
 import {
   IntegrationConfig,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
-  UserIntegrationConfig,
 } from '@whoz-oss/agentos-api-client'
 import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
@@ -30,8 +28,8 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  *
  * The active scope is driven by the `?scope=` query param (story 6.5):
  *   - `namespace`  (default) → submits to `IntegrationConfigController`
- *   - `userOnNs`             → submits to `UserIntegrationConfigController` for the current NS
- *   - `userGlobal`           → submits to `UserIntegrationConfigController` cross-namespace
+ *   - `userOnNs`             → submits to the unified `IntegrationConfigController` for the current NS
+ *   - `userGlobal`           → submits to the unified `IntegrationConfigController` cross-namespace
  *
  * In create mode, an optional `?template=<configId>` query param hydrates the form from the
  * referenced NS-shared config — used by the "Override for me" cross-link from the list page.
@@ -129,7 +127,7 @@ export class IntegrationFormComponent implements OnInit {
   })
 
   /** Kept for the update payload (preserves server-side fields like userId). */
-  private existingConfig: IntegrationConfig | UserIntegrationConfig | null = null
+  private existingConfig: IntegrationConfig | null = null
 
   constructor() {
     // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
@@ -158,15 +156,14 @@ export class IntegrationFormComponent implements OnInit {
       this.isEditMode.set(true)
       // Edit-mode: scope is immutable — disable the radio so the user cannot change it.
       this.scopeControl.disable()
-      this.loadConfig(integrationId, hintedScope)
+      this.loadConfig(integrationId)
       return
     }
 
     this.scopeControl.setValue(hintedScope)
     const templateId = queryParams.get('template')
     if (templateId) {
-      const templateScope = this.parseScope(queryParams.get('templateScope'))
-      this.hydrateFromTemplate(templateId, templateScope)
+      this.hydrateFromTemplate(templateId)
     }
   }
 
@@ -177,22 +174,22 @@ export class IntegrationFormComponent implements OnInit {
   /**
    * In edit-mode, the scope is **derived from the loaded resource**, not from the URL —
    * a forged `?scope=` would otherwise route the update to the wrong controller. The
-   * query param is only used as an initial hint for the GET; the source of truth is
-   * the entity returned by the server.
+   * unified controller returns the entity regardless of scope ; we read `(userId,
+   * namespaceId)` to determine which radio option to select.
    */
-  private deriveScopeFromConfig(config: IntegrationConfig | UserIntegrationConfig): IntegrationScope {
-    const isUserScope = 'userId' in config && !!(config as UserIntegrationConfig).userId
+  private deriveScopeFromConfig(config: IntegrationConfig): IntegrationScope {
+    const isUserScope = !!config.userId
     if (!isUserScope) return 'namespace'
     return config.namespaceId ? 'userOnNs' : 'userGlobal'
   }
 
-  private loadConfig(id: string, hintedScope: IntegrationScope): void {
+  private loadConfig(id: string): void {
     this.isLoading.set(true)
-    // Try the hinted scope first; if the GET 404s (id exists but as a different-scope
-    // resource — stale link, copy-pasted URL, scope-switch via delete+recreate) fall back
-    // to the other two scopes before giving up. The actual scope is then derived from the
-    // loaded resource so the radio reflects the truth, not the URL hint.
-    this.tryLoadAcrossScopes(id, hintedScope)
+    // The unified `GET /api/integration-configs/{id}` returns the row regardless of scope
+    // (Decision 19 ownership branch). The actual scope is derived from the loaded resource
+    // so the radio reflects truth, not the URL hint.
+    this.state
+      .getById(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -203,36 +200,16 @@ export class IntegrationFormComponent implements OnInit {
         },
         error: () => {
           this.isLoading.set(false)
-          // All three scopes failed — id is genuinely unknown. Bail with a navigateBack
-          // (a toast service would be nicer but the design system doesn't yet expose one
-          // here — tracked separately).
-          console.warn(`[IntegrationForm] Could not load config '${id}' in any scope — navigating back`)
+          console.warn(`[IntegrationForm] Could not load config '${id}' — navigating back`)
           this.navigateBack()
         },
       })
   }
 
-  /**
-   * Attempt `state.getById(id, scope)` starting with `hint`, falling back to the other
-   * two scopes on 4xx error. The order is `[hint, ...others]` so the happy path stays
-   * one round-trip; mismatch = at most three round-trips before bail.
-   */
-  private tryLoadAcrossScopes(
-    id: string,
-    hint: IntegrationScope
-  ): Observable<IntegrationConfig | UserIntegrationConfig> {
-    const allScopes: ReadonlyArray<IntegrationScope> = ['namespace', 'userOnNs', 'userGlobal']
-    const ordered: ReadonlyArray<IntegrationScope> = [hint, ...allScopes.filter((s) => s !== hint)]
-    return ordered.reduce<Observable<IntegrationConfig | UserIntegrationConfig>>(
-      (acc, scope, idx) => (idx === 0 ? acc : acc.pipe(catchError(() => this.state.getById(id, scope)))),
-      this.state.getById(id, hint)
-    )
-  }
-
-  private hydrateFromTemplate(templateId: string, templateScope: IntegrationScope): void {
+  private hydrateFromTemplate(templateId: string): void {
     this.isLoading.set(true)
     this.state
-      .getById(templateId, templateScope)
+      .getById(templateId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
@@ -261,7 +238,7 @@ export class IntegrationFormComponent implements OnInit {
       })
   }
 
-  private applyConfigToForm(config: IntegrationConfig | UserIntegrationConfig): void {
+  private applyConfigToForm(config: IntegrationConfig): void {
     this.nameControl.setValue(config.name)
     this.descriptionControl.setValue(config.description ?? null)
     this.typeControl.setValue(config.integrationType)

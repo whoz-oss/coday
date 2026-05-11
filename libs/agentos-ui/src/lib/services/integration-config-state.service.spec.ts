@@ -1,16 +1,13 @@
 import { TestBed } from '@angular/core/testing'
-import {
-  IntegrationConfig,
-  IntegrationConfigControllerService,
-  UserIntegrationConfig,
-  UserIntegrationConfigControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
 import { firstValueFrom, of } from 'rxjs'
 import { IntegrationConfigStateService } from './integration-config-state.service'
+import { UserStateService } from './user-state.service'
 
 describe('IntegrationConfigStateService', () => {
   const NS_ID = '11111111-1111-1111-1111-111111111111'
   const ITEM_ID = '22222222-2222-2222-2222-222222222222'
+  const ME_ID = '33333333-3333-3333-3333-333333333333'
 
   const nsConfig: IntegrationConfig = {
     id: 'ns-1',
@@ -18,61 +15,60 @@ describe('IntegrationConfigStateService', () => {
     name: 'Slack NS',
     integrationType: 'slack',
   }
-  const userOnNsConfig: UserIntegrationConfig = {
+  const userOnNsConfig: IntegrationConfig = {
     id: 'u-ns-1',
     namespaceId: NS_ID,
-    userId: 'me',
+    userId: ME_ID,
     name: 'Slack mine on NS',
     integrationType: 'slack',
   }
-  const userGlobalConfig: UserIntegrationConfig = {
+  const userGlobalConfig: IntegrationConfig = {
     id: 'u-g-1',
-    userId: 'me',
+    userId: ME_ID,
     name: 'Slack mine global',
     integrationType: 'slack',
   }
 
   let nsController: jest.Mocked<IntegrationConfigControllerService>
-  let userController: jest.Mocked<UserIntegrationConfigControllerService>
+  let userStateMock: { currentUser: jest.Mock<{ id: string } | null, []> }
   let service: IntegrationConfigStateService
 
   beforeEach(() => {
     nsController = {
-      listByParentIntegrationConfig: jest.fn().mockReturnValue(of([nsConfig])),
+      // Unified `listIntegrationConfig(namespaceId, userId, page, size)` returns a
+      // paginated envelope. The mock dispatches by query params : userId omitted →
+      // NS-shared layer ; namespaceId === 'none' → user-global ; both → user × ns.
+      listIntegrationConfig: jest.fn().mockImplementation((namespaceId?: string, userId?: string) => {
+        if (!userId) {
+          return of({ content: [nsConfig], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+        }
+        if (namespaceId === 'none') {
+          return of({ content: [userGlobalConfig], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+        }
+        return of({ content: [userOnNsConfig], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+      }),
       createIntegrationConfig: jest.fn().mockReturnValue(of(nsConfig)),
       updateIntegrationConfig: jest.fn().mockReturnValue(of(nsConfig)),
       deleteIntegrationConfig: jest.fn().mockReturnValue(of(undefined)),
       getByIdIntegrationConfig: jest.fn().mockReturnValue(of(nsConfig)),
     } as unknown as jest.Mocked<IntegrationConfigControllerService>
 
-    userController = {
-      listUserIntegrationConfig: jest.fn().mockImplementation((namespaceId: string) =>
-        of({
-          content: namespaceId === 'none' ? [userGlobalConfig] : [userOnNsConfig],
-          page: 0,
-          size: 20,
-          totalElements: 1,
-          totalPages: 1,
-        })
-      ),
-      createUserIntegrationConfig: jest.fn().mockReturnValue(of(userOnNsConfig)),
-      updateUserIntegrationConfig: jest.fn().mockReturnValue(of(userOnNsConfig)),
-      deleteUserIntegrationConfig: jest.fn().mockReturnValue(of(undefined)),
-      getByIdUserIntegrationConfig: jest.fn().mockReturnValue(of(userOnNsConfig)),
-    } as unknown as jest.Mocked<UserIntegrationConfigControllerService>
+    userStateMock = {
+      currentUser: jest.fn().mockReturnValue({ id: ME_ID }),
+    }
 
     TestBed.configureTestingModule({
       providers: [
         IntegrationConfigStateService,
         { provide: IntegrationConfigControllerService, useValue: nsController },
-        { provide: UserIntegrationConfigControllerService, useValue: userController },
+        { provide: UserStateService, useValue: userStateMock },
       ],
     })
     service = TestBed.inject(IntegrationConfigStateService)
   })
 
   describe('vm$', () => {
-    it('merges the 3 sources into a structured view model and hides the "none" sentinel from callers', async () => {
+    it('merges the 3 sources into a structured view model and hides the "none" / "me" sentinels', async () => {
       service.setNamespace(NS_ID)
       const vm = await firstValueFrom(service.vm$)
 
@@ -80,103 +76,94 @@ describe('IntegrationConfigStateService', () => {
       expect(vm.userOnNs).toEqual([userOnNsConfig])
       expect(vm.userGlobal).toEqual([userGlobalConfig])
 
-      expect(nsController.listByParentIntegrationConfig).toHaveBeenCalledWith(NS_ID)
-      // user-global slice goes through with the "none" sentinel; user×NS uses the UUID.
-      // Pagination: page 0, large size (UI has no pager yet, see LIST_PAGE_SIZE in service).
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith(NS_ID, 0, expect.any(Number))
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith('none', 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, undefined, 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
     })
   })
 
   describe('loadUserConfigs wrapper', () => {
-    it('translates "global" into the backend sentinel, never leaking it to callers', async () => {
+    it('translates "global" into the (none, me) sentinel pair, never leaking it', async () => {
       const result = await firstValueFrom(service.loadUserConfigs('global'))
       expect(result).toEqual([userGlobalConfig])
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith('none', 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
     })
 
-    it('passes through a UUID as-is for user × namespace lookups', async () => {
+    it('passes a UUID for user × namespace and pins userId to "me"', async () => {
       const result = await firstValueFrom(service.loadUserConfigs(NS_ID))
       expect(result).toEqual([userOnNsConfig])
-      expect(userController.listUserIntegrationConfig).toHaveBeenCalledWith(NS_ID, 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
     })
   })
 
   describe('create dispatch', () => {
     const draft = { name: 'New', integrationType: 'slack', description: null, parameters: { token: 'x' } }
 
-    it('routes namespace creates to the namespace controller with the namespaceId in the payload', async () => {
+    it('routes namespace creates with NS only (no userId)', async () => {
       await firstValueFrom(service.create(draft, 'namespace', NS_ID))
-      expect(nsController.createIntegrationConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'New', integrationType: 'slack', namespaceId: NS_ID })
-      )
-      expect(userController.createUserIntegrationConfig).not.toHaveBeenCalled()
+      const payload = nsController.createIntegrationConfig.mock.calls[0][0]
+      expect(payload).toEqual(expect.objectContaining({ name: 'New', integrationType: 'slack', namespaceId: NS_ID }))
+      expect(payload.userId).toBeUndefined()
     })
 
-    it('routes userOnNs creates to the user controller with the namespaceId set', async () => {
+    it('routes userOnNs creates with both namespaceId and userId=currentUser.id', async () => {
       await firstValueFrom(service.create(draft, 'userOnNs', NS_ID))
-      expect(userController.createUserIntegrationConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'New', namespaceId: NS_ID })
-      )
-      expect(nsController.createIntegrationConfig).not.toHaveBeenCalled()
+      const payload = nsController.createIntegrationConfig.mock.calls[0][0]
+      expect(payload).toEqual(expect.objectContaining({ name: 'New', namespaceId: NS_ID, userId: ME_ID }))
     })
 
-    it('routes userGlobal creates to the user controller WITHOUT a namespaceId', async () => {
+    it('routes userGlobal creates with userId=currentUser.id and NO namespaceId', async () => {
       await firstValueFrom(service.create(draft, 'userGlobal', NS_ID))
-      const arg = userController.createUserIntegrationConfig.mock.calls[0][0]
-      expect(arg.namespaceId).toBeUndefined()
-      expect(arg.name).toBe('New')
+      const payload = nsController.createIntegrationConfig.mock.calls[0][0]
+      expect(payload.userId).toBe(ME_ID)
+      expect(payload.namespaceId).toBeUndefined()
     })
 
     it('throws when creating a namespace-scoped config without a namespaceId', () => {
       expect(() => service.create(draft, 'namespace', null)).toThrow(/namespaceId/i)
     })
+
+    it('throws when creating a user-scope config before UserStateService.loadMe() resolves', () => {
+      userStateMock.currentUser.mockReturnValueOnce(null)
+      expect(() => service.create(draft, 'userGlobal', NS_ID)).toThrow(/loadMe/i)
+    })
   })
 
   describe('delete dispatch', () => {
-    it('routes namespace deletes to the namespace controller', async () => {
+    it('routes all scopes to the unified deleteIntegrationConfig', async () => {
       await firstValueFrom(service.delete(ITEM_ID, 'namespace'))
-      expect(nsController.deleteIntegrationConfig).toHaveBeenCalledWith(ITEM_ID)
-      expect(userController.deleteUserIntegrationConfig).not.toHaveBeenCalled()
-    })
-
-    it('routes userOnNs and userGlobal deletes to the user controller', async () => {
       await firstValueFrom(service.delete(ITEM_ID, 'userOnNs'))
       await firstValueFrom(service.delete(ITEM_ID, 'userGlobal'))
-      expect(userController.deleteUserIntegrationConfig).toHaveBeenCalledTimes(2)
-      expect(userController.deleteUserIntegrationConfig).toHaveBeenCalledWith(ITEM_ID)
-      expect(nsController.deleteIntegrationConfig).not.toHaveBeenCalled()
+      expect(nsController.deleteIntegrationConfig).toHaveBeenCalledTimes(3)
     })
   })
 
   describe('refresh after mutation', () => {
     it('refetches the 3 sources after a successful create', async () => {
       service.setNamespace(NS_ID)
-      // Subscribe to vm$ first so that emissions can be observed.
       const sub = service.vm$.subscribe()
-      const initialNsCalls = nsController.listByParentIntegrationConfig.mock.calls.length
-      const initialUserCalls = userController.listUserIntegrationConfig.mock.calls.length
+      const initialCalls = nsController.listIntegrationConfig.mock.calls.length
 
       await firstValueFrom(
         service.create({ name: 'x', integrationType: 'slack', description: null }, 'userOnNs', NS_ID)
       )
 
-      expect(nsController.listByParentIntegrationConfig.mock.calls.length).toBeGreaterThan(initialNsCalls)
-      expect(userController.listUserIntegrationConfig.mock.calls.length).toBeGreaterThan(initialUserCalls)
+      expect(nsController.listIntegrationConfig.mock.calls.length).toBeGreaterThan(initialCalls)
       sub.unsubscribe()
     })
   })
 
   describe('getById dispatch', () => {
-    it('routes namespace lookups to the namespace controller', async () => {
+    it('routes all scopes to the unified getByIdIntegrationConfig', async () => {
       await firstValueFrom(service.getById(ITEM_ID, 'namespace'))
-      expect(nsController.getByIdIntegrationConfig).toHaveBeenCalledWith(ITEM_ID)
-    })
-
-    it('routes user-scope lookups to the user controller for both userOnNs and userGlobal', async () => {
       await firstValueFrom(service.getById(ITEM_ID, 'userOnNs'))
       await firstValueFrom(service.getById(ITEM_ID, 'userGlobal'))
-      expect(userController.getByIdUserIntegrationConfig).toHaveBeenCalledTimes(2)
+      expect(nsController.getByIdIntegrationConfig).toHaveBeenCalledTimes(3)
+    })
+
+    it('accepts the no-scope overload (form simplification, G10)', async () => {
+      await firstValueFrom(service.getById(ITEM_ID))
+      expect(nsController.getByIdIntegrationConfig).toHaveBeenCalledWith(ITEM_ID)
     })
   })
 })

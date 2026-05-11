@@ -7,10 +7,10 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { UserIntegrationConfig } from './user-integration-config'
+import { IntegrationConfig } from './integration-config'
 
-export interface UserIntegrationConfigPage {
-  content: Array<UserIntegrationConfig>
+export interface IntegrationConfigPage {
+  content: Array<IntegrationConfig>
   page: number
   size: number
   totalElements: number

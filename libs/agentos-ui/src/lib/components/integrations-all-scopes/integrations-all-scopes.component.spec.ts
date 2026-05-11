@@ -1,7 +1,7 @@
 import { ChangeDetectorRef } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import { IntegrationConfig, UserIntegrationConfig } from '@whoz-oss/agentos-api-client'
+import { IntegrationConfig } from '@whoz-oss/agentos-api-client'
 import { EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, of } from 'rxjs'
 import { convertToParamMap } from '@angular/router'
@@ -21,14 +21,14 @@ describe('IntegrationsAllScopesComponent', () => {
     name: 'Slack NS',
     integrationType: 'slack',
   }
-  const userOnNsConfig: UserIntegrationConfig = {
+  const userOnNsConfig: IntegrationConfig = {
     id: 'u-ns-1',
     namespaceId: NS_ID,
     userId: 'me',
     name: 'Slack mine on NS',
     integrationType: 'slack',
   }
-  const userGlobalConfig: UserIntegrationConfig = {
+  const userGlobalConfig: IntegrationConfig = {
     id: 'u-g-1',
     userId: 'me',
     name: 'Slack mine global',

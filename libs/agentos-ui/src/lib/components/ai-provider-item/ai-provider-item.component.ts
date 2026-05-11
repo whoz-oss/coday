@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
-import { AiProvider, UserAiProvider } from '@whoz-oss/agentos-api-client'
+import { AiProvider } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 import { AiProviderScope } from '../../services/ai-provider-config-state.service'
 
@@ -49,13 +49,13 @@ const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freez
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiProviderItemComponent {
-  readonly config = input.required<AiProvider | UserAiProvider>()
+  readonly config = input.required<AiProvider>()
   readonly scope = input.required<AiProviderScope>()
   readonly readOnly = input<boolean>(false)
 
-  readonly editRequested = output<AiProvider | UserAiProvider>()
-  readonly deleteRequested = output<AiProvider | UserAiProvider>()
-  readonly duplicateRequested = output<AiProvider | UserAiProvider>()
+  readonly editRequested = output<AiProvider>()
+  readonly deleteRequested = output<AiProvider>()
+  readonly duplicateRequested = output<AiProvider>()
 
   protected readonly pendingDelete = signal(false)
 

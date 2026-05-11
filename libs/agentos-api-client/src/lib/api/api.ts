@@ -22,12 +22,10 @@ export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-ai-model-controller.service'
 import { UserAiModelControllerService } from './user-ai-model-controller.service'
-export * from './user-ai-provider-controller.service'
-import { UserAiProviderControllerService } from './user-ai-provider-controller.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
-export * from './user-integration-config-controller.service'
-import { UserIntegrationConfigControllerService } from './user-integration-config-controller.service'
+export * from './user-group-controller.service'
+import { UserGroupControllerService } from './user-group-controller.service'
 export const APIS = [
   AgentConfigControllerService,
   AiModelControllerService,
@@ -41,7 +39,6 @@ export const APIS = [
   PluginControllerService,
   SseService,
   UserAiModelControllerService,
-  UserAiProviderControllerService,
   UserControllerService,
-  UserIntegrationConfigControllerService,
+  UserGroupControllerService,
 ]

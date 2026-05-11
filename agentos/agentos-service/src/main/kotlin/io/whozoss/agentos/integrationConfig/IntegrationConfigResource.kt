@@ -3,14 +3,21 @@ package io.whozoss.agentos.integrationConfig
 import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
 import java.util.UUID
 
 /**
  * HTTP resource (DTO) for [IntegrationConfig] entities.
  *
- * Represents the API contract for integration-config endpoints, kept separate from
- * the domain entity so the two can evolve independently.
+ * **Triple-mode contract** (post-unification with Epic 6 user-overlay support) :
+ * - Both [namespaceId] and [userId] are nullable. The cross-field invariant
+ *   `(namespaceId != null) OR (userId != null)` is enforced by
+ *   [IntegrationConfigServiceImpl.requireScope] and surfaces as HTTP 400 — Bean
+ *   Validation cannot express an "either / or" across two fields.
+ * - On `POST`, the controller infers the scope from the `(namespaceId, userId)`
+ *   payload pair (Decision 15, implicit dispatch). [userId] is treated as an
+ *   intent flag *and* a mass-assignment guard : the controller validates that the
+ *   client-supplied [userId] matches the authenticated principal before persisting.
+ * - On `PUT`, [userId] is preserved from the persisted row (mass-assignment guard).
  *
  * Annotated with @Schema(name = "IntegrationConfig") so the generated OpenAPI spec
  * uses the clean name instead of "IntegrationConfigResource".
@@ -21,8 +28,8 @@ import java.util.UUID
 @Schema(name = "IntegrationConfig")
 data class IntegrationConfigResource(
     val id: UUID? = null,
-    @field:NotNull
-    val namespaceId: UUID?,
+    val namespaceId: UUID? = null,
+    val userId: UUID? = null,
     @field:NotBlank
     val name: String,
     @field:NotBlank

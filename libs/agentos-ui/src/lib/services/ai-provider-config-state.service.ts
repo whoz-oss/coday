@@ -1,12 +1,8 @@
 import { inject, Injectable } from '@angular/core'
-import {
-  AiProvider,
-  AiProviderControllerService,
-  UserAiProvider,
-  UserAiProviderControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { AiProvider, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
 import { multicastRefreshable } from './rxjs-state.utils'
+import { UserStateService } from './user-state.service'
 
 /**
  * Scope of an AI provider row in the unified 3-section view.
@@ -18,8 +14,8 @@ export type AiProviderScope = 'namespace' | 'userOnNs' | 'userGlobal'
 
 export interface AiProviderConfigViewModel {
   namespace: AiProvider[]
-  userOnNs: UserAiProvider[]
-  userGlobal: UserAiProvider[]
+  userOnNs: AiProvider[]
+  userGlobal: AiProvider[]
 }
 
 /**
@@ -47,38 +43,31 @@ export interface AiProviderDraft {
   apiKey: string | null
 }
 
-/**
- * Sentinel string accepted by the backend's `?namespaceId=` query param to filter on
- * `namespaceId IS NULL` (user-global only). Defined by `UserAiProviderController` (Kotlin).
- */
+/** Sentinel accepted by the backend's `?namespaceId=` to filter on `namespaceId IS NULL`. */
 const NAMESPACE_NONE_SENTINEL = 'none'
+/** Sentinel accepted by the backend's `?userId=` to mean "the authenticated user". */
+const USER_ME_SENTINEL = 'me'
 
-/**
- * Page size used for the unified AI providers view. The backend exposes pagination but
- * the 3-section UI doesn't yet implement an infinite-scroll / pager — pulling a large
- * page is the pragmatic stop-gap until pagination is added (post-MVP).
- */
 const LIST_PAGE_SIZE = 1000
 
 /**
  * AiProviderConfigStateService — orchestrates the 3 sources of truth for the unified
- * AI Providers page (story 6.6, mirrors story 6.5 IntegrationConfigStateService).
+ * AI Providers page. Post-PR-#838 (`unify-ns-user-crud-controllers`) all 3 calls land on
+ * the single `AiProviderControllerService.listAiProvider(namespaceId, userId, …)`, with the
+ * shape distinguished by query params :
  *
- *   1. NS-shared providers  → `AiProviderControllerService.listByNamespaceIdAiProvider`
- *   2. user × namespace     → `UserAiProviderControllerService.listUserAiProvider(?namespaceId=<uuid>)`
- *   3. user-global          → `UserAiProviderControllerService.listUserAiProvider(?namespaceId=none)`
+ *   1. NS-shared        → `listAiProvider(namespaceId=<uuid>)` (no `userId`)
+ *   2. user × namespace → `listAiProvider(namespaceId=<uuid>, userId='me')`
+ *   3. user-global      → `listAiProvider(namespaceId='none', userId='me')`
  *
- * Components MUST inject this service rather than the generated controllers — that's the
- * contract from `apps/client/docs/entity-crud-pattern.md`. The service hides:
- *   - the `none` sentinel (callers speak `'global' | UUID` only)
- *   - the dispatch logic (callers pick a `scope`; the service routes to the right controller)
- *   - the refresh fan-out (a single `refresh()` re-fetches all 3 sources)
- *   - the apiKey masking semantics on update (NFR-SEC-1, FR25)
+ * The implicit-scope dispatch on `POST` (Decision 15) lives server-side ; on the FE the
+ * payload's `(namespaceId, userId)` pair encodes the intent — the create method assembles
+ * it explicitly per scope.
  */
 @Injectable({ providedIn: 'root' })
 export class AiProviderConfigStateService {
   private readonly nsController = inject(AiProviderControllerService)
-  private readonly userController = inject(UserAiProviderControllerService)
+  private readonly userState = inject(UserStateService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
   private readonly namespaceId$ = new BehaviorSubject<string | null>(null)
@@ -94,13 +83,13 @@ export class AiProviderConfigStateService {
       if (!namespaceId) {
         return combineLatest([
           this.loadNamespaceProviders('').pipe(catchError(() => of([] as AiProvider[]))),
-          this.loadUserProviders('global').pipe(catchError(() => of([] as UserAiProvider[]))),
-        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as UserAiProvider[], userGlobal })))
+          this.loadUserProviders('global').pipe(catchError(() => of([] as AiProvider[]))),
+        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as AiProvider[], userGlobal })))
       }
       return combineLatest([
         this.loadNamespaceProviders(namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
-        this.loadUserProviders(namespaceId).pipe(catchError(() => of([] as UserAiProvider[]))),
-        this.loadUserProviders('global').pipe(catchError(() => of([] as UserAiProvider[]))),
+        this.loadUserProviders(namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
+        this.loadUserProviders('global').pipe(catchError(() => of([] as AiProvider[]))),
       ]).pipe(map(([namespace, userOnNs, userGlobal]) => ({ namespace, userOnNs, userGlobal })))
     }),
     shareReplay({ bufferSize: 1, refCount: true })
@@ -117,43 +106,54 @@ export class AiProviderConfigStateService {
   }
 
   /**
-   * Wrapper around `listUserAiProvider` that hides the `'none'` sentinel from callers.
-   * Pass `'global'` for user-global rows, or a UUID for the user × namespace slice.
+   * Wrapper around the unified `listAiProvider` for the user-overlay slices. Callers speak
+   * `'global'` (user-global rows : `namespaceId IS NULL`) or a concrete UUID (user × namespace
+   * for that namespace). The `'none'` / `'me'` sentinels stay private.
    */
-  loadUserProviders(scope: 'global' | string): Observable<UserAiProvider[]> {
+  loadUserProviders(scope: 'global' | string): Observable<AiProvider[]> {
     const namespaceParam = scope === 'global' ? NAMESPACE_NONE_SENTINEL : scope
-    return this.userController
-      .listUserAiProvider(namespaceParam, 0, LIST_PAGE_SIZE)
+    return this.nsController
+      .listAiProvider(namespaceParam, USER_ME_SENTINEL, 0, LIST_PAGE_SIZE)
       .pipe(map((page) => page.content ?? []))
   }
 
   /** User-global slice consumed by `UserProfileComponent.recap` — see `multicastRefreshable`. */
-  readonly userGlobal$: Observable<UserAiProvider[]> = multicastRefreshable(
+  readonly userGlobal$: Observable<AiProvider[]> = multicastRefreshable(
     this.refresh$,
     () => this.loadUserProviders('global'),
-    [] as UserAiProvider[]
+    [] as AiProvider[]
   )
 
   loadNamespaceProviders(namespaceId: string): Observable<AiProvider[]> {
     if (!namespaceId) return of([])
-    return this.nsController.listByNamespaceIdAiProvider(namespaceId)
+    // NS-shared : `userId` omitted → backend serves the namespace-scoped layer for that NS.
+    return this.nsController
+      .listAiProvider(namespaceId, undefined, 0, LIST_PAGE_SIZE)
+      .pipe(map((page) => page.content ?? []))
   }
 
   /**
-   * Fetch a single provider by id, dispatching on scope.
-   * Used by the form for hydration from `?template=<id>` (cross-link override).
+   * Fetch a single provider by id. With the unified controller all scopes share the same
+   * `GET /api/ai-providers/{id}` route — the evaluator's ownership branch decides authz.
+   * The legacy two-overload `getById(id, scope)` is kept for back-compat with components
+   * that still pass a scope parameter ; it now ignores `scope` and delegates to the unified
+   * call, which simplifies `tryLoadAcrossScopes` in the form component (G10).
    */
-  getById(id: string, scope: AiProviderScope): Observable<AiProvider | UserAiProvider> {
-    return scope === 'namespace'
-      ? this.nsController.getByIdAiProvider(id)
-      : this.userController.getByIdUserAiProvider(id)
+  getById(id: string): Observable<AiProvider>
+  getById(id: string, scope: AiProviderScope): Observable<AiProvider>
+  getById(id: string, _scope?: AiProviderScope): Observable<AiProvider> {
+    return this.nsController.getByIdAiProvider(id)
   }
 
-  create(
-    draft: AiProviderDraft,
-    scope: AiProviderScope,
-    namespaceId: string | null
-  ): Observable<AiProvider | UserAiProvider> {
+  create(draft: AiProviderDraft, scope: AiProviderScope, namespaceId: string | null): Observable<AiProvider> {
+    const me = this.userState.currentUser()
+    const myId = me?.id
+    if ((scope === 'userOnNs' || scope === 'userGlobal') && !myId) {
+      throw new Error(
+        `Cannot create ${scope} provider before UserStateService.loadMe() resolves — call loadMe() at app init`
+      )
+    }
+
     if (scope === 'namespace') {
       if (!namespaceId) throw new Error('Cannot create namespace-scoped provider without a namespaceId')
       const payload: AiProvider = {
@@ -166,68 +166,56 @@ export class AiProviderConfigStateService {
       }
       return this.nsController.createAiProvider(payload).pipe(tap(() => this.refresh()))
     }
+
     if (scope === 'userOnNs' && !namespaceId) {
       throw new Error('Cannot create userOnNs provider without a namespaceId')
     }
-    const userPayload: UserAiProvider = {
+
+    // Decision 15 (Phase 2): the controller infers the scope from the (namespaceId, userId)
+    // pair. user-global → only userId ; user × ns → both. The userId MUST equal the
+    // authenticated principal — sending another user is a 400 (mass-assignment guard).
+    const payload: AiProvider = {
       name: draft.name,
-      apiType: draft.apiType as unknown as UserAiProvider['apiType'],
+      apiType: draft.apiType,
       description: draft.description as string | undefined,
       baseUrl: draft.baseUrl as string | undefined,
       apiKey: draft.apiKey as string | undefined,
+      userId: myId,
       namespaceId: scope === 'userOnNs' ? (namespaceId as string) : undefined,
     }
-    return this.userController.createUserAiProvider(userPayload).pipe(tap(() => this.refresh()))
+    return this.nsController.createAiProvider(payload).pipe(tap(() => this.refresh()))
   }
 
   /**
    * Update a provider. `draft.apiKey === null` means "user did not touch the field" — the
    * apiKey is omitted from the payload and the backend keeps the persisted credential (FR25,
-   * NFR-SEC-1; pattern from PR #811 on `AiProviderController.update`). Passing an empty string
-   * means "clear the key" (sent on the wire as `apiKey: ""`; the backend interprets a blank
-   * incoming value as an explicit clear and persists `apiKey = null`). We don't use JSON-null
-   * for clear because Jackson collapses JSON-null and field-absent into the same Kotlin null,
-   * leaving the backend unable to distinguish preserve from clear.
+   * NFR-SEC-1). Empty string clears the key.
    *
    * Build payloads explicitly — never spread `existing`. Spreading would re-inject `id`
    * (which lives in the path) and risks leaking stale fields across hypothetical scope swaps.
-   * Server-side immutable fields (namespaceId, userId) are preserved by reading them from `existing`.
+   * Server-side immutable fields (namespaceId, userId, apiType) are preserved by the backend
+   * regardless of what the body sends.
    */
-  update(
-    id: string,
-    draft: AiProviderDraft,
-    scope: AiProviderScope,
-    existing: AiProvider | UserAiProvider
-  ): Observable<AiProvider | UserAiProvider> {
+  update(id: string, draft: AiProviderDraft, scope: AiProviderScope, existing: AiProvider): Observable<AiProvider> {
     const apiKeyField = draft.apiKey === null ? {} : { apiKey: draft.apiKey }
 
-    if (scope === 'namespace') {
-      const payload: AiProvider = {
-        name: draft.name,
-        apiType: draft.apiType,
-        description: draft.description as string | undefined,
-        baseUrl: draft.baseUrl as string | undefined,
-        namespaceId: (existing as AiProvider).namespaceId,
-        ...apiKeyField,
-      }
-      return this.nsController.updateAiProvider(id, payload).pipe(tap(() => this.refresh()))
-    }
-    const userExisting = existing as UserAiProvider
-    const userPayload: UserAiProvider = {
+    const payload: AiProvider = {
       name: draft.name,
-      apiType: draft.apiType as unknown as UserAiProvider['apiType'],
+      apiType: draft.apiType,
       description: draft.description as string | undefined,
       baseUrl: draft.baseUrl as string | undefined,
-      userId: userExisting.userId,
-      namespaceId: userExisting.namespaceId,
+      namespaceId: existing.namespaceId,
+      userId: existing.userId,
       ...apiKeyField,
     }
-    return this.userController.updateUserAiProvider(id, userPayload).pipe(tap(() => this.refresh()))
+    // Reference scope to keep the signature stable for callers ; the backend determines
+    // the actual scope from the persisted row's (namespaceId, userId).
+    void scope
+    return this.nsController.updateAiProvider(id, payload).pipe(tap(() => this.refresh()))
   }
 
   delete(id: string, scope: AiProviderScope): Observable<unknown> {
-    const call$ =
-      scope === 'namespace' ? this.nsController.deleteAiProvider(id) : this.userController.deleteUserAiProvider(id)
-    return call$.pipe(tap(() => this.refresh()))
+    void scope
+    return this.nsController.deleteAiProvider(id).pipe(tap(() => this.refresh()))
   }
 }

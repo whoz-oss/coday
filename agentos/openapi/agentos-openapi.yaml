@@ -67,120 +67,6 @@ paths:
       responses:
         "204":
           description: No Content
-  /api/user-integration-configs/{id}:
-    get:
-      tags:
-      - user-integration-config-controller
-      operationId: getByIdUserIntegrationConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserIntegrationConfig"
-    put:
-      tags:
-      - user-integration-config-controller
-      operationId: updateUserIntegrationConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserIntegrationConfig"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserIntegrationConfig"
-    delete:
-      tags:
-      - user-integration-config-controller
-      operationId: deleteUserIntegrationConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/user-ai-providers/{id}:
-    get:
-      tags:
-      - user-ai-provider-controller
-      operationId: getByIdUserAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiProvider"
-    put:
-      tags:
-      - user-ai-provider-controller
-      operationId: updateUserAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserAiProvider"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiProvider"
-    delete:
-      tags:
-      - user-ai-provider-controller
-      operationId: deleteUserAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
   /api/user-ai-models/{id}:
     get:
       tags:
@@ -716,55 +602,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-  /api/user-integration-configs:
-    get:
-      tags:
-      - user-integration-config-controller
-      operationId: listUserIntegrationConfig
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 20
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserIntegrationConfigPage"
-    post:
-      tags:
-      - user-integration-config-controller
-      operationId: createUserIntegrationConfig
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserIntegrationConfig"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserIntegrationConfig"
   /api/user-groups:
     get:
       tags:
@@ -802,55 +639,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
-  /api/user-ai-providers:
-    get:
-      tags:
-      - user-ai-provider-controller
-      operationId: listUserAiProvider
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 20
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiProviderPage"
-    post:
-      tags:
-      - user-ai-provider-controller
-      operationId: createUserAiProvider
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserAiProvider"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiProvider"
   /api/user-ai-models:
     get:
       tags:
@@ -1046,9 +834,57 @@ paths:
                 items:
                   $ref: "#/components/schemas/Namespace"
   /api/integration-configs:
+    get:
+      tags:
+      - integration-config-controller
+      operationId: listIntegrationConfig
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfigPage"
     post:
       tags:
       - integration-config-controller
+      summary: Create an IntegrationConfig
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | —             | 400 Bad Request                      |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15). A `namespaceId` that does not exist returns 404.
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -1216,9 +1052,57 @@ paths:
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
   /api/ai-providers:
+    get:
+      tags:
+      - ai-provider-controller
+      operationId: listAiProvider
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderPage"
     post:
       tags:
       - ai-provider-controller
+      summary: Create an AiProvider
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | —             | 400 Bad Request                      |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` that does not exist returns 404 (Decision 15 / AC7).
       operationId: createAiProvider
       requestBody:
         content:
@@ -1527,28 +1411,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationTypeDescriptor"
-  /api/integration-configs/by-parentId/{parentId}:
-    get:
-      tags:
-      - integration-config-controller
-      operationId: listByParentIntegrationConfig
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/IntegrationConfig"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -1662,70 +1524,6 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
-  /api/ai-providers/by-userId/{userId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByUserIdAiProvider
-      parameters:
-      - name: userId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
-  /api/ai-providers/by-parentId/{parentId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByParentAiProvider
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
-  /api/ai-providers/by-namespaceId/{namespaceId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByNamespaceIdAiProvider
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
   /api/ai-models/by-parentId/{parentId}:
     get:
       tags:
@@ -1813,62 +1611,6 @@ components:
           type: boolean
       required:
       - isAdmin
-    JsonNode: {}
-    UserIntegrationConfig:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        userId:
-          type: string
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        integrationType:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        parameters:
-          $ref: "#/components/schemas/JsonNode"
-      required:
-      - integrationType
-      - name
-    UserAiProvider:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        userId:
-          type: string
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        apiType:
-          type: string
-          enum:
-          - OpenAI
-          - Anthropic
-          - Gemini
-        baseUrl:
-          type: string
-        apiKey:
-          type: string
-      required:
-      - apiType
-      - name
     UserAiModel:
       type: object
       properties:
@@ -1934,6 +1676,9 @@ components:
         namespaceId:
           type: string
           format: uuid
+        userId:
+          type: string
+          format: uuid
         name:
           type: string
           minLength: 1
@@ -1947,7 +1692,7 @@ components:
       required:
       - integrationType
       - name
-      - namespaceId
+    JsonNode: {}
     Case:
       type: object
       properties:
@@ -2072,20 +1817,9 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        userIds:
-          type: array
-          items:
-            type: string
-        agentIds:
-          type: array
-          items:
-            type: string
-            format: uuid
       required:
-      - agentIds
       - name
       - namespaceExternalId
-      - userIds
     UserGroupSearchResult:
       type: object
       properties:
@@ -2535,56 +2269,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    UserIntegrationConfigPage:
-      type: object
-      properties:
-        content:
-          type: array
-          items:
-            $ref: "#/components/schemas/UserIntegrationConfig"
-        page:
-          type: integer
-          format: int32
-        size:
-          type: integer
-          format: int32
-        totalElements:
-          type: integer
-          format: int64
-        totalPages:
-          type: integer
-          format: int32
-      required:
-      - content
-      - page
-      - size
-      - totalElements
-      - totalPages
-    UserAiProviderPage:
-      type: object
-      properties:
-        content:
-          type: array
-          items:
-            $ref: "#/components/schemas/UserAiProvider"
-        page:
-          type: integer
-          format: int32
-        size:
-          type: integer
-          format: int32
-        totalElements:
-          type: integer
-          format: int64
-        totalPages:
-          type: integer
-          format: int32
-      required:
-      - content
-      - page
-      - size
-      - totalElements
-      - totalPages
     UserAiModelPage:
       type: object
       properties:
@@ -2714,3 +2398,53 @@ components:
       - description
       - displayName
       - type
+    IntegrationConfigPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationConfig"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+      required:
+      - content
+      - page
+      - size
+      - totalElements
+      - totalPages
+    AiProviderPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiProvider"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+      required:
+      - content
+      - page
+      - size
+      - totalElements
+      - totalPages
