@@ -4,6 +4,14 @@ import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
 
 interface NamespaceNodeNeo4jRepository : Neo4jRepository<NamespaceNode, String> {
+    @Query($$"MATCH (n:Namespace {id: $id}) SET n:ActiveNamespace")
+    fun setActive(id: String)
+
+    @Query($$"MATCH (n:Namespace {id: $id}) REMOVE n:ActiveNamespace")
+    fun setInactive(id: String)
+
+    @Query($$"UNWIND $ids AS id MATCH (n:Namespace {id: id}) REMOVE n:ActiveNamespace")
+    fun setInactiveByIds(ids: List<String>)
 
     @Query(
         """

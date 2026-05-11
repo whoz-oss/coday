@@ -17,6 +17,7 @@ class UserGroupServiceImpl(
     private val agentConfigRepository: AgentConfigRepository,
     private val userService: UserService,
 ) : UserGroupService {
+    @Transactional
     override fun create(entity: UserGroup): UserGroup =
         try {
             userGroupRepository.save(entity)
@@ -24,6 +25,7 @@ class UserGroupServiceImpl(
             throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
         }
 
+    @Transactional
     override fun update(entity: UserGroup): UserGroup =
         try {
             userGroupRepository.save(entity)
@@ -35,8 +37,10 @@ class UserGroupServiceImpl(
 
     override fun findByParent(parentId: UUID): List<UserGroup> = userGroupRepository.findByParent(parentId)
 
+    @Transactional
     override fun delete(id: UUID): Boolean = userGroupRepository.delete(id)
 
+    @Transactional
     override fun deleteByParent(parentId: UUID): Int = userGroupRepository.deleteByParent(parentId)
 
     override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =

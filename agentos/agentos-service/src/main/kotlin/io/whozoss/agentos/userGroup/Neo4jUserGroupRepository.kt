@@ -15,8 +15,10 @@ open class Neo4jUserGroupRepository(
     override fun save(entity: UserGroup): UserGroup =
         neo4jRepository
             .save(UserGroupNode.fromDomain(entity))
-            .also { childLinkService.link("UserGroup", it.id, "Namespace", entity.namespaceId.toString()) }
-            .toDomain()
+            .also {
+                childLinkService.link("UserGroup", it.id, "Namespace", entity.namespaceId.toString())
+                if (!entity.metadata.removed) neo4jRepository.setActive(it.id)
+            }.toDomain()
 
     override fun findByIds(ids: Collection<UUID>): List<UserGroup> =
         neo4jRepository
@@ -104,12 +106,14 @@ open class Neo4jUserGroupRepository(
             ?.takeIf { it.removed != true }
             ?.let { node ->
                 neo4jRepository.save(node.copy(removed = true))
+                neo4jRepository.setInactive(node.id)
                 true
             } ?: false
 
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
+        neo4jRepository.setInactiveByNamespaceId(parentId.toString())
         neo4jRepository.saveAll(active.map { it.copy(removed = true) })
         return active.size
     }
