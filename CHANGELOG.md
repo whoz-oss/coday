@@ -1,3 +1,13 @@
+## 0.137.5 (2026-05-11)
+
+### 🩹 Fixes
+
+- **agentos-api-client:** fix missed user group generated client files (WZ-31597) ([#857](https://github.com/whoz-oss/coday/pull/857))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.137.4 (2026-05-10)
 
 ### 🩹 Fixes
