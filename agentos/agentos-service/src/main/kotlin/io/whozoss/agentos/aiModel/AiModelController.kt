@@ -200,7 +200,7 @@ class AiModelController(
     @HideOnAccessDenied
     override fun create(@Valid @RequestBody resource: AiModelResource): AiModelResource {
         val auth = currentAuth()
-        currentUserId(auth)
+        ensureCallerAuth(auth)
 
         when (aiModelGuard.canCreateVerdict(resource, auth)) {
             is AiModelGuard.CreateVerdict.Ok -> Unit
@@ -326,6 +326,18 @@ class AiModelController(
                 logger.warn { "[AiModelController] auth.name is not a UUID: '$raw'" }
                 throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication identifier")
             }
+    }
+
+    /**
+     * Validate caller authentication without consuming the resulting UUID.
+     *
+     * Used by [create] to enforce the SF3 invariant: a malformed `auth.name` (e.g. an
+     * email leaked through Cloudflare's auth-mode JWT) must throw 401 BEFORE the
+     * `canCreateVerdict` eval, so the verdict layer never sees a bogus caller id and
+     * the caller receives a 401 rather than a misleading 404 from `ParentInvisible`.
+     */
+    private fun ensureCallerAuth(auth: Authentication) {
+        currentUserId(auth)
     }
 
     private fun currentAuth(): Authentication =
