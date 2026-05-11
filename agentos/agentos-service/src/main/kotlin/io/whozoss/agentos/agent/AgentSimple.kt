@@ -15,10 +15,13 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
@@ -31,6 +34,7 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
+import scala.concurrent.Await.result
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -65,7 +69,6 @@ class AgentSimple(
     /** Returns the live event list of the current case at the moment of invocation. */
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
 ) : Agent {
-
     override fun run(
         events: List<CaseEvent>,
         shouldContinue: () -> Boolean,
@@ -124,7 +127,6 @@ class AgentSimple(
                             llmTurnIndex,
                         )
                     }
-
 
                 // Make single LLM call with tools
                 val prompt = chatClient.prompt(Prompt(allMessages))
@@ -409,6 +411,12 @@ class AgentSimple(
 
             override fun getToolDefinition() = definition
 
+            fun sendEvent(event: CaseEvent) {
+                runBlocking {
+                    eventChannel.send(event)
+                }
+            }
+
             override fun call(toolInput: String): String {
                 val toolRequestId = UUID.randomUUID().toString()
 
@@ -417,17 +425,15 @@ class AgentSimple(
                 val turn = llmTurnIndex.get()
                 logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
 
-                runBlocking {
-                    eventChannel.send(
-                        ToolRequestEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = toolRequestId,
-                            toolName = tool.name,
-                            args = toolInput,
-                        ),
-                    )
-                }
+                sendEvent(
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequestId,
+                        toolName = tool.name,
+                        args = toolInput,
+                    ),
+                )
 
                 // Filter case events to only those belonging to this integration.
                 // Tool names follow the "INTEGRATION_NAME__toolName" convention, so the
@@ -448,12 +454,13 @@ class AgentSimple(
                             }
                         }
                     }
-                val context = ToolContext(
-                    namespaceId = namespaceId,
-                    userId = userId,
-                    userExternalId = userExternalId,
-                    caseEvents = filteredEvents,
-                )
+                val context =
+                    ToolContext(
+                        namespaceId = namespaceId,
+                        userId = userId,
+                        userExternalId = userExternalId,
+                        caseEvents = filteredEvents,
+                    )
 
                 val result: String
                 val toolDuration =
@@ -464,35 +471,33 @@ class AgentSimple(
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.
-                                val message = when (e) {
-                                    is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
-                                }
-                                runBlocking {
-                                    eventChannel.send(
-                                        ToolResponseEvent(
-                                            namespaceId = namespaceId,
-                                            caseId = caseId,
-                                            toolRequestId = toolRequestId,
-                                            toolName = tool.name,
-                                            output = MessageContent.Text(message),
-                                            success = true,
-                                        ),
-                                    )
-                                }
+                                val message =
+                                    when (e) {
+                                        is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                                    }
+                                sendEvent(
+                                    ToolResponseEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = caseId,
+                                        toolRequestId = toolRequestId,
+                                        toolName = tool.name,
+                                        output = MessageContent.Text(message),
+                                        success = true,
+                                    ),
+                                )
+
                                 throw e
                             } catch (e: Exception) {
-                                runBlocking {
-                                    eventChannel.send(
-                                        ToolResponseEvent(
-                                            namespaceId = namespaceId,
-                                            caseId = caseId,
-                                            toolRequestId = toolRequestId,
-                                            toolName = tool.name,
-                                            output = MessageContent.Text("Error: ${e.message}"),
-                                            success = false,
-                                        ),
-                                    )
-                                }
+                                sendEvent(
+                                    ToolResponseEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = caseId,
+                                        toolRequestId = toolRequestId,
+                                        toolName = tool.name,
+                                        output = MessageContent.Text("Error: ${e.message}"),
+                                        success = false,
+                                    ),
+                                )
                                 throw e
                             }
                     }
@@ -503,18 +508,16 @@ class AgentSimple(
                 llmTurnMark.set(TimeSource.Monotonic.markNow())
                 llmTurnIndex.incrementAndGet()
 
-                runBlocking {
-                    eventChannel.send(
-                        ToolResponseEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = toolRequestId,
-                            toolName = tool.name,
-                            output = MessageContent.Text(result),
-                            success = true,
-                        ),
-                    )
-                }
+                sendEvent(
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequestId,
+                        toolName = tool.name,
+                        output = MessageContent.Text(result),
+                        success = true,
+                    ),
+                )
 
                 return result
             }
