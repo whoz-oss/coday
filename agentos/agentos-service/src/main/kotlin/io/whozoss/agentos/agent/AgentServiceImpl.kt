@@ -67,11 +67,14 @@ class AgentServiceImpl(
     }
 
     override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
-        val config = agentConfigService.findDefault(context.namespaceId)
-            .let { if (it.namespaceId == BOGUS_NAMESPACE_ID) it.copy(namespaceId = context.namespaceId) else it }
+        val config =
+            agentConfigService
+                .findDefault(context.namespaceId)
+                .let { if (it.hasNoRealNamespace()) it.copy(namespaceId = context.namespaceId) else it }
         return runCatching { createAgentFromConfig(config, context) }
-            .onFailure { logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" } }
-            .getOrNull()
+            .onFailure {
+                logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" }
+            }.getOrNull()
     }
 
     override fun getDefaultAgentName(namespaceId: UUID): String = agentConfigService.findDefault(namespaceId).name
@@ -107,7 +110,16 @@ class AgentServiceImpl(
                         "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
                 )
         val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId, cache)
-        return createAgentInstance(config.name, config.instructions, config.integrations, modelConfig, providerConfig, context, cache)
+        return createAgentInstance(
+            config.name,
+            config.instructions,
+            config.integrations,
+            config.advancedExecution,
+            modelConfig,
+            providerConfig,
+            context,
+            cache,
+        )
     }
 
     /**
@@ -158,7 +170,7 @@ class AgentServiceImpl(
     // -------------------------------------------------------------------------
 
     /**
-     * Build a live [AgentSimple] instance from the resolved entity pair, scoped to [context].
+     * Build a live [AgentSimple] or [AgentAdvanced] instance from the resolved entity pair, scoped to [context].
      *
      * [agentName] is the logical name used to identify this agent.
      * [baseInstructions] are the agent-level instructions from [AgentConfig], if any.
@@ -174,6 +186,7 @@ class AgentServiceImpl(
         agentName: String,
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
+        advancedExecution: Boolean,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
@@ -192,16 +205,36 @@ class AgentServiceImpl(
                 "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
         }
 
+        // Resolve user identity once here so plugins receive it via ToolContext without
+        // needing access to UserService themselves.
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
         val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
 
-        return AgentSimple(
-            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
-            name = agentName,
-            chatClient = chatClient,
-            tools = tools,
-            instructions = instructions,
-        )
+        return if (advancedExecution) {
+            AgentAdvanced(
+                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                name = agentName,
+                chatClient = chatClient,
+                tools = tools.toList(),
+                instructions = instructions,
+                userId = resolvedUser?.metadata?.id,
+                userExternalId = resolvedUser?.externalId,
+                caseEventsProvider = context.caseEventsProvider,
+            )
+        } else {
+            AgentSimple(
+                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                name = agentName,
+                chatClient = chatClient,
+                tools = tools,
+                instructions = instructions,
+                userId = resolvedUser?.metadata?.id,
+                userExternalId = resolvedUser?.externalId,
+                caseEventsProvider = context.caseEventsProvider,
+            )
+        }
     }
 
     /**
@@ -235,15 +268,21 @@ class AgentServiceImpl(
 
         val integrationsBlock =
             when {
-                agentIntegrations == null -> null
+                agentIntegrations == null -> {
+                    null
+                }
+
                 else -> {
                     val listed =
                         integrationConfigService
                             .findByParent(context.namespaceId)
                             .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
                     when {
-                        listed.isEmpty() -> null
-                        else ->
+                        listed.isEmpty() -> {
+                            null
+                        }
+
+                        else -> {
                             buildString {
                                 appendLine()
                                 appendLine("## Integrations")
@@ -251,6 +290,7 @@ class AgentServiceImpl(
                                     appendLine("- ${config.name}: ${config.description}")
                                 }
                             }.trimEnd()
+                        }
                     }
                 }
             }
@@ -274,8 +314,5 @@ class AgentServiceImpl(
             .joinToString("\n")
     }
 
-    companion object : KLogging() {
-        /** Sentinel namespace UUID emitted by [AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG]. */
-        private val BOGUS_NAMESPACE_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
-    }
+    companion object : KLogging()
 }

@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -20,8 +21,10 @@ class UserServiceImpl(
     private val userRepository: UserRepository,
     private val securityService: SecurityService,
 ) : UserService {
+    @Transactional
     override fun create(entity: User): User = userRepository.save(entity)
 
+    @Transactional
     override fun update(entity: User): User = userRepository.save(entity)
 
     override fun findByIds(ids: Collection<UUID>): List<User> = userRepository.findByIds(ids)
@@ -33,6 +36,8 @@ class UserServiceImpl(
     override fun count(): Long = userRepository.count()
 
     override fun findByExternalId(externalId: String): User? = userRepository.findByExternalId(externalId)
+
+    override fun findByExternalIds(externalIds: Set<String>): List<User> = userRepository.findByExternalIds(externalIds)
 
     override fun resolveOrCreateByExternalId(externalId: String): User =
         findByExternalId(externalId) ?: bootstrapLock.withLock {
@@ -57,8 +62,10 @@ class UserServiceImpl(
     override fun getCurrentUser(): User =
         resolveOrCreateByExternalId(securityService.resolveCurrentIdentity())
 
+    @Transactional
     override fun delete(id: UUID): Boolean = userRepository.delete(id)
 
+    @Transactional
     override fun deleteByParent(parentId: String): Int = userRepository.deleteByParent(parentId)
 
     /**

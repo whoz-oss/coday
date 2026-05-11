@@ -62,8 +62,8 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 @Configuration
 @EnableConfigurationProperties(PersistenceConfigProperties::class)
 @ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
+    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
+        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
 )
 @EnableNeo4jRepositories(
     basePackages = [

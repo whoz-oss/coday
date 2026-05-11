@@ -65,6 +65,9 @@ export class PreferencesService {
   private themeSubject = new BehaviorSubject<string>('light')
   public theme$ = this.themeSubject.asObservable()
 
+  private missionPreviewEnabledSubject = new BehaviorSubject<boolean>(false)
+  public missionPreviewEnabled$ = this.missionPreviewEnabledSubject.asObservable()
+
   constructor() {
     console.log('[PREFERENCES] Initializing preferences service')
 
@@ -136,6 +139,9 @@ export class PreferencesService {
     const storedTheme = this.getPreferenceSync<string>('theme', 'light') ?? 'light'
     this.themeSubject.next(storedTheme)
 
+    const storedMissionPreviewEnabled = this.getPreferenceSync<boolean>('missionPreviewEnabled', false) ?? false
+    this.missionPreviewEnabledSubject.next(storedMissionPreviewEnabled)
+
     const storedVoiceInputMode =
       this.getPreferenceSync<'browser' | 'whisper' | 'voice-message'>('voiceInputMode', 'browser') ?? 'browser'
     this.voiceInputModeSubject.next(storedVoiceInputMode)
@@ -195,6 +201,10 @@ export class PreferencesService {
 
     const storedTheme = (await this.getPreferenceAsync<string>('theme', 'light')) ?? 'light'
     this.themeSubject.next(storedTheme)
+
+    const storedMissionPreviewEnabled =
+      (await this.getPreferenceAsync<boolean>('missionPreviewEnabled', false)) ?? false
+    this.missionPreviewEnabledSubject.next(storedMissionPreviewEnabled)
 
     const storedVoiceInputMode =
       (await this.getPreferenceAsync<'browser' | 'whisper' | 'voice-message'>('voiceInputMode', 'browser')) ?? 'browser'
@@ -326,6 +336,9 @@ export class PreferencesService {
     }
     if (key === 'voiceInputMode') {
       this.voiceInputModeSubject.next(value as 'browser' | 'whisper' | 'voice-message')
+    }
+    if (key === 'missionPreviewEnabled') {
+      this.missionPreviewEnabledSubject.next(value as boolean)
     }
   }
 
@@ -464,5 +477,21 @@ export class PreferencesService {
 
   getBrowserNotificationEnabled(): boolean {
     return this.getPreference<boolean>('browserNotificationEnabled', false) ?? false
+  }
+
+  setMissionPreviewEnabled(enabled: boolean): void {
+    this.setPreference('missionPreviewEnabled', enabled)
+  }
+
+  getMissionPreviewEnabled(): boolean {
+    return this.getPreference<boolean>('missionPreviewEnabled', false) ?? false
+  }
+
+  getMissionPreviewPanelWidth(): number {
+    return this.getPreference<number>('missionPreviewPanelWidth', 33) ?? 33
+  }
+
+  setMissionPreviewPanelWidth(widthPercent: number): void {
+    this.setPreference('missionPreviewPanelWidth', widthPercent)
   }
 }

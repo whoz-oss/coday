@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.charset.MalformedInputException
 import java.nio.charset.StandardCharsets
@@ -62,7 +63,7 @@ class ReadFileTool(
         val filePath: String = "",
     )
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val params = input ?: Input()
 
         return try {

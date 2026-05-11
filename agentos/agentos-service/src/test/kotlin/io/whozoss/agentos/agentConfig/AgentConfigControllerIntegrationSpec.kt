@@ -2,10 +2,12 @@ package io.whozoss.agentos.agentConfig
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
@@ -30,7 +32,8 @@ import java.util.UUID
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles("test", "embedded-neo4j")
+@Import(EmbeddedNeo4jTestConfiguration::class)
 class AgentConfigControllerIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
@@ -83,6 +86,26 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                         }
                     """.trimIndent())
             ).andExpect(status().isCreated)
+        }
+
+        "POST /api/agent-configs without advancedExecution defaults to false" {
+            mockMvc.perform(
+                post("/api/agent-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "name": "no-advanced" }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.advancedExecution").doesNotExist())
+        }
+
+        "POST /api/agent-configs with advancedExecution=true returns true" {
+            mockMvc.perform(
+                post("/api/agent-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "name": "advanced-agent", "advancedExecution": true }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.advancedExecution").value(true))
         }
 
         // -------------------------------------------------------------------------

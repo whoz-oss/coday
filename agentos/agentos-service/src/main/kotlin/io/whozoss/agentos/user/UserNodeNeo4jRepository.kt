@@ -16,6 +16,15 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * Used by [Neo4jUserRepository.findByParent] which receives the fixed
      * parent key [UserRepository.USER_PARENT_KEY].
      */
+    @Query($$"MATCH (u:User {id: $id}) SET u:ActiveUser")
+    fun setActive(id: String)
+
+    @Query($$"MATCH (u:User {id: $id}) REMOVE u:ActiveUser")
+    fun setInactive(id: String)
+
+    @Query($$"UNWIND $ids AS id MATCH (u:User {id: id}) REMOVE u:ActiveUser")
+    fun setInactiveByIds(ids: List<String>)
+
     @Query(
         """
             MATCH (u:User)
@@ -37,6 +46,15 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
             """,
     )
     fun findActiveByExternalId(externalId: String): UserNode?
+
+    @Query(
+        $$"""
+            MATCH (u:User)
+            WHERE u.externalId IN $externalIds AND (u.removed IS NULL OR u.removed = false)
+            RETURN u
+            """,
+    )
+    fun findActiveByExternalIds(externalIds: Collection<String>): List<UserNode>
 
     /**
      * Count all non-removed users.

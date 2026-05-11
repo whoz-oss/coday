@@ -224,6 +224,8 @@ class IntentionGeneratedEventNode(
     timestamp: Instant,
     val agentId: String,
     val intention: String,
+    /** Name of the tool selected in the same LLM call that produced [intention]. Default empty for backward compat. */
+    val toolName: String = "",
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

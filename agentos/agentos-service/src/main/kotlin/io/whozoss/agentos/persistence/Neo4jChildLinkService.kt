@@ -24,8 +24,8 @@ import org.springframework.stereotype.Service
  */
 @Service
 @ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
+    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
+        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
 )
 class Neo4jChildLinkService(
     private val neo4jClient: Neo4jClient,

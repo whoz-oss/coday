@@ -151,6 +151,35 @@
     font-size: 0.875rem;
   }
 
+  &__toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  &__toggle-checkbox {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    accent-color: var(--color-primary, #007aff);
+    cursor: pointer;
+  }
+
+  &__toggle-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text, #1d1d1f);
+  }
+
+  &__toggle-hint {
+    margin: 0.25rem 0 0 1.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+    line-height: 1.4;
+  }
+
   &__actions {
     display: flex;
     gap: 0.75rem;

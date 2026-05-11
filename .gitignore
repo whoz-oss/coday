@@ -65,3 +65,6 @@ _bmad/
 
 # Claude Code settings
 .claude/
+
+.nx/polygraph
+.nx/self-healing

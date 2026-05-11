@@ -66,6 +66,7 @@ export class AgentConfigFormComponent implements OnInit {
     description: new FormControl<string | null>(null),
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
+    advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -82,6 +83,10 @@ export class AgentConfigFormComponent implements OnInit {
 
   protected get instructionsControl() {
     return this.form.controls.instructions
+  }
+
+  protected get advancedExecutionControl() {
+    return this.form.controls.advancedExecution
   }
 
   protected readonly isEditMode = signal(false)
@@ -124,6 +129,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
+          this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
           this.integrationRows.set(this.buildIntegrationRows(integrations, config.integrations ?? undefined))
           this.isLoading.set(false)
         },
@@ -226,6 +232,7 @@ export class AgentConfigFormComponent implements OnInit {
       modelName: this.modelNameControl.value?.trim() || undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
+      advancedExecution: this.advancedExecutionControl.value,
     }
 
     const call$ = this.isEditMode()

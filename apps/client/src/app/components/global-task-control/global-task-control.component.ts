@@ -1,5 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  inject,
+  OnInit,
+  signal,
+  ViewChild,
+} from '@angular/core'
 import { Router, RouterLink } from '@angular/router'
+import { BreakpointObserver } from '@angular/cdk/layout'
+import { map } from 'rxjs/operators'
 import { MatDialog } from '@angular/material/dialog'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -15,10 +28,17 @@ import { TaskCardComponent } from '../task-control/task-card/task-card.component
 import { NewTaskDialogComponent } from '../new-task-dialog/new-task-dialog.component'
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component'
 import { OptionsPanelComponent } from '../options-panel/options-panel.component'
+import { ThreadComponent } from '../thread/thread.component'
 import { GlobalTaskService } from '../../core/services/global-task.service'
 import { ConfigStateService } from '../../core/services/config-state.service'
 import { UserService } from '../../core/services/user.service'
 import { TaskStatus } from '../../core/services/task-status.service'
+import { PreferencesService } from '../../services/preferences.service'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
+
+const MIN_PANEL_WIDTH_PERCENT = 20
+const MAX_PANEL_WIDTH_PERCENT = 70
 
 type FilterKey = 'all' | TaskStatus
 
@@ -55,6 +75,7 @@ const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TaskCardComponent,
+    ThreadComponent,
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
@@ -75,8 +96,33 @@ export class GlobalTaskControlComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly configState = inject(ConfigStateService)
   private readonly userService = inject(UserService)
+  private readonly preferences = inject(PreferencesService)
+  private readonly projectState = inject(ProjectStateService)
+  private readonly threadState = inject(ThreadStateService)
+  private readonly breakpointObserver = inject(BreakpointObserver)
 
   private readonly username = toSignal(this.userService.username$, { initialValue: null })
+
+  // ── Preview panel ──────────────────────────────────────────────────────────
+  /** True on viewports >= 1280px. Preview panel is desktop-only. */
+  protected readonly isDesktop = toSignal(
+    this.breakpointObserver.observe('(min-width: 1280px)').pipe(map((s) => s.matches)),
+    { initialValue: false }
+  )
+  protected readonly previewEnabled = toSignal(this.preferences.missionPreviewEnabled$, { initialValue: false })
+  protected readonly previewActive = computed(() => this.previewEnabled() && this.isDesktop())
+  protected readonly previewThreadId = signal<string | null>(null)
+  protected readonly previewProjectId = signal<string | null>(null)
+  protected readonly previewTaskName = signal<string | null>(null)
+  protected readonly previewPanelWidthPercent = signal<number>(this.preferences.getMissionPreviewPanelWidth())
+
+  // Resize drag state
+  private isDraggingResizer = false
+  private dragStartX = 0
+  private dragStartWidth = 0
+  private containerWidth = 0
+
+  @ViewChild('layoutContainer') private layoutContainerRef?: ElementRef<HTMLElement>
 
   /** Single global SSE connection aggregating events from all projects */
   private globalEventSource: EventSource | null = null
@@ -287,6 +333,64 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected onMarkActiveRequested(threadId: string, projectId: string): void {
     this.globalTaskService.markTaskActive(projectId, threadId)
+  }
+
+  // ── Preview panel handlers ──────────────────────────────────────────────────
+
+  protected onPreviewRequested(threadId: string, projectId: string, taskName: string): void {
+    if (this.previewThreadId() === threadId) {
+      this.previewThreadId.set(null)
+      this.previewProjectId.set(null)
+      this.previewTaskName.set(null)
+    } else {
+      this.projectState.selectProject(projectId)
+      this.threadState.selectThread(threadId)
+      this.previewProjectId.set(projectId)
+      this.previewThreadId.set(threadId)
+      this.previewTaskName.set(taskName)
+    }
+  }
+
+  protected closePreview(): void {
+    this.previewThreadId.set(null)
+    this.previewProjectId.set(null)
+    this.previewTaskName.set(null)
+  }
+
+  protected navigateToThread(): void {
+    const threadId = this.previewThreadId()
+    const projectId = this.previewProjectId()
+    if (!threadId || !projectId) return
+    void this.router.navigate(['project', projectId, 'thread', threadId])
+  }
+
+  // ── Resizer drag ─────────────────────────────────────────────────────────
+
+  protected onResizerMousedown(event: MouseEvent): void {
+    event.preventDefault()
+    this.isDraggingResizer = true
+    this.dragStartX = event.clientX
+    this.dragStartWidth = this.previewPanelWidthPercent()
+    this.containerWidth = this.layoutContainerRef?.nativeElement.offsetWidth ?? window.innerWidth
+  }
+
+  @HostListener('document:mousemove', ['$event'])
+  onDocumentMousemove(event: MouseEvent): void {
+    if (!this.isDraggingResizer) return
+    const deltaX = this.dragStartX - event.clientX
+    const deltaPercent = (deltaX / this.containerWidth) * 100
+    const newWidth = Math.min(
+      MAX_PANEL_WIDTH_PERCENT,
+      Math.max(MIN_PANEL_WIDTH_PERCENT, this.dragStartWidth + deltaPercent)
+    )
+    this.previewPanelWidthPercent.set(newWidth)
+  }
+
+  @HostListener('document:mouseup')
+  onDocumentMouseup(): void {
+    if (!this.isDraggingResizer) return
+    this.isDraggingResizer = false
+    this.preferences.setMissionPreviewPanelWidth(this.previewPanelWidthPercent())
   }
 
   // ── Global SSE management ───────────────────────────────────────────────────────────────────

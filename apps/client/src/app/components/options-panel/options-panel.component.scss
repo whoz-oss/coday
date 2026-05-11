@@ -40,6 +40,23 @@
   }
 }
 
+.option-label-with-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+
+  .option-label {
+    margin-bottom: 0;
+  }
+
+  .option-hint {
+    font-size: 0.775rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+  }
+}
+
 .option-select {
   width: 100%;
   padding: 0.5rem;

@@ -62,6 +62,7 @@ model/tool-response-event.ts
 model/tool-selected-event.ts
 model/user-group-create-request.ts
 model/user-group-search-result.ts
+model/user-group-update-request.ts
 model/user.ts
 model/warn-event.ts
 param.ts

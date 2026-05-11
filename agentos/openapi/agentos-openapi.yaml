@@ -582,6 +582,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
+  /api/user-groups/{userGroupId}:
+    get:
+      tags:
+      - user-group-controller
+      operationId: getByIdUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+    post:
+      tags:
+      - user-group-controller
+      operationId: updateUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+    delete:
+      tags:
+      - user-group-controller
+      operationId: deleteUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -1720,6 +1777,8 @@ components:
             type: array
             items:
               type: string
+        advancedExecution:
+          type: boolean
       required:
       - name
       - namespaceId
@@ -1733,9 +1792,26 @@ components:
           type: string
           maxLength: 250
           minLength: 0
+        userExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
       required:
+      - agentIds
       - name
       - namespaceExternalId
+      - userExternalIds
     UserGroupSearchResult:
       type: object
       properties:
@@ -1753,6 +1829,7 @@ components:
           type: array
           items:
             type: string
+            format: uuid
         userCount:
           type: integer
           format: int32
@@ -1763,6 +1840,40 @@ components:
       - namespaceId
       - userCount
       - userGroupId
+    UserGroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        addedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        removedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - addedUserExternalIds
+      - agentIds
+      - name
+      - removedUserExternalIds
     PluginActionResponse:
       type: object
       properties:
@@ -2006,6 +2117,8 @@ components:
             format: uuid
           intention:
             type: string
+          toolName:
+            type: string
       required:
       - agentId
       - caseId
@@ -2014,6 +2127,7 @@ components:
       - metadata
       - namespaceId
       - timestamp
+      - toolName
       - type
     MessageContent:
       discriminator:
@@ -2130,6 +2244,9 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
+          durationMs:
+            type: integer
+            format: int64
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
