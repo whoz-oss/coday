@@ -10,11 +10,13 @@
 /* tslint:disable:no-unused-variable member-ordering */
 
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { AiModel } from '../model/ai-model'
+// @ts-ignore
+import { AiModelPage } from '../model/ai-model-page'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -34,6 +36,8 @@ export class AiModelControllerService extends BaseService {
   }
 
   /**
+   * Create an AiModel
+   * Scope is inferred server-side from the parent &#x60;aiProviderId&#x60; — NOT from body fields :  | body.aiProviderId\&#39;s parent scope | required permission               | |----------------------------------|-----------------------------------| | NS-shared                        | WRITE on parent\&#39;s namespace       | | user-global (userId IS NOT NULL) | caller must own the parent (same userId) | | user × namespace                 | caller must own the parent (same userId) |  &#x60;namespaceId&#x60; and &#x60;userId&#x60; in body are **silently ignored** — scope is denormalized server-side from the parent AiProvider via &#x60;AiModelServiceImpl.create()&#x60;. Missing or cross-user parent returns 404 (existence-hiding). NS-shared parent without WRITE returns 403.
    * @param aiModel
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
@@ -326,37 +330,62 @@ export class AiModelControllerService extends BaseService {
   }
 
   /**
+   * List AiModels by scope
+   * Scope is inferred from the query params. All combinations that touch &#x60;?aiProviderId&#x3D;&#x60; first check provider visibility via &#x60;canSeeProvider&#x60; (empty list if false).  | namespaceId | userId | aiProviderId | mode | permission | |---|---|---|---|---| | UUID | null | null | NS-shared of &#x60;nsX&#x60; | READ on namespace (empty if missing) | | UUID | &#x60;me&#x60; | null | user × namespace | authenticated | | &#x60;none&#x60; | &#x60;me&#x60; | null | user-global | authenticated | | null | &#x60;me&#x60; | null | all caller\&#39;s overlays | authenticated | | null | null | UUID | all visible under parent | canSeeProvider | | UUID | null | UUID | NS-shared of &#x60;nsX&#x60; filtered by parent | READ on namespace + canSeeProvider | | UUID | &#x60;me&#x60; | UUID | user × namespace filtered by parent | authenticated + canSeeProvider | | &#x60;none&#x60; | &#x60;me&#x60; | UUID | user-global filtered by parent | authenticated + canSeeProvider | | null | null | null | default: caller\&#39;s overlays | authenticated |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400. &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;. Pagination defaults to page&#x3D;0, size&#x3D;20 ; size is capped at 100.
    * @param namespaceId
+   * @param userId
+   * @param aiProviderId
+   * @param page
+   * @param size
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByNamespaceIdAiModel(
-    namespaceId: string,
+  public listAiModel(
+    namespaceId?: string,
+    userId?: string,
+    aiProviderId?: string,
+    page?: number,
+    size?: number,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<AiModel>>
-  public listByNamespaceIdAiModel(
-    namespaceId: string,
+  ): Observable<AiModelPage>
+  public listAiModel(
+    namespaceId?: string,
+    userId?: string,
+    aiProviderId?: string,
+    page?: number,
+    size?: number,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<AiModel>>>
-  public listByNamespaceIdAiModel(
-    namespaceId: string,
+  ): Observable<HttpResponse<AiModelPage>>
+  public listAiModel(
+    namespaceId?: string,
+    userId?: string,
+    aiProviderId?: string,
+    page?: number,
+    size?: number,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<AiModel>>>
-  public listByNamespaceIdAiModel(
-    namespaceId: string,
+  ): Observable<HttpEvent<AiModelPage>>
+  public listAiModel(
+    namespaceId?: string,
+    userId?: string,
+    aiProviderId?: string,
+    page?: number,
+    size?: number,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (namespaceId === null || namespaceId === undefined) {
-      throw new Error('Required parameter namespaceId was null or undefined when calling listByNamespaceIdAiModel.')
-    }
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>userId, 'userId')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>aiProviderId, 'aiProviderId')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>page, 'page')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>size, 'size')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -381,79 +410,11 @@ export class AiModelControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/ai-models/by-namespaceId/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
+    let localVarPath = `/api/ai-models`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<AiModel>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<AiModelPage>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * @param parentId Parent entity ID
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public listByParentAiModel(
-    parentId: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<AiModel>>
-  public listByParentAiModel(
-    parentId: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<AiModel>>>
-  public listByParentAiModel(
-    parentId: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<AiModel>>>
-  public listByParentAiModel(
-    parentId: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParentAiModel.')
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/ai-models/by-parentId/${this.configuration.encodeParam({ name: 'parentId', value: parentId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<AiModel>>('get', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
-import { AiModel, UserAiModel } from '@whoz-oss/agentos-api-client'
+import { AiModel } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 import { AiModelScope } from '../../services/ai-model-config-state.service'
 import { AiProviderScope } from '../../services/ai-provider-config-state.service'
@@ -52,15 +52,15 @@ export interface ParentProviderRef {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiModelItemComponent {
-  readonly model = input.required<AiModel | UserAiModel>()
+  readonly model = input.required<AiModel>()
   readonly scope = input.required<AiModelScope>()
   readonly readOnly = input<boolean>(false)
   /** Parent provider info resolved by the container; null means unknown / orphan. */
   readonly parentProvider = input<ParentProviderRef | null>(null)
 
-  readonly editRequested = output<AiModel | UserAiModel>()
-  readonly deleteRequested = output<AiModel | UserAiModel>()
-  readonly duplicateRequested = output<AiModel | UserAiModel>()
+  readonly editRequested = output<AiModel>()
+  readonly deleteRequested = output<AiModel>()
+  readonly duplicateRequested = output<AiModel>()
 
   protected readonly pendingDelete = signal(false)
 

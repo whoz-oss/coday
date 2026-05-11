@@ -3,7 +3,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { catchError, Observable, startWith, switchMap } from 'rxjs'
-import { AiModel, UserAiModel } from '@whoz-oss/agentos-api-client'
+import { AiModel } from '@whoz-oss/agentos-api-client'
 import { AiModelConfigStateService, AiModelScope, EligibleProvider } from '../../services/ai-model-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
@@ -131,7 +131,7 @@ export class AiModelFormComponent implements OnInit {
   })
 
   /** Kept for the update payload (preserves server-side userId/namespaceId). */
-  private existingModel: AiModel | UserAiModel | null = null
+  private existingModel: AiModel | null = null
 
   constructor() {
     // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
@@ -191,8 +191,8 @@ export class AiModelFormComponent implements OnInit {
     return raw && VALID_SCOPES.has(raw as AiModelScope) ? (raw as AiModelScope) : 'namespace'
   }
 
-  private deriveScopeFromConfig(config: AiModel | UserAiModel): AiModelScope {
-    const isUserScope = !!(config as UserAiModel).userId
+  private deriveScopeFromConfig(config: AiModel): AiModelScope {
+    const isUserScope = !!config.userId
     if (!isUserScope) return 'namespace'
     return config.namespaceId ? 'userOnNs' : 'userGlobal'
   }
@@ -227,10 +227,10 @@ export class AiModelFormComponent implements OnInit {
       })
   }
 
-  private tryLoadAcrossScopes(id: string, hint: AiModelScope): Observable<AiModel | UserAiModel> {
+  private tryLoadAcrossScopes(id: string, hint: AiModelScope): Observable<AiModel> {
     const allScopes: ReadonlyArray<AiModelScope> = ['namespace', 'userOnNs', 'userGlobal']
     const ordered: ReadonlyArray<AiModelScope> = [hint, ...allScopes.filter((s) => s !== hint)]
-    return ordered.reduce<Observable<AiModel | UserAiModel>>(
+    return ordered.reduce<Observable<AiModel>>(
       (acc, scope, idx) => (idx === 0 ? acc : acc.pipe(catchError(() => this.state.getById(id, scope)))),
       this.state.getById(id, hint)
     )
@@ -273,7 +273,7 @@ export class AiModelFormComponent implements OnInit {
       })
   }
 
-  private applyModelToForm(model: AiModel | UserAiModel): void {
+  private applyModelToForm(model: AiModel): void {
     this.aiProviderIdControl.setValue(model.aiProviderId)
     this.apiModelNameControl.setValue(model.apiModelName)
     this.descriptionControl.setValue(model.description ?? null)

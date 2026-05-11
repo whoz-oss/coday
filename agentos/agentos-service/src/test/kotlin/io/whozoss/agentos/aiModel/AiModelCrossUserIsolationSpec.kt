@@ -29,17 +29,20 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * Cross-user isolation matrix for [UserAiModelController] (NFR-SEC-1, AR19).
+ * Cross-user isolation matrix for [AiModelController] (unified `/api/ai-models`) (NFR-SEC-1, AR19).
  *
- * Mirrors the 4×2 matrix of [io.whozoss.agentos.integrationConfig.UserIntegrationConfigCrossUserIsolationSpec],
- * plus an additional cell: alice attempts to POST a UserAiModel attached to bob's UserAiProvider → 404.
+ * Covers the 4×2 matrix (GET/PUT/DELETE × user-global/user-namespace) plus:
+ * - LIST isolation (alice never sees bob's models)
+ * - LIST with explicit userId UUID returns 400 (only 'me' sentinel allowed)
+ * - POST with bob's UserAiProvider returns 404 (existence-hiding)
  *
- * All isolation failures must return 404, never 403.
+ * All cross-user isolation failures must return 404, never 403.
+ * The `@HideOnAccessDenied` + `OwnershipResolver` branch: model.userId=bob ≠ aliceId → denied.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class UserAiModelCrossUserIsolationSpec : StringSpec() {
+class AiModelCrossUserIsolationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
@@ -101,7 +104,7 @@ class UserAiModelCrossUserIsolationSpec : StringSpec() {
             val bobModel = createBobModel(namespaceId = null, providerId = bobProvider.id)
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/user-ai-models/${bobModel.id}"))
+            mockMvc.perform(get("/api/ai-models/${bobModel.id}"))
                 .andExpect(status().isNotFound)
         }
 
@@ -110,7 +113,7 @@ class UserAiModelCrossUserIsolationSpec : StringSpec() {
             val bobModel = createBobModel(namespaceId = sharedNamespaceId, providerId = bobProvider.id)
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/user-ai-models/${bobModel.id}"))
+            mockMvc.perform(get("/api/ai-models/${bobModel.id}"))
                 .andExpect(status().isNotFound)
         }
 
@@ -123,7 +126,7 @@ class UserAiModelCrossUserIsolationSpec : StringSpec() {
             every { userService.getCurrentUser() } returns alice
 
             mockMvc.perform(
-                put("/api/user-ai-models/${bobModel.id}")
+                put("/api/ai-models/${bobModel.id}")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${bobProvider.id}", "apiModelName": "attack-model" }"""),
             ).andExpect(status().isNotFound)
@@ -135,7 +138,7 @@ class UserAiModelCrossUserIsolationSpec : StringSpec() {
             every { userService.getCurrentUser() } returns alice
 
             mockMvc.perform(
-                put("/api/user-ai-models/${bobModel.id}")
+                put("/api/ai-models/${bobModel.id}")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${bobProvider.id}", "apiModelName": "attack-model" }"""),
             ).andExpect(status().isNotFound)
@@ -149,7 +152,7 @@ class UserAiModelCrossUserIsolationSpec : StringSpec() {
             val bobModel = createBobModel(namespaceId = null, providerId = bobProvider.id)
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(delete("/api/user-ai-models/${bobModel.id}"))
+            mockMvc.perform(delete("/api/ai-models/${bobModel.id}"))
                 .andExpect(status().isNotFound)
         }
 
@@ -158,7 +161,7 @@ class UserAiModelCrossUserIsolationSpec : StringSpec() {
             val bobModel = createBobModel(namespaceId = sharedNamespaceId, providerId = bobProvider.id)
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(delete("/api/user-ai-models/${bobModel.id}"))
+            mockMvc.perform(delete("/api/ai-models/${bobModel.id}"))
                 .andExpect(status().isNotFound)
         }
 
@@ -172,30 +175,30 @@ class UserAiModelCrossUserIsolationSpec : StringSpec() {
             createBobModel(namespaceId = sharedNamespaceId, providerId = bobProvider2.id)
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/user-ai-models?size=100"))
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$.content[?(@.userId != '$aliceId')]").isEmpty)
-        }
-
-        "LIST as alice with ?userId=bob still filters on alice" {
-            val bobProvider = createBobProvider(namespaceId = null)
-            createBobModel(namespaceId = null, providerId = bobProvider.id)
-            every { userService.getCurrentUser() } returns alice
-
-            mockMvc.perform(get("/api/user-ai-models?userId=$bobId&size=100"))
+            mockMvc.perform(get("/api/ai-models?userId=me&size=100"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.content[?(@.userId != '$aliceId')]").isEmpty)
         }
 
         // -----------------------------------------------------------------
-        // Additional: alice POSTs a UserAiModel attached to bob's UserAiProvider → 404
+        // LIST — userId UUID (not 'me') returns 400
+        // -----------------------------------------------------------------
+        "LIST as alice with ?userId=<bob.id> returns 400 (only 'me' allowed)" {
+            every { userService.getCurrentUser() } returns alice
+
+            mockMvc.perform(get("/api/ai-models?userId=$bobId&size=100"))
+                .andExpect(status().isBadRequest)
+        }
+
+        // -----------------------------------------------------------------
+        // POST with bob's UserAiProvider → 404 (existence-hiding)
         // -----------------------------------------------------------------
         "POST alice → bob's UserAiProvider returns 404 (existence-hiding)" {
             val bobProvider = createBobProvider(namespaceId = null)
             every { userService.getCurrentUser() } returns alice
 
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${bobProvider.id}", "apiModelName": "claude-haiku-4-5" }"""),
             ).andExpect(status().isNotFound)

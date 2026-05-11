@@ -67,63 +67,6 @@ paths:
       responses:
         "204":
           description: No Content
-  /api/user-ai-models/{id}:
-    get:
-      tags:
-      - user-ai-model-controller
-      operationId: getByIdUserAiModel
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiModel"
-    put:
-      tags:
-      - user-ai-model-controller
-      operationId: updateUserAiModel
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserAiModel"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiModel"
-    delete:
-      tags:
-      - user-ai-model-controller
-      operationId: deleteUserAiModel
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     put:
       tags:
@@ -639,61 +582,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
-  /api/user-ai-models:
-    get:
-      tags:
-      - user-ai-model-controller
-      operationId: listUserAiModel
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: aiProviderId
-        in: query
-        required: false
-        schema:
-          type: string
-          format: uuid
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 20
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiModelPage"
-    post:
-      tags:
-      - user-ai-model-controller
-      operationId: createUserAiModel
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserAiModel"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserAiModel"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -1165,9 +1053,79 @@ paths:
                 items:
                   $ref: "#/components/schemas/AiProvider"
   /api/ai-models:
+    get:
+      tags:
+      - ai-model-controller
+      summary: List AiModels by scope
+      description: |-
+        Scope is inferred from the query params. All combinations that touch `?aiProviderId=` first check provider visibility via `canSeeProvider` (empty list if false).
+
+        | namespaceId | userId | aiProviderId | mode | permission |
+        |---|---|---|---|---|
+        | UUID | null | null | NS-shared of `nsX` | READ on namespace (empty if missing) |
+        | UUID | `me` | null | user × namespace | authenticated |
+        | `none` | `me` | null | user-global | authenticated |
+        | null | `me` | null | all caller's overlays | authenticated |
+        | null | null | UUID | all visible under parent | canSeeProvider |
+        | UUID | null | UUID | NS-shared of `nsX` filtered by parent | READ on namespace + canSeeProvider |
+        | UUID | `me` | UUID | user × namespace filtered by parent | authenticated + canSeeProvider |
+        | `none` | `me` | UUID | user-global filtered by parent | authenticated + canSeeProvider |
+        | null | null | null | default: caller's overlays | authenticated |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`. Pagination defaults to page=0, size=20 ; size is capped at 100.
+      operationId: listAiModel
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: aiProviderId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModelPage"
     post:
       tags:
       - ai-model-controller
+      summary: Create an AiModel
+      description: |-
+        Scope is inferred server-side from the parent `aiProviderId` — NOT from body fields :
+
+        | body.aiProviderId's parent scope | required permission               |
+        |----------------------------------|-----------------------------------|
+        | NS-shared                        | WRITE on parent's namespace       |
+        | user-global (userId IS NOT NULL) | caller must own the parent (same userId) |
+        | user × namespace                 | caller must own the parent (same userId) |
+
+        `namespaceId` and `userId` in body are **silently ignored** — scope is denormalized server-side from the parent AiProvider via `AiModelServiceImpl.create()`. Missing or cross-user parent returns 404 (existence-hiding). NS-shared parent without WRITE returns 403.
       operationId: createAiModel
       requestBody:
         content:
@@ -1548,49 +1506,6 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
-  /api/ai-models/by-parentId/{parentId}:
-    get:
-      tags:
-      - ai-model-controller
-      operationId: listByParentAiModel
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiModel"
-  /api/ai-models/by-namespaceId/{namespaceId}:
-    get:
-      tags:
-      - ai-model-controller
-      operationId: listByNamespaceIdAiModel
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiModel"
   /api/agent-configs/by-parentId/{parentId}:
     get:
       tags:
@@ -1635,41 +1550,6 @@ components:
           type: boolean
       required:
       - isAdmin
-    UserAiModel:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        aiProviderId:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        userId:
-          type: string
-          format: uuid
-        apiModelName:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        alias:
-          type: string
-        priority:
-          type: integer
-          format: int32
-        temperature:
-          type: number
-          format: double
-        maxTokens:
-          type: integer
-          format: int32
-      required:
-      - aiProviderId
-      - apiModelName
-      - priority
     Namespace:
       type: object
       properties:
@@ -1787,10 +1667,14 @@ components:
           type: string
           format: uuid
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         apiModelName:
           type: string
@@ -2301,31 +2185,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    UserAiModelPage:
-      type: object
-      properties:
-        content:
-          type: array
-          items:
-            $ref: "#/components/schemas/UserAiModel"
-        page:
-          type: integer
-          format: int32
-        size:
-          type: integer
-          format: int32
-        totalElements:
-          type: integer
-          format: int64
-        totalPages:
-          type: integer
-          format: int32
-      required:
-      - content
-      - page
-      - size
-      - totalElements
-      - totalPages
     PluginInfo:
       type: object
       properties:
@@ -2462,6 +2321,31 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AiProvider"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+      required:
+      - content
+      - page
+      - size
+      - totalElements
+      - totalPages
+    AiModelPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiModel"
         page:
           type: integer
           format: int32

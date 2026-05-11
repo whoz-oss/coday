@@ -7,10 +7,10 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { UserAiModel } from './user-ai-model'
+import { AiModel } from './ai-model'
 
-export interface UserAiModelPage {
-  content: Array<UserAiModel>
+export interface AiModelPage {
+  content: Array<AiModel>
   page: number
   size: number
   totalElements: number

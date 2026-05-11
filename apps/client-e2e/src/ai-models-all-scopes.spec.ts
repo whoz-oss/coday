@@ -68,35 +68,42 @@ test.fixme('story 6.6 — AI Models all-scopes golden path with FR3 provider fil
     },
   ]
 
-  // AI Providers — NS list and user-scope list (the models page reads providers to build
-  // the parent-provider lookup index).
-  await page.route(`**/api/agentos/api/ai-providers/by-namespaceId/${NS_ID}`, (route) =>
-    fulfillJson(route, [nsProvider])
-  )
-  await page.route('**/api/agentos/api/user-ai-providers**', async (route) => {
+  // AI Providers — unified endpoint, scope distinguished by query params.
+  await page.route('**/api/agentos/api/ai-providers', async (route) => {
     const url = new URL(route.request().url())
     const namespaceId = url.searchParams.get('namespaceId')
+    const userId = url.searchParams.get('userId')
     if (route.request().method() === 'GET') {
-      const content = namespaceId === 'none' ? [userGlobalProvider] : namespaceId === NS_ID ? [userOnNsProvider] : []
+      let content: unknown[]
+      if (userId === 'me') {
+        content = namespaceId === 'none' ? [userGlobalProvider] : namespaceId === NS_ID ? [userOnNsProvider] : []
+      } else {
+        content = namespaceId === NS_ID ? [nsProvider] : []
+      }
       await fulfillJson(route, { content, page: 0, size: 1000, totalElements: content.length, totalPages: 1 })
       return
     }
     await route.continue()
   })
 
-  // AI Models lists
-  await page.route(`**/api/agentos/api/ai-models/by-namespaceId/${NS_ID}`, (route) => fulfillJson(route, [nsModel]))
-  await page.route('**/api/agentos/api/user-ai-models**', async (route) => {
+  // AI Models — unified endpoint, scope distinguished by ?namespaceId + ?userId query params.
+  await page.route('**/api/agentos/api/ai-models', async (route) => {
     const url = new URL(route.request().url())
     const namespaceId = url.searchParams.get('namespaceId')
+    const userId = url.searchParams.get('userId')
     if (route.request().method() === 'GET') {
-      const content = namespaceId === 'none' ? userGlobalModels : []
+      let content: unknown[]
+      if (userId === 'me') {
+        content = namespaceId === 'none' ? userGlobalModels : namespaceId === NS_ID ? [] : []
+      } else {
+        content = namespaceId === NS_ID ? [nsModel] : []
+      }
       await fulfillJson(route, { content, page: 0, size: 1000, totalElements: content.length, totalPages: 1 })
       return
     }
     await route.continue()
   })
-  await page.route(`**/api/agentos/api/user-ai-models/${USER_GLOBAL_MODEL_ID}`, async (route) => {
+  await page.route(`**/api/agentos/api/ai-models/${USER_GLOBAL_MODEL_ID}`, async (route) => {
     if (route.request().method() === 'DELETE') {
       userGlobalModels = []
       await route.fulfill({ status: 204, body: '' })

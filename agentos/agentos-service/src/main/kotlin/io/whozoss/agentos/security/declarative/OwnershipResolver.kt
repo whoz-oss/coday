@@ -1,5 +1,6 @@
 package io.whozoss.agentos.security.declarative
 
+import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.permissions.EntityType
@@ -16,19 +17,19 @@ import java.util.UUID
  * chain cleanly. If `@Lazy` is needed in the evaluator's injection of this
  * resolver, it can be added there without touching this class.
  *
- * Supported entity types : [EntityType.AI_PROVIDER], [EntityType.INTEGRATION_CONFIG].
- * [EntityType.AI_MODEL] is intentionally not supported here — AiModel resolves
- * its scope from its parent provider (denormalized) and is handled by the
- * follow-up quick-spec dedicated to AiModel.
+ * Supports AI_PROVIDER, INTEGRATION_CONFIG, AI_MODEL — owners are the row's userId field,
+ * denormalized for AiModel from the parent provider at create time.
  */
 @Component
 class OwnershipResolver(
     private val aiProviderService: AiProviderService,
     private val integrationConfigService: IntegrationConfigService,
+    private val aiModelService: AiModelService,
 ) {
     fun resolveOwner(entityType: EntityType, targetId: UUID): UUID? = when (entityType) {
         EntityType.AI_PROVIDER -> aiProviderService.findById(targetId)?.userId
         EntityType.INTEGRATION_CONFIG -> integrationConfigService.findById(targetId)?.userId
+        EntityType.AI_MODEL -> aiModelService.findById(targetId)?.userId
         else -> null
     }
 }

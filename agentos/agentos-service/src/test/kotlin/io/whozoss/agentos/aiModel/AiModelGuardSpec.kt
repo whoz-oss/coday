@@ -11,32 +11,23 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserService
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.Authentication
 import java.util.UUID
 
-/**
- * Unit tests for [AiModelGuard].
- *
- * Covers the SpEL-callable `canCreate` and `canListByProvider` predicates that gate
- * `@PreAuthorize("@aiModelGuard.canCreate(...)")` on [AiModelController].
- */
 class AiModelGuardSpec : StringSpec({
 
     val aiProviderService = mockk<AiProviderService>()
     val permissionService = mockk<PermissionService>()
-    val userService = mockk<UserService>()
-    val guard = AiModelGuard(aiProviderService, permissionService, userService)
+    val guard = AiModelGuard(aiProviderService, permissionService)
 
     val callerId = UUID.randomUUID()
-    val caller = User(
-        metadata = EntityMetadata(id = callerId),
-        externalId = "alice@example.com",
-        email = "alice@example.com",
-        isAdmin = false,
-    )
+    val otherId = UUID.randomUUID()
     val namespaceId = UUID.randomUUID()
     val aiProviderId = UUID.randomUUID()
+
+    fun auth(userId: UUID = callerId): Authentication =
+        UsernamePasswordAuthenticationToken(userId.toString(), "n/a", emptyList())
 
     fun provider(nsId: UUID? = namespaceId, uId: UUID? = null) = AiProvider(
         metadata = EntityMetadata(id = aiProviderId),
@@ -49,77 +40,80 @@ class AiModelGuardSpec : StringSpec({
     fun resource(providerId: UUID? = aiProviderId) = AiModelResource(
         id = null,
         aiProviderId = providerId,
-        namespaceId = null,
         apiModelName = "claude-haiku-4-5",
     )
 
-    "canCreate returns true when caller has WRITE on the parent provider's namespace" {
-        every { userService.getCurrentUser() } returns caller
+    // -------------------------------------------------------------------------
+    // canCreateVerdict — 7 tests
+    // -------------------------------------------------------------------------
+
+    "canCreateVerdict returns Ok when caller has WRITE on parent NS-shared provider" {
         every { aiProviderService.findById(aiProviderId) } returns provider()
-        every {
-            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
-        } returns true
-
-        guard.canCreate(resource()) shouldBe true
+        every { permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns true
+        every { permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+        guard.canCreateVerdict(resource(), auth()) shouldBe AiModelGuard.CreateVerdict.Ok
     }
 
-    "canCreate returns false when caller lacks WRITE on the parent provider's namespace" {
-        every { userService.getCurrentUser() } returns caller
+    "canCreateVerdict returns ParentNotWritable when caller has READ but lacks WRITE on parent NS-shared (SF1 : 403 honest)" {
         every { aiProviderService.findById(aiProviderId) } returns provider()
-        every {
-            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
-        } returns false
-
-        guard.canCreate(resource()) shouldBe false
+        every { permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns true
+        every { permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
+        guard.canCreateVerdict(resource(), auth()) shouldBe AiModelGuard.CreateVerdict.ParentNotWritable
     }
 
-    "canCreate returns false when aiProviderId is null in the payload" {
-        guard.canCreate(resource(providerId = null)) shouldBe false
+    "canCreateVerdict returns ParentInvisible when aiProviderId is null in the payload" {
+        guard.canCreateVerdict(resource(providerId = null), auth()) shouldBe AiModelGuard.CreateVerdict.ParentInvisible
     }
 
-    "canCreate returns false when the provider does not exist" {
+    "canCreateVerdict returns ParentInvisible when the provider does not exist" {
         every { aiProviderService.findById(aiProviderId) } returns null
-
-        guard.canCreate(resource()) shouldBe false
+        guard.canCreateVerdict(resource(), auth()) shouldBe AiModelGuard.CreateVerdict.ParentInvisible
     }
 
-    "canCreate returns false when the provider is user-scoped (namespaceId null)" {
-        every { aiProviderService.findById(aiProviderId) } returns provider(nsId = null, uId = UUID.randomUUID())
-
-        guard.canCreate(resource()) shouldBe false
+    "canCreateVerdict returns Ok when caller owns the parent (parent user-scope)" {
+        every { aiProviderService.findById(aiProviderId) } returns provider(nsId = namespaceId, uId = callerId)
+        guard.canCreateVerdict(resource(), auth(callerId)) shouldBe AiModelGuard.CreateVerdict.Ok
     }
+
+    "canCreateVerdict returns ParentInvisible when parent user-scope owned by another user (cross-user -> 404)" {
+        every { aiProviderService.findById(aiProviderId) } returns provider(nsId = null, uId = otherId)
+        guard.canCreateVerdict(resource(), auth(callerId)) shouldBe AiModelGuard.CreateVerdict.ParentInvisible
+    }
+
+    "canCreateVerdict returns ParentInvisible when parent NS-shared but caller is non-member (SF1 fix : 404 not 403)" {
+        every { aiProviderService.findById(aiProviderId) } returns provider(nsId = namespaceId, uId = null)
+        every { permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns false
+        guard.canCreateVerdict(resource(), auth(callerId)) shouldBe AiModelGuard.CreateVerdict.ParentInvisible
+    }
+
+    // -------------------------------------------------------------------------
+    // canListByProvider / canSeeProvider — 5 tests
+    // -------------------------------------------------------------------------
 
     "canListByProvider returns true when caller has READ on the parent provider's namespace" {
-        every { userService.getCurrentUser() } returns caller
         every { aiProviderService.findById(aiProviderId) } returns provider()
-        every {
-            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-        } returns true
-
-        guard.canListByProvider(aiProviderId) shouldBe true
+        every { permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns true
+        guard.canListByProvider(aiProviderId, auth()) shouldBe true
     }
 
     "canListByProvider returns false when caller lacks READ on the parent provider's namespace" {
-        every { userService.getCurrentUser() } returns caller
         every { aiProviderService.findById(aiProviderId) } returns provider()
-        every {
-            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-        } returns false
-
-        guard.canListByProvider(aiProviderId) shouldBe false
+        every { permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns false
+        guard.canListByProvider(aiProviderId, auth()) shouldBe false
     }
 
     "canListByProvider returns false when the provider does not exist (fail-closed)" {
         every { aiProviderService.findById(aiProviderId) } returns null
-
-        guard.canListByProvider(aiProviderId) shouldBe false
+        guard.canListByProvider(aiProviderId, auth()) shouldBe false
     }
 
-    "canListByProvider returns false when the provider is user-scoped (closes legacy listing leak)" {
-        // The controller body would otherwise call findByAiProviderId without an owner
-        // filter and return AiModels owned by another user. fail-closed → 403.
-        every { aiProviderService.findById(aiProviderId) } returns provider(nsId = null, uId = UUID.randomUUID())
+    "canListByProvider returns true when the provider is user-scoped AND owned by caller (SF5 fix)" {
+        every { aiProviderService.findById(aiProviderId) } returns provider(nsId = null, uId = callerId)
+        guard.canListByProvider(aiProviderId, auth(callerId)) shouldBe true
+    }
 
-        guard.canListByProvider(aiProviderId) shouldBe false
+    "canListByProvider returns false when the provider is user-scoped AND owned by another user" {
+        every { aiProviderService.findById(aiProviderId) } returns provider(nsId = null, uId = otherId)
+        guard.canListByProvider(aiProviderId, auth(callerId)) shouldBe false
     }
 })

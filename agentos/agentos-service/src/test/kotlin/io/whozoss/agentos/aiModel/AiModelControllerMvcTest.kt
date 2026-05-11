@@ -29,15 +29,16 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * MVC-layer test for [UserAiModelController] — verifies Bean Validation activation,
- * JSON deserialisation, and that @HideOnAccessDenied → 404 translation works end-to-end.
+ * MVC-layer test for [AiModelController] (unified route `/api/ai-models`) — verifies Bean
+ * Validation activation, JSON deserialisation, scope inheritance, and that
+ * `@HideOnAccessDenied` → 404 translation works end-to-end.
  *
- * Cross-user isolation is in [UserAiModelCrossUserIsolationSpec].
+ * Cross-user isolation is in [AiModelCrossUserIsolationSpec].
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class UserAiModelControllerMvcTest : StringSpec() {
+class AiModelControllerMvcTest : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
@@ -104,7 +105,7 @@ class UserAiModelControllerMvcTest : StringSpec() {
         // -----------------------------------------------------------------
         "POST without body returns 400" {
             mockMvc.perform(
-                post("/api/user-ai-models").contentType(MediaType.APPLICATION_JSON),
+                post("/api/ai-models").contentType(MediaType.APPLICATION_JSON),
             ).andExpect(status().isBadRequest)
         }
 
@@ -114,7 +115,7 @@ class UserAiModelControllerMvcTest : StringSpec() {
         "POST with blank apiModelName returns 400" {
             val parent = createAliceProvider()
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "" }"""),
             ).andExpect(status().isBadRequest)
@@ -125,19 +126,19 @@ class UserAiModelControllerMvcTest : StringSpec() {
         // -----------------------------------------------------------------
         "POST without aiProviderId returns 400" {
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "apiModelName": "claude-haiku-4-5" }"""),
             ).andExpect(status().isBadRequest)
         }
 
         // -----------------------------------------------------------------
-        // 4. POST with parent that belongs to alice → 201, response has namespaceId/userId from parent
+        // 4. POST with alice's own parent → 201, scope denormalized from provider
         // -----------------------------------------------------------------
         "POST with alice's own parent returns 201 with inherited namespaceId and userId" {
             val parent = createAliceProvider(nsId = namespaceId)
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "claude-haiku-4-5-${UUID.randomUUID()}", "alias": "SMALL_${UUID.randomUUID()}" }"""),
             ).andExpect(status().isCreated)
@@ -147,27 +148,50 @@ class UserAiModelControllerMvcTest : StringSpec() {
         }
 
         // -----------------------------------------------------------------
-        // 5. POST with bob's parent → 404 via @HideOnAccessDenied
+        // 5. POST with bob's parent → 404 via @HideOnAccessDenied (existence-hiding)
         // -----------------------------------------------------------------
         "POST with bob's parent returns 404 (existence-hiding)" {
             val bobProvider = createBobProvider()
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${bobProvider.id}", "apiModelName": "gpt-4o" }"""),
             ).andExpect(status().isNotFound)
         }
 
         // -----------------------------------------------------------------
-        // 6. POST with namespace-only parent → 403 explicit
+        // 6. POST with NS-shared parent, caller has READ but not WRITE → 403 (ParentNotWritable)
         // -----------------------------------------------------------------
-        "POST with namespace-only parent returns 403" {
+        "POST with NS-shared parent without WRITE returns 403 (caller has READ)" {
             val nsProvider = createNsOnlyProvider()
+            // alice has READ but not WRITE on namespaceId (set in beforeEach)
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${nsProvider.id}", "apiModelName": "claude-haiku-4-5" }"""),
             ).andExpect(status().isForbidden)
+        }
+
+        // -----------------------------------------------------------------
+        // SF1: POST with NS-shared parent in a namespace where alice is non-member → 404 (no leak)
+        // -----------------------------------------------------------------
+        "POST with NS-shared parent and caller is non-member returns 404 (no leak)" {
+            val otherNsId = UUID.randomUUID()
+            val nsProvider = aiProviderService.create(
+                AiProvider(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = otherNsId,
+                    userId = null,
+                    name = "OTHER_NS_PROV_${UUID.randomUUID()}",
+                    apiType = AiApiType.Anthropic,
+                ),
+            )
+            // alice has NO READ on otherNsId (default stub = false)
+            mockMvc.perform(
+                post("/api/ai-models")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "aiProviderId": "${nsProvider.id}", "apiModelName": "claude-haiku-4-5" }"""),
+            ).andExpect(status().isNotFound)
         }
 
         // -----------------------------------------------------------------
@@ -175,33 +199,32 @@ class UserAiModelControllerMvcTest : StringSpec() {
         // -----------------------------------------------------------------
         "POST with non-existent parent returns 404" {
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${UUID.randomUUID()}", "apiModelName": "claude-haiku-4-5" }"""),
             ).andExpect(status().isNotFound)
         }
 
         // -----------------------------------------------------------------
-        // 8. POST duplicate alias → 409
+        // 8. POST duplicate (aiProviderId, alias) → 409
         // -----------------------------------------------------------------
         "POST duplicate (aiProviderId, alias) returns 409" {
             val parent = createAliceProvider()
             val alias = "ALIAS_${UUID.randomUUID()}"
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "model-a", "alias": "$alias" }"""),
             ).andExpect(status().isCreated)
-
             mockMvc.perform(
-                post("/api/user-ai-models")
+                post("/api/ai-models")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "model-b", "alias": "$alias" }"""),
             ).andExpect(status().isConflict)
         }
 
         // -----------------------------------------------------------------
-        // 9. PUT changing aiProviderId/userId/namespaceId → 200, immutables preserved
+        // 9. PUT — immutable fields (aiProviderId, userId, namespaceId) preserved
         // -----------------------------------------------------------------
         "PUT preserves aiProviderId, userId, namespaceId even when body sets others" {
             val parent = createAliceProvider(nsId = namespaceId)
@@ -215,13 +238,15 @@ class UserAiModelControllerMvcTest : StringSpec() {
                     alias = "PUT_TEST_${UUID.randomUUID()}",
                 ),
             )
+            // alice owns this model (userId=aliceId) — ownership path in evaluator grants WRITE
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.AI_MODEL, created.id.toString(), Action.WRITE)
+            } returns false  // membership path fails, ownership branch takes over
 
             mockMvc.perform(
-                put("/api/user-ai-models/${created.id}")
+                put("/api/ai-models/${created.id}")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """{ "aiProviderId": "${UUID.randomUUID()}", "apiModelName": "gpt-4o", "alias": "${created.alias}", "description": "updated" }""",
-                    ),
+                    .content("""{ "aiProviderId": "${UUID.randomUUID()}", "apiModelName": "gpt-4o", "alias": "${created.alias}", "description": "updated" }"""),
             ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.aiProviderId").value(parent.id.toString()))
                 .andExpect(jsonPath("$.userId").value(aliceId.toString()))
@@ -245,7 +270,10 @@ class UserAiModelControllerMvcTest : StringSpec() {
                     alias = "DEL_${UUID.randomUUID()}",
                 ),
             )
-            mockMvc.perform(delete("/api/user-ai-models/${created.id}"))
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.AI_MODEL, created.id.toString(), Action.DELETE)
+            } returns false  // membership path fails, ownership branch takes over
+            mockMvc.perform(delete("/api/ai-models/${created.id}"))
                 .andExpect(status().isNoContent)
         }
 
@@ -253,12 +281,12 @@ class UserAiModelControllerMvcTest : StringSpec() {
         // 11. GET non-existent → 404
         // -----------------------------------------------------------------
         "GET non-existent id returns 404" {
-            mockMvc.perform(get("/api/user-ai-models/${UUID.randomUUID()}"))
+            mockMvc.perform(get("/api/ai-models/${UUID.randomUUID()}"))
                 .andExpect(status().isNotFound)
         }
 
         // -----------------------------------------------------------------
-        // 12. LIST with ?aiProviderId filter → filtered by provider
+        // 12. LIST with ?aiProviderId filter → only models under that provider
         // -----------------------------------------------------------------
         "LIST with aiProviderId filter returns only models under that provider" {
             val parent1 = createAliceProvider()
@@ -284,8 +312,7 @@ class UserAiModelControllerMvcTest : StringSpec() {
                     alias = "P2_${tag}",
                 ),
             )
-
-            mockMvc.perform(get("/api/user-ai-models?aiProviderId=${parent1.id}&size=100"))
+            mockMvc.perform(get("/api/ai-models?aiProviderId=${parent1.id}&userId=me&size=100"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.content[?(@.aiProviderId != '${parent1.id}')]").isEmpty)
         }

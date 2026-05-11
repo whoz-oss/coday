@@ -20,8 +20,6 @@ export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
-export * from './user-ai-model-controller.service'
-import { UserAiModelControllerService } from './user-ai-model-controller.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export * from './user-group-controller.service'
@@ -38,7 +36,6 @@ export const APIS = [
   NamespacePermissionEndpointsService,
   PluginControllerService,
   SseService,
-  UserAiModelControllerService,
   UserControllerService,
   UserGroupControllerService,
 ]
