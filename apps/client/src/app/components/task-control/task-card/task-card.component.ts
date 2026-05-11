@@ -84,6 +84,15 @@ export class TaskCardComponent {
     this.markActiveRequested.emit(this.task().id)
   }
 
+  /** Navigate directly to the thread, bypassing preview mode. */
+  onOpenDirect(event: Event): void {
+    event.stopPropagation()
+    const project = this.projectName()
+    if (!project) return
+    this.projectState.selectProject(project)
+    void this.router.navigate(['project', project, 'thread', this.task().id])
+  }
+
   formatRelativeTime(dateString: string): string {
     const diffMs = Date.now() - new Date(dateString).getTime()
     const minutes = Math.floor(diffMs / 60_000)
