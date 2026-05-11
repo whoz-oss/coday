@@ -1,3 +1,13 @@
+## 0.137.4 (2026-05-10)
+
+### 🩹 Fixes
+
+- allow voice in desktop apps + temporary fix user-group-controller build ([c670cf36](https://github.com/whoz-oss/coday/commit/c670cf36))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.137.3 (2026-05-07)
 
 ### 🚀 Features
