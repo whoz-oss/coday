@@ -117,6 +117,9 @@ class UserGroupServiceImpl(
             ?: throw IllegalStateException("UserGroup $userGroupId not found after update")
     }
 
+    override fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>> =
+        userGroupRepository.findGroupsByUserExternalIds(externalIds)
+
     private fun validateAgentsInNamespace(
         agentIds: Set<UUID>,
         namespaceId: UUID,

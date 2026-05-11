@@ -7,6 +7,12 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.*
 
+private data class UserExternalIdGroupRow(
+    val externalId: String,
+    val groupId: String,
+    val groupName: String,
+)
+
 open class Neo4jUserGroupRepository(
     private val neo4jRepository: UserGroupNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
@@ -98,6 +104,34 @@ open class Neo4jUserGroupRepository(
         userExternalIds: Collection<String>,
     ) {
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
+    }
+
+    override fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>> {
+        if (externalIds.isEmpty()) return emptyMap()
+        return neo4jClient
+            .query(
+                """
+                    UNWIND $externalIds AS extId
+                    MATCH (g:UserGroup)-[:HAS_USER]->(u:User {externalId: extId})
+                    WHERE (g.removed IS NULL OR g.removed = false)
+                      AND (u.removed IS NULL OR u.removed = false)
+                    RETURN extId AS externalId, g.id AS groupId, g.name AS groupName
+                    ORDER BY extId ASC, g.name ASC
+                """,
+            ).bind(externalIds.toList())
+            .to("externalIds")
+            .fetchAs(UserExternalIdGroupRow::class.java)
+            .mappedBy { _, record ->
+                UserExternalIdGroupRow(
+                    externalId = record["externalId"].asString(),
+                    groupId = record["groupId"].asString(),
+                    groupName = record["groupName"].asString(),
+                )
+            }.all()
+            .groupBy(
+                keySelector = { it.externalId },
+                valueTransform = { UserGroupSummary(id = UUID.fromString(it.groupId), name = it.groupName) },
+            )
     }
 
     override fun delete(id: UUID): Boolean =
