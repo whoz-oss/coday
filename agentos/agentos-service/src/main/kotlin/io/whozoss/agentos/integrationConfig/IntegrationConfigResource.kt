@@ -28,7 +28,10 @@ import java.util.UUID
 @Schema(name = "IntegrationConfig")
 data class IntegrationConfigResource(
     val id: UUID? = null,
+    // OpenAPI 3.1 nullable encoding ; see the matching note on AiProviderResource (F3).
+    @field:Schema(types = ["string", "null"], format = "uuid")
     val namespaceId: UUID? = null,
+    @field:Schema(types = ["string", "null"], format = "uuid")
     val userId: UUID? = null,
     @field:NotBlank
     val name: String,

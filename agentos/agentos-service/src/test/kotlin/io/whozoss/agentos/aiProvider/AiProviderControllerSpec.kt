@@ -174,12 +174,16 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // create — Phase 2.5 namespace existence
+    // create — Phase 3.5 namespace existence (now AFTER Phase 3 authz)
     // -------------------------------------------------------------------------
 
-    "create with dangling namespaceId returns 404" {
+    "create with dangling namespaceId returns 404 only when authz passes (avoid existence leak)" {
         val unknownNs = UUID.randomUUID()
         every { namespaceService.findById(unknownNs) } returns null
+        // Grant WRITE so Phase 3 passes ; Phase 3.5 then catches the dangling FK.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.WRITE)
+        } returns true
 
         val ex = withAuth(aliceId) {
             shouldThrow<ResponseStatusException> {
@@ -187,6 +191,19 @@ class AiProviderControllerSpec : StringSpec({
             }
         }
         ex.statusCode shouldBe HttpStatus.NOT_FOUND
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create with dangling namespaceId for a non-member surfaces as AccessDenied (no 404 leak)" {
+        val unknownNs = UUID.randomUUID()
+        every { namespaceService.findById(unknownNs) } returns null
+        // Default mock returns false → no WRITE grant → Phase 3 fires before Phase 3.5.
+
+        shouldThrow<org.springframework.security.access.AccessDeniedException> {
+            withAuth(aliceId) {
+                controller.create(resource(id = null, nsId = unknownNs, uId = null))
+            }
+        }
         verify(exactly = 0) { service.create(any()) }
     }
 
@@ -426,6 +443,11 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "list with specific namespaceId and no userId returns NS-shared rows for that namespace" {
+        // The NS-shared list path requires READ on the namespace (F1 — gate inherited from
+        // the legacy /by-parentId/ route). Grant READ for alice on this namespace.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+        } returns true
         val rows = listOf(
             config(nsId = namespaceId, uId = null, name = "NS-A"),
             config(nsId = namespaceId, uId = null, name = "NS-B"),
@@ -442,6 +464,22 @@ class AiProviderControllerSpec : StringSpec({
         )
 
         resp.content.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
+    }
+
+    "list NS-shared without READ on the namespace returns empty (no 403)" {
+        // F1 — caller without READ gets [], not an exception ; consistent with the
+        // user-overlay views which never 403.
+        val resp = controller.list(
+            namespaceId = namespaceId.toString(),
+            userId = null,
+            page = 0,
+            size = 20,
+            auth = authFor(aliceId),
+        )
+
+        resp.content shouldBe emptyList()
+        resp.totalElements shouldBe 0
+        verify(exactly = 0) { service.findByNamespaceId(any()) }
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {

@@ -46,11 +46,13 @@ import kotlin.math.min
  *     - `(ns, null)` → NS-shared ;
  *     - `(null, user)` → user-global ;
  *     - `(ns, user)` → user × namespace.
- *  3. Namespace existence check (when `ns != null`) → 404 if dangling. Required
- *     because `permissionService.hasPermission` short-circuits to `true` for
- *     super-admins even on missing namespaceIds.
- *  4. Per-scope authorization : NS-shared → `WRITE` on the namespace ; user × ns →
- *     `READ` on the namespace ; user-global → `isAuthenticated()`.
+ *  3. Per-scope authorization (run BEFORE existence so unauthorised callers always
+ *     get 403, never an existence-leak 404) : NS-shared → `WRITE` ; user × ns →
+ *     `READ` ; user-global → `isAuthenticated()`.
+ *  4. Namespace existence check (when `ns != null`) → 404 if dangling. Still required
+ *     after authz because the super-admin bypass in `permissionService.hasPermission`
+ *     returns `true` for missing ids, which would otherwise let an admin create
+ *     dangling FK rows.
  *  5. Domain build is **explicit** : the persisted entity uses the controller-
  *     resolved `(namespaceId, userId)` — never the raw body.
  *
@@ -140,7 +142,42 @@ class IntegrationConfigController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): IntegrationConfigResource = super.getById(id)
 
-    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
+    /**
+     * POST /by-ids — overridden to honor the ownership branch (mirrors
+     * [io.whozoss.agentos.aiProvider.AiProviderController.getByIds]).
+     */
+    @PostMapping(
+        "/by-ids",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @PreAuthorize("isAuthenticated()")
+    override fun getByIds(@RequestBody ids: List<UUID>): List<IntegrationConfigResource> {
+        if (ids.size > MAX_BATCH_SIZE) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE")
+        }
+        if (ids.isEmpty()) return emptyList()
+
+        val currentUser = userService.getCurrentUser()
+        val membershipVisibleIds: Set<UUID> = if (currentUser.isAdmin) {
+            ids.toSet()
+        } else {
+            val rawVisible = permissionService.filterVisibleIds(
+                userId = currentUser.id.toString(),
+                entityType = entityType,
+                ids = ids.map(UUID::toString),
+                action = Action.READ,
+            )
+            rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet()
+        }
+
+        val callerId = currentUser.id
+        val rows = integrationConfigService.findByIds(ids)
+        val byId: Map<UUID, IntegrationConfig> = rows
+            .filter { it.id in membershipVisibleIds || it.userId == callerId }
+            .associateBy { it.id }
+        return ids.mapNotNull { byId[it]?.let(::toResource) }
+    }
 
     /**
      * Hard-break stub for the legacy `GET /by-parentId/{parentId}`. Hidden from
@@ -154,15 +191,19 @@ class IntegrationConfigController(
             "Endpoint removed; use GET /api/integration-configs?namespaceId=$parentId instead",
         )
 
-    /**
-     * GET — list configs in one of three modes :
-     *  - `?namespaceId=<uuid>` (no `userId`) → NS-shared layer of that namespace.
-     *  - `?namespaceId=<uuid>&userId=me` → caller's user × namespace overlays for that namespace.
-     *  - `?namespaceId=none&userId=me` → caller's user-global overlays.
-     *
-     * `userId` accepts only the literal `me` sentinel ; cross-user listing is not
-     * exposed (mass-assignment guard).
-     */
+    @Operation(
+        summary = "List IntegrationConfigs by scope",
+        description = "Scope is inferred from the query params :\n\n" +
+            "| query                                              | mode             | required permission                            |\n" +
+            "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
+            "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
+            "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
+            "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
+            "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
+            "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
+            "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`. " +
+            "Pagination defaults to page=0, size=20 ; size is capped at 100.",
+    )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     fun list(
@@ -178,8 +219,10 @@ class IntegrationConfigController(
         val userFilter = parseUserFilter(userId, auth)
 
         val all: List<IntegrationConfig> = when {
-            nsFilter is NamespaceFilter.Specific && userFilter is UserFilter.Any ->
-                integrationConfigService.findByNamespaceShared(nsFilter.target)
+            nsFilter is NamespaceFilter.Specific && userFilter is UserFilter.Any -> {
+                if (!callerCanReadNamespace(auth, nsFilter.target)) emptyList()
+                else integrationConfigService.findByNamespaceShared(nsFilter.target)
+            }
 
             userFilter is UserFilter.CurrentUser ->
                 integrationConfigService.findByUserId(userFilter.id)
@@ -241,12 +284,9 @@ class IntegrationConfigController(
             )
         }
 
-        // Phase 2.5 — namespace existence (covers the super-admin bypass on dangling ids)
-        if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Namespace not found: $resolvedNs")
-        }
-
-        // Phase 3 — per-scope authorization
+        // Phase 3 — per-scope authorization, run BEFORE the existence check so
+        // unauthorised callers always get 403 regardless of namespace existence
+        // (closes the 404-vs-403 existence oracle on POST).
         val authzAction: Action? = when {
             resolvedNs != null && resolvedUser != null -> Action.READ
             resolvedNs != null && resolvedUser == null -> Action.WRITE
@@ -264,6 +304,14 @@ class IntegrationConfigController(
                     "Cannot create IntegrationConfig in namespace $resolvedNs (${authzAction.name} required)",
                 )
             }
+        }
+
+        // Phase 3.5 — namespace existence check (deferred after Phase 3 to avoid
+        // leaking namespace existence to non-members ; still required because the
+        // super-admin bypass in PermissionService.hasPermission returns true for
+        // dangling namespaceIds).
+        if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Namespace not found: $resolvedNs")
         }
 
         // Phase 4 — explicit domain build
@@ -295,6 +343,14 @@ class IntegrationConfigController(
     @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'DELETE')")
     @HideOnAccessDenied
     override fun delete(@PathVariable id: UUID) = super.delete(id)
+
+    private fun callerCanReadNamespace(auth: Authentication, namespaceId: UUID): Boolean =
+        permissionService.hasPermission(
+            userId = currentUserId(auth).toString(),
+            entityType = EntityType.NAMESPACE,
+            entityId = namespaceId.toString(),
+            action = Action.READ,
+        )
 
     private fun currentUserId(auth: Authentication): UUID {
         val raw = auth.name ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")

@@ -10,8 +10,8 @@
 
 export interface AiProvider {
   id?: string
-  namespaceId?: string
-  userId?: string
+  namespaceId?: string | null
+  userId?: string | null
   name: string
   description?: string
   apiType: AiProviderApiTypeEnum

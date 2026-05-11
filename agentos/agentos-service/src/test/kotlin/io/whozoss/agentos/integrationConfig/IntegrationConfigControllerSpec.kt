@@ -167,12 +167,15 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // create — Phase 2.5 namespace existence
+    // create — Phase 3.5 namespace existence (now AFTER Phase 3 authz)
     // -------------------------------------------------------------------------
 
-    "create with dangling namespaceId returns 404" {
+    "create with dangling namespaceId returns 404 only when authz passes (avoid existence leak)" {
         val unknownNs = UUID.randomUUID()
         every { namespaceService.findById(unknownNs) } returns null
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.WRITE)
+        } returns true
 
         val ex = withAuth(aliceId) {
             shouldThrow<ResponseStatusException> {
@@ -180,6 +183,18 @@ class IntegrationConfigControllerSpec : StringSpec({
             }
         }
         ex.statusCode shouldBe HttpStatus.NOT_FOUND
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create with dangling namespaceId for a non-member surfaces as AccessDenied (no 404 leak)" {
+        val unknownNs = UUID.randomUUID()
+        every { namespaceService.findById(unknownNs) } returns null
+
+        shouldThrow<org.springframework.security.access.AccessDeniedException> {
+            withAuth(aliceId) {
+                controller.create(resource(id = null, nsId = unknownNs, userId = null))
+            }
+        }
         verify(exactly = 0) { service.create(any()) }
     }
 
@@ -371,6 +386,11 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     "list with specific namespaceId and no userId returns NS-shared rows" {
+        // F1 — the NS-shared list path requires READ on the namespace (gate inherited
+        // from the legacy /by-parentId/ route). Grant READ for alice on this namespace.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+        } returns true
         val rows = listOf(
             config(nsId = namespaceId, userId = null, name = "NS-A"),
             config(nsId = namespaceId, userId = null, name = "NS-B"),
@@ -386,6 +406,21 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
 
         resp.content.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
+    }
+
+    "list NS-shared without READ on the namespace returns empty (no 403)" {
+        // F1 — caller without READ gets [], not an exception.
+        val resp = controller.list(
+            namespaceId = namespaceId.toString(),
+            userId = null,
+            page = 0,
+            size = 20,
+            auth = authFor(aliceId),
+        )
+
+        resp.content shouldBe emptyList()
+        resp.totalElements shouldBe 0
+        verify(exactly = 0) { service.findByNamespaceShared(any()) }
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {

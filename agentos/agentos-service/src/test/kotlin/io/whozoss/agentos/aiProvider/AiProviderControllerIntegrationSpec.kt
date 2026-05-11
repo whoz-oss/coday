@@ -171,15 +171,34 @@ class AiProviderControllerIntegrationSpec : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
-        "POST with dangling namespaceId returns 404" {
+        "POST with dangling namespaceId returns 404 for an authorised caller" {
+            // Phase 3 (authz) runs BEFORE Phase 3.5 (existence) — closes the existence-leak
+            // for non-members. To exercise Phase 3.5 we must therefore grant READ on the
+            // (still nonexistent) namespace, simulating a super-admin who passes Phase 3 and
+            // hits the dangling-FK guard.
             val unknownNs = UUID.randomUUID()
             every { namespaceService.findById(unknownNs) } returns null
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.READ)
+            } returns true
 
             mockMvc.perform(
                 post("/api/ai-providers")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "apiType": "Anthropic" }"""),
             ).andExpect(status().isNotFound)
+        }
+
+        "POST with dangling namespaceId returns 403 for a non-member (existence-leak guard)" {
+            val unknownNs = UUID.randomUUID()
+            every { namespaceService.findById(unknownNs) } returns null
+            // No READ grant for alice on unknownNs : Phase 3 fires first → 403, no leak.
+
+            mockMvc.perform(
+                post("/api/ai-providers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "apiType": "Anthropic" }"""),
+            ).andExpect(status().isForbidden)
         }
 
         "POST duplicate (namespaceId, userId, name) returns 409" {

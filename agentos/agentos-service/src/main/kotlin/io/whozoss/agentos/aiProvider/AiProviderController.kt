@@ -48,13 +48,15 @@ import kotlin.math.min
  *     - `(ns, null)` → NS-shared ;
  *     - `(null, user)` → user-global ;
  *     - `(ns, user)` → user × namespace.
- *  3. Namespace existence check (when `ns != null`) — `namespaceService.findById`
- *     returns null → 404. Required because `permissionService.hasPermission` short-
- *     circuits to `true` for super-admins even on dangling namespaceIds.
- *  4. Per-scope authorization :
+ *  3. Per-scope authorization (run BEFORE existence so unauthorised callers always
+ *     get 403, never an existence-leak 404) :
  *     - NS-shared → `hasPermission(ns, NAMESPACE, WRITE)` ;
  *     - user × ns → `hasPermission(ns, NAMESPACE, READ)` ;
  *     - user-global → `isAuthenticated()` (covered by class-level @PreAuthorize).
+ *  4. Namespace existence check (when `ns != null`) — `namespaceService.findById`
+ *     returns null → 404. Still required (after authz) because the super-admin
+ *     bypass in `permissionService.hasPermission` returns `true` for dangling ids,
+ *     which would otherwise let an admin create dangling FK rows.
  *  5. Domain build is **explicit** : the persisted entity uses the controller-resolved
  *     `(namespaceId, userId)` — never the raw body — so a future evolution of
  *     [toDomain] cannot reintroduce the silent stripping pattern from PR #837.
@@ -147,7 +149,51 @@ class AiProviderController(
     @HideOnAccessDenied
     override fun getById(@PathVariable id: UUID): AiProviderResource = super.getById(id)
 
-    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
+    /**
+     * POST /by-ids — overridden to honor the ownership branch.
+     *
+     * The base implementation calls [io.whozoss.agentos.permissions.PermissionService.filterVisibleIds],
+     * which only consults `PermissionRelation` edges (MEMBER / ADMIN / super-admin). Owner-only
+     * rows (a user's overlays) would therefore be invisible through this batch endpoint, even
+     * though `GET /{id}` returns them via the evaluator's ownership branch
+     * ([io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator]). The override fetches
+     * the rows once and unions the membership-visible set with rows the caller owns — bounded by
+     * the input size (no full scan of the user's overlays).
+     */
+    @PostMapping(
+        "/by-ids",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @PreAuthorize("isAuthenticated()")
+    override fun getByIds(@RequestBody ids: List<UUID>): List<AiProviderResource> {
+        if (ids.size > MAX_BATCH_SIZE) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE")
+        }
+        if (ids.isEmpty()) return emptyList()
+
+        val currentUser = userService.getCurrentUser()
+        val membershipVisibleIds: Set<UUID> = if (currentUser.isAdmin) {
+            ids.toSet()
+        } else {
+            val rawVisible = permissionService.filterVisibleIds(
+                userId = currentUser.id.toString(),
+                entityType = entityType,
+                ids = ids.map(UUID::toString),
+                action = Action.READ,
+            )
+            rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet()
+        }
+
+        // Single DB fetch for all candidate rows ; filter for visibility via membership OR ownership.
+        // Bounded by input size so the cost stays O(ids.size), not O(user's overlays).
+        val callerId = currentUser.id
+        val rows = aiProviderService.findByIds(ids)
+        val byId: Map<UUID, AiProvider> = rows
+            .filter { it.metadata.id in membershipVisibleIds || it.userId == callerId }
+            .associateBy { it.metadata.id }
+        return ids.mapNotNull { byId[it]?.let(::toResource) }
+    }
 
     /**
      * Hard-break stub for the legacy `GET /by-parentId/{parentId}` inherited from
@@ -164,19 +210,20 @@ class AiProviderController(
             "Endpoint removed; use GET /api/ai-providers?namespaceId=$parentId instead",
         )
 
-    /**
-     * GET — list providers in one of three modes :
-     *  - `?namespaceId=<uuid>` (no `userId`) → NS-shared layer of that namespace.
-     *  - `?namespaceId=<uuid>&userId=me` → caller's user × namespace overlays for that namespace.
-     *  - `?namespaceId=none&userId=me` → caller's user-global overlays.
-     *
-     * `userId` accepts only the literal `me` sentinel (no UUID) — listing **another**
-     * user's overlays is intentionally not supported via this route (mass-assignment
-     * guard, AC4). `namespaceId=none` matches `namespaceId IS NULL`.
-     *
-     * Returns a paginated envelope with default page = 0 / size = 20, capped at
-     * [MAX_PAGE_SIZE].
-     */
+    @Operation(
+        summary = "List AiProviders by scope",
+        description = "Scope is inferred from the query params :\n\n" +
+            "| query                                              | mode             | required permission                            |\n" +
+            "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
+            "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
+            "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
+            "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
+            "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
+            "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
+            "listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the " +
+            "sentinel for `namespaceId IS NULL`. Pagination defaults to page=0, size=20 ; " +
+            "size is capped at 100.",
+    )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     fun list(
@@ -192,13 +239,14 @@ class AiProviderController(
         val userFilter = parseUserFilter(userId, auth)
 
         val all: List<AiProvider> = when {
-            // NS-shared layer of a specific namespace : reuse the existing scope-aware service
-            // call so namespace-membership SpEL still gates this view (callers must have READ
-            // on the namespace ; an unauthorised caller gets an empty list rather than 403,
-            // because we want the surface to feel consistent with the user-overlay views).
-            nsFilter is NamespaceFilter.Specific && userFilter is UserFilter.Any ->
-                aiProviderService.findByNamespaceId(nsFilter.target)
-                    .filter { it.userId == null }
+            // NS-shared layer of a specific namespace : the legacy `/by-parentId/` route used
+            // `@PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")` ; preserve the
+            // gate here. An unauthorised caller gets an empty list rather than 403 to keep the
+            // surface consistent with the user-overlay views (which never 403).
+            nsFilter is NamespaceFilter.Specific && userFilter is UserFilter.Any -> {
+                if (!callerCanReadNamespace(auth, nsFilter.target)) emptyList()
+                else aiProviderService.findByNamespaceId(nsFilter.target).filter { it.userId == null }
+            }
 
             // User-overlays (any combination of NS-specific / user-global / both) : start
             // from the per-user listing and let the namespace filter narrow down.
@@ -265,16 +313,11 @@ class AiProviderController(
             )
         }
 
-        // Phase 2.5 — namespace existence check. Required because the super-admin
-        // bypass in PermissionService.hasPermission returns true even for dangling
-        // namespaceIds, which would otherwise let an admin create dangling FK rows.
-        if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Namespace not found: $resolvedNs")
-        }
-
-        // Phase 3 — per-scope authorization. user-global needs nothing beyond the
-        // class-level isAuthenticated() ; NS-touching scopes need a permission check
-        // on the namespace.
+        // Phase 3 — per-scope authorization, run BEFORE the existence check so
+        // unauthorised callers always get 403 regardless of namespace existence
+        // (closes the 404-vs-403 existence-oracle on POST). user-global needs
+        // nothing beyond the class-level isAuthenticated() ; NS-touching scopes
+        // need a permission check on the namespace.
         val authzAction: Action? = when {
             resolvedNs != null && resolvedUser != null -> Action.READ      // user × ns : READ on the NS suffices
             resolvedNs != null && resolvedUser == null -> Action.WRITE     // NS-shared : ADMIN required
@@ -292,6 +335,15 @@ class AiProviderController(
                     "Cannot create AiProvider in namespace $resolvedNs (${authzAction.name} required)",
                 )
             }
+        }
+
+        // Phase 3.5 — namespace existence check (was Phase 2.5 ; deferred so non-
+        // members hit 403 in Phase 3 before the existence oracle fires). Still
+        // required because the super-admin bypass in PermissionService.hasPermission
+        // returns true even for dangling namespaceIds — without this, a super-admin
+        // POST'ing with an unknown namespaceId would create a dangling FK row.
+        if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Namespace not found: $resolvedNs")
         }
 
         // Phase 4 — explicit domain build (never re-read the body for scope fields)
@@ -343,6 +395,14 @@ class AiProviderController(
         incoming.isBlank() -> null
         else -> incoming
     }
+
+    private fun callerCanReadNamespace(auth: Authentication, namespaceId: UUID): Boolean =
+        permissionService.hasPermission(
+            userId = currentUserId(auth).toString(),
+            entityType = EntityType.NAMESPACE,
+            entityId = namespaceId.toString(),
+            action = Action.READ,
+        )
 
     private fun currentUserId(auth: Authentication): UUID {
         val raw = auth.name ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")

@@ -175,7 +175,24 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
-        "POST with dangling namespaceId returns 404" {
+        "POST with dangling namespaceId returns 404 for an authorised caller" {
+            // Phase 3 (authz) runs BEFORE Phase 3.5 (existence) — closes the existence-leak
+            // for non-members. The test grants READ on the (still nonexistent) namespace to
+            // simulate a super-admin path that hits the dangling-FK guard.
+            val unknownNs = UUID.randomUUID()
+            every { namespaceService.findById(unknownNs) } returns null
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.READ)
+            } returns true
+
+            mockMvc.perform(
+                post("/api/integration-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
+            ).andExpect(status().isNotFound)
+        }
+
+        "POST with dangling namespaceId returns 403 for a non-member (existence-leak guard)" {
             val unknownNs = UUID.randomUUID()
             every { namespaceService.findById(unknownNs) } returns null
 
@@ -183,7 +200,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 post("/api/integration-configs")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "namespaceId": "$unknownNs", "userId": "$aliceId", "name": "ORPHAN_${UUID.randomUUID()}", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isNotFound)
+            ).andExpect(status().isForbidden)
         }
 
         "POST duplicate triple returns 409" {

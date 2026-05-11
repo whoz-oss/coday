@@ -837,6 +837,18 @@ paths:
     get:
       tags:
       - integration-config-controller
+      summary: List IntegrationConfigs by scope
+      description: |-
+        Scope is inferred from the query params :
+
+        | query                                              | mode             | required permission                            |
+        |----------------------------------------------------|------------------|------------------------------------------------|
+        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`. Pagination defaults to page=0, size=20 ; size is capped at 100.
       operationId: listIntegrationConfig
       parameters:
       - name: namespaceId
@@ -1055,6 +1067,18 @@ paths:
     get:
       tags:
       - ai-provider-controller
+      summary: List AiProviders by scope
+      description: |-
+        Scope is inferred from the query params :
+
+        | query                                              | mode             | required permission                            |
+        |----------------------------------------------------|------------------|------------------------------------------------|
+        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`. Pagination defaults to page=0, size=20 ; size is capped at 100.
       operationId: listAiProvider
       parameters:
       - name: namespaceId
@@ -1674,10 +1698,14 @@ components:
           type: string
           format: uuid
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
@@ -1722,10 +1750,14 @@ components:
           type: string
           format: uuid
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string

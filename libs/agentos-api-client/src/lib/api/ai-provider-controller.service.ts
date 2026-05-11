@@ -330,6 +330,8 @@ export class AiProviderControllerService extends BaseService {
   }
 
   /**
+   * List AiProviders by scope
+   * Scope is inferred from the query params :  | query                                              | mode             | required permission                            | |----------------------------------------------------|------------------|------------------------------------------------| | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&#x60;                              | NS-shared        | READ on the namespace (empty list if missing)  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&amp;userId&#x3D;me&#x60;                    | user × namespace | authenticated                                  | | &#x60;?namespaceId&#x3D;none&amp;userId&#x3D;me&#x60;                      | user-global      | authenticated                                  | | &#x60;?userId&#x3D;me&#x60; (no namespace)                        | all caller\&#39;s     | authenticated                                  |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;. Pagination defaults to page&#x3D;0, size&#x3D;20 ; size is capped at 100.
    * @param namespaceId
    * @param userId
    * @param page
