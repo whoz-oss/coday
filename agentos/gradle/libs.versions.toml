@@ -46,8 +46,8 @@ jersey = "3.1.9"
 eurekaClientJersey3 = "2.0.4"
 
 # AgentOS modules versions
-agentosSdk = "0.137.5"
-agentosService = "0.137.5"
+agentosSdk = "0.138.0"
+agentosService = "0.138.0"
 
 [libraries]
 # Kotlin

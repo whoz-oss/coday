@@ -1,3 +1,16 @@
+## 0.138.0 (2026-05-11)
+
+### 🚀 Features
+
+- #855 Add a drawer to quickly display and answer threads in the global task control ([#855](https://github.com/whoz-oss/coday/issues/855))
+- #855 Merge master ([#855](https://github.com/whoz-oss/coday/issues/855))
+- #855 Add a drawer to quickly display and answer threads in the … ([#856](https://github.com/whoz-oss/coday/pull/856), [#855](https://github.com/whoz-oss/coday/issues/855))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.137.5 (2026-05-11)
 
 ### 🩹 Fixes
