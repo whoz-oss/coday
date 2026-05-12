@@ -60,9 +60,9 @@ open class Neo4jUserGroupRepository(
             """
                 MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
                 WHERE $whereClause
-                OPTIONAL MATCH (g)-[:HAS_AGENT]->(a:AgentConfig)
+                OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
                   WHERE a.removed IS NULL OR a.removed = false
-                OPTIONAL MATCH (g)-[:HAS_USER]->(u:User)
+                OPTIONAL MATCH (u:User)-[:MEMBER]->(g)
                   WHERE u.removed IS NULL OR u.removed = false
                 RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
                 ORDER BY g.name ASC
@@ -111,7 +111,7 @@ open class Neo4jUserGroupRepository(
         return neo4jClient
             .query(
                 """
-                    MATCH (g:UserGroup)-[:HAS_USER]->(u:User)
+                    MATCH (u:User)-[:MEMBER]->(g:UserGroup)
                     WHERE u.externalId IN $externalIds
                       AND (g.removed IS NULL OR g.removed = false)
                       AND (u.removed IS NULL OR u.removed = false)
