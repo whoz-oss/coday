@@ -1,3 +1,13 @@
+## 0.141.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31681 REDIRECT internal integration tool ([#852](https://github.com/whoz-oss/coday/pull/852), [#31681](https://github.com/whoz-oss/coday/issues/31681))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.140.1 (2026-05-11)
 
 ### 🚀 Features
