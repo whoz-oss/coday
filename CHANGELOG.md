@@ -1,3 +1,16 @@
+## 0.142.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Implement search users with user groups by external id ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Code review ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement search users with user groups by external id ([#863](https://github.com/whoz-oss/coday/pull/863), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.141.0 (2026-05-12)
 
 ### 🚀 Features
