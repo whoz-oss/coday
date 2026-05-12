@@ -431,6 +431,88 @@ class CaseRuntimeSpec : StringSpec() {
             lambdaResultDuringRun shouldBe true
         }
 
+        // -------------------------------------------------------------------------
+        // Redirect: AgentFinishedEvent followed by AgentSelectedEvent
+        // -------------------------------------------------------------------------
+
+        "runAgent is called twice when agent A redirects to agent B" {
+            // Regression: processNextStep scanned events newest-first and stopped at
+            // AgentFinishedEvent before seeing the AgentSelectedEvent that followed it.
+            // The fix emits AgentFinishedEvent BEFORE AgentSelectedEvent on redirect,
+            // so the scan finds AgentSelectedEvent last (newest) and launches agent B.
+            val agentA = "agent-a"
+            val agentB = "agent-b"
+            val runtimeId = UUID.randomUUID()
+            val agentBId = UUID.nameUUIDFromBytes(agentB.toByteArray())
+
+            val savedEvents = mutableListOf<CaseEvent>()
+            val runOrder = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+
+            // Agent A emits: ToolRequestEvent, ToolResponseEvent, AgentFinishedEvent(A), AgentSelectedEvent(B)
+            // — the redirect order produced by AgentSimple after the fix.
+            val agentAMock = mockk<Agent>(name = "mock-$agentA") {
+                every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentA.toByteArray()))
+                every { name } returns agentA
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = UUID.nameUUIDFromBytes(agentA.toByteArray()), agentName = agentA))
+                        emit(AgentSelectedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = agentBId, agentName = agentB))
+                    }
+                }
+            }
+
+            // Agent B finishes normally.
+            val agentBMock = mockk<Agent>(name = "mock-$agentB") {
+                every { metadata } returns EntityMetadata(id = agentBId)
+                every { name } returns agentB
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = agentBId, agentName = agentB))
+                    }
+                }
+            }
+
+            val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentA)) }
+
+            val runAgent = RecordingRunAgent { name, events ->
+                runOrder += name
+                val agent = if (name == agentA) agentAMock else agentBMock
+                agent.run(events).collect { event ->
+                    savedEvents.add(event)
+                    runtime.emitEvent(event)
+                    runtime.pushEvents(listOf(event))
+                }
+            }
+
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatus = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = selectAgent.asCallback,
+                runAgent = runAgent.asCallback,
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            // Both agents must have run, in order
+            runAgent.callCount shouldBe 2
+            runOrder[0] shouldBe agentA
+            runOrder[1] shouldBe agentB
+
+            // Agent B's AgentFinishedEvent must be in the saved events
+            val finishedEvents = savedEvents.filterIsInstance<AgentFinishedEvent>()
+            finishedEvents.any { it.agentName == agentB } shouldBe true
+        }
+
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
             val agentName = "gemini-flash"
             val caseId = UUID.randomUUID()

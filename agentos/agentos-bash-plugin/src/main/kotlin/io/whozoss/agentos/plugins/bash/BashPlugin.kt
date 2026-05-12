@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.bash
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.pf4j.Extension
@@ -37,7 +38,7 @@ class BashToolProvider : ToolPlugin {
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
-    override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
+    override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
         if (config == null || config.isNull) {
             logger.warn { "BASH integration '$configName': no config provided, no tools registered" }
             return emptyList()

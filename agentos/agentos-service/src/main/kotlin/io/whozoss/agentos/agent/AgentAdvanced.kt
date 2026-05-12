@@ -164,6 +164,9 @@ class AgentAdvanced(
                         agentName = name,
                     ),
                 )
+            } catch (e: AgentInterrupt) {
+                // Not an error: a tool requested a structured interruption of this agent run.
+                emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -412,6 +415,9 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
                 success = true,
                 durationMs = System.currentTimeMillis() - startMs,
             )
+        } catch (e: AgentInterrupt) {
+            // Re-throw so the run() catch block can handle it — do not swallow as a tool error.
+            throw e
         } catch (e: Exception) {
             ToolResponseEvent(
                 namespaceId = namespaceId,
