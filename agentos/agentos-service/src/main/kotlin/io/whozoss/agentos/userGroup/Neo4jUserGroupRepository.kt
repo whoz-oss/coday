@@ -111,12 +111,12 @@ open class Neo4jUserGroupRepository(
         return neo4jClient
             .query(
                 """
-                    UNWIND $externalIds AS extId
-                    MATCH (g:UserGroup)-[:HAS_USER]->(u:User {externalId: extId})
-                    WHERE (g.removed IS NULL OR g.removed = false)
+                    MATCH (g:UserGroup)-[:HAS_USER]->(u:User)
+                    WHERE u.externalId IN $externalIds
+                      AND (g.removed IS NULL OR g.removed = false)
                       AND (u.removed IS NULL OR u.removed = false)
-                    RETURN extId AS externalId, g.id AS groupId, g.name AS groupName
-                    ORDER BY extId ASC, g.name ASC
+                    RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
+                    ORDER BY u.externalId ASC, g.name ASC
                 """,
             ).bind(externalIds.toList())
             .to("externalIds")
