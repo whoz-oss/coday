@@ -30,4 +30,13 @@ interface NamespaceNodeNeo4jRepository : Neo4jRepository<NamespaceNode, String> 
             """,
     )
     fun findActiveByExternalId(externalId: String): NamespaceNode?
+
+    @Query(
+        $$"""
+            MATCH (n:Namespace)
+            WHERE n.externalId IN $externalIds AND (n.removed IS NULL OR n.removed = false)
+            RETURN n
+            """,
+    )
+    fun findActiveByExternalIdIn(externalIds: Collection<String>): List<NamespaceNode>
 }

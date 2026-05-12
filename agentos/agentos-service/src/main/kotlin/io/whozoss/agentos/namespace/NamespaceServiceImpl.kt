@@ -44,6 +44,8 @@ class NamespaceServiceImpl(
 
     override fun findByExternalId(externalId: String): Namespace? = namespaceRepository.findByExternalId(externalId)
 
+    override fun findByExternalIds(externalIds: Collection<String>): List<Namespace> = namespaceRepository.findByExternalIds(externalIds)
+
     @Transactional
     override fun delete(id: UUID): Boolean = namespaceRepository.delete(id)
 
