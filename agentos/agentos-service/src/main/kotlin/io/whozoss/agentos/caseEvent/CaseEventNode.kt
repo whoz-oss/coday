@@ -261,3 +261,36 @@ class TextChunkEventNode(
     modifiedBy: String? = null,
     removed: Boolean? = null,
 ) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
+@Node("PendingConfirmationEvent")
+class PendingConfirmationEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    val toolRequestId: String,
+    val toolName: String,
+    val pendingPayloadJson: String,
+    val confirmationLabel: String,
+    val analysisInstructions: String = "",
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
+@Node("ConfirmationResolvedEvent")
+class ConfirmationResolvedEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    val pendingEventId: String,
+    val confirmed: Boolean,
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)

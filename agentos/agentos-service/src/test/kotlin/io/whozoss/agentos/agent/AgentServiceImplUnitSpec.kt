@@ -37,6 +37,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val integrationConfigService: IntegrationConfigService = mockk(relaxed = true)
     private val userService: UserService = mockk(relaxed = true)
     private val agentConfigService: AgentConfigService = mockk()
+    private val confirmationManager: ConfirmationManager = mockk(relaxed = true)
+    private val testObjectMapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -47,6 +49,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
             integrationConfigService,
             userService,
             agentConfigService,
+            confirmationManager,
+            testObjectMapper,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -291,6 +295,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     localIntegrationService,
                     userService,
                     agentConfigService,
+                    confirmationManager,
+                    testObjectMapper,
                 )
             val configs =
                 listOf(

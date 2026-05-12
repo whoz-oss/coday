@@ -46,7 +46,7 @@ class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
     private val chatClient: ChatClient,
-    private val tools: List<StandardTool<*>>,
+    tools: List<StandardTool<*>>,
     /** The effective system instructions passed to the LLM, after namespace context injection. */
     val instructions: String? = null,
     /** AgentOS UUID of the user who initiated the case, or null when unresolvable. */
@@ -57,6 +57,16 @@ class AgentAdvanced(
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     private val maxIterations: Int = 20,
 ) : Agent {
+    /**
+     * Tools effectively exposed to the LLM. WZ-31596: tools that opt-in to the
+     * confirmation flow (`supportsConfirmation = true`) are filtered out — AgentAdvanced
+     * does not yet implement the confirmation handshake, and letting their `execute`
+     * run would apply destructive side-effects without user approval.
+     */
+    private val tools: List<StandardTool<*>> = tools.filter { !it.supportsConfirmation }
+
+    /** Names of tools dropped by the filter above, surfaced as a WarnEvent at run start. */
+    private val unsupportedConfirmationTools: List<String> = tools.filter { it.supportsConfirmation }.map { it.name }
     override fun run(
         events: List<CaseEvent>,
         shouldContinue: () -> Boolean,
@@ -73,6 +83,22 @@ class AgentAdvanced(
                     agentName = name,
                 ),
             )
+
+            if (unsupportedConfirmationTools.isNotEmpty()) {
+                logger.warn {
+                    "[AgentAdvanced] $name: filtered tools requiring confirmation (unsupported in advanced exec): " +
+                        unsupportedConfirmationTools.joinToString(", ")
+                }
+                emit(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message =
+                            "Tools requiring user confirmation are not yet supported by AgentAdvanced and have been " +
+                                "excluded for this run: ${unsupportedConfirmationTools.joinToString(", ")}",
+                    ),
+                )
+            }
 
             var iteration = 0
             var continueLoop = true

@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import kotlinx.coroutines.flow.FlowCollector
 import mu.KLogger
 import java.util.UUID
@@ -46,6 +47,20 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
                     caseId = caseId,
                     agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
                     agentName = e.targetAgentName,
+                ),
+            )
+        }
+        is AgentInterrupt.AwaitConfirmation -> {
+            logger.info { "[${agent.name}] awaiting confirmation for tool '${e.toolName}'" }
+            emit(
+                PendingConfirmationEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = e.toolRequestId,
+                    toolName = e.toolName,
+                    pendingPayloadJson = e.pendingPayloadJson,
+                    confirmationLabel = e.confirmationLabel,
+                    analysisInstructions = e.analysisInstructions,
                 ),
             )
         }

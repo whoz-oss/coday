@@ -23,6 +23,7 @@ package io.whozoss.agentos.agent
  * ## Current members
  *
  * - [Redirect]: hand off the current case to another agent.
+ * - [AwaitConfirmation]: pause until the user confirms or rejects a pending tool action.
  *
  * ## Planned members
  *
@@ -46,4 +47,34 @@ sealed class AgentInterrupt(
     class Redirect(
         val targetAgentName: String,
     ) : AgentInterrupt("Redirect to '\$targetAgentName'")
+
+    /**
+     * Pause the current agent run waiting for user confirmation of a tool action
+     * (WZ-31596).
+     *
+     * Thrown by the tool callback in [AgentSimple]/[AgentAdvanced] when a tool with
+     * `supportsConfirmation = true` declares it needs explicit confirmation and the
+     * [ConfirmationManager.shouldConfirm] LLM check confirms the user hasn't already
+     * implicitly agreed.
+     *
+     * The interrupt handler emits a [io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent]
+     * carrying the payload to confirm, then an [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent]
+     * to close the turn cleanly — letting the user reply at any future point (CA6).
+     *
+     * @param toolName Qualified tool name (e.g. `FILES__remove`).
+     * @param toolRequestId Id of the [io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent]
+     *   that initiated this pending — kept for traceability with the LLM-visible cycle.
+     * @param pendingPayloadJson Payload serialised as JSON (string-typed for
+     *   plugin/service classloader safety).
+     * @param confirmationLabel Sanitized human-readable label (whitelist + 200 chars)
+     *   suitable for inclusion in an LLM prompt and a UI message.
+     * @param analysisInstructions Optional plugin-supplied analyze-confirmation guidance.
+     */
+    class AwaitConfirmation(
+        val toolName: String,
+        val toolRequestId: String,
+        val pendingPayloadJson: String,
+        val confirmationLabel: String,
+        val analysisInstructions: String,
+    ) : AgentInterrupt("Awaiting user confirmation for '$toolName'")
 }

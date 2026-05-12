@@ -1,12 +1,15 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -17,6 +20,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
@@ -63,6 +67,14 @@ class AgentSimple(
     private val userExternalId: String? = null,
     /** Returns the live event list of the current case at the moment of invocation. */
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
+    /**
+     * Drives the WZ-31596 confirmation flow. Null disables confirmation for this agent
+     * — tools with `supportsConfirmation = true` will be rejected at call time to avoid
+     * applying side-effects without an approval path.
+     */
+    private val confirmationManager: ConfirmationManager? = null,
+    /** ObjectMapper for serialising/deserialising confirmation payloads. */
+    private val objectMapper: ObjectMapper? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -102,6 +114,39 @@ class AgentSimple(
                     return@flow
                 }
 
+                // WZ-31596: resolve any pending confirmation before starting a new LLM turn.
+                // The user's latest reply (already in `events`) is fed to the
+                // ConfirmationManager which decides confirm/reject/ambiguous, then the tool
+                // is invoked accordingly. On success the synthetic System_ResolveConfirmation
+                // pair + a ConfirmationResolvedEvent marker are emitted so the LLM history
+                // and downstream "unresolved?" detection remain consistent.
+                val unresolvedPending = findUnresolvedPendingConfirmation(events)
+                if (unresolvedPending != null) {
+                    val resolved =
+                        handleConfirmationResolution(
+                            events = events,
+                            pending = unresolvedPending,
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                        )
+                    if (!resolved) {
+                        // Ambiguous reply: pending stays alive, the WarnEvent has been
+                        // emitted, no point burning an LLM turn — let the next user message
+                        // re-trigger the resolution loop.
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = id,
+                                agentName = name,
+                            ),
+                        )
+                        return@flow
+                    }
+                    // Resolved: fall through to the normal LLM turn so the agent can
+                    // comment on the outcome (now visible in its message history).
+                }
+
                 emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
                 // Shared timer: reset to markNow() each time the LLM hands back control
@@ -120,6 +165,8 @@ class AgentSimple(
                             toolEventChannel,
                             llmTurnMark,
                             llmTurnIndex,
+                            confirmationManager,
+                            objectMapper,
                         )
                     }
 
@@ -393,6 +440,8 @@ class AgentSimple(
         eventChannel: Channel<CaseEvent>,
         llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
         llmTurnIndex: AtomicInteger,
+        confirmationManager: ConfirmationManager?,
+        objectMapper: ObjectMapper?,
     ): ToolCallback =
         object : ToolCallback {
             // Expose the tool's own schema verbatim — no reflection-based generation.
@@ -455,6 +504,34 @@ class AgentSimple(
                         caseEvents = filteredEvents,
                     )
 
+                // WZ-31596: confirmation flow short-circuits executeWithJson for opt-in tools.
+                // Note: this is evaluated BEFORE the regular execute, so an opt-in tool that
+                // signals AwaitConfirmation never reaches its execute() — eliminating the
+                // "tool forgot to throw" failure mode.
+                maybeRunConfirmationFlow(
+                    tool = tool,
+                    toolRequestId = toolRequestId,
+                    toolInput = toolInput,
+                    context = context,
+                    confirmationManager = confirmationManager,
+                    objectMapper = objectMapper,
+                )?.let { directResult ->
+                    // shouldConfirm == false: tool was executed directly via executeWithConfirmation.
+                    sendEvent(
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = toolRequestId,
+                            toolName = tool.name,
+                            output = MessageContent.Text(directResult),
+                            success = true,
+                        ),
+                    )
+                    llmTurnMark.set(TimeSource.Monotonic.markNow())
+                    llmTurnIndex.incrementAndGet()
+                    return directResult
+                }
+
                 val result: String
                 val toolDuration =
                     measureTime {
@@ -467,6 +544,7 @@ class AgentSimple(
                                 val message =
                                     when (e) {
                                         is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                                        is AgentInterrupt.AwaitConfirmation -> "Awaiting user confirmation for: ${e.confirmationLabel}"
                                     }
                                 sendEvent(
                                     ToolResponseEvent(
@@ -516,5 +594,234 @@ class AgentSimple(
             }
         }
 
-    companion object : KLogging()
+    // ─── WZ-31596 confirmation helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Find a [PendingConfirmationEvent] in [events] that hasn't been closed by a matching
+     * [ConfirmationResolvedEvent]. Returns the most recent unresolved pending, or null
+     * when all pendings are already resolved.
+     */
+    private fun findUnresolvedPendingConfirmation(events: List<CaseEvent>): PendingConfirmationEvent? {
+        val resolvedIds =
+            events
+                .filterIsInstance<ConfirmationResolvedEvent>()
+                .mapTo(mutableSetOf()) { it.pendingEventId }
+        return events
+            .filterIsInstance<PendingConfirmationEvent>()
+            .lastOrNull { it.metadata.id !in resolvedIds }
+    }
+
+    /**
+     * Drive the resolution of an unresolved pending confirmation against the latest user
+     * message. Emits the synthetic System_ResolveConfirmation pair (request+response) and
+     * the [ConfirmationResolvedEvent] marker on a clean outcome.
+     *
+     * @return true when the pending was resolved (confirmed or rejected), false when the
+     *   LLM reply was ambiguous — in which case a [WarnEvent] has been emitted and the
+     *   pending remains alive for the next user message.
+     */
+    private suspend fun FlowCollector<CaseEvent>.handleConfirmationResolution(
+        events: List<CaseEvent>,
+        pending: PendingConfirmationEvent,
+        namespaceId: UUID,
+        caseId: UUID,
+    ): Boolean {
+        val manager = confirmationManager
+        val mapper = objectMapper
+        if (manager == null || mapper == null) {
+            emit(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "Cannot resolve pending confirmation: confirmation manager not available.",
+                ),
+            )
+            return false
+        }
+        val tool = tools.firstOrNull { it.name == pending.toolName }
+        if (tool == null) {
+            emit(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "Cannot resolve pending confirmation: tool '${pending.toolName}' not available in this agent.",
+                ),
+            )
+            return false
+        }
+
+        val payload =
+            try {
+                mapper.readValue(pending.pendingPayloadJson, Map::class.java)
+            } catch (e: Exception) {
+                logger.warn(e) { "[AgentSimple] failed to deserialize pending payload for ${pending.toolName}" }
+                emit(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "Cannot resolve pending confirmation: payload deserialization failed.",
+                    ),
+                )
+                return false
+            }
+        val history = convertEventsToMessages(events)
+        val lastUserText =
+            events
+                .filterIsInstance<MessageEvent>()
+                .lastOrNull { it.actor.role == ActorRole.USER }
+                ?.content
+                ?.filterIsInstance<MessageContent.Text>()
+                ?.joinToString(" ") { it.content }
+                ?: ""
+
+        val context =
+            ToolContext(
+                namespaceId = namespaceId,
+                userId = userId,
+                userExternalId = userExternalId,
+                caseEvents = caseEventsProvider(),
+            )
+
+        val confirmed: Boolean
+        val resultText: String
+        try {
+            confirmed =
+                manager.analyzeConfirmation(
+                    chatClient = chatClient,
+                    history = history,
+                    pendingPayload = payload,
+                    specificInstructions = pending.analysisInstructions,
+                )
+            resultText =
+                if (confirmed) {
+                    @Suppress("UNCHECKED_CAST")
+                    (tool as StandardTool<Any?>).executeWithConfirmation(payload, context)
+                } else {
+                    @Suppress("UNCHECKED_CAST")
+                    (tool as StandardTool<Any?>).onRejected(payload, lastUserText, context)
+                }
+        } catch (e: AmbiguousConfirmationException) {
+            logger.info { "[AgentSimple] ambiguous confirmation reply for ${pending.toolName}: ${e.message}" }
+            emit(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "Could not interpret your reply. Please confirm or reject explicitly.",
+                ),
+            )
+            return false
+        } catch (e: Exception) {
+            logger.warn(e) { "[AgentSimple] confirmation resolution failed for ${pending.toolName}" }
+            emit(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "Confirmation resolution failed: ${e.message}",
+                ),
+            )
+            return false
+        }
+
+        // Synthetic System_ResolveConfirmation tool-call so the LLM history shows a clean
+        // request/response pair carrying the actual result, with a fresh toolRequestId
+        // (the original pending toolRequestId already paired with the "Awaiting…" response).
+        val resolutionToolRequestId = UUID.randomUUID().toString()
+        emit(
+            ToolRequestEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = resolutionToolRequestId,
+                toolName = SYSTEM_RESOLVE_CONFIRMATION,
+                args = """{"pendingEventId":"${pending.metadata.id}","confirmed":$confirmed}""",
+            ),
+        )
+        emit(
+            ToolResponseEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = resolutionToolRequestId,
+                toolName = SYSTEM_RESOLVE_CONFIRMATION,
+                output = MessageContent.Text(resultText),
+                success = confirmed,
+            ),
+        )
+        emit(
+            ConfirmationResolvedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                pendingEventId = pending.metadata.id,
+                confirmed = confirmed,
+            ),
+        )
+        return true
+    }
+
+    /**
+     * Confirmation pre-flight for a single tool call. Returns a non-null String when the
+     * tool was executed directly (shouldConfirm == false) — that string is the result to
+     * hand back to the LLM. Returns null when the standard executeWithJson flow should
+     * proceed (tool doesn't opt-in, or no confirmationManager).
+     *
+     * Throws [AgentInterrupt.AwaitConfirmation] when the user must be prompted.
+     */
+    private fun maybeRunConfirmationFlow(
+        tool: StandardTool<*>,
+        toolRequestId: String,
+        toolInput: String,
+        context: ToolContext,
+        confirmationManager: ConfirmationManager?,
+        objectMapper: ObjectMapper?,
+    ): String? {
+        if (!tool.supportsConfirmation) return null
+        if (confirmationManager == null || objectMapper == null) {
+            // Tool wants confirmation but we have no manager → refuse rather than risk
+            // running its side-effect unconfirmed. The error path of the caller will
+            // surface this as a regular tool failure (no PendingConfirmationEvent emitted).
+            throw IllegalStateException(
+                "Tool '${tool.name}' requires confirmation but no ConfirmationManager is configured for this agent.",
+            )
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val typed = tool as StandardTool<Any?>
+        val parsedInput = typed.parseInput(toolInput)
+        if (!typed.requiresConfirmation(parsedInput, context)) return null
+
+        val payload = typed.getConfirmationPayload(parsedInput, context)
+        val needsExplicit =
+            confirmationManager.shouldConfirm(
+                chatClient = chatClient,
+                history = convertEventsToMessages(context.caseEvents),
+                actionLabel = "Tool ${tool.name}",
+                proposedData = payload,
+            )
+        if (!needsExplicit) {
+            // shouldConfirm == false → user has already implicitly authorized; execute directly.
+            return typed.executeWithConfirmation(payload, context)
+        }
+
+        // Explicit confirmation required.
+        val payloadJson = objectMapper.writeValueAsString(payload)
+        val rawLabel = typed.confirmationLabel(payload)
+        val sanitizedLabel = sanitizeForLlm(rawLabel)
+        throw AgentInterrupt.AwaitConfirmation(
+            toolName = tool.name,
+            toolRequestId = toolRequestId,
+            pendingPayloadJson = payloadJson,
+            confirmationLabel = sanitizedLabel,
+            analysisInstructions = typed.getConfirmationAnalysisInstructions(),
+        )
+    }
+
+    /**
+     * Whitelist-based sanitization of user-supplied label fragments before they're
+     * injected into LLM context. The blacklist `<>\n` discussed in the v1 plan does not
+     * actually stop natural-language injections — only a whitelist + length cap does.
+     */
+    private fun sanitizeForLlm(s: String): String = s.filter { it.isLetterOrDigit() || it in " _-./" }.take(200)
+
+    companion object : KLogging() {
+        /** Synthetic tool name used to materialise a resolution step in the LLM history. */
+        const val SYSTEM_RESOLVE_CONFIRMATION = "System_ResolveConfirmation"
+    }
 }
