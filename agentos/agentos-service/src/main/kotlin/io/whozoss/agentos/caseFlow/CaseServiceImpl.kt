@@ -4,6 +4,7 @@ import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -33,6 +34,7 @@ class CaseServiceImpl(
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
     private val userService: UserService,
+    private val namespaceService: NamespaceService,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -153,16 +155,18 @@ class CaseServiceImpl(
      * events to store+emit on the runtime.
      *
      * Resolution order:
-     * 1. Explicit `@mention` in the message content.
-     * 2. Last agent selected in this case (from [pastEvents]) — preserves continuity
-     *    across turns when the user does not re-mention an agent.
-     * 3. Namespace default agent — fallback when no prior selection exists.
+     * 1. Explicit `@mention` in the message content — resolved by name; on miss, falls
+     *    back to the namespace default with a [WarnEvent].
+     * 2. Last selected agent in this case (from [pastEvents]) — preserves continuity
+     *    across turns. If the agent is no longer available (deleted, disabled), falls
+     *    back to the namespace default with a [WarnEvent].
+     * 3. Namespace default agent — [Namespace.defaultAgentName] resolved by name.
      *
-     * Returns an empty list when no agent is configured (signals the runtime to stop).
+     * Returns a single [WarnEvent] (no [AgentSelectedEvent]) when no default agent
+     * is configured on the namespace, signalling the runtime to stop cleanly.
      *
      * @param content the message content to inspect for @mention syntax.
-     * @param pastEvents the full event history of the case at the time of this call,
-     *   used to recover the last [AgentSelectedEvent] for sticky-agent behaviour.
+     * @param pastEvents the full event history of the case at the time of this call.
      */
     private fun selectAgent(
         content: List<MessageContent>,
@@ -170,32 +174,14 @@ class CaseServiceImpl(
         namespaceId: UUID,
         caseId: UUID,
     ): List<CaseEvent> {
-        val firstText =
+        val mentionedName =
             content
                 .filterIsInstance<MessageContent.Text>()
                 .firstOrNull()
                 ?.content
                 ?.trim()
+                ?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
 
-        val mentionedName = firstText?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
-
-        if (mentionedName != null) {
-            val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
-            if (resolvedName != null) {
-                logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
-                return listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
-            } else {
-                logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
-                val warn =
-                    WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")
-                val defaultName = agentService.getDefaultAgentName(namespaceId)
-                return listOf(warn, agentSelectedEvent(defaultName, namespaceId, caseId))
-            }
-        }
-
-        // No explicit mention: re-use the last selected agent so the conversation
-        // stays with the same agent across turns without requiring the user to
-        // repeat the @mention on every message.
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
         val lastSelectedName =
             pastEvents
@@ -204,14 +190,78 @@ class CaseServiceImpl(
                 .lastOrNull()
                 ?.agentName
 
-        if (lastSelectedName != null) {
-            logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
-            return listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
+        return when {
+            mentionedName != null -> {
+                val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
+                when {
+                    resolvedName != null -> {
+                        logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
+                        listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+                    }
+                    else -> {
+                        logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
+                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")) +
+                            selectDefaultAgent(namespaceId, caseId)
+                    }
+                }
+            }
+            lastSelectedName != null -> {
+                val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
+                when {
+                    stillAvailable -> {
+                        logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
+                        listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
+                    }
+                    else -> {
+                        logger.warn { "[CaseService] Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
+                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$lastSelectedName' is no longer available")) +
+                            selectDefaultAgent(namespaceId, caseId)
+                    }
+                }
+            }
+            else -> selectDefaultAgent(namespaceId, caseId)
         }
+    }
 
-        val defaultName = agentService.getDefaultAgentName(namespaceId)
-        logger.info { "[CaseService] Selecting default agent: $defaultName" }
-        return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
+    /**
+     * Resolves the namespace default agent by name from [Namespace.defaultAgentName].
+     *
+     * Returns a single [AgentSelectedEvent] when the default is configured and resolvable.
+     * Returns a single [WarnEvent] (no [AgentSelectedEvent]) when:
+     * - [Namespace.defaultAgentName] is null (no default configured)
+     * - the configured name no longer matches any [AgentConfig] in the namespace
+     *
+     * In both error cases the runtime will stop cleanly on the [WarnEvent] with no
+     * [AgentSelectedEvent] following it.
+     */
+    private fun selectDefaultAgent(
+        namespaceId: UUID,
+        caseId: UUID,
+    ): List<CaseEvent> {
+        val defaultAgentName = namespaceService.findById(namespaceId)?.defaultAgentName
+        if (defaultAgentName == null) {
+            logger.warn { "[CaseService] No default agent configured for namespace $namespaceId" }
+            return listOf(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "No default agent configured for this namespace. Use @agentName to address an agent explicitly.",
+                ),
+            )
+        }
+        val resolvedName = agentService.resolveAgentName(defaultAgentName, namespaceId)
+        if (resolvedName == null) {
+            logger.warn { "[CaseService] Default agent '$defaultAgentName' is not available in namespace $namespaceId" }
+            return listOf(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "Default agent '$defaultAgentName' is not available. Use @agentName to address an agent explicitly.",
+                ),
+            )
+        }
+        logger.info { "[CaseService] Selecting default agent: $resolvedName" }
+        return listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
     }
 
     private fun agentSelectedEvent(

@@ -21,10 +21,15 @@ export interface NamespaceListItem {
    */
   externalId?: string
   /**
+   * Logical name of the default agent for this namespace. Null means no default is configured.
+   */
+  defaultAgentName?: string
+  /**
    * The caller\'s effective role on this namespace
    */
   role: NamespaceListItemRoleEnum
 }
+
 export enum NamespaceListItemRoleEnum {
   SUPER_ADMIN = 'SUPER-ADMIN',
   ADMIN = 'ADMIN',
