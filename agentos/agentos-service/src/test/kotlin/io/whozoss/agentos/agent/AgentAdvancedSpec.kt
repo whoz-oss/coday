@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -108,14 +109,13 @@ class AgentAdvancedSpec :
             toolName shouldBe "Answer"
         }
 
-        "parseIntentionAndTool — missing toolName tag falls back to Answer" {
+        "parseIntentionAndTool — missing toolName tag throws IntentionParsingException" {
             val agent = makeParserAgent()
             val response = "<intention>No tool tag present.</intention>"
 
-            val (intention, toolName) = agent.parseIntentionAndTool(response, validTools)
-
-            intention shouldBe "No tool tag present."
-            toolName shouldBe "Answer"
+            shouldThrow<AgentAdvanced.IntentionParsingException> {
+                agent.parseIntentionAndTool(response, validTools)
+            }
         }
 
         "parseIntentionAndTool — missing intention tag uses full response as intention" {
@@ -128,12 +128,12 @@ class AgentAdvancedSpec :
             toolName shouldBe "Answer"
         }
 
-        "parseIntentionAndTool — completely empty response falls back gracefully" {
+        "parseIntentionAndTool — completely empty response throws IntentionParsingException" {
             val agent = makeParserAgent()
 
-            val (_, toolName) = agent.parseIntentionAndTool("", validTools)
-
-            toolName shouldBe "Answer"
+            shouldThrow<AgentAdvanced.IntentionParsingException> {
+                agent.parseIntentionAndTool("", validTools)
+            }
         }
 
         "parseIntentionAndTool — tool name matching is case-insensitive" {
@@ -254,8 +254,20 @@ class AgentAdvancedSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Orchestration integration test
+        // Orchestration integration tests
         // -------------------------------------------------------------------------
+
+        fun makeInitialEvents(
+            namespaceId: UUID,
+            caseId: UUID,
+        ) = listOf(
+            MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User One", ActorRole.USER),
+                content = listOf(MessageContent.Text("Hello, can you help me?")),
+            ),
+        )
 
         "should complete full orchestration loop when LLM returns Answer tool in XML" {
             val namespaceId = UUID.randomUUID()
@@ -281,17 +293,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                 )
 
-            val initialEvents =
-                listOf(
-                    MessageEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        actor = Actor("user1", "User One", ActorRole.USER),
-                        content = listOf(MessageContent.Text("Hello, can you help me?")),
-                    ),
-                )
-
-            val events = agent.run(initialEvents).toList()
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
             // AgentRunningEvent + ThinkingEvent + IntentionGeneratedEvent
             // + TextChunkEvent(x2) + MessageEvent + AgentFinishedEvent
@@ -325,5 +327,125 @@ class AgentAdvancedSpec :
             finishedEvent shouldNotBe null
             finishedEvent!!.agentId shouldBe agentId
             finishedEvent.agentName shouldBe "TestAgent"
+        }
+
+        "resolveIntentionAndTool retries on malformed LLM response and succeeds on second attempt" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany listOf(
+                "This is a malformed response with no XML tags at all",
+                "<intention>All good on retry.</intention><toolName>Answer</toolName>",
+            )
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Done.")
+
+            val agent = AgentAdvanced(
+                name = "RetryAgent",
+                chatClient = mockChatClient,
+                tools = emptyList(),
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val intentionEvent = events.filterIsInstance<IntentionGeneratedEvent>().first()
+            intentionEvent.toolName shouldBe "Answer"
+            intentionEvent.intention shouldContain "All good on retry"
+        }
+
+        "resolveIntentionAndTool retries on LLM service failure and succeeds on second attempt" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+
+            var callCount = 0
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } answers {
+                callCount++
+                if (callCount == 1) throw RuntimeException("Service unavailable")
+                "<intention>Recovered after failure.</intention><toolName>Answer</toolName>"
+            }
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Done.")
+
+            val agent = AgentAdvanced(
+                name = "RetryAgent",
+                chatClient = mockChatClient,
+                tools = emptyList(),
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val intentionEvent = events.filterIsInstance<IntentionGeneratedEvent>().first()
+            intentionEvent.toolName shouldBe "Answer"
+            intentionEvent.intention shouldContain "Recovered after failure"
+        }
+
+        "resolveIntentionAndTool falls back to Answer after all retry attempts exhausted" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returns "This is always malformed with no XML tags"
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Fallback answer.")
+
+            val agent = AgentAdvanced(
+                name = "FallbackAgent",
+                chatClient = mockChatClient,
+                tools = emptyList(),
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val intentionEvent = events.filterIsInstance<IntentionGeneratedEvent>().first()
+            intentionEvent.toolName shouldBe "Answer"
+            // intention should be the raw last response (trimmed)
+            intentionEvent.intention shouldBe "This is always malformed with no XML tags"
+
+            // Agent should still finish normally
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "resolveIntentionAndTool falls back to Answer after repeated LLM failures" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } throws RuntimeException("Persistent service failure")
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Fallback answer.")
+
+            val agent = AgentAdvanced(
+                name = "FallbackAgent",
+                chatClient = mockChatClient,
+                tools = emptyList(),
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val intentionEvent = events.filterIsInstance<IntentionGeneratedEvent>().first()
+            intentionEvent.toolName shouldBe "Answer"
+            // No lastResponse captured since all calls threw — falls back to default message
+            intentionEvent.intention shouldBe "Unable to generate intention"
+
+            // Agent should still finish normally
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
     })

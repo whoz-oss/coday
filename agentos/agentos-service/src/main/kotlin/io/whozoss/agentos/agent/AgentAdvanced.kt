@@ -144,12 +144,13 @@ class AgentAdvanced(
                         }
                     val content = contentBuilder.toString()
                     if (content.isNotEmpty()) {
-                        val msg = MessageEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            actor = Actor(id.toString(), name, ActorRole.AGENT),
-                            content = listOf(MessageContent.Text(content)),
-                        )
+                        val msg =
+                            MessageEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                actor = Actor(id.toString(), name, ActorRole.AGENT),
+                                content = listOf(MessageContent.Text(content)),
+                            )
                         emit(msg)
                         accumulatedEvents.add(msg)
                     }
@@ -190,6 +191,9 @@ class AgentAdvanced(
      * The LLM must respond with XML-tagged fields:
      *   <intention>free-text reasoning</intention>
      *   <toolName>ToolName</toolName>
+     *
+     * Retries up to [MAX_INTENTION_ATTEMPTS] times on null/malformed responses or LLM failures.
+     * Falls back gracefully to [ANSWER_TOOL] after all attempts are exhausted.
      */
     private fun resolveIntentionAndTool(
         events: List<CaseEvent>,
@@ -236,20 +240,45 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
 <toolName>one tool name from: $toolNames</toolName>
             """.trimIndent()
 
-        val response =
-            chatClient
-                .prompt(Prompt(messages + UserMessage(prompt)))
-                .call()
-                .content() ?: "<intention>Unable to generate intention</intention><toolName>$ANSWER_TOOL</toolName>"
+        var lastException: Exception? = null
+        var lastResponse: String? = null
 
-        val (intention, toolName) = parseIntentionAndTool(response, toolNames)
+        repeat(MAX_INTENTION_ATTEMPTS) { attempt ->
+            try {
+                val response =
+                    chatClient
+                        .prompt(Prompt(messages + UserMessage(prompt)))
+                        .call()
+                        .content() ?: throw IntentionParsingException("Null LLM response")
 
+                lastResponse = response
+                val (intention, toolName) = parseIntentionAndTool(response, toolNames)
+
+                return IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = id,
+                    intention = intention,
+                    toolName = toolName,
+                )
+            } catch (e: Exception) {
+                lastException = e
+                if (attempt < MAX_INTENTION_ATTEMPTS - 1) {
+                    logger.warn { "Intention generation attempt ${attempt + 1} failed: ${e.message}, retrying..." }
+                }
+            }
+        }
+
+        logger.warn {
+            "Intention generation failed after $MAX_INTENTION_ATTEMPTS " +
+                "attempts: ${lastException?.message}, falling back to $ANSWER_TOOL"
+        }
         return IntentionGeneratedEvent(
             namespaceId = namespaceId,
             caseId = caseId,
             agentId = id,
-            intention = intention,
-            toolName = toolName,
+            intention = lastResponse?.trim() ?: "Unable to generate intention",
+            toolName = ANSWER_TOOL,
         )
     }
 
@@ -260,16 +289,17 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
      *   <intention>reasoning text</intention>
      *   <toolName>ToolName</toolName>
      *
-     * Tolerant: extracts whatever is present, falls back to [ANSWER_TOOL] when
-     * the tool tag is absent or does not match any valid tool name.
+     * Throws [IntentionParsingException] when the response is empty or lacks a `<toolName>` tag entirely,
+     * so the caller can retry. Falls back to [ANSWER_TOOL] when the tag is present but names an unknown tool.
      */
     internal fun parseIntentionAndTool(
         response: String,
         validToolNames: List<String>,
     ): Pair<String, String> {
+        if (response.isBlank()) throw IntentionParsingException("Empty LLM response")
+        val rawTool = extractFromTag(response, "toolName") ?: throw IntentionParsingException("Missing <toolName> tag in LLM response")
         val intention = extractFromTag(response, "intention") ?: response.trim()
-        val rawTool = extractFromTag(response, "toolName")
-        val toolName = validToolNames.firstOrNull { it.equals(rawTool?.trim(), ignoreCase = true) } ?: ANSWER_TOOL
+        val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) } ?: ANSWER_TOOL
         return intention to toolName
     }
 
@@ -439,7 +469,12 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
                 }
             }
 
+    internal class IntentionParsingException(
+        message: String,
+    ) : Exception(message)
+
     companion object : KLogging() {
         private const val ANSWER_TOOL = "Answer"
+        private const val MAX_INTENTION_ATTEMPTS = 2
     }
 }
