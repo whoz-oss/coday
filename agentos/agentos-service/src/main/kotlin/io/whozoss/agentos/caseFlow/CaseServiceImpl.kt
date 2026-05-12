@@ -180,7 +180,7 @@ class CaseServiceImpl(
                 .firstOrNull()
                 ?.content
                 ?.trim()
-                ?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
+                ?.let { MENTION_REGEX.find(it)?.groupValues?.get(1) }
 
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
         val lastSelectedName =
@@ -239,29 +239,31 @@ class CaseServiceImpl(
         caseId: UUID,
     ): List<CaseEvent> {
         val defaultAgentName = namespaceService.findById(namespaceId)?.defaultAgentName
-        if (defaultAgentName == null) {
+        return if (defaultAgentName == null) {
             logger.warn { "[CaseService] No default agent configured for namespace $namespaceId" }
-            return listOf(
+            listOf(
                 WarnEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     message = "No default agent configured for this namespace. Use @agentName to address an agent explicitly.",
                 ),
             )
+        } else {
+            val resolvedName = agentService.resolveAgentName(defaultAgentName, namespaceId)
+            if (resolvedName == null) {
+                logger.warn { "[CaseService] Default agent '$defaultAgentName' is not available in namespace $namespaceId" }
+                listOf(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "Default agent '$defaultAgentName' is not available. Use @agentName to address an agent explicitly.",
+                    ),
+                )
+            } else {
+                logger.info { "[CaseService] Selecting default agent: $resolvedName" }
+                listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+            }
         }
-        val resolvedName = agentService.resolveAgentName(defaultAgentName, namespaceId)
-        if (resolvedName == null) {
-            logger.warn { "[CaseService] Default agent '$defaultAgentName' is not available in namespace $namespaceId" }
-            return listOf(
-                WarnEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    message = "Default agent '$defaultAgentName' is not available. Use @agentName to address an agent explicitly.",
-                ),
-            )
-        }
-        logger.info { "[CaseService] Selecting default agent: $resolvedName" }
-        return listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
     }
 
     private fun agentSelectedEvent(
@@ -431,5 +433,8 @@ class CaseServiceImpl(
         logger.info { "CaseService shutdown complete" }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`. */
+        private val MENTION_REGEX = """^@(\S+)""".toRegex()
+    }
 }
