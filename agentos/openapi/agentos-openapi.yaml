@@ -522,6 +522,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /api/users/groups-by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: getGroupsByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/UserGroupSummary"
   /api/users/by-ids:
     post:
       tags:
@@ -1707,6 +1731,17 @@ components:
       required:
       - name
       - namespaceId
+    UserGroupSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
     UserGroupCreateRequest:
       type: object
       properties:
