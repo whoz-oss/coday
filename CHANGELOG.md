@@ -1,3 +1,13 @@
+## 0.144.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31783 call default agent - namespace defaultAgentName + routing fallback ([#854](https://github.com/whoz-oss/coday/pull/854), [#31783](https://github.com/whoz-oss/coday/issues/31783))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.143.0 (2026-05-12)
 
 ### 🚀 Features
