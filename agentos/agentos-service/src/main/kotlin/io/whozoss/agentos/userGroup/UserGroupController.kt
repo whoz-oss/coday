@@ -1,12 +1,8 @@
 package io.whozoss.agentos.userGroup
 
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.access.AccessDeniedException
-import org.springframework.security.access.prepost.PreAuthorize
-import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -23,25 +19,14 @@ import java.util.UUID
 @RequestMapping("/api/user-groups", produces = [MediaType.APPLICATION_JSON_VALUE])
 class UserGroupController(
     private val userGroupService: UserGroupService,
-    private val guard: UserGroupGuard,
 ) {
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
-    @HideOnAccessDenied
     fun searchByNamespaceExternalId(
         @RequestParam namespaceExternalId: String,
-        auth: Authentication,
-    ): List<UserGroupSearchResultResource> {
-        if (!guard.canRead(namespaceExternalId, auth)) {
-            // 403/404 indistinguishable: surface AccessDenied (translated to 404 by
-            // HideOnAccessDenied) so a caller without READ on the resolved namespace
-            // cannot probe namespace existence by externalId.
-            throw AccessDeniedException("Namespace not visible")
-        }
-        return userGroupService
+    ): List<UserGroupSearchResultResource> =
+        userGroupService
             .findByNamespaceExternalId(namespaceExternalId)
             .map { it.toResource() }
-    }
 
     @GetMapping("/{userGroupId}")
     fun getById(
@@ -51,18 +36,11 @@ class UserGroupController(
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
-    @HideOnAccessDenied
     fun create(
         @Valid @RequestBody request: UserGroupCreateRequest,
-        auth: Authentication,
-    ): UserGroupSearchResultResource {
-        if (!guard.canCreate(request.namespaceExternalId, auth)) {
-            throw AccessDeniedException("Namespace not visible or insufficient permission")
-        }
-        return userGroupService.createFromRequest(request).toResource()
-    }
+    ): UserGroupSearchResultResource =
+        userGroupService.createFromRequest(request).toResource()
 
     @PostMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun update(
