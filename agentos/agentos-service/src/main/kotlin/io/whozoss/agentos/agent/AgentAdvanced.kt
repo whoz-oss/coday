@@ -77,6 +77,7 @@ class AgentAdvanced(
             var iteration = 0
             var continueLoop = true
             var lastIntention: IntentionGeneratedEvent? = null
+            var repetitionWarningEmitted = false
             val accumulatedEvents = events.toMutableList()
 
             try {
@@ -92,11 +93,15 @@ class AgentAdvanced(
 
                     // Detect repetitive tool usage
                     val repeatedTool = detectRepetitionLoop(accumulatedEvents)
+                    if (repeatedTool == null) repetitionWarningEmitted = false
                     val repetitionWarning = repeatedTool?.let { toolName ->
                         val msg = "You have called `$toolName` $REPETITION_DETECTION_WINDOW times consecutively with no progress. " +
                             "Stop and use the $ANSWER_TOOL tool to explain the situation or ask the user for more information."
-                        logger.warn { "Repetition loop detected: $toolName called $REPETITION_DETECTION_WINDOW consecutive times" }
-                        emit(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+                        if (!repetitionWarningEmitted) {
+                            logger.warn { "Repetition loop detected: $toolName called $REPETITION_DETECTION_WINDOW consecutive times" }
+                            emit(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+                            repetitionWarningEmitted = true
+                        }
                         msg
                     }
 
@@ -196,6 +201,7 @@ class AgentAdvanced(
     internal fun detectRepetitionLoop(events: List<CaseEvent>): String? =
         events
             .filterIsInstance<ToolResponseEvent>()
+            .filter { it.success }
             .takeLast(REPETITION_DETECTION_WINDOW)
             .takeIf { it.size == REPETITION_DETECTION_WINDOW }
             ?.map { it.toolName }

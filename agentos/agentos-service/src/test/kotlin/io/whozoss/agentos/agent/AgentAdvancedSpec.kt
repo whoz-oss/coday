@@ -365,6 +365,25 @@ class AgentAdvancedSpec :
             agent.detectRepetitionLoop(events) shouldBe "FILES__ReadFile"
         }
 
+        "detectRepetitionLoop returns null when WINDOW consecutive responses are all failures" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                (1..AgentAdvanced.REPETITION_DETECTION_WINDOW).map { i ->
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-$i",
+                        toolName = "FILES__ReadFile",
+                        output = MessageContent.Text("Error: file not found"),
+                        success = false,
+                    )
+                }
+
+            agent.detectRepetitionLoop(events) shouldBe null
+        }
+
         "detectRepetitionLoop returns null when tools are mixed in the window" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
@@ -441,7 +460,9 @@ class AgentAdvancedSpec :
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
             val warnEvents = events.filterIsInstance<WarnEvent>()
-            warnEvents.any { it.message.contains("consecutively") || it.message.contains("FILES__ReadFile") } shouldBe true
+            warnEvents shouldHaveSize 1
+            warnEvents.first().message shouldContain "FILES__ReadFile"
+            warnEvents.first().message shouldContain "consecutively"
 
             val intentionEvents = events.filterIsInstance<IntentionGeneratedEvent>()
             intentionEvents.last().toolName shouldBe "Answer"
