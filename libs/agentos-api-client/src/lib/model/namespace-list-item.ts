@@ -21,7 +21,7 @@ export interface NamespaceListItem {
    */
   externalId?: string
   /**
-   * Logical name of the default agent for this namespace. Null means no default is configured.
+   * Logical name of the default agent for this namespace. Null means no default is configured. Name matching is case-insensitive.
    */
   defaultAgentName?: string
   /**
@@ -29,7 +29,6 @@ export interface NamespaceListItem {
    */
   role: NamespaceListItemRoleEnum
 }
-
 export enum NamespaceListItemRoleEnum {
   SUPER_ADMIN = 'SUPER-ADMIN',
   ADMIN = 'ADMIN',

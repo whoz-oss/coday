@@ -1592,8 +1592,8 @@ components:
         defaultAgentName:
           type: string
           description: "Logical name of the default agent for this namespace. Resolved\
-            \ at runtime against AgentConfig entries. When null, messages without\
-            \ an @mention will produce an explicit error."
+            \ at runtime against AgentConfig entries (case-insensitive). When null,\
+            \ messages without an @mention will produce an explicit error."
       required:
       - name
     IntegrationConfig:
@@ -2322,7 +2322,7 @@ components:
         defaultAgentName:
           type: string
           description: Logical name of the default agent for this namespace. Null
-            means no default is configured.
+            means no default is configured. Name matching is case-insensitive.
         role:
           type: string
           description: The caller's effective role on this namespace

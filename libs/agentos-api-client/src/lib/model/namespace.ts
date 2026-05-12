@@ -21,7 +21,7 @@ export interface Namespace {
    */
   externalId?: string
   /**
-   * Logical name of the default agent for this namespace. Resolved at runtime against AgentConfig entries. When null, messages without an @mention will produce an explicit error.
+   * Logical name of the default agent for this namespace. Resolved at runtime against AgentConfig entries (case-insensitive). When null, messages without an @mention will produce an explicit error.
    */
   defaultAgentName?: string
 }
