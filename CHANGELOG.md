@@ -1,3 +1,15 @@
+## 0.143.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Rename user groups relations ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Rename user groups relations ([#864](https://github.com/whoz-oss/coday/pull/864), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.142.0 (2026-05-12)
 
 ### 🚀 Features
