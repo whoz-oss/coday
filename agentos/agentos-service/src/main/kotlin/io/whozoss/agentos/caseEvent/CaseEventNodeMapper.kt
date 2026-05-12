@@ -298,6 +298,7 @@ class CaseEventNodeMapper(
                     node.pendingPayloadJson,
                     node.confirmationLabel,
                     node.analysisInstructions,
+                    node.questionId,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -312,6 +313,7 @@ class CaseEventNodeMapper(
                     node.timestamp,
                     node.pendingEventId,
                     node.confirmed,
+                    node.resultText,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -475,6 +477,7 @@ class CaseEventNodeMapper(
             pendingPayloadJson = n.pendingPayloadJson,
             confirmationLabel = n.confirmationLabel,
             analysisInstructions = n.analysisInstructions,
+            questionId = n.questionId.takeIf { it.isNotBlank() }?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: ConfirmationResolvedEventNode) =
@@ -485,6 +488,7 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             pendingEventId = UUID.fromString(n.pendingEventId),
             confirmed = n.confirmed,
+            resultText = n.resultText,
         )
 
     // ─── fromDomain ───────────────────────────────────────────────────────────────────────
@@ -716,6 +720,7 @@ class CaseEventNodeMapper(
             pendingPayloadJson = e.pendingPayloadJson,
             confirmationLabel = e.confirmationLabel,
             analysisInstructions = e.analysisInstructions,
+            questionId = e.questionId?.toString() ?: "",
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -731,6 +736,7 @@ class CaseEventNodeMapper(
             timestamp = e.timestamp,
             pendingEventId = e.pendingEventId.toString(),
             confirmed = e.confirmed,
+            resultText = e.resultText,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

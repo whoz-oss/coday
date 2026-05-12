@@ -273,6 +273,8 @@ class PendingConfirmationEventNode(
     val pendingPayloadJson: String,
     val confirmationLabel: String,
     val analysisInstructions: String = "",
+    /** Id of the paired QuestionEvent (stored as String for Neo4j). Empty when legacy. */
+    val questionId: String = "",
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -288,6 +290,8 @@ class ConfirmationResolvedEventNode(
     timestamp: Instant,
     val pendingEventId: String,
     val confirmed: Boolean,
+    /** Textual result of executeWithConfirmation / onRejected, injected into the LLM history. */
+    val resultText: String = "",
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

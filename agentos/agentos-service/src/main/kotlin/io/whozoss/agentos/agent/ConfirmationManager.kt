@@ -156,9 +156,11 @@ class ConfirmationManager(
             } catch (e: Exception) {
                 throw AmbiguousConfirmationException("Failed to interpret confirmation reply: ${e.message}", e)
             }
-        return when (decision) {
-            CHOICE_YES -> true
-            CHOICE_NO -> false
+        // Lenient matching — the LLM often emits "yes.", "yes please", "no, cancel", etc.
+        // Matches the back Copilot which uses startsWith(CHOICE_YES).
+        return when {
+            decision.startsWith(CHOICE_YES) -> true
+            decision.startsWith(CHOICE_NO) -> false
             else -> throw AmbiguousConfirmationException("LLM returned ambiguous decision: '$decision'")
         }
     }

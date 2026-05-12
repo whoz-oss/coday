@@ -68,6 +68,17 @@ interface StandardTool<T> {
     val supportsConfirmation: Boolean get() = false
 
     /**
+     * When `true`, the orchestrator skips the implicit-consent check (`shouldConfirm`)
+     * and always asks the user for an explicit confirmation prompt. Set this on tools
+     * whose side-effects are destructive enough that the LLM-judged "user already
+     * authorised" path is unsafe (e.g. file deletion, irreversible writes).
+     *
+     * Default `false` keeps the Copilot-style "minimise interruptions" UX for non-
+     * destructive opt-in tools (CreateTask, UpdateProfile, etc.).
+     */
+    val bypassImplicitConsent: Boolean get() = false
+
+    /**
      * Returns `true` if this specific call requires explicit user confirmation before any
      * side-effect is applied. Evaluated by the orchestrator before [execute]. Conditional
      * on [input] so a tool may confirm only for "dangerous" inputs (e.g. paths outside a

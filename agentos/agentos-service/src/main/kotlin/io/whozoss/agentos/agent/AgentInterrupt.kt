@@ -1,5 +1,7 @@
 package io.whozoss.agentos.agent
 
+import java.util.UUID
+
 /**
  * Sealed exception hierarchy used as a control-flow signal to interrupt the current
  * agent run from inside a [io.whozoss.agentos.sdk.tool.StandardTool] execution.
@@ -52,23 +54,34 @@ sealed class AgentInterrupt(
      * Pause the current agent run waiting for user confirmation of a tool action
      * (WZ-31596).
      *
-     * Thrown by the tool callback in [AgentSimple]/[AgentAdvanced] when a tool with
+     * Thrown by the tool callback in [AgentSimple] when a tool with
      * `supportsConfirmation = true` declares it needs explicit confirmation and the
      * [ConfirmationManager.shouldConfirm] LLM check confirms the user hasn't already
      * implicitly agreed.
      *
-     * The interrupt handler emits a [io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent]
-     * carrying the payload to confirm, then an [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent]
-     * to close the turn cleanly — letting the user reply at any future point (CA6).
+     * The interrupt handler emits — in order — a [io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent]
+     * (durable orchestration marker), a [io.whozoss.agentos.sdk.caseEvent.QuestionEvent]
+     * (the user-facing prompt, out-of-LLM-channel — the LLM never sees this), and then an
+     * [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent] to close the turn cleanly,
+     * letting the user reply at any future point (CA6).
+     *
+     * Crucially, the throw exits the Spring AI tool loop **before** a tool_result is
+     * appended to the LLM history. The next turn's `convertEventsToMessages` will inject
+     * a synthetic tool_result for the original tool_use once the pending is resolved,
+     * keeping the LLM history clean (Hermes-style out-of-channel approval, but async).
      *
      * @param toolName Qualified tool name (e.g. `FILES__remove`).
      * @param toolRequestId Id of the [io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent]
-     *   that initiated this pending — kept for traceability with the LLM-visible cycle.
+     *   that initiated this pending. Used to pair with the synthetic tool_result later.
      * @param pendingPayloadJson Payload serialised as JSON (string-typed for
      *   plugin/service classloader safety).
-     * @param confirmationLabel Sanitized human-readable label (whitelist + 200 chars)
-     *   suitable for inclusion in an LLM prompt and a UI message.
-     * @param analysisInstructions Optional plugin-supplied analyze-confirmation guidance.
+     * @param confirmationLabel Sanitized human-readable label (whitelist + 200 chars).
+     *   Becomes the question text of the [QuestionEvent].
+     * @param analysisInstructions Optional plugin-supplied analyze-confirmation guidance,
+     *   used as fallback when the user replies in free-form text (no AnswerEvent).
+     * @param questionId Pre-generated id for the paired QuestionEvent. The handler uses
+     *   this id when emitting the event so [PendingConfirmationEvent.questionId] and the
+     *   QuestionEvent point at each other.
      */
     class AwaitConfirmation(
         val toolName: String,
@@ -76,5 +89,6 @@ sealed class AgentInterrupt(
         val pendingPayloadJson: String,
         val confirmationLabel: String,
         val analysisInstructions: String,
+        val questionId: UUID,
     ) : AgentInterrupt("Awaiting user confirmation for '$toolName'")
 }

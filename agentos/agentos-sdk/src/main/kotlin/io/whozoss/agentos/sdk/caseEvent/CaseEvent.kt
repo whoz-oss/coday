@@ -347,6 +347,11 @@ data class PendingConfirmationEvent(
     val pendingPayloadJson: String,
     val confirmationLabel: String,
     val analysisInstructions: String = "",
+    /**
+     * WZ-31596: id of the paired [QuestionEvent] used to prompt the user out-of-LLM-channel.
+     * Nullable for backward compat with legacy pendings created without a QuestionEvent.
+     */
+    val questionId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.PENDING_CONFIRMATION
 }
@@ -365,6 +370,13 @@ data class ConfirmationResolvedEvent(
     override val timestamp: Instant = Instant.now(),
     val pendingEventId: UUID,
     val confirmed: Boolean,
+    /**
+     * WZ-31596: textual result of [StandardTool.executeWithConfirmation] (when confirmed)
+     * or [StandardTool.onRejected] (when rejected). Stored on the marker so that
+     * `convertEventsToMessages` can inject a synthetic tool_result for the LLM without
+     * having to re-execute the tool.
+     */
+    val resultText: String = "",
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.CONFIRMATION_RESOLVED
 }

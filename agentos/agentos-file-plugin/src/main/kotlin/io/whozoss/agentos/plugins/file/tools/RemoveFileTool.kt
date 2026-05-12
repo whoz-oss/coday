@@ -46,6 +46,9 @@ class RemoveFileTool(
 
     override val supportsConfirmation: Boolean = true
 
+    // File deletion is destructive and irreversible — always force an explicit user prompt.
+    override val bypassImplicitConsent: Boolean = false
+
     // language=JSON
     override val inputSchema: String =
         """

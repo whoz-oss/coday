@@ -19,10 +19,12 @@ import {
   CaseEvent,
   Configuration,
   MessageEvent as CaseMessageEvent,
+  QuestionEvent,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseQuestionComponent } from '../case-question/case-question.component'
 
 export interface ToolCall {
   requestId: string
@@ -36,6 +38,8 @@ export type TimelineItem =
   | { kind: 'message'; event: CaseMessageEvent }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming'; text: string }
+  /** WZ-31596: inline confirmation widget for an out-of-LLM-channel QuestionEvent. */
+  | { kind: 'question'; event: QuestionEvent; respondedAnswer: string | null }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -57,7 +61,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
 @Component({
   selector: 'agentos-case-chat',
   standalone: true,
-  imports: [IconButtonComponent],
+  imports: [IconButtonComponent, CaseQuestionComponent],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -189,12 +193,71 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Pass 2: walk events in order, emit one timeline item per message or tool call
+    // WZ-31596: build a map questionId → answer for resolved confirmations.
+    // We detect the answer in this priority order:
+    //   1. AnswerEvent linked via questionId (the UI didn't emit it yet, but future-proof)
+    //   2. The first user MessageEvent posterior to the QuestionEvent in the same case
+    // The widget locks (shows "✓ Réponse envoyée") when either is found.
+    const questionRespondedAnswers = new Map<string, string>()
+    const questionEvents = allEvents.filter((e): e is QuestionEvent => e.type === 'QuestionEvent')
+    for (const q of questionEvents) {
+      // (1) direct AnswerEvent ref
+      const direct = allEvents.find(
+        (e) => e.type === 'AnswerEvent' && (e as unknown as { questionId?: string }).questionId === q.id
+      ) as unknown as { answer?: string } | undefined
+      if (direct?.answer) {
+        questionRespondedAnswers.set(q.id, direct.answer)
+        continue
+      }
+      // (2) fallback: first user MessageEvent after the question (chronologically by index in the list)
+      const qIdx = allEvents.indexOf(q)
+      for (let i = qIdx + 1; i < allEvents.length; i++) {
+        const e = allEvents[i]
+        if (!e) continue
+        if (e.type === 'MessageEvent') {
+          const actor = (e as unknown as { actor?: { role?: string } }).actor
+          if (actor?.role === 'USER') {
+            const text = this.extractText(e as CaseMessageEvent)
+            if (text.trim()) {
+              questionRespondedAnswers.set(q.id, text.trim())
+              break
+            }
+          }
+        }
+      }
+    }
+
+    // Pass 2: walk events in order, emit one timeline item per message / tool call / question
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
+    // WZ-31596: collect the eventIds of user MessageEvents that resolve a QuestionEvent
+    // so we can skip them in the timeline (they're already represented by the question's
+    // "✓ Réponse envoyée: <answer>" indicator).
+    const userMessagesUsedAsAnswer = new Set<string>()
+    for (const q of questionEvents) {
+      const resp = questionRespondedAnswers.get(q.id)
+      if (!resp) continue
+      const qIdx = allEvents.indexOf(q)
+      for (let i = qIdx + 1; i < allEvents.length; i++) {
+        const e = allEvents[i]
+        if (!e) continue
+        if (e.type === 'MessageEvent') {
+          const actor = (e as unknown as { actor?: { role?: string } }).actor
+          if (actor?.role === 'USER' && this.extractText(e as CaseMessageEvent).trim() === resp) {
+            userMessagesUsedAsAnswer.add(e.id)
+            break
+          }
+        }
+      }
+    }
+
     for (const e of allEvents) {
       if (e.type === 'MessageEvent') {
+        if (userMessagesUsedAsAnswer.has(e.id)) continue
         items.push({ kind: 'message', event: e as CaseMessageEvent })
+      } else if (e.type === 'QuestionEvent') {
+        const q = e as QuestionEvent
+        items.push({ kind: 'question', event: q, respondedAnswer: questionRespondedAnswers.get(q.id) ?? null })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const raw = e as ToolRequestEvent | ToolResponseEvent
         const requestId = raw.toolRequestId ?? e.id
@@ -384,6 +447,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'TextChunkEvent',
       'ToolRequestEvent',
       'ToolResponseEvent',
+      // WZ-31596: confirmation flow events. PendingConfirmationEvent and
+      // ConfirmationResolvedEvent are subscribed so the timeline can detect
+      // a pending/resolved state for the question widget.
+      'QuestionEvent',
+      'PendingConfirmationEvent',
+      'ConfirmationResolvedEvent',
+      'AnswerEvent',
     ] as const
 
     // handle the different event names we see in the SSE stream
@@ -470,6 +540,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           this.isRunning.set(false)
         },
       })
+  }
+
+  /**
+   * WZ-31596: handle the click on an inline CaseQuestion widget option.
+   *
+   * MVP path: we POST the chosen option's text as a regular user MessageEvent on
+   * /messages. The backend AgentSimple.handleConfirmationResolution falls back on
+   * `ConfirmationManager.analyzeConfirmation` (lenient matching on "Confirmer"/
+   * "Annuler" / oui / non / yes / no) and resolves the pending confirmation.
+   *
+   * Future (tracked dette): POST a typed AnswerEvent on a dedicated endpoint so
+   * handleConfirmationResolution takes its path 1 (direct decision without LLM call).
+   */
+  protected onQuestionAnswer(event: { questionId: string; answer: string }): void {
+    console.log('[CaseChat] Question answered', event)
+    this.sendMessage(event.answer)
   }
 
   protected interrupt(): void {
