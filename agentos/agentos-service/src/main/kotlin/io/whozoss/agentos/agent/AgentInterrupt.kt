@@ -75,8 +75,11 @@ sealed class AgentInterrupt(
      *   that initiated this pending. Used to pair with the synthetic tool_result later.
      * @param pendingPayloadJson Payload serialised as JSON (string-typed for
      *   plugin/service classloader safety).
-     * @param confirmationLabel Sanitized human-readable label (whitelist + 200 chars).
-     *   Becomes the question text of the [QuestionEvent].
+     * @param confirmationLabel Sanitized deterministic label (whitelist + 200 chars).
+     *   Persisted on the [PendingConfirmationEvent] for audit; used as fallback if the
+     *   LLM-formulated [question] is unavailable.
+     * @param question User-facing prompt formulated by the LLM out-of-channel (matches the
+     *   conversation language/register). Becomes the text of the [QuestionEvent].
      * @param analysisInstructions Optional plugin-supplied analyze-confirmation guidance,
      *   used as fallback when the user replies in free-form text (no AnswerEvent).
      * @param questionId Pre-generated id for the paired QuestionEvent. The handler uses
@@ -88,6 +91,7 @@ sealed class AgentInterrupt(
         val toolRequestId: String,
         val pendingPayloadJson: String,
         val confirmationLabel: String,
+        val question: String,
         val analysisInstructions: String,
         val questionId: UUID,
     ) : AgentInterrupt("Awaiting user confirmation for '$toolName'")

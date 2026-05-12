@@ -94,7 +94,7 @@ class ConfirmationManager(
                 <$TAG_DECISION>
                 """.trimIndent()
 
-            val hasAlreadyConfirmed = callDecision(chatClient, prompt) == CHOICE_YES
+            val hasAlreadyConfirmed = callDecision(chatClient, prompt).startsWith(CHOICE_YES)
             if (hasAlreadyConfirmed) {
                 logger.info { "[ConfirmationManager] LLM says user already confirmed — skipping prompt" }
             } else {
@@ -165,6 +165,62 @@ class ConfirmationManager(
         }
     }
 
+    /**
+     * Formulates a short, user-facing confirmation prompt in the conversation's natural
+     * language and register. Out-of-LLM-channel: the result populates [QuestionEvent.question]
+     * but never appears as an assistant message in the main turn's history, so it cannot
+     * trigger the LLM-re-call after-confirm regression that the v1 placeholder caused.
+     *
+     * Fails safely to [fallbackLabel] on any error — same philosophy as [shouldConfirm].
+     *
+     * @param chatClient The agent's ChatClient (model parity with the main turn).
+     * @param history The conversation history the LLM should match in tone/language.
+     * @param fallbackLabel Deterministic tool-supplied label, used if extraction fails.
+     * @param pendingData Structured action data, serialised into the prompt for grounding.
+     */
+    fun formulateQuestion(
+        chatClient: ChatClient,
+        history: List<Message>,
+        fallbackLabel: String,
+        pendingData: Any,
+    ): String {
+        return try {
+            val payloadSummary = serializeSafely(pendingData)
+            val prompt =
+                """
+                You are formulating a short, user-facing confirmation prompt for an action the agent is about to perform.
+
+                Conversation context:
+                ${historyToString(history).putBetween(TAG_CONVERSATION)}
+
+                Action label (deterministic, for reference): $fallbackLabel
+                Pending data: $payloadSummary
+
+                Write ONE short sentence asking the user to confirm. Match the language and register of the conversation. Do not add alternatives, explanations, or speculation. Reply between <$TAG_QUESTION></$TAG_QUESTION> tags.
+
+                <$TAG_QUESTION>
+                """.trimIndent()
+
+            val raw =
+                chatClient
+                    .prompt(Prompt(UserMessage(prompt)))
+                    .call()
+                    .content()
+                    .orEmpty()
+            val extracted = sanitizeQuestion(extractTag(raw, QUESTION_TAG_REGEX))
+            if (extracted.isBlank()) {
+                logger.warn { "[ConfirmationManager] formulateQuestion returned blank, falling back to label" }
+                fallbackLabel
+            } else {
+                logger.info { "[ConfirmationManager] formulated question='$extracted'" }
+                extracted
+            }
+        } catch (e: Exception) {
+            logger.warn(e) { "[ConfirmationManager] formulateQuestion failed, falling back to label" }
+            fallbackLabel
+        }
+    }
+
     private fun callDecision(
         chatClient: ChatClient,
         prompt: String,
@@ -175,13 +231,18 @@ class ConfirmationManager(
                 .call()
                 .content()
                 .orEmpty()
-        return extractDecision(raw).trim().lowercase()
+        return extractTag(raw, DECISION_TAG_REGEX).trim().lowercase()
     }
 
-    private fun extractDecision(raw: String): String {
-        val match = DECISION_TAG_REGEX.find(raw)
+    private fun extractTag(
+        raw: String,
+        regex: Regex,
+    ): String {
+        val match = regex.find(raw)
         return match?.groupValues?.get(1) ?: raw
     }
+
+    private fun sanitizeQuestion(s: String): String = s.replace(Regex("\\p{Cntrl}"), "").trim().take(300)
 
     private fun serializeSafely(data: Any): String =
         try {
@@ -223,8 +284,10 @@ class ConfirmationManager(
     companion object : KLogging() {
         private const val TAG_DECISION = "decision"
         private const val TAG_CONVERSATION = "conversation"
+        private const val TAG_QUESTION = "question"
         private const val CHOICE_YES = "yes"
         private const val CHOICE_NO = "no"
         private val DECISION_TAG_REGEX = Regex("<decision>(.*?)</decision>", RegexOption.DOT_MATCHES_ALL)
+        private val QUESTION_TAG_REGEX = Regex("<question>(.*?)</question>", RegexOption.DOT_MATCHES_ALL)
     }
 }

@@ -145,4 +145,38 @@ class ConfirmationManagerSpec :
                 specificInstructions = "",
             ) shouldBe true
         }
+
+        // ─── formulateQuestion ──────────────────────────────────────────────────────────────
+
+        "formulateQuestion returns the LLM-extracted question when the tag is present" {
+            val chatClient =
+                stubChatClient("<question>Je vais supprimer scratch.txt, tu confirmes ?</question>")
+            manager.formulateQuestion(
+                chatClient = chatClient,
+                history = listOf(UserMessage("supprime scratch.txt")),
+                fallbackLabel = "Delete file scratch.txt",
+                pendingData = mapOf("path" to "scratch.txt"),
+            ) shouldBe "Je vais supprimer scratch.txt, tu confirmes ?"
+        }
+
+        "formulateQuestion falls back to the deterministic label on any LLM exception" {
+            val chatClient = mockk<ChatClient>()
+            every { chatClient.prompt(any<Prompt>()) } throws RuntimeException("LLM down")
+            manager.formulateQuestion(
+                chatClient = chatClient,
+                history = emptyList(),
+                fallbackLabel = "Delete file scratch.txt",
+                pendingData = mapOf("path" to "scratch.txt"),
+            ) shouldBe "Delete file scratch.txt"
+        }
+
+        "formulateQuestion falls back to the label when the LLM reply is blank inside the tag" {
+            val chatClient = stubChatClient("<question>   </question>")
+            manager.formulateQuestion(
+                chatClient = chatClient,
+                history = emptyList(),
+                fallbackLabel = "Delete file scratch.txt",
+                pendingData = mapOf("path" to "scratch.txt"),
+            ) shouldBe "Delete file scratch.txt"
+        }
     })

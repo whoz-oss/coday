@@ -104,12 +104,10 @@ class AgentSimple(
                     return@flow
                 }
 
-                // WZ-31596: resolve any pending confirmation BEFORE building messages, and
-                // accumulate the resolution events into `effectiveEvents` so the LLM history
-                // (built by convertEventsToMessages below) reflects the resolution.
-                // Failing to do this would leave the placeholder tool_result + the user's
-                // "oui" reply in the history without any link, pushing the LLM to re-call
-                // the original tool.
+                // Resolve any pending confirmation BEFORE building messages and accumulate the
+                // resolution events into `effectiveEvents` — otherwise the LLM history would show
+                // the placeholder tool_result + the user's reply with no link, pushing the LLM
+                // to re-call the original tool.
                 val effectiveEvents = events.toMutableList()
                 val unresolvedPending = findUnresolvedPendingConfirmation(events)
                 if (unresolvedPending != null) {
@@ -315,7 +313,6 @@ class AgentSimple(
             toolResponses[toolResponse.toolRequestId] = toolResponse
         }
 
-        // WZ-31596 map: pending.toolRequestId → ConfirmationResolvedEvent (if resolved).
         val pendingsById: Map<UUID, PendingConfirmationEvent> =
             events.filterIsInstance<PendingConfirmationEvent>().associateBy { it.metadata.id }
         val resolutionByToolRequestId: Map<String, ConfirmationResolvedEvent> =
@@ -325,35 +322,26 @@ class AgentSimple(
                     val pending = pendingsById[resolved.pendingEventId] ?: return@mapNotNull null
                     pending.toolRequestId to resolved
                 }.toMap()
-        val unresolvedPendingToolRequestIds: Set<String> = run {
-            val resolvedIds =
-                events.filterIsInstance<ConfirmationResolvedEvent>().mapTo(mutableSetOf()) { it.pendingEventId }
-            events
-                .filterIsInstance<PendingConfirmationEvent>()
-                .filter { it.metadata.id !in resolvedIds }
-                .mapTo(mutableSetOf()) { it.toolRequestId }
-        }
+        val unresolvedPendingToolRequestIds: Set<String> =
+            pendingsById.values
+                .asSequence()
+                .map { it.toolRequestId }
+                .filter { it !in resolutionByToolRequestId }
+                .toMutableSet()
 
-        // WZ-31596: filter user MessageEvents that fell between a PendingConfirmationEvent
-        // and its ConfirmationResolvedEvent — i.e., the free-form text fallback for a
-        // confirmation reply. Without filtering, "oui" would appear in the LLM history
-        // after the synthetic tool_result and look like a fresh request → R12.
+        // Free-form confirmation replies (user typed "oui" instead of clicking the widget)
+        // are filtered out: without this, they would appear after the synthetic tool_result
+        // and look like a fresh user request → the LLM would re-call the tool.
         val confirmationReplyMessageIds: Set<UUID> = run {
             val skipped = mutableSetOf<UUID>()
-            val resolvedAtIndex: Map<UUID, Int> =
-                events
-                    .withIndex()
-                    .filter { (_, ev) -> ev is ConfirmationResolvedEvent }
-                    .associate { (idx, ev) -> (ev as ConfirmationResolvedEvent).pendingEventId to idx }
-            events.forEachIndexed { idx, ev ->
-                if (ev is PendingConfirmationEvent) {
-                    val endIdx = resolvedAtIndex[ev.metadata.id] ?: return@forEachIndexed
-                    for (k in (idx + 1) until endIdx) {
-                        val next = events[k]
-                        if (next is MessageEvent && next.actor.role == ActorRole.USER) {
-                            skipped += next.metadata.id
-                        }
-                    }
+            var openPendingId: UUID? = null
+            for (ev in events) {
+                when (ev) {
+                    is PendingConfirmationEvent -> openPendingId = ev.metadata.id
+                    is ConfirmationResolvedEvent -> if (openPendingId == ev.pendingEventId) openPendingId = null
+                    is MessageEvent ->
+                        if (openPendingId != null && ev.actor.role == ActorRole.USER) skipped += ev.metadata.id
+                    else -> Unit
                 }
             }
             skipped
@@ -522,7 +510,7 @@ class AgentSimple(
                         caseEvents = filteredEvents,
                     )
 
-                // WZ-31596: confirmation flow short-circuits executeWithJson for opt-in tools.
+                // Opt-in tools short-circuit executeWithJson via the confirmation flow.
                 // Note: this runs BEFORE the regular execute, so an opt-in tool's execute()
                 // is never reached — eliminating the "tool forgot to throw" failure mode.
                 val confirmationOutcome =
@@ -535,17 +523,22 @@ class AgentSimple(
                             objectMapper = objectMapper,
                         )
                     } catch (e: Exception) {
+                        // Pre-flight validation failure (e.g. path does not exist). Surface the
+                        // error to the LLM as a tool_result so it can retry with corrected input,
+                        // instead of letting the exception cut the Spring AI stream and leave
+                        // the case stuck in IDLE without any user-visible message.
+                        val errorMessage = "Error: ${e.message}"
                         sendEvent(
                             ToolResponseEvent(
                                 namespaceId = namespaceId,
                                 caseId = caseId,
                                 toolRequestId = toolRequestId,
                                 toolName = tool.name,
-                                output = MessageContent.Text("Error: ${e.message}"),
+                                output = MessageContent.Text(errorMessage),
                                 success = false,
                             ),
                         )
-                        throw e
+                        return errorMessage
                     }
                 when (confirmationOutcome) {
                     is ConfirmationOutcome.Skip -> {
@@ -596,6 +589,7 @@ class AgentSimple(
                             toolRequestId = toolRequestId,
                             pendingPayloadJson = confirmationOutcome.payloadJson,
                             confirmationLabel = confirmationOutcome.label,
+                            question = confirmationOutcome.question,
                             analysisInstructions = confirmationOutcome.instructions,
                             questionId = confirmationOutcome.questionId,
                         )
@@ -664,7 +658,7 @@ class AgentSimple(
             }
         }
 
-    // ─── WZ-31596 confirmation helpers ─────────────────────────────────────────────────────
+    // ─── Confirmation helpers ──────────────────────────────────────────────────────────────
 
     /**
      * Find a [PendingConfirmationEvent] in [events] that hasn't been closed by a matching
@@ -749,7 +743,7 @@ class AgentSimple(
                 namespaceId = namespaceId,
                 userId = userId,
                 userExternalId = userExternalId,
-                caseEvents = caseEventsProvider(),
+                caseEvents = events,
             )
 
         // Path 1: AnswerEvent linked to the pending's questionId (UI button click).
@@ -859,6 +853,7 @@ class AgentSimple(
         data class Await(
             val payloadJson: String,
             val label: String,
+            val question: String,
             val instructions: String,
             val questionId: UUID,
         ) : ConfirmationOutcome()
@@ -897,13 +892,14 @@ class AgentSimple(
         if (!typed.requiresConfirmation(parsedInput, context)) return ConfirmationOutcome.Skip
 
         val payload = typed.getConfirmationPayload(parsedInput, context)
+        val history by lazy { convertEventsToMessages(context.caseEvents) }
         // Tools flagged bypassImplicitConsent always force an explicit prompt; skip the LLM
         // judgement step entirely (intended for destructive actions like file deletion).
         val needsExplicit =
             tool.bypassImplicitConsent ||
                 confirmationManager.shouldConfirm(
                     chatClient = chatClient,
-                    history = convertEventsToMessages(context.caseEvents),
+                    history = history,
                     actionLabel = "Tool ${tool.name}",
                     proposedData = payload,
                 )
@@ -912,12 +908,22 @@ class AgentSimple(
             return ConfirmationOutcome.ExecutedDirectly(typed.executeWithConfirmation(payload, context))
         }
 
-        // Explicit confirmation required → defer via Question/Answer.
+        // Explicit confirmation required → defer via Question/Answer. The deterministic label
+        // is kept for audit on PendingConfirmationEvent; the user-facing widget text is
+        // formulated by the LLM out-of-channel so it matches the conversation language.
         val payloadJson = objectMapper.writeValueAsString(payload)
         val sanitizedLabel = sanitizeForLlm(typed.confirmationLabel(payload))
+        val question =
+            confirmationManager.formulateQuestion(
+                chatClient = chatClient,
+                history = history,
+                fallbackLabel = sanitizedLabel,
+                pendingData = payload,
+            )
         return ConfirmationOutcome.Await(
             payloadJson = payloadJson,
             label = sanitizedLabel,
+            question = question,
             instructions = typed.getConfirmationAnalysisInstructions(),
             questionId = UUID.randomUUID(),
         )

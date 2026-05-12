@@ -79,7 +79,7 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
                     caseId = caseId,
                     agentId = agent.id,
                     agentName = agent.name,
-                    question = e.confirmationLabel,
+                    question = e.question,
                     options = CONFIRMATION_OPTIONS,
                 ),
             )
