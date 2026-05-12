@@ -13,7 +13,7 @@ import io.mockk.mockk
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
-import io.whozoss.agentos.reconciliation.ConfigReconciliationService
+import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -74,7 +74,7 @@ class ToolRegistryServiceSpec : StringSpec({
         }
 
         val integrationTypeRegistry = mockk<IntegrationTypeRegistry>(relaxed = true)
-        val reconciliationService = mockk<ConfigReconciliationService<IntegrationConfig>>(relaxed = true)
+        val reconciliationService = mockk<ConfigMergeService<IntegrationConfig>>(relaxed = true)
 
         val service = ToolRegistryService(pluginManager, integrationConfigService, integrationTypeRegistry, reconciliationService)
         service.initialize()
@@ -333,7 +333,7 @@ class ToolRegistryServiceSpec : StringSpec({
         every { integrationConfigService.findByUserId(any()) } returns userOverrides
 
         val integrationTypeRegistry = mockk<IntegrationTypeRegistry>(relaxed = true)
-        val reconciliationService = mockk<ConfigReconciliationService<IntegrationConfig>>(relaxed = true)
+        val reconciliationService = mockk<ConfigMergeService<IntegrationConfig>>(relaxed = true)
         every { reconciliationService.resolve(any(), any(), any()) } answers {
             val name = thirdArg<String>()
             reconciledConfigs[name]

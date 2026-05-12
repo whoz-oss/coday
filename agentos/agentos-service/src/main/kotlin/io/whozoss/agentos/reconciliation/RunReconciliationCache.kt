@@ -1,16 +1,18 @@
 package io.whozoss.agentos.reconciliation
 
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Per-agent-run memoization of [ConfigReconciliationService.resolve] results.
+ * Per-agent-run memoization of [ConfigMergeService.resolve] results.
  *
  * Lifetime: instantiated per agent run by [io.whozoss.agentos.agent.AgentServiceImpl.createAgentInstance],
  * passed to all reconciliation call sites within that run, then discarded with the run.
  *
- * NOT thread-safe by design — a single agent run is single-threaded by Spring AI / our
- * orchestration layer. If we ever execute tool resolution concurrently within a run,
- * wrap the [cache] map with ConcurrentHashMap.
+ * Backed by [ConcurrentHashMap] so the cache stays safe under concurrent tool resolution
+ * within a run (defensive — the current execution model is single-threaded by Spring AI
+ * / our orchestration layer, but this removes an entire class of latent regression should
+ * that ever change).
  *
  * Defence-in-depth: the cache key includes `(namespaceId, userId)` even though a single
  * cache instance lives for one `(namespaceId, userId)` run by construction. Should the
@@ -18,7 +20,7 @@ import java.util.UUID
  * the scoped key prevents a cross-tenant config leak. Cost is one extra `UUID` per entry.
  */
 class RunReconciliationCache {
-    private val cache = mutableMapOf<CacheKey, Any>()
+    private val cache = ConcurrentHashMap<CacheKey, Any>()
 
     data class CacheKey(
         val name: String,

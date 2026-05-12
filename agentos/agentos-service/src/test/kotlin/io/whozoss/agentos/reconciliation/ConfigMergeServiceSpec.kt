@@ -13,7 +13,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * Unit tests for [ConfigReconciliationService] covering the eight precedence-layer
+ * Unit tests for [ConfigMergeService] covering the eight precedence-layer
  * combinations enumerated in story 6.1 / AC10, plus the granular per-parameter merge
  * assertion from AC10's last row.
  *
@@ -22,7 +22,7 @@ import java.util.UUID
  * the [MergeStrategy] under test, which doubles as a contract test for the merge semantics
  * relied upon by the precedence cases.
  */
-class ConfigReconciliationServiceSpec : StringSpec({
+class ConfigMergeServiceSpec : StringSpec({
 
     val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
     val mergeStrategy = IntegrationConfigMergeStrategy()
@@ -51,12 +51,12 @@ class ConfigReconciliationServiceSpec : StringSpec({
         namespaceShared: IntegrationConfig?,
         userGlobal: IntegrationConfig?,
         userNamespace: IntegrationConfig?,
-    ): ConfigReconciliationService<IntegrationConfig> {
+    ): ConfigMergeService<IntegrationConfig> {
         val lookup = mockk<ConfigLookup<IntegrationConfig>>()
         every { lookup.findByTriple(NAMESPACE_ID, null, NAME) } returns namespaceShared
         every { lookup.findByTriple(null, USER_ID, NAME) } returns userGlobal
         every { lookup.findByTriple(NAMESPACE_ID, USER_ID, NAME) } returns userNamespace
-        return ConfigReconciliationService(lookup, mergeStrategy)
+        return ConfigMergeService(lookup, mergeStrategy)
     }
 
     // -------------------------------------------------------------------------

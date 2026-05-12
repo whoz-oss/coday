@@ -51,7 +51,7 @@ interface MergeStrategy<T : Entity> {
 }
 
 /**
- * Thrown by [ConfigReconciliationService.resolve] when none of the three precedence layers
+ * Thrown by [ConfigMergeService.resolve] when none of the three precedence layers
  * contains a configuration for the requested triple.
  *
  * Carries the failing triple in both the structured fields (for typed handling upstream) and
@@ -83,14 +83,14 @@ class ConfigNotFoundException(
  * (FR13, NFR-REL-2).
  *
  * Open class with explicit constructor injection: per-entity beans are wired by
- * [io.whozoss.agentos.reconciliation.ReconciliationConfiguration]. Spring cannot
+ * [io.whozoss.agentos.reconciliation.MergeConfiguration]. Spring cannot
  * auto-resolve `ConfigLookup<T>` / `MergeStrategy<T>` from a single
- * `@Service ConfigReconciliationService<T>` declaration because Kotlin's type erasure leaves
+ * `@Service ConfigMergeService<T>` declaration because Kotlin's type erasure leaves
  * the runtime container with no way to choose between competing parameterised beans — RFC Q7.
  *
  * @param T the entity type being reconciled
  */
-open class ConfigReconciliationService<T : Entity>(
+open class ConfigMergeService<T : Entity>(
     private val lookup: ConfigLookup<T>,
     private val mergeStrategy: MergeStrategy<T>,
 ) {

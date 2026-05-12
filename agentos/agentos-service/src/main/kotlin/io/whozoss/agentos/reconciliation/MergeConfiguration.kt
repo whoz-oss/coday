@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /**
- * Wires per-entity beans of [ConfigReconciliationService].
+ * Wires per-entity beans of [ConfigMergeService].
  *
  * Spring cannot derive parameterised reconciliation beans from a single `@Service` declaration
  * (Kotlin type erasure: the container has no way to disambiguate `ConfigLookup<IntegrationConfig>`
@@ -21,22 +21,22 @@ import org.springframework.context.annotation.Configuration
  * its bean explicitly here.
  */
 @Configuration
-class ReconciliationConfiguration {
+class MergeConfiguration {
     @Bean
-    fun integrationConfigReconciliationService(
+    fun integrationConfigMergeService(
         lookup: IntegrationConfigLookup,
         mergeStrategy: IntegrationConfigMergeStrategy,
-    ): ConfigReconciliationService<IntegrationConfig> = ConfigReconciliationService(lookup, mergeStrategy)
+    ): ConfigMergeService<IntegrationConfig> = ConfigMergeService(lookup, mergeStrategy)
 
     @Bean
     fun aiProviderReconciliationService(
         lookup: AiProviderLookup,
         mergeStrategy: AiProviderMergeStrategy,
-    ): ConfigReconciliationService<AiProvider> = ConfigReconciliationService(lookup, mergeStrategy)
+    ): ConfigMergeService<AiProvider> = ConfigMergeService(lookup, mergeStrategy)
 
     @Bean
     fun aiModelReconciliationService(
         lookup: AiModelLookup,
         mergeStrategy: AiModelMergeStrategy,
-    ): ConfigReconciliationService<AiModel> = ConfigReconciliationService(lookup, mergeStrategy)
+    ): ConfigMergeService<AiModel> = ConfigMergeService(lookup, mergeStrategy)
 }

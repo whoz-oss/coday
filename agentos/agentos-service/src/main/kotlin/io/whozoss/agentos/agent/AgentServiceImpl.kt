@@ -7,7 +7,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.reconciliation.ConfigReconciliationService
+import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.reconciliation.RunReconciliationCache
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -50,8 +50,8 @@ class AgentServiceImpl(
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
-    private val aiModelReconciliationService: ConfigReconciliationService<AiModel>,
-    private val aiProviderReconciliationService: ConfigReconciliationService<AiProvider>,
+    private val aiModelReconciliationService: ConfigMergeService<AiModel>,
+    private val aiProviderReconciliationService: ConfigMergeService<AiProvider>,
     private val agentConfigService: AgentConfigService,
 ) : AgentService {
     override fun findAgentByName(

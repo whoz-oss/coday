@@ -60,7 +60,7 @@ erDiagram
 > | `null` | `null` | ❌ Invalid — rejected at creation time |
 >
 > **User-level overlays**: when user `U` runs an agent in namespace `N`, the
-> `ConfigReconciliationService` folds the three layers (namespace-shared → user-global →
+> `ConfigMergeService` folds the three layers (namespace-shared → user-global →
 > user×namespace) field-by-field to produce the effective runtime config. Namespace-scope list
 > endpoints (`GET /api/integration-configs/by-parentId/{N}`, etc.) only return the
 > `userId IS NULL` rows — user overlays are private.

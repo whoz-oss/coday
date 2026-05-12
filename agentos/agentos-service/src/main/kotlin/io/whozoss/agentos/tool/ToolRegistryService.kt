@@ -4,7 +4,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.reconciliation.ConfigNotFoundException
-import io.whozoss.agentos.reconciliation.ConfigReconciliationService
+import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.reconciliation.RunReconciliationCache
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
@@ -43,7 +43,7 @@ class ToolRegistryService(
     private val pluginManager: PluginManager,
     private val integrationConfigService: IntegrationConfigService,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
-    private val integrationConfigReconciliationService: ConfigReconciliationService<IntegrationConfig>,
+    private val integrationConfigMergeService: ConfigMergeService<IntegrationConfig>,
 ) {
     /** All loaded ToolPlugin extensions, indexed by integrationType for fast lookup. */
     private val pluginsByType = ConcurrentHashMap<String, ToolPlugin>()
@@ -165,7 +165,7 @@ class ToolRegistryService(
      * Combines:
      * 1. Fresh instances from config-less plugins.
      * 2. For each distinct config name found in namespace-shared OR user overlays, a reconciled
-     *    config is built via [ConfigReconciliationService] and passed to the matching plugin.
+     *    config is built via [ConfigMergeService] and passed to the matching plugin.
      *
      * When [agentIntegrations] is non-null, the same two-level filter as [resolveToolsForNamespace]
      * applies: integrations not listed are skipped, and tool-level filtering uses [isToolAllowed].
@@ -240,8 +240,8 @@ class ToolRegistryService(
 
             val resolvedConfig = try {
                 cache?.getOrCompute(name, IntegrationConfig::class.java, namespaceId, userId) {
-                    integrationConfigReconciliationService.resolve(namespaceId, userId, name)
-                } ?: integrationConfigReconciliationService.resolve(namespaceId, userId, name)
+                    integrationConfigMergeService.resolve(namespaceId, userId, name)
+                } ?: integrationConfigMergeService.resolve(namespaceId, userId, name)
             } catch (e: ConfigNotFoundException) {
                 if (name in sharedNames) {
                     // The namespace itself declares this integration → reconciliation MUST

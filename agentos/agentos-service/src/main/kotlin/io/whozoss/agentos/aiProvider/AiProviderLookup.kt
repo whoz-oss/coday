@@ -9,8 +9,8 @@ import java.util.UUID
  * [ConfigLookup] adapter for [AiProvider].
  *
  * Trivial wrapper around [AiProviderRepository.findByTriple] — kept as a separate bean
- * so the generic [io.whozoss.agentos.reconciliation.ConfigReconciliationService] can be wired
- * by [io.whozoss.agentos.reconciliation.ReconciliationConfiguration] without leaking the
+ * so the generic [io.whozoss.agentos.reconciliation.ConfigMergeService] can be wired
+ * by [io.whozoss.agentos.reconciliation.MergeConfiguration] without leaking the
  * repository contract into the reconciliation package.
  */
 @Component

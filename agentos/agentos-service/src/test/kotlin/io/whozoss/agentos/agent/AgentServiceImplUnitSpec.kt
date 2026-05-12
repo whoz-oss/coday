@@ -18,7 +18,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.reconciliation.ConfigReconciliationService
+import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -38,9 +38,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val namespaceService: NamespaceService = mockk()
     private val integrationConfigService: IntegrationConfigService = mockk(relaxed = true)
     private val userService: UserService = mockk(relaxed = true)
-    private val aiModelReconciliationService: ConfigReconciliationService<AiModel> =
+    private val aiModelReconciliationService: ConfigMergeService<AiModel> =
         mockk(relaxed = true)
-    private val aiProviderReconciliationService: ConfigReconciliationService<AiProvider> =
+    private val aiProviderReconciliationService: ConfigMergeService<AiProvider> =
         mockk(relaxed = true)
     private val agentConfigService: AgentConfigService = mockk()
     private val agentService =

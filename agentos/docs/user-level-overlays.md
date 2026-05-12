@@ -125,7 +125,7 @@ For each unique name, `configReconciliationService.resolve(N, U, name)` returns 
 The resolved `parameters` are passed to `ToolPlugin.provideTools(parameters, name)` — the plugin
 receives no indication that reconciliation occurred.
 
-If `ConfigReconciliationService.resolve(...)` throws `ConfigNotFoundException` for a given name,
+If `ConfigMergeService.resolve(...)` throws `ConfigNotFoundException` for a given name,
 the error is caught, a warning is logged, and that name is skipped — the run continues with the
 remaining tools.
 

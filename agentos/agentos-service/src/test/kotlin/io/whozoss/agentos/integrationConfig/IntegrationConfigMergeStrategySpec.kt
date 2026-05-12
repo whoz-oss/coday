@@ -12,9 +12,9 @@ import java.util.UUID
  * Unit tests for [IntegrationConfigMergeStrategy].
  *
  * Focuses on the JsonNode merge semantics — flat overrides, deep object merge, array
- * replacement, null handling — that the [io.whozoss.agentos.reconciliation.ConfigReconciliationService]
+ * replacement, null handling — that the [io.whozoss.agentos.reconciliation.ConfigMergeService]
  * relies on. The 3-tier resolution itself is covered by
- * [io.whozoss.agentos.reconciliation.ConfigReconciliationServiceSpec].
+ * [io.whozoss.agentos.reconciliation.ConfigMergeServiceSpec].
  */
 class IntegrationConfigMergeStrategySpec : StringSpec({
 
