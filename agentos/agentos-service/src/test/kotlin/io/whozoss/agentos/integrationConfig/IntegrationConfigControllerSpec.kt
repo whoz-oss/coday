@@ -10,6 +10,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -17,6 +18,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -52,6 +54,12 @@ class IntegrationConfigControllerSpec : StringSpec({
     val aliceId = UUID.randomUUID()
     val bobId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")
+
+    fun aliceUser() = User(
+        metadata = EntityMetadata(id = aliceId),
+        externalId = "alice@example.com",
+        email = "alice@example.com",
+    )
 
     fun authFor(userId: UUID): Authentication =
         UsernamePasswordAuthenticationToken(userId.toString(), "n/a", emptyList())
@@ -107,6 +115,7 @@ class IntegrationConfigControllerSpec : StringSpec({
     beforeTest {
         clearAllMocks()
         every { namespaceService.findById(namespaceId) } returns existingNamespace
+        every { userService.getCurrentUser() } returns aliceUser()
     }
 
     // -------------------------------------------------------------------------
@@ -148,22 +157,20 @@ class IntegrationConfigControllerSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "create rejects body.userId mismatched with authenticated principal with 400" {
-        val ex = withAuth(aliceId) {
-            shouldThrow<ResponseStatusException> {
+        withAuth(aliceId) {
+            shouldThrow<BadRequestException> {
                 controller.create(resource(id = null, nsId = null, userId = bobId))
             }
         }
-        ex.statusCode shouldBe HttpStatus.BAD_REQUEST
         verify(exactly = 0) { service.create(any()) }
     }
 
     "create rejects payload with neither namespaceId nor userId with 400" {
-        val ex = withAuth(aliceId) {
-            shouldThrow<ResponseStatusException> {
+        withAuth(aliceId) {
+            shouldThrow<BadRequestException> {
                 controller.create(resource(id = null, nsId = null, userId = null))
             }
         }
-        ex.statusCode shouldBe HttpStatus.BAD_REQUEST
     }
 
     // -------------------------------------------------------------------------
@@ -333,7 +340,7 @@ class IntegrationConfigControllerSpec : StringSpec({
             config(nsId = null, userId = aliceId, name = "GLOBAL_JIRA"),
             config(nsId = namespaceId, userId = aliceId, name = "NS_JIRA"),
         )
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 20, auth = authFor(aliceId))
 
@@ -344,9 +351,8 @@ class IntegrationConfigControllerSpec : StringSpec({
     "list with namespaceId=none returns only user-global rows" {
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL"),
-            config(nsId = namespaceId, userId = aliceId, name = "NS"),
         )
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(namespaceId = "none", userId = "me", page = 0, size = 20, auth = authFor(aliceId))
 
@@ -356,9 +362,8 @@ class IntegrationConfigControllerSpec : StringSpec({
     "list with namespaceId=NONE (uppercase) is also user-global" {
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL"),
-            config(nsId = namespaceId, userId = aliceId, name = "NS"),
         )
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(namespaceId = "NONE", userId = "me", page = 0, size = 20, auth = authFor(aliceId))
 
@@ -366,13 +371,10 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     "list with specific namespaceId and userId=me returns only that namespace's user rows" {
-        val otherNs = UUID.randomUUID()
         val rows = listOf(
-            config(nsId = null, userId = aliceId, name = "GLOBAL"),
             config(nsId = namespaceId, userId = aliceId, name = "NS"),
-            config(nsId = otherNs, userId = aliceId, name = "OTHER"),
         )
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -386,16 +388,11 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     "list with specific namespaceId and no userId returns NS-shared rows" {
-        // F1 — the NS-shared list path requires READ on the namespace (gate inherited
-        // from the legacy /by-parentId/ route). Grant READ for alice on this namespace.
-        every {
-            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-        } returns true
         val rows = listOf(
             config(nsId = namespaceId, userId = null, name = "NS-A"),
             config(nsId = namespaceId, userId = null, name = "NS-B"),
         )
-        every { service.findByNamespaceShared(namespaceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -409,7 +406,8 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
-        // F1 — caller without READ gets [], not an exception.
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
+
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
@@ -420,19 +418,17 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         resp.content shouldBe emptyList()
         resp.totalElements shouldBe 0
-        verify(exactly = 0) { service.findByNamespaceShared(any()) }
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
-        val ex = shouldThrow<ResponseStatusException> {
+        shouldThrow<BadRequestException> {
             controller.list(namespaceId = null, userId = bobId.toString(), page = 0, size = 20, auth = authFor(aliceId))
         }
-        ex.statusCode.value() shouldBe 400
     }
 
     "list pagination returns the correct slice" {
         val rows = (1..5).map { config(nsId = null, userId = aliceId, name = "N$it") }
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = null, page = 1, size = 2, auth = authFor(aliceId))
 
@@ -444,7 +440,7 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     "list pagination caps size at 100" {
-        every { service.findByUserId(aliceId) } returns emptyList()
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
 
         val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 500, auth = authFor(aliceId))
 
@@ -452,9 +448,8 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     "list with invalid namespaceId throws 400 BAD_REQUEST" {
-        val ex = shouldThrow<ResponseStatusException> {
+        shouldThrow<BadRequestException> {
             controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null, page = 0, size = 20, auth = authFor(aliceId))
         }
-        ex.statusCode.value() shouldBe 400
     }
 })

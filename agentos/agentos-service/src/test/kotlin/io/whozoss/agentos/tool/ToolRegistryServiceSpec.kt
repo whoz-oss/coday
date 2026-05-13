@@ -337,7 +337,7 @@ class ToolRegistryServiceSpec : StringSpec({
         every { reconciliationService.resolve(any(), any(), any()) } answers {
             val name = thirdArg<String>()
             reconciledConfigs[name]
-                ?: throw io.whozoss.agentos.reconciliation.ConfigNotFoundException(firstArg(), secondArg(), name)
+                ?: throw ConfigNotFoundException(firstArg(), secondArg(), name)
         }
 
         val service = ToolRegistryService(pluginManager, integrationConfigService, integrationTypeRegistry, reconciliationService)

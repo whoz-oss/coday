@@ -113,7 +113,10 @@ class AiModelControllerSpec : StringSpec({
         isAdmin = admin,
     )
 
-    beforeTest { clearAllMocks() }
+    beforeTest {
+        clearAllMocks()
+        every { userService.getCurrentUser() } returns aliceUser()
+    }
 
     // -------------------------------------------------------------------------
     // 1-4) toResource — mapping
@@ -276,6 +279,7 @@ class AiModelControllerSpec : StringSpec({
         val badAuth = UsernamePasswordAuthenticationToken("not-a-uuid", "n/a", emptyList())
         val previous = SecurityContextHolder.getContext().authentication
         SecurityContextHolder.getContext().authentication = badAuth
+        every { userService.getCurrentUser() } throws ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication identifier")
         try {
             val ex = shouldThrow<ResponseStatusException> {
                 controller.create(resource())
@@ -285,6 +289,7 @@ class AiModelControllerSpec : StringSpec({
             verify(exactly = 0) { aiModelGuard.canCreateVerdict(any(), any()) }
         } finally {
             SecurityContextHolder.getContext().authentication = previous
+            every { userService.getCurrentUser() } returns aliceUser()
         }
     }
 
@@ -305,16 +310,15 @@ class AiModelControllerSpec : StringSpec({
     // 15) list — NS-shared mode returns NS-shared models (userId == null)
     // -------------------------------------------------------------------------
 
-    "list NS-shared mode returns models with userId null filtered from findByNamespaceId" {
+    "list NS-shared mode returns models with userId null filtered from findFiltered" {
         val rows = listOf(
             model(nsId = namespaceId, uId = null, apiModelName = "NS-A"),
             model(nsId = namespaceId, uId = null, apiModelName = "NS-B"),
-            model(nsId = namespaceId, uId = aliceId, apiModelName = "USER-OVERLAY"),
         )
         every {
             permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
         } returns true
-        every { aiModelService.findByNamespaceId(namespaceId) } returns rows
+        every { aiModelService.findFiltered(any(), any(), any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -338,7 +342,7 @@ class AiModelControllerSpec : StringSpec({
             model(nsId = null, uId = aliceId, apiModelName = "GLOBAL"),
             model(nsId = namespaceId, uId = aliceId, apiModelName = "NS"),
         )
-        every { aiModelService.findByUserId(aliceId) } returns rows
+        every { aiModelService.findFiltered(any(), any(), any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = null,
@@ -363,7 +367,7 @@ class AiModelControllerSpec : StringSpec({
             model(nsId = namespaceId, uId = null, apiModelName = "M2"),
         )
         every { aiModelGuard.canSeeProvider(aiProviderId, any()) } returns true
-        every { aiModelService.findByParent(aiProviderId) } returns rows
+        every { aiModelService.findFiltered(any(), any(), any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = null,
@@ -386,6 +390,7 @@ class AiModelControllerSpec : StringSpec({
         every {
             permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
         } returns false
+        every { aiModelService.findFiltered(any(), any(), any(), any(), any(), any(), any()) } returns emptyList()
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -398,7 +403,7 @@ class AiModelControllerSpec : StringSpec({
 
         resp.content shouldBe emptyList()
         resp.totalElements shouldBe 0
-        verify(exactly = 0) { aiModelService.findByNamespaceId(any()) }
+        verify(exactly = 1) { aiModelService.findFiltered(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------

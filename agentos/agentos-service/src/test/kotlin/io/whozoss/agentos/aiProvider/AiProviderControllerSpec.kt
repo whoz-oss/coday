@@ -20,6 +20,7 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -57,6 +58,12 @@ class AiProviderControllerSpec : StringSpec({
     val namespaceId = UUID.randomUUID()
     val aliceId = UUID.randomUUID()
     val bobId = UUID.randomUUID()
+
+    fun aliceUser() = User(
+        metadata = EntityMetadata(id = aliceId),
+        externalId = "alice@example.com",
+        email = "alice@example.com",
+    )
 
     fun authFor(userId: UUID): Authentication =
         UsernamePasswordAuthenticationToken(userId.toString(), "n/a", emptyList())
@@ -112,6 +119,7 @@ class AiProviderControllerSpec : StringSpec({
     beforeTest {
         clearAllMocks()
         every { namespaceService.findById(namespaceId) } returns existingNamespace
+        every { userService.getCurrentUser() } returns aliceUser()
     }
 
     // -------------------------------------------------------------------------
@@ -396,7 +404,7 @@ class AiProviderControllerSpec : StringSpec({
             config(nsId = null, uId = aliceId, name = "GLOBAL", apiKey = "sk-ant-secret123456789"),
             config(nsId = namespaceId, uId = aliceId, name = "NS", apiKey = "sk-ant-secret987654321"),
         )
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 20, auth = authFor(aliceId))
 
@@ -409,11 +417,10 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "list with namespaceId=none returns only user-global rows" {
-        val rows = listOf(
+        val globalRows = listOf(
             config(nsId = null, uId = aliceId, name = "GLOBAL"),
-            config(nsId = namespaceId, uId = aliceId, name = "NS"),
         )
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns globalRows
 
         val respLower = controller.list(namespaceId = "none", userId = "me", page = 0, size = 20, auth = authFor(aliceId))
         respLower.content.map { it.name } shouldBe listOf("GLOBAL")
@@ -423,13 +430,10 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "list with specific namespaceId and userId=me returns only that namespace's user rows" {
-        val otherNs = UUID.randomUUID()
         val rows = listOf(
-            config(nsId = null, uId = aliceId, name = "GLOBAL"),
             config(nsId = namespaceId, uId = aliceId, name = "NS"),
-            config(nsId = otherNs, uId = aliceId, name = "OTHER"),
         )
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -443,17 +447,11 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "list with specific namespaceId and no userId returns NS-shared rows for that namespace" {
-        // The NS-shared list path requires READ on the namespace (F1 — gate inherited from
-        // the legacy /by-parentId/ route). Grant READ for alice on this namespace.
-        every {
-            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-        } returns true
         val rows = listOf(
             config(nsId = namespaceId, uId = null, name = "NS-A"),
             config(nsId = namespaceId, uId = null, name = "NS-B"),
-            config(nsId = namespaceId, uId = aliceId, name = "USER-OVERLAY"),
         )
-        every { service.findByNamespaceId(namespaceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
@@ -467,8 +465,8 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
-        // F1 — caller without READ gets [], not an exception ; consistent with the
-        // user-overlay views which never 403.
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
+
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
@@ -479,7 +477,6 @@ class AiProviderControllerSpec : StringSpec({
 
         resp.content shouldBe emptyList()
         resp.totalElements shouldBe 0
-        verify(exactly = 0) { service.findByNamespaceId(any()) }
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
@@ -494,7 +491,7 @@ class AiProviderControllerSpec : StringSpec({
 
     "list pagination returns the correct slice" {
         val rows = (1..5).map { config(nsId = null, uId = aliceId, name = "P$it") }
-        every { service.findByUserId(aliceId) } returns rows
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = null, page = 1, size = 2, auth = authFor(aliceId))
 
@@ -506,7 +503,7 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "list pagination caps size at 100" {
-        every { service.findByUserId(aliceId) } returns emptyList()
+        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
 
         val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 200, auth = authFor(aliceId))
 
