@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
+import io.whozoss.agentos.exception.BadRequestException
 import java.util.UUID
 import kotlin.math.min
 
@@ -335,7 +336,7 @@ class AiModelController(
         raw == null -> null
         raw.equals(NONE_SENTINEL, ignoreCase = true) -> null
         else -> runCatching { UUID.fromString(raw) }
-            .getOrElse { throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid namespaceId: '$raw'") }
+            .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
     }
 
     /**
