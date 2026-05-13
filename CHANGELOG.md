@@ -1,3 +1,13 @@
+## 0.144.1 (2026-05-13)
+
+### 🚀 Features
+
+- **agentos:** add repetition detection mechanism on AgentAdvanced (WZ-31597) ([#861](https://github.com/whoz-oss/coday/pull/861))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.144.0 (2026-05-12)
 
 ### 🚀 Features
