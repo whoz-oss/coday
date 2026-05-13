@@ -1,3 +1,15 @@
+## 0.144.2 (2026-05-13)
+
+### 🩹 Fixes
+
+- #31424 Fix autocomplete query ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Fix autocomplete query ([#871](https://github.com/whoz-oss/coday/pull/871), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.144.1 (2026-05-13)
 
 ### 🚀 Features
