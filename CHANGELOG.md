@@ -1,3 +1,20 @@
+## 0.145.0 (2026-05-13)
+
+### 🚀 Features
+
+- add PWA support for mobile installation ([0ca77e34](https://github.com/whoz-oss/coday/commit/0ca77e34))
+- return pr ([08e2578a](https://github.com/whoz-oss/coday/commit/08e2578a))
+- update pnpm-lock ([0651bd35](https://github.com/whoz-oss/coday/commit/0651bd35))
+
+### 🩹 Fixes
+
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
 ## 0.144.2 (2026-05-13)
 
 ### 🩹 Fixes
