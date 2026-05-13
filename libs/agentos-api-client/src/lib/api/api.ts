@@ -14,12 +14,16 @@ export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
+export * from './namespace-permission-endpoints.service'
+import { NamespacePermissionEndpointsService } from './namespace-permission-endpoints.service'
 export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
+export * from './user-group-controller.service'
+import { UserGroupControllerService } from './user-group-controller.service'
 export const APIS = [
   AgentConfigControllerService,
   AiModelControllerService,
@@ -29,7 +33,9 @@ export const APIS = [
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,
+  NamespacePermissionEndpointsService,
   PluginControllerService,
   SseService,
   UserControllerService,
+  UserGroupControllerService,
 ]

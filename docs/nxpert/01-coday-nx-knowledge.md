@@ -26,8 +26,13 @@ like `check-openapi-spec`, `bootRun`, `generate-client` are explicitly declared 
 ## JVM Sub-workspace (`agentos/`)
 
 The `agentos/` directory is a separate Gradle multi-project build integrated into Nx via
-`nx:run-commands`. Projects: `agentos-service`, `agentos-sdk`, `agentos-plugins-filesystem`,
-`agentos-datetime-plugin`.
+`nx:run-commands`. Publishable projects carry the `platform:jvm` tag — use
+`nx show projects --projects="tag:platform:jvm"` to get the current list.
+`agentos-plugins-filesystem` is a legacy project — it has no `platform:jvm` tag and is not published.
+
+Nx integration is handled by a **local plugin** at `tools/plugins/agentos-gradle/src/agentos-gradle.ts`
+(not `@nx/gradle`). It globs `agentos/*/build.gradle.kts` and infers `build`, `test`, `clean`,
+`nx-release-publish`, `publish` targets only for projects that already have a `project.json`.
 
 Key patterns:
 - All Gradle targets set `"cwd": "agentos"` in options
@@ -62,14 +67,23 @@ Boundary rules enforced in root `eslint.config.js`:
 ## CI Architecture
 
 Two GitHub Actions workflows in `.github/workflows/`:
-- **`validate.yml`**: PR validation — runs `nx affected --target="lint,test"` + `check-openapi-spec`
-- **`release.yml`**: Push to master — `nx release`, Electron desktop packaging (macOS-signed .pkg),
-  Gradle SDK publish to GitHub Packages
+- **`validate.yml`**: PR validation — runs `nx affected --target="lint,test"` + `check-openapi-spec`.
+  JVM projects are handled separately: `nx show projects --affected --projects="tag:platform:jvm" --json --quiet`
+  resolves affected names first, then `nx run-many` is called with explicit names (tag filter can't
+  be forwarded to Gradle executors directly).
+- **`release.yml`**: Push to master — 5 jobs in sequence:
+  1. `check-release` — detects releasable commits since last tag
+  2. `release` — runs `nx release` (version bump, changelog, GitHub release, npm publish for Node projects)
+  3. `desktop-release` — macOS runner, signs and packages `.pkg` for `tag:platform:npm` desktop apps, uploads to GitHub Release
+  4. `compute-jvm-projects` — resolves `tag:platform:jvm` projects via `nx show projects --json --quiet | jq -c '.'`
+  5. `publish-agentos-artifacts` — matrix job over the dynamic list, publishes each JVM project to GitHub Packages
 
 ## Release System
 
-Uses `nx release` with conventional commits. Projects released: `server`, `client`, `web`,
-`desktop`, `desktop-twin`. Tag pattern: `release/{version}`.
+Uses `nx release` with conventional commits. Tag pattern: `release/{version}`.
+- **npm projects** selected via `tag:platform:npm` in `nx.json` release config
+- **JVM projects** selected via `tag:platform:jvm` — `agentos-plugins-filesystem` explicitly does NOT carry this tag (legacy, not published)
+- Adding a new publishable project only requires the right `platform:*` tag — no CI config changes needed
 
 ## Cache Debugging Checklist
 

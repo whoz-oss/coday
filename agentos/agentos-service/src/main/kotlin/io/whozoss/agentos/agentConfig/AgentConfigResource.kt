@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
@@ -13,9 +14,13 @@ import java.util.UUID
  *
  * [namespaceId] is required — agent configs are always scoped to a namespace.
  * [name] is required — an agent must have a name.
- * [description], [instructions], and [modelName] are optional.
+ * [description], [instructions], [modelName], and [integrations] are optional.
+ *
+ * [integrations] maps integration names to an optional list of allowed tool names.
+ * A null list means all tools from that integration are allowed.
  */
 @Schema(name = "AgentConfig")
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class AgentConfigResource(
     val id: UUID? = null,
     @field:NotNull(message = "namespaceId must not be null")
@@ -25,4 +30,6 @@ data class AgentConfigResource(
     val description: String? = null,
     val instructions: String? = null,
     val modelName: String? = null,
+    val integrations: Map<String, List<String>?>? = null,
+    val advancedExecution: Boolean? = null,
 )

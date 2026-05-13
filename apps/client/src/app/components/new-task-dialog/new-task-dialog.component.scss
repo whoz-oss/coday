@@ -105,4 +105,11 @@ h2[mat-dialog-title] {
 .ntd-launch-btn {
   background: var(--color-primary);
   color: var(--color-text-inverse);
+
+  &:disabled {
+    background: var(--color-border);
+    color: var(--color-text-secondary);
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 }

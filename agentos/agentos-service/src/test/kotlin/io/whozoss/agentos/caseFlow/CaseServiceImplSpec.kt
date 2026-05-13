@@ -9,6 +9,8 @@ import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -21,6 +23,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
@@ -28,7 +31,9 @@ import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
@@ -72,6 +77,42 @@ class CaseServiceImplSpec :
         val agentName = "test-agent"
         val agentId: UUID = UUID.nameUUIDFromBytes(agentName.toByteArray())
 
+        /**
+         * Launches a coroutine that subscribes to the runtime's SSE flow and resolves
+         * once a [CaseStatusEvent] with one of [targetStatuses] is observed. Returns the
+         * [Job] so callers can `join()` after triggering the action.
+         *
+         * The subscription is established *before* the caller triggers any action, which
+         * avoids the race inherent to a hot [SharedFlow] with `replay = 0`: events emitted
+         * before the subscriber registers would otherwise be missed.
+         *
+         * Usage:
+         * ```kotlin
+         * val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+         * service.addMessage(...)   // trigger the action
+         * awaiter.join()            // wait for the expected status
+         * ```
+         */
+        fun CoroutineScope.expectCaseStatus(
+            runtime: CaseRuntime,
+            vararg targetStatuses: CaseStatus,
+        ): Job =
+            launch {
+                withTimeout(8_000) {
+                    runtime.events
+                        .filterIsInstance<CaseStatusEvent>()
+                        .first { it.status in targetStatuses }
+                }
+            }
+
+        /**
+         * Suspends until [CaseRuntime.isRunning] returns false, yielding the coroutine
+         * between each check so the background run() coroutine can make progress.
+         */
+        suspend fun awaitNotRunning(runtime: CaseRuntime) {
+            while (runtime.isRunning()) delay(10)
+        }
+
         /** Build a mock Agent that immediately emits AgentFinishedEvent. */
         fun finishingAgent(): Agent =
             mockk<Agent> {
@@ -96,16 +137,22 @@ class CaseServiceImplSpec :
         fun buildService(
             agent: Agent = finishingAgent(),
             userService: UserService = mockk { every { findById(userId) } returns activeUser },
+            defaultAgentName: String? = agentName,
         ): CaseServiceImpl {
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = defaultAgentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName(any()) } returns agentName
                     every { resolveAgentName(any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            return CaseServiceImpl(agentService, caseRepository, caseEventService, userService)
+            return CaseServiceImpl(agentService, caseRepository, caseEventService, userService, namespaceService)
         }
 
         // -------------------------------------------------------------------------
@@ -146,28 +193,20 @@ class CaseServiceImplSpec :
 
             val service = buildService(countingAgent)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("hello")),
             )
-
-            // Give the background coroutine time to complete.
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                val current = service.getById(case.id)
-                if (current.status == CaseStatus.IDLE || current.status == CaseStatus.ERROR) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             runCallCount shouldBe 1
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
-
-        // -------------------------------------------------------------------------
-        // Event sequence persisted to the event store
-        // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
         // User validation: case must not run without a valid active user
@@ -177,19 +216,16 @@ class CaseServiceImplSpec :
             val actorWithNonUuidId = Actor(id = "not-a-uuid", displayName = "Unknown", role = ActorRole.USER)
             val service = buildService()
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.ERROR, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = actorWithNonUuidId,
                 content = listOf(MessageContent.Text("hello")),
             )
-
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                val status = service.getById(case.id).status
-                if (status == CaseStatus.ERROR || status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             service.getById(case.id).status shouldBe CaseStatus.ERROR
         }
@@ -200,19 +236,16 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(any()) } returns null }
             val service = buildService(userService = userService)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.ERROR, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = actorWithUnknownUser,
                 content = listOf(MessageContent.Text("hello")),
             )
-
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                val status = service.getById(case.id).status
-                if (status == CaseStatus.ERROR || status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             service.getById(case.id).status shouldBe CaseStatus.ERROR
         }
@@ -223,27 +256,30 @@ class CaseServiceImplSpec :
 
         "persisted events contain the full agent lifecycle sequence" {
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName(any()) } returns agentName
                     every { resolveAgentName(any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService)
+            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService, namespaceService)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("hi")),
             )
-
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            awaiter.join()
 
             val events = caseEventService.findByParent(case.id)
             events shouldHaveAtLeastSize 4
@@ -291,8 +327,6 @@ class CaseServiceImplSpec :
             val runtime = service.getCaseRuntime(case.id)
 
             val collectedStatuses = mutableListOf<CaseStatus>()
-            // Use a separate CoroutineScope so the collector runs concurrently with
-            // the service calls on the main test thread.
             val collectorScope = CoroutineScope(Dispatchers.IO)
             val collectJob: Job =
                 collectorScope.launch {
@@ -309,8 +343,9 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            // Give the collector a moment to subscribe to the SharedFlow.
-            Thread.sleep(100)
+            // Yield so the collector coroutine has a chance to subscribe to the SharedFlow
+            // before the first status event is emitted.
+            delay(100)
 
             service.addMessage(
                 caseId = case.id,
@@ -354,7 +389,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            Thread.sleep(100)
+            delay(100)
 
             service.killCase(case.id)
 
@@ -390,7 +425,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            Thread.sleep(100)
+            delay(100)
 
             // Route the ERROR status change through handleStatusChange.
             service.update(case.copy(status = CaseStatus.ERROR))
@@ -399,10 +434,6 @@ class CaseServiceImplSpec :
 
             errorEventReceived.get() shouldBe true
         }
-
-        // -------------------------------------------------------------------------
-        // Second message after the first completes
-        // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
         // TextChunkEvent must not be persisted
@@ -429,28 +460,33 @@ class CaseServiceImplSpec :
                     }
                 }
 
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { getDefaultAgentName(namespaceId) } returns agentName
+                    every { resolveAgentName(agentName, namespaceId) } returns agentName
                     every { findAgentByName(agentName, any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService)
+            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService, namespaceService)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
 
-            // Collect TextChunkEvents from the SSE flow until the case reaches IDLE.
-            // Subscribe BEFORE sending the message so no chunks are missed.
+            // Subscribe to both the IDLE gate and text chunks BEFORE sending the message
+            // so no events are missed on the hot SharedFlow (replay = 0).
             val collectedChunks = mutableListOf<TextChunkEvent>()
             val collectorScope = CoroutineScope(Dispatchers.IO)
-            val collectJob: Job =
+            val idleJob: Job =
                 collectorScope.launch {
                     withTimeout(8_000) {
                         runtime.events
                             .filterIsInstance<CaseStatusEvent>()
                             .takeWhile { it.status != CaseStatus.IDLE }
                             .toList()
-                        // IDLE reached — stop. Chunks were collected in parallel below.
                     }
                 }
             val chunkCollectJob: Job =
@@ -465,7 +501,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            Thread.sleep(100) // give collectors time to subscribe
+            delay(100) // give collectors time to subscribe
 
             service.addMessage(
                 caseId = case.id,
@@ -473,14 +509,9 @@ class CaseServiceImplSpec :
                 content = listOf(MessageContent.Text("hi")),
             )
 
-            collectJob.join()
+            idleJob.join()
             chunkCollectJob.cancel() // stop the infinite chunk collector once IDLE is reached
 
-            val deadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
 
             val persisted = caseEventService.findByParent(case.id)
@@ -495,6 +526,216 @@ class CaseServiceImplSpec :
             collectedChunks.size shouldBe 2
             collectedChunks[0].chunk shouldBe "Hello"
             collectedChunks[1].chunk shouldBe " world"
+        }
+
+        // -------------------------------------------------------------------------
+        // Sticky-agent behaviour: second message without @mention reuses last agent
+        // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // Default agent routing
+        // -------------------------------------------------------------------------
+
+        "first message without @mention routes to namespace default agent" {
+            val service = buildService()
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        "first message without @mention produces WarnEvent and stops when namespace has no default agent" {
+            // Wire the service manually to keep a reference to the event store.
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = null,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            // resolveAgentName is never reached because selectDefaultAgent short-circuits on null
+            val agentService = mockk<AgentService>(relaxed = true)
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(
+                agentService,
+                InMemoryCaseRepository(),
+                caseEventService,
+                userService,
+                namespaceService,
+            )
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            // Case must be IDLE (not ERROR): no default is a configuration issue, not a crash
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // A WarnEvent must have been persisted — it is the only event besides the MessageEvent
+            val persistedEvents = caseEventService.findByParent(case.id)
+            persistedEvents.filterIsInstance<WarnEvent>() shouldHaveAtLeastSize 1
+            // No AgentSelectedEvent: routing stopped at the WarnEvent
+            persistedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()
+        }
+
+        "last active agent unavailable falls back to namespace default" {
+            val unavailableAgentName = "old-agent"
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            // resolveAgentName call sequence:
+            //   turn 1, @mention path: resolveAgentName(unavailableAgentName) -> unavailableAgentName (found)
+            //   turn 2, sticky-agent availability check: resolveAgentName(unavailableAgentName) -> null (gone)
+            //   turn 2, default resolution: resolveAgentName(agentName) -> agentName (found)
+            val resolveCallCount = java.util.concurrent.atomic.AtomicInteger(0)
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(unavailableAgentName, namespaceId) } answers {
+                    when (resolveCallCount.incrementAndGet()) {
+                        1 -> unavailableAgentName  // turn 1: @mention resolves
+                        else -> null              // turn 2: sticky-agent check fails
+                    }
+                }
+                every { resolveAgentName(agentName, namespaceId) } returns agentName
+                every { findAgentByName(any(), any()) } returns finishingAgent()
+            }
+            val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(
+                agentService,
+                InMemoryCaseRepository(),
+                caseEventService,
+                userServiceMock,
+                namespaceService,
+            )
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // First turn: explicit @mention of the old agent — resolves and runs normally
+            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("@$unavailableAgentName hello")),
+            )
+            firstIdle.join()
+            awaitNotRunning(runtime)
+
+            // Second turn: no @mention, old agent is gone -> WarnEvent + fallback to default
+            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("follow-up")),
+            )
+            secondIdle.join()
+
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // WarnEvent must have been persisted during the second turn
+            val persistedEvents = caseEventService.findByParent(case.id)
+            persistedEvents.filterIsInstance<WarnEvent>() shouldHaveAtLeastSize 1
+            // Default agent was ultimately selected after the warn
+            persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe agentName
+        }
+
+        "second message without @mention uses the same agent as the first" {
+            // Regression test for the sticky-agent feature.
+            //
+            // When a user sends `@some-agent hello` and then `follow-up question`,
+            // the second message must be handled by `some-agent`, not the default agent.
+            //
+            // Before the fix, selectAgent() ignored the event history and always fell
+            // back to getDefaultAgentName(), so the second message was always routed
+            // to the default agent regardless of any prior @mention.
+
+            val defaultAgentName = "default-agent"
+            val selectedAgentName = "selected-agent"
+            val selectedAgentId = UUID.nameUUIDFromBytes(selectedAgentName.toByteArray())
+            val agentCallNames = mutableListOf<String>()
+
+            val selectedAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = selectedAgentId)
+                    every { name } returns selectedAgentName
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        agentCallNames.add(selectedAgentName)
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = selectedAgentId,
+                                    agentName = selectedAgentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = defaultAgentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val agentService =
+                mockk<AgentService> {
+                    // @selected-agent resolves to selectedAgentName
+                    every { resolveAgentName(selectedAgentName, any()) } returns selectedAgentName
+                    // no other mention resolution needed
+                    every { findAgentByName(selectedAgentName, any()) } returns selectedAgent
+                }
+            val caseRepository = InMemoryCaseRepository()
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(agentService, caseRepository, caseEventService, userService, namespaceService)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // First message: explicit @mention
+            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("@$selectedAgentName hello")),
+            )
+            firstIdle.join()
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+
+            // Wait for run() to fully exit before sending the second message.
+            awaitNotRunning(runtime)
+
+            // Second message: no @mention — must stick with selectedAgent.
+            // Subscribe before sending so the second IDLE is not missed.
+            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("follow-up question")),
+            )
+            secondIdle.join()
+
+            agentCallNames shouldBe listOf(selectedAgentName, selectedAgentName)
         }
 
         "agent runs once per message when two messages are sent sequentially" {
@@ -521,51 +762,35 @@ class CaseServiceImplSpec :
 
             val service = buildService(countingAgent)
             val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
 
             // First message
+            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("first")),
             )
-            val deadline1 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline1) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
+            firstIdle.join()
             service.getById(case.id).status shouldBe CaseStatus.IDLE
             runCallCount shouldBe 1
 
-            // Wait until runInFlight is cleared (run()'s finally block) before sending the
-            // second message. The runtime stays alive (IDLE is non-terminal), but run() must
-            // have fully exited so the AtomicBoolean guard allows re-entry.
-            val idleDeadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < idleDeadline) {
-                if (!service.getCaseRuntime(case.id).isRunning()) break
-                Thread.sleep(10)
-            }
+            // Wait until run() has fully exited (runInFlight cleared) before sending
+            // the second message. The runtime stays alive (IDLE is non-terminal), but
+            // run() must have exited so the AtomicBoolean guard allows re-entry.
+            awaitNotRunning(runtime)
 
-            // Second message — the runtime is still alive (IDLE is non-terminal).
-            // We wait for runCallCount to reach 2 rather than polling status, which avoids
-            // a race where the status briefly reads IDLE from the previous run before
-            // the second run transitions it to RUNNING.
+            // Second message — subscribe before sending so the second IDLE is not missed.
+            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
                 content = listOf(MessageContent.Text("second")),
             )
-            val deadline2 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline2) {
-                if (runCallCount >= 2) break
-                Thread.sleep(50)
-            }
+            secondIdle.join()
+
             runCallCount shouldBe 2
-            // Give the second run a moment to complete and reach IDLE
-            val deadline3 = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < deadline3) {
-                if (service.getById(case.id).status == CaseStatus.IDLE) break
-                Thread.sleep(50)
-            }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
     })

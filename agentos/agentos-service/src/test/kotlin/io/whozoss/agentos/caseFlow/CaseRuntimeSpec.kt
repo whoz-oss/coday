@@ -38,7 +38,7 @@ class RecordingRunAgent(
     val callCount: Int get() = _calls.size
 
     /** Expose as the function type [CaseRuntime] expects. */
-    val asCallback: suspend (String, List<CaseEvent>, UUID?, () -> Boolean) -> Unit = { name, events, _, _ ->
+    val asCallback: suspend (String, List<CaseEvent>, () -> List<CaseEvent>, UUID?, () -> Boolean) -> Unit = { name, events, _, _, _ ->
         _calls += name to events
         delegate(name, events)
     }
@@ -50,14 +50,14 @@ class RecordingRunAgent(
  * registered when the next spec runs. A plain wrapper has no such risk.
  */
 class RecordingSelectAgent(
-    private val delegate: (List<MessageContent>) -> List<CaseEvent>,
+    private val delegate: (List<MessageContent>, List<CaseEvent>) -> List<CaseEvent>,
 ) {
     private val _calls = mutableListOf<List<MessageContent>>()
     val callCount: Int get() = _calls.size
 
-    val asCallback: (List<MessageContent>) -> List<CaseEvent> = { content ->
+    val asCallback: (List<MessageContent>, List<CaseEvent>) -> List<CaseEvent> = { content, pastEvents ->
         _calls += content
-        delegate(content)
+        delegate(content, pastEvents)
     }
 }
 
@@ -127,7 +127,7 @@ class CaseRuntimeSpec : StringSpec() {
         val savedEvents = mutableListOf<CaseEvent>()
         val runtimeId = UUID.randomUUID()
 
-        val selectAgent = RecordingSelectAgent { listOf(agentSelectedEvent(runtimeId, agentName)) }
+        val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) }
 
         lateinit var runtime: CaseRuntime
         val runAgent =
@@ -232,7 +232,7 @@ class CaseRuntimeSpec : StringSpec() {
                         savedEvents.add(event)
                         event
                     },
-                    selectAgent = {
+                    selectAgent = { _, _ ->
                         listOf(
                             WarnEvent(
                                 namespaceId = namespaceId,
@@ -242,7 +242,7 @@ class CaseRuntimeSpec : StringSpec() {
                             agentSelectedEvent(runtimeId, agentName),
                         )
                     },
-                    runAgent = { _, events, _, _ ->
+                    runAgent = { _, events, _, _, _ ->
                         agent.run(events).collect { event ->
                             savedEvents.add(event)
                             runtime.pushEvents(listOf(event))
@@ -298,8 +298,8 @@ class CaseRuntimeSpec : StringSpec() {
                         if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
                         event
                     },
-                    selectAgent = { listOf(agentSelectedEvent(runtimeId, agentName)) },
-                    runAgent = { _, events, _, _ ->
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
+                    runAgent = { _, events, _, _, _ ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
                             runtime.pushEvents(listOf(event))
@@ -338,8 +338,8 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
-                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    runAgent = { _, _, _, shouldContinue ->
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                         // Simulate a long-running agent: don't push AgentFinishedEvent
                         // so we can inspect shouldContinue before the loop exits naturally.
@@ -372,8 +372,8 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
-                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    runAgent = { _, _, _, shouldContinue ->
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                     },
                 )
@@ -405,8 +405,8 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
-                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    runAgent = { _, _, _, shouldContinue ->
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, _, _, shouldContinue ->
                         // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
                         // still false at this point, so shouldContinue() must return true.
                         lambdaResultDuringRun = shouldContinue()
@@ -429,6 +429,88 @@ class CaseRuntimeSpec : StringSpec() {
 
             // The lambda returned true while runAgent was executing with no interrupt/kill
             lambdaResultDuringRun shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Redirect: AgentFinishedEvent followed by AgentSelectedEvent
+        // -------------------------------------------------------------------------
+
+        "runAgent is called twice when agent A redirects to agent B" {
+            // Regression: processNextStep scanned events newest-first and stopped at
+            // AgentFinishedEvent before seeing the AgentSelectedEvent that followed it.
+            // The fix emits AgentFinishedEvent BEFORE AgentSelectedEvent on redirect,
+            // so the scan finds AgentSelectedEvent last (newest) and launches agent B.
+            val agentA = "agent-a"
+            val agentB = "agent-b"
+            val runtimeId = UUID.randomUUID()
+            val agentBId = UUID.nameUUIDFromBytes(agentB.toByteArray())
+
+            val savedEvents = mutableListOf<CaseEvent>()
+            val runOrder = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+
+            // Agent A emits: ToolRequestEvent, ToolResponseEvent, AgentFinishedEvent(A), AgentSelectedEvent(B)
+            // — the redirect order produced by AgentSimple after the fix.
+            val agentAMock = mockk<Agent>(name = "mock-$agentA") {
+                every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentA.toByteArray()))
+                every { name } returns agentA
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = UUID.nameUUIDFromBytes(agentA.toByteArray()), agentName = agentA))
+                        emit(AgentSelectedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = agentBId, agentName = agentB))
+                    }
+                }
+            }
+
+            // Agent B finishes normally.
+            val agentBMock = mockk<Agent>(name = "mock-$agentB") {
+                every { metadata } returns EntityMetadata(id = agentBId)
+                every { name } returns agentB
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = agentBId, agentName = agentB))
+                    }
+                }
+            }
+
+            val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentA)) }
+
+            val runAgent = RecordingRunAgent { name, events ->
+                runOrder += name
+                val agent = if (name == agentA) agentAMock else agentBMock
+                agent.run(events).collect { event ->
+                    savedEvents.add(event)
+                    runtime.emitEvent(event)
+                    runtime.pushEvents(listOf(event))
+                }
+            }
+
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatus = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = selectAgent.asCallback,
+                runAgent = runAgent.asCallback,
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            // Both agents must have run, in order
+            runAgent.callCount shouldBe 2
+            runOrder[0] shouldBe agentA
+            runOrder[1] shouldBe agentB
+
+            // Agent B's AgentFinishedEvent must be in the saved events
+            val finishedEvents = savedEvents.filterIsInstance<AgentFinishedEvent>()
+            finishedEvents.any { it.agentName == agentB } shouldBe true
         }
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
@@ -473,7 +555,7 @@ class CaseRuntimeSpec : StringSpec() {
                         savedEvents.add(event)
                         event
                     },
-                    selectAgent = { listOf(agentSelectedEvent(caseId, agentName)) },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
                     runAgent = recorder.asCallback,
                 )
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))

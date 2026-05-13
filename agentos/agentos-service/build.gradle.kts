@@ -28,7 +28,8 @@ java {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            from(components["java"])
+            artifact(tasks.named("bootJar"))
+            artifact(tasks.named("sourcesJar"))
 
             pom {
                 name.set("AgentOS Service")
@@ -87,6 +88,35 @@ dependencies {
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.spring.boot.starter.security)
+
+    // Spring Cloud — active only when the 'whoz' profile is used.
+    // spring-cloud-starter-bootstrap activates the bootstrap context so that
+    // bootstrap-whoz.yml is loaded before the application context starts.
+    // spring-cloud-starter-config connects to the Spring Cloud Config Server.
+    // spring-cloud-starter-eureka-client registers the service on Eureka.
+    // All three are always on the classpath but disabled by default via
+    // application-test.yml (tests) and absent of 'whoz' profile (standalone).
+    // Spring Cloud BOM — imported via platform() so Gradle's native dependency resolution
+    // picks up the managed versions. The spring-dependency-management plugin's
+    // dependencyManagement {} block does not reliably propagate BOM versions for
+    // artifacts without an explicit version in composite builds.
+    implementation(platform(libs.spring.cloud.bom))
+    implementation(libs.spring.cloud.starter.config)
+    // Eureka client.
+    // Spring Cloud 2024.0.x uses eureka-client 2.0.x which ships eureka-client-jersey3
+    // as its sole HTTP transport. EurekaClientAutoConfiguration requires a
+    // TransportClientFactories bean which is provided exclusively by that module.
+    // Jersey3 in turn needs the Jakarta EE 10 JAX-RS API and a Jersey runtime;
+    // we pull in jersey-client + jersey-hk2 (the DI bridge) so the factory can
+    // instantiate its internal components without a full JAX-RS server on the classpath.
+    implementation(libs.spring.cloud.starter.eureka.client)
+    // eureka-client-jersey3 provides the TransportClientFactories bean required by
+    // EurekaClientAutoConfiguration. Spring Cloud 2024.0.x does not pull it in
+    // automatically — it must be declared explicitly.
+    implementation(libs.eureka.client.jersey3)
+    implementation(libs.jersey.client)
+    implementation(libs.jersey.hk2)
 
     // OpenAPI / Swagger UI
     implementation(libs.springdoc.openapi.starter)
@@ -160,6 +190,8 @@ dependencies {
 
     // Test dependencies
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.security.test)
+    testImplementation(libs.mockk.spring)
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.bundles.testing.spring)
     testRuntimeOnly(libs.junit.platform.launcher)
@@ -184,6 +216,15 @@ dependencyManagement {
     imports {
         mavenBom(
             libs.spring.ai.bom
+                .get()
+                .toString(),
+        )
+        // Spring Cloud BOM (Moore / 2024.0.x) — manages all spring-cloud-* dependency versions.
+        // Moore is the release train compatible with Spring Boot 3.4.x / 3.5.x.
+        // Must come after spring-ai-bom so that Spring Cloud wins for shared
+        // artifacts (e.g. spring-cloud-commons) over any Spring AI transitive pulls.
+        mavenBom(
+            libs.spring.cloud.bom
                 .get()
                 .toString(),
         )

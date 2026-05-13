@@ -8,4 +8,14 @@ import java.util.UUID
  *
  * Agent configs are scoped under a namespace — [parentId] is the namespace UUID.
  */
-interface AgentConfigService : EntityService<AgentConfig, UUID>
+interface AgentConfigService : EntityService<AgentConfig, UUID> {
+    /**
+     * Find the first [AgentConfig] in [namespaceId] whose [AgentConfig.name] matches
+     * [name] (case-insensitive). Returns null if none is found.
+     */
+    fun findByName(
+        namespaceId: UUID,
+        name: String,
+    ): AgentConfig?
+
+}

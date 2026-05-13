@@ -3,12 +3,16 @@ package io.whozoss.agentos.plugins.datetime
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.whozoss.agentos.sdk.tool.ToolContext
+import java.util.UUID
 
 class GetCurrentDateTimeToolUnitSpec :
     StringSpec({
+        val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
+
         "should return current datetime in UTC by default" {
             val tool = GetCurrentDateTimeTool()
-            val result = tool.execute(null)
+            val result = tool.execute(null, ctx)
 
             result shouldContain "success"
             result shouldContain "datetime"
@@ -19,7 +23,7 @@ class GetCurrentDateTimeToolUnitSpec :
             val tool = GetCurrentDateTimeTool()
             val input = GetCurrentDateTimeTool.Input(timezone = "America/New_York")
 
-            val result = tool.execute(input)
+            val result = tool.execute(input, ctx)
 
             result shouldContain "America/New_York"
             result shouldContain "datetime"
@@ -30,7 +34,7 @@ class GetCurrentDateTimeToolUnitSpec :
             val tool = GetCurrentDateTimeTool()
             val input = GetCurrentDateTimeTool.Input(timezone = "Invalid/Timezone")
 
-            val result = tool.execute(input)
+            val result = tool.execute(input, ctx)
 
             result shouldContain "\"success\":false"
             result shouldContain "error"

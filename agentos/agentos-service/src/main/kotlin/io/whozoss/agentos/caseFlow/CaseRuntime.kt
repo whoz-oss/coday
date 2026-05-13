@@ -29,9 +29,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   The runtime then adds it to its list and emits it on the SSE flow itself —
  *   no reference to the runtime is ever passed outward.
  * @param selectAgent resolves which agent should handle the current message.
- *   Receives the message content and returns an ordered list of events to store+emit
- *   (e.g. an optional [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an
- *   [AgentSelectedEvent], or just an [AgentSelectedEvent] for the default agent).
+ *   Receives the message content and the full current event history, and returns an
+ *   ordered list of events to store+emit (e.g. an optional
+ *   [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an [AgentSelectedEvent],
+ *   or just an [AgentSelectedEvent] for the default agent).
  *   Returns an empty list when no agent is configured and the loop should stop.
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. Error handling is the
@@ -42,8 +43,8 @@ class CaseRuntime(
     val namespaceId: UUID,
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
-    private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
+    private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
@@ -181,7 +182,7 @@ class CaseRuntime(
         }
 
         storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
-        selectAgent(content).forEach { storeAndEmitEvent(it) }
+        selectAgent(content, eventList.getAll()).forEach { storeAndEmitEvent(it) }
     }
 
     // -------------------------------------------------------------------------
@@ -282,7 +283,7 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), resolveUserId(events)) { !interruptRequested.get() }
+                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events)) { !interruptRequested.get() }
                     return
                 }
 

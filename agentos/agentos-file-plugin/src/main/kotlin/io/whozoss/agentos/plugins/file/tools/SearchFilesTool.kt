@@ -5,6 +5,7 @@ import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.plugins.file.matchesPattern
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
 import java.nio.file.Files
@@ -82,7 +83,7 @@ class SearchFilesTool(
         val fileTypes: List<String>? = null,
     )
 
-    override fun execute(input: Input?): String {
+    override fun execute(input: Input?, context: ToolContext): String {
         val params = input ?: Input()
 
         return try {

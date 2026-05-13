@@ -12,9 +12,11 @@ api/case-event-rest-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
+api/namespace-permission-endpoints.service.ts
 api/plugin-controller.service.ts
 api/sse.service.ts
 api/user-controller.service.ts
+api/user-group-controller.service.ts
 configuration.ts
 encoder.ts
 git_push.sh
@@ -41,6 +43,8 @@ model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
 model/models.ts
+model/namespace-list-item.ts
+model/namespace-user-list-item.ts
 model/namespace.ts
 model/plugin-action-response.ts
 model/plugin-info.ts
@@ -53,6 +57,10 @@ model/tool-request-event.ts
 model/tool-response-event-all-of-output.ts
 model/tool-response-event.ts
 model/tool-selected-event.ts
+model/user-group-create-request.ts
+model/user-group-search-result.ts
+model/user-group-summary.ts
+model/user-group-update-request.ts
 model/user.ts
 model/warn-event.ts
 param.ts

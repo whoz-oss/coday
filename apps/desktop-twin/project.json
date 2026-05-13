@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "{projectRoot}",
-  "tags": ["desktop-bundle"],
+  "tags": ["desktop-bundle", "platform:npm"],
   "targets": {
     "nx-release-publish": {
       "executor": "nx:run-commands",

@@ -16,4 +16,12 @@ export interface Namespace {
    * Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.)
    */
   configPath?: string
+  /**
+   * Optional external identifier for this namespace, e.g. a federation id from an external system
+   */
+  externalId?: string
+  /**
+   * Logical name of the default agent for this namespace. Resolved at runtime against AgentConfig entries (case-insensitive). When null, messages without an @mention will produce an explicit error.
+   */
+  defaultAgentName?: string
 }

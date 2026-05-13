@@ -4,11 +4,13 @@ import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -32,6 +34,7 @@ class CaseServiceImpl(
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
     private val userService: UserService,
+    private val namespaceService: NamespaceService,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -47,7 +50,9 @@ class CaseServiceImpl(
 
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
-        val saved = caseRepository.save(Case(metadata = entity.metadata, namespaceId = entity.namespaceId))
+        // Persist the full entity so client-supplied title and status are preserved
+        //.
+        val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "[CaseService] Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         return saved
@@ -71,6 +76,9 @@ class CaseServiceImpl(
     override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
+
+    override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+        caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
 
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
@@ -117,8 +125,8 @@ class CaseServiceImpl(
             namespaceId = case.namespaceId,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
-            selectAgent = { content -> selectAgent(content, case.namespaceId, case.id) },
-            runAgent = { agentName, events, userId, shouldContinue -> runAgent(agentName, case.id, events, userId, shouldContinue) },
+            selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
+            runAgent = { agentName, events, eventsProvider, userId, shouldContinue -> runAgent(agentName, case.id, events, eventsProvider, userId, shouldContinue) },
             inputEvents = inputEvents,
         )
 
@@ -146,54 +154,116 @@ class CaseServiceImpl(
      * Resolves which agent should handle a message and returns the ordered list of
      * events to store+emit on the runtime.
      *
-     * Returns an empty list when no agent is configured (signals the runtime to stop).
+     * Resolution order:
+     * 1. Explicit `@mention` in the message content — resolved by name; on miss, falls
+     *    back to the namespace default with a [WarnEvent].
+     * 2. Last selected agent in this case (from [pastEvents]) — preserves continuity
+     *    across turns. If the agent is no longer available (deleted, disabled), falls
+     *    back to the namespace default with a [WarnEvent].
+     * 3. Namespace default agent — [Namespace.defaultAgentName] resolved by name.
+     *
+     * Returns a single [WarnEvent] (no [AgentSelectedEvent]) when no default agent
+     * is configured on the namespace, signalling the runtime to stop cleanly.
      *
      * @param content the message content to inspect for @mention syntax.
+     * @param pastEvents the full event history of the case at the time of this call.
      */
     private fun selectAgent(
         content: List<MessageContent>,
+        pastEvents: List<CaseEvent>,
         namespaceId: UUID,
         caseId: UUID,
     ): List<CaseEvent> {
-        val firstText =
+        val mentionedName =
             content
                 .filterIsInstance<MessageContent.Text>()
                 .firstOrNull()
                 ?.content
                 ?.trim()
+                ?.let { MENTION_REGEX.find(it)?.groupValues?.get(1) }
 
-        val mentionedName = firstText?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
+        val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
+        val lastSelectedName =
+            pastEvents
+                .take(lastUserMessageIndex.coerceAtLeast(0))
+                .filterIsInstance<AgentSelectedEvent>()
+                .lastOrNull()
+                ?.agentName
 
-        if (mentionedName != null) {
-            val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
-            if (resolvedName != null) {
-                logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
-                return listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+        return when {
+            mentionedName != null -> {
+                val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
+                when {
+                    resolvedName != null -> {
+                        logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
+                        listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+                    }
+                    else -> {
+                        logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
+                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")) +
+                            selectDefaultAgent(namespaceId, caseId)
+                    }
+                }
+            }
+            lastSelectedName != null -> {
+                val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
+                when {
+                    stillAvailable -> {
+                        logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
+                        listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
+                    }
+                    else -> {
+                        logger.warn { "[CaseService] Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
+                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$lastSelectedName' is no longer available")) +
+                            selectDefaultAgent(namespaceId, caseId)
+                    }
+                }
+            }
+            else -> selectDefaultAgent(namespaceId, caseId)
+        }
+    }
+
+    /**
+     * Resolves the namespace default agent by name from [Namespace.defaultAgentName].
+     *
+     * Returns a single [AgentSelectedEvent] when the default is configured and resolvable.
+     * Returns a single [WarnEvent] (no [AgentSelectedEvent]) when:
+     * - [Namespace.defaultAgentName] is null (no default configured)
+     * - the configured name no longer matches any [AgentConfig] in the namespace
+     *
+     * In both error cases the runtime will stop cleanly on the [WarnEvent] with no
+     * [AgentSelectedEvent] following it.
+     */
+    private fun selectDefaultAgent(
+        namespaceId: UUID,
+        caseId: UUID,
+    ): List<CaseEvent> {
+        val defaultAgentName = namespaceService.findById(namespaceId)?.defaultAgentName
+        return if (defaultAgentName == null) {
+            logger.warn { "[CaseService] No default agent configured for namespace $namespaceId" }
+            listOf(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "No default agent configured for this namespace. Use @agentName to address an agent explicitly.",
+                ),
+            )
+        } else {
+            val resolvedName = agentService.resolveAgentName(defaultAgentName, namespaceId)
+            if (resolvedName == null) {
+                logger.warn { "[CaseService] Default agent '$defaultAgentName' is not available in namespace $namespaceId" }
+                listOf(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "Default agent '$defaultAgentName' is not available. Use @agentName to address an agent explicitly.",
+                    ),
+                )
             } else {
-                logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
-                val warn =
-                    WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")
-                val defaultName = agentService.getDefaultAgentName(namespaceId) ?: return listOf(warn)
-                return listOf(warn, agentSelectedEvent(defaultName, namespaceId, caseId))
+                logger.info { "[CaseService] Selecting default agent: $resolvedName" }
+                listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
             }
         }
-
-        val defaultName =
-            agentService.getDefaultAgentName(namespaceId)
-                ?: run {
-                    logger.warn { "[CaseService] No AI model configured for namespace $namespaceId" }
-                    return listOf(
-                        WarnEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            message =
-                                "No AI model is configured for this namespace. " +
-                                    "Create an AiProvider and AiModel for namespace $namespaceId.",
-                        ),
-                    )
-                }
-        logger.info { "[CaseService] Selecting default agent: $defaultName" }
-        return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
     }
 
     private fun agentSelectedEvent(
@@ -215,6 +285,7 @@ class CaseServiceImpl(
         agentName: String,
         caseId: UUID,
         events: List<CaseEvent>,
+        eventsProvider: () -> List<CaseEvent>,
         userId: UUID?,
         shouldContinue: () -> Boolean,
     ) {
@@ -228,7 +299,12 @@ class CaseServiceImpl(
         }
 
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
-        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId, userId = userId)
+        val context = AgentExecutionContext(
+            namespaceId = runtime.namespaceId,
+            caseId = caseId,
+            userId = userId,
+            caseEventsProvider = eventsProvider,
+        )
         agentService
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)
@@ -357,5 +433,8 @@ class CaseServiceImpl(
         logger.info { "CaseService shutdown complete" }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`. */
+        private val MENTION_REGEX = """^@(\S+)""".toRegex()
+    }
 }

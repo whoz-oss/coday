@@ -90,7 +90,6 @@
   },
   "tags": [
     "type:app",
-    "platform:jvm",
     "scope:service"
   ]
 }

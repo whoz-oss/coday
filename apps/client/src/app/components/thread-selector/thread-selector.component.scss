@@ -175,6 +175,18 @@
       color: #ef4444; // Red color for delete
     }
   }
+
+  &.mark-done-button {
+    &:hover mat-icon {
+      color: #22c55e; // Green — same as --color-success
+    }
+  }
+
+  &.mark-active-button {
+    &:hover mat-icon {
+      color: var(--color-primary); // Blue
+    }
+  }
 }
 
 .thread-link {

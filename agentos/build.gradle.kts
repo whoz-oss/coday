@@ -38,8 +38,21 @@ val pluginBuilds = listOf(
 val pluginsDestDir: File = layout.projectDirectory.dir("plugins").asFile
 val pluginLibsDirs: List<File> = pluginBuilds.map { gradle.includedBuild(it).projectDir.resolve("build/libs") }
 
+tasks.register("cleanPlugins") {
+    group = "plugins"
+    description = "Cleans build outputs of all plugins."
+    dependsOn(pluginBuilds.map { gradle.includedBuild(it).task(":clean") })
+}
+
+tasks.register("jarPlugins") {
+    group = "plugins"
+    description = "Builds JARs for all plugins after cleaning."
+    dependsOn("cleanPlugins")
+    dependsOn(pluginBuilds.map { gradle.includedBuild(it).task(":jar") })
+}
+
 /**
- * Builds all plugins and copies their JARs into the plugins/ directory.
+ * Cleans all plugin builds, rebuilds their JARs, and copies them into the plugins/ directory.
  *
  * Usage:
  *   ./gradlew deployPlugins
@@ -48,13 +61,20 @@ tasks.register("deployPlugins") {
     group = "plugins"
     description = "Builds all plugins and copies their JARs into the plugins/ directory."
 
-    dependsOn(pluginBuilds.map { gradle.includedBuild(it).task(":jar") })
+    // Clean each plugin build first (removes stale JARs from previous branch checkouts),
+    // then build the JAR. The cleanPlugins task runs first, jarPlugins depends on it.
+    dependsOn("jarPlugins")
 
     // Capture as local vals — doLast must not reference project or gradle objects
     val dest = pluginsDestDir
     val libsDirs = pluginLibsDirs
 
     doLast {
+        // Clean the plugins directory before deploying to avoid stale JARs
+        // from previous builds (e.g. after a branch switch with a different version).
+        if (dest.exists()) {
+            dest.listFiles { f -> f.extension == "jar" }?.forEach { it.delete() }
+        }
         dest.mkdirs()
 
         libsDirs.forEach { buildDir ->

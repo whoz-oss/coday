@@ -1,0 +1,14 @@
+@namespaceId=22ccec32-19c3-46f8-9b86-733071ebb350
+
+### Create a agent config
+POST {{apiBaseUrl}}/api/agent-configs
+Content-Type: application/json
+
+{
+  "namespaceId": "{{namespaceId}}",
+  "name": "Agent 1"
+}
+
+### List agents by namespace id
+GET {{apiBaseUrl}}/api/agent-configs/by-parentId/{{namespaceId}}
+Content-Type: application/json

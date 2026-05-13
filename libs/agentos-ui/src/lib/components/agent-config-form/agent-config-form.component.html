@@ -1,0 +1,117 @@
+<div class="agent-config-form">
+  <header class="agent-config-form__header">
+    <button class="agent-config-form__back" type="button" (click)="cancel()" title="Back to agent configs">
+      <span class="agent-config-form__back-icon">&#8592;</span>
+      Agent Configs
+    </button>
+    <h1 class="agent-config-form__title">{{ isEditMode() ? 'Edit agent config' : 'New agent config' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="agent-config-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="agent-config-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="agent-config-name">Name <span aria-hidden="true">*</span></label>
+        <input
+          id="agent-config-name"
+          class="agent-config-form__input"
+          type="text"
+          placeholder="e.g. Support agent"
+          [formControl]="nameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="agent-config-description">Description</label>
+        <input
+          id="agent-config-description"
+          class="agent-config-form__input"
+          type="text"
+          placeholder="Optional — short description of this agent"
+          [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="agent-config-model-name">Model name</label>
+        <input
+          id="agent-config-model-name"
+          class="agent-config-form__input"
+          type="text"
+          placeholder="Optional — model alias or name to use"
+          [formControl]="modelNameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="agent-config-instructions">Instructions</label>
+        <textarea
+          id="agent-config-instructions"
+          class="agent-config-form__textarea"
+          rows="6"
+          placeholder="Optional — system instructions for this agent"
+          [formControl]="instructionsControl"
+        ></textarea>
+      </div>
+
+      <!-- Integrations section: only shown when the namespace has integration configs -->
+      @if (integrationRows().length > 0) {
+        <fieldset class="agent-config-form__integrations">
+          <legend class="agent-config-form__label">Integrations</legend>
+          <p class="agent-config-form__integrations-hint">
+            Select which integrations this agent can use. Leave tool names empty to allow all tools from an integration.
+          </p>
+          @for (row of integrationRows(); track row.config.id) {
+            <div class="agent-config-form__integration-row">
+              <label class="agent-config-form__integration-toggle">
+                <input
+                  class="agent-config-form__integration-checkbox"
+                  type="checkbox"
+                  [checked]="row.enabled()"
+                  (change)="toggleIntegration(row)"
+                />
+                <span class="agent-config-form__integration-name">{{ row.config.name }}</span>
+                @if (row.config.integrationType) {
+                  <span class="agent-config-form__integration-type">{{ row.config.integrationType }}</span>
+                }
+              </label>
+              @if (row.enabled()) {
+                <input
+                  class="agent-config-form__input agent-config-form__integration-tools"
+                  type="text"
+                  placeholder="Tool names, comma-separated (empty = all tools)"
+                  [formControl]="row.toolsControl"
+                  autocomplete="off"
+                />
+              }
+            </div>
+          }
+        </fieldset>
+      }
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__toggle-label">
+          <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="advancedExecutionControl" />
+          <span class="agent-config-form__toggle-text">Advanced mode</span>
+        </label>
+        <p class="agent-config-form__toggle-hint">
+          When enabled, this agent uses a multi-step reasoning loop instead of a single LLM call.
+        </p>
+      </div>
+
+      <div class="agent-config-form__actions">
+        <button
+          class="agent-config-form__btn agent-config-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="agent-config-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

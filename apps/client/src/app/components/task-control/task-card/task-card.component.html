@@ -9,6 +9,11 @@
   (keydown.space)="navigate(); $event.preventDefault()"
   [attr.aria-label]="'Open task: ' + task().name"
 >
+  <!-- Persistent star indicator (always visible when starred) -->
+  @if (task().starring.length > 0) {
+    <mat-icon class="starred-indicator" aria-label="Starred">star</mat-icon>
+  }
+
   <!-- Status badge -->
   <div class="status-badge">
     <mat-icon class="status-icon">{{ statusIcon() }}</mat-icon>
@@ -43,6 +48,17 @@
     <span class="task-time">{{ formatRelativeTime(task().modifiedDate) }}</span>
 
     <div class="task-actions">
+      @if (previewMode()) {
+        <button
+          mat-icon-button
+          class="action-btn open-btn"
+          (click)="onOpenDirect($event)"
+          matTooltip="Open full view"
+          aria-label="Open task in full view"
+        >
+          <mat-icon>open_in_new</mat-icon>
+        </button>
+      }
       @if (task().status === 'in-progress') {
         <button
           mat-icon-button

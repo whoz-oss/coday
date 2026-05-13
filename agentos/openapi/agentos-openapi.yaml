@@ -67,6 +67,88 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/namespaces/{namespaceId}/members/{targetUserId}:
+    put:
+      tags:
+      - namespace-permission-endpoints
+      operationId: grantMember
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+      - namespace-permission-endpoints
+      operationId: revokeMember
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/namespaces/{namespaceId}/admins/{targetUserId}:
+    put:
+      tags:
+      - namespace-permission-endpoints
+      operationId: grantAdmin
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+      - namespace-permission-endpoints
+      operationId: revokeAdmin
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: targetUserId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/namespaces/{id}:
     get:
       tags:
@@ -440,6 +522,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /api/users/groups-by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: getGroupsByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/UserGroupSummary"
   /api/users/by-ids:
     post:
       tags:
@@ -463,6 +569,100 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/user-groups:
+    get:
+      tags:
+      - user-group-controller
+      operationId: searchByNamespaceExternalIdUserGroup
+      parameters:
+      - name: namespaceExternalId
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGroupSearchResult"
+    post:
+      tags:
+      - user-group-controller
+      operationId: createUserGroup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupCreateRequest"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+  /api/user-groups/{userGroupId}:
+    get:
+      tags:
+      - user-group-controller
+      operationId: getByIdUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+    post:
+      tags:
+      - user-group-controller
+      operationId: updateUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+    delete:
+      tags:
+      - user-group-controller
+      operationId: deleteUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -561,7 +761,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Namespace"
+                  $ref: "#/components/schemas/NamespaceListItem"
     post:
       tags:
       - namespace-controller
@@ -1009,6 +1209,27 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PluginActionResponse"
+  /api/namespaces/{namespaceId}/users:
+    get:
+      tags:
+      - namespace-permission-endpoints
+      operationId: listNamespaceUsers
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NamespaceUserListItem"
   /api/namespaces/by-parentId/{parentId}:
     get:
       tags:
@@ -1345,6 +1566,10 @@ components:
           type: string
         bio:
           type: string
+        isAdmin:
+          type: boolean
+      required:
+      - isAdmin
     Namespace:
       type: object
       properties:
@@ -1360,6 +1585,15 @@ components:
           type: string
           description: "Optional filesystem path to a directory containing base configuration\
             \ for this namespace (agents, tools, etc.)"
+        externalId:
+          type: string
+          description: "Optional external identifier for this namespace, e.g. a federation\
+            \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: "Logical name of the default agent for this namespace. Resolved\
+            \ at runtime against AgentConfig entries (case-insensitive). When null,\
+            \ messages without an @mention will produce an explicit error."
       required:
       - name
     IntegrationConfig:
@@ -1491,9 +1725,120 @@ components:
           type: string
         modelName:
           type: string
+        integrations:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        advancedExecution:
+          type: boolean
       required:
       - name
       - namespaceId
+    UserGroupSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
+    UserGroupCreateRequest:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        userExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - agentIds
+      - name
+      - namespaceExternalId
+      - userExternalIds
+    UserGroupSearchResult:
+      type: object
+      properties:
+        userGroupId:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        namespaceExternalId:
+          type: string
+        name:
+          type: string
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        userCount:
+          type: integer
+          format: int32
+      required:
+      - agentIds
+      - name
+      - namespaceExternalId
+      - namespaceId
+      - userCount
+      - userGroupId
+    UserGroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        addedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        removedUserExternalIds:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - addedUserExternalIds
+      - agentIds
+      - name
+      - removedUserExternalIds
     PluginActionResponse:
       type: object
       properties:
@@ -1737,6 +2082,8 @@ components:
             format: uuid
           intention:
             type: string
+          toolName:
+            type: string
       required:
       - agentId
       - caseId
@@ -1745,6 +2092,7 @@ components:
       - metadata
       - namespaceId
       - timestamp
+      - toolName
       - type
     MessageContent:
       discriminator:
@@ -1861,6 +2209,9 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
+          durationMs:
+            type: integer
+            format: int64
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
@@ -1950,6 +2301,64 @@ components:
       - provider
       - state
       - version
+    NamespaceListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        configPath:
+          type: string
+          description: Optional filesystem path to a directory containing base configuration
+            for this namespace
+        externalId:
+          type: string
+          description: "Optional external identifier for this namespace, e.g. a federation\
+            \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: Logical name of the default agent for this namespace. Null
+            means no default is configured. Name matching is case-insensitive.
+        role:
+          type: string
+          description: The caller's effective role on this namespace
+          enum:
+          - SUPER-ADMIN
+          - ADMIN
+          - MEMBER
+      required:
+      - id
+      - name
+      - role
+    NamespaceUserListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        externalId:
+          type: string
+        email:
+          type: string
+        firstname:
+          type: string
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's direct role on this namespace
+          enum:
+          - ADMIN
+          - MEMBER
+      required:
+      - email
+      - externalId
+      - id
+      - role
     IntegrationTypeDescriptor:
       type: object
       properties:

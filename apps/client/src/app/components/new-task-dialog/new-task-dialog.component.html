@@ -137,12 +137,14 @@
 
 <mat-dialog-actions align="end">
   <button mat-button (click)="cancel()" [disabled]="isSubmitting()">Cancel</button>
-  <button mat-flat-button (click)="submit()" [disabled]="!isValid() || isSubmitting()" class="ntd-launch-btn">
+  <button mat-flat-button (click)="submit()" [disabled]="!canNavigate() || isSubmitting()" class="ntd-launch-btn">
     @if (isSubmitting()) {
       <mat-spinner diameter="16" />
-    } @else {
+    } @else if (isValid()) {
       <mat-icon>rocket_launch</mat-icon>
+    } @else {
+      <mat-icon>open_in_new</mat-icon>
     }
-    Launch
+    {{ isValid() ? 'Launch' : 'Open' }}
   </button>
 </mat-dialog-actions>

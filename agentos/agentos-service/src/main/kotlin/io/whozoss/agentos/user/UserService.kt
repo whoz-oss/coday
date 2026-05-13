@@ -18,12 +18,22 @@ interface UserService : EntityService<User, String> {
     fun findAll(): List<User>
 
     /**
+     * Count the total number of non-removed users in the system.
+     * Prefer this over [findAll] when only the count is needed to avoid loading all entities.
+     *
+     * @return The number of active (non-removed) users
+     */
+    fun count(): Long
+
+    /**
      * Find a non-removed user by their external identity provider key.
      *
      * @param externalId The IdP identifier (e.g. email from Cloudflare JWT, OS username).
      * @return The matching user, or null if not found.
      */
     fun findByExternalId(externalId: String): User?
+
+    fun findByExternalIds(externalIds: Set<String>): List<User>
 
     /**
      * Resolve the user matching [externalId], auto-creating one on first access.

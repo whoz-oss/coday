@@ -9,6 +9,8 @@ import io.whozoss.agentos.entity.EntityRepository
  * All namespaces share a single directory named after that key.
  */
 interface NamespaceRepository : EntityRepository<Namespace, String> {
+    fun findByExternalId(externalId: String): Namespace?
+
     companion object {
         const val NAMESPACE_PARENT_KEY = "all"
     }

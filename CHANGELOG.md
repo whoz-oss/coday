@@ -1,3 +1,358 @@
+## 0.144.1 (2026-05-13)
+
+### 🚀 Features
+
+- **agentos:** add repetition detection mechanism on AgentAdvanced (WZ-31597) ([#861](https://github.com/whoz-oss/coday/pull/861))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.144.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31783 call default agent - namespace defaultAgentName + routing fallback ([#854](https://github.com/whoz-oss/coday/pull/854), [#31783](https://github.com/whoz-oss/coday/issues/31783))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.143.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Rename user groups relations ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Rename user groups relations ([#864](https://github.com/whoz-oss/coday/pull/864), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.142.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Implement search users with user groups by external id ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Code review ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement search users with user groups by external id ([#863](https://github.com/whoz-oss/coday/pull/863), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.141.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31681 REDIRECT internal integration tool ([#852](https://github.com/whoz-oss/coday/pull/852), [#31681](https://github.com/whoz-oss/coday/issues/31681))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.140.1 (2026-05-11)
+
+### 🚀 Features
+
+- **agentos:** add retry mechanism on resolveIntentionAndTool (WZ-31597) ([4708dfc2](https://github.com/whoz-oss/coday/commit/4708dfc2))
+
+### ❤️ Thank You
+
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.140.0 (2026-05-11)
+
+### 🚀 Features
+
+- #31644 Implement DELETE user group endpoint ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix unique indices in case of soft deletion ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Add missing transactions ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix after coday review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement DELETE user group endpoint ([#851](https://github.com/whoz-oss/coday/pull/851), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.139.0 (2026-05-11)
+
+### 🚀 Features
+
+- #858 Add button "open in full view" on the card ([#858](https://github.com/whoz-oss/coday/issues/858))
+- #858 Add button "open in full view" on the card ([#859](https://github.com/whoz-oss/coday/pull/859), [#858](https://github.com/whoz-oss/coday/issues/858))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.138.0 (2026-05-11)
+
+### 🚀 Features
+
+- #855 Add a drawer to quickly display and answer threads in the global task control ([#855](https://github.com/whoz-oss/coday/issues/855))
+- #855 Merge master ([#855](https://github.com/whoz-oss/coday/issues/855))
+- #855 Add a drawer to quickly display and answer threads in the … ([#856](https://github.com/whoz-oss/coday/pull/856), [#855](https://github.com/whoz-oss/coday/issues/855))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.137.5 (2026-05-11)
+
+### 🩹 Fixes
+
+- **agentos-api-client:** fix missed user group generated client files (WZ-31597) ([#857](https://github.com/whoz-oss/coday/pull/857))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.137.4 (2026-05-10)
+
+### 🩹 Fixes
+
+- allow voice in desktop apps + temporary fix user-group-controller build ([c670cf36](https://github.com/whoz-oss/coday/commit/c670cf36))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.137.3 (2026-05-07)
+
+### 🚀 Features
+
+- wz-31595: add run configuration for whoz registered agentos ([#849](https://github.com/whoz-oss/coday/pull/849))
+- **agentos:** agent advanced execution mode part 1  (WZ-31597) ([#846](https://github.com/whoz-oss/coday/pull/846))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.137.2 (2026-05-07)
+
+### 🩹 Fixes
+
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([28e60d4d](https://github.com/whoz-oss/coday/commit/28e60d4d))
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([#850](https://github.com/whoz-oss/coday/pull/850))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.137.1 (2026-05-07)
+
+### 🩹 Fixes
+
+- **agentos-service:** publish bootJar instead of plain jar for docker and maven ([466c8762](https://github.com/whoz-oss/coday/commit/466c8762))
+- **agentos-service:** publish bootJar instead of plain jar for docker and maven ([#848](https://github.com/whoz-oss/coday/pull/848))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.137.0 (2026-05-07)
+
+### 🚀 Features
+
+- #31644 Create user if not existing when creating a user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement user group edit ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 address review - POST instead of PUT, intersection validation, blank check, verifyOrder ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 add schema ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement user group edit ([#845](https://github.com/whoz-oss/coday/pull/845), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.136.0 (2026-05-07)
+
+### 🚀 Features
+
+- #WZ-31607 add ToolContext to StandardTool.execute signature ([#823](https://github.com/whoz-oss/coday/pull/823))
+
+### ❤️ Thank You
+
+- m1
+- vincent-audibert-whoz
+
+## 0.135.0 (2026-05-07)
+
+### 🚀 Features
+
+- add possibility to provide agentos hostname ([#847](https://github.com/whoz-oss/coday/pull/847))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.134.0 (2026-05-06)
+
+### 🚀 Features
+
+- #31644 Save users to user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix style ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Remove unused code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi doc ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement get user group ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Save users to user group ([#844](https://github.com/whoz-oss/coday/pull/844), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.133.0 (2026-05-06)
+
+### 🚀 Features
+
+- #31644 Save agents to user groups ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix rebase ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi spec ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Clean code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Clean code ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Update openapi ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Add constraint ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Save agents to user groups ([#835](https://github.com/whoz-oss/coday/pull/835), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+- **ci:** split validate workflow into parallel ts/jvm jobs with merge gate ([#842](https://github.com/whoz-oss/coday/pull/842), [#841](https://github.com/whoz-oss/coday/issues/841))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.132.2 (2026-05-06)
+
+### 🚀 Features
+
+- set up nx workspace ([#839](https://github.com/whoz-oss/coday/pull/839))
+- **nx-cloud:** setup nx cloud workspace ([28ea00b9](https://github.com/whoz-oss/coday/commit/28ea00b9))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.132.1 (2026-05-05)
+
+### 🩹 Fixes
+
+- #826 replace Thread.sleep polling with coroutine flow-based waiting in tests ([#831](https://github.com/whoz-oss/coday/pull/831), [#826](https://github.com/whoz-oss/coday/issues/826))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.132.0 (2026-05-05)
+
+### 🚀 Features
+
+- #31424 Add UserGroup model ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add externalId to Namespace ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement GET user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement POST user-groups endpoint ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Add integrity constraints ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31644 Fix after code review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Generate open api documentation ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement get and create user group ([#821](https://github.com/whoz-oss/coday/pull/821), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.131.2 (2026-05-05)
+
+### 🩹 Fixes
+
+- PR #832 review follow-ups (audit log, UX fallback, test pin, rename) ([#834](https://github.com/whoz-oss/coday/pull/834), [#832](https://github.com/whoz-oss/coday/issues/832))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.131.1 (2026-05-05)
+
+### 🩹 Fixes
+
+- relax super-admin creation/update via API with self-rule ([#832](https://github.com/whoz-oss/coday/pull/832), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.131.0 (2026-05-05)
+
+### 🚀 Features
+
+- wz-31595: register agentos on eureka ([#822](https://github.com/whoz-oss/coday/pull/822))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.130.0 (2026-05-05)
+
+### 🚀 Features
+
+- tag-based project selection for release pipeline ([#829](https://github.com/whoz-oss/coday/pull/829))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.129.0 (2026-05-05)
+
+### 🚀 Features
+
+- #WZ-31326 use AgentConfig entities in AgentService resolution ([#770](https://github.com/whoz-oss/coday/pull/770))
+
+### 🩹 Fixes
+
+- deployPlugins cleans stale plugin JARs before rebuilding ([#820](https://github.com/whoz-oss/coday/pull/820))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- vincent-audibert-whoz
+- vincent.audibert
+
+## 0.128.0 (2026-04-30)
+
+### 🚀 Features
+
+- #817 add filter by star and add star on card ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 add Control Center menu and toggle thread done state ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 update ui disabled on task create modal ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 add possibility to navigate to project ([#817](https://github.com/whoz-oss/coday/issues/817))
+
+### 🩹 Fixes
+
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+- #817 return pr ([#817](https://github.com/whoz-oss/coday/issues/817))
+- #817 return on global mission control ([#818](https://github.com/whoz-oss/coday/pull/818), [#817](https://github.com/whoz-oss/coday/issues/817))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.127.0 (2026-04-28)
 
 ### 🚀 Features

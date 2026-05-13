@@ -43,6 +43,7 @@ export class NamespaceListComponent {
           id: ns.id ?? '',
           name: ns.name,
           description: ns.description,
+          badges: ns.defaultAgentName ? [{ label: ns.defaultAgentName, variant: 'info' }] : undefined,
         })
       )
     )
@@ -81,6 +82,10 @@ export class NamespaceListComponent {
 
   protected openAiModels(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'ai-models'])
+  }
+
+  protected openAgentConfigs(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'agent-configs'])
   }
 
   // --- Delete ---

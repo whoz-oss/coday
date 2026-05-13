@@ -19,6 +19,11 @@ import java.util.UUID
  * [externalId] is a read-only server-managed field (IdP key). HTTP clients may receive
  * it in responses but it is never written from the request body.
  *
+ * [isAdmin] follows PUT replace-semantic: clients are expected to send the full
+ * state on update. Omitting the field on PUT will reset it to `false` (Kotlin
+ * default). The self-rule in the controller still protects against changing
+ * one's own [isAdmin], independently of body content.
+ *
  * Annotated with @Schema(name = "User") so that the generated OpenAPI spec
  * keeps the schema name "User" instead of "UserResource".
  */
@@ -31,4 +36,5 @@ data class UserResource(
     val firstname: String? = null,
     val lastname: String? = null,
     val bio: String? = null,
+    val isAdmin: Boolean = false,
 )

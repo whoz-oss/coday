@@ -53,6 +53,7 @@ export class TaskControlComponent implements OnInit {
 
   protected readonly filters = FILTERS
   protected readonly activeFilter = signal<FilterKey>('all')
+  protected readonly starredOnly = signal(false)
   protected readonly isCreating = signal(false)
 
   protected readonly isLoadingList = toSignal(this.threadState.isLoadingThreadList$, { initialValue: false })
@@ -62,14 +63,26 @@ export class TaskControlComponent implements OnInit {
 
   protected readonly filteredTasks = computed(() => {
     const filter = this.activeFilter()
-    const tasks = this.allTasks()
+    const currentUsername = this.username()
+    let tasks = this.allTasks()
+
+    if (this.starredOnly() && currentUsername) {
+      tasks = tasks.filter((t) => t.starring.includes(currentUsername))
+    }
+
     if (filter === 'all') return tasks
     return tasks.filter((t) => t.status === filter)
   })
 
   /** Count per filter for badges */
   protected readonly filterCounts = computed(() => {
-    const tasks = this.allTasks()
+    const currentUsername = this.username()
+    let tasks = this.allTasks()
+
+    if (this.starredOnly() && currentUsername) {
+      tasks = tasks.filter((t) => t.starring.includes(currentUsername))
+    }
+
     return {
       all: tasks.length,
       'waiting-you': tasks.filter((t) => t.status === 'waiting-you').length,
@@ -81,7 +94,12 @@ export class TaskControlComponent implements OnInit {
 
   /** Groups for "All" view: sections by status (only non-empty) */
   protected readonly taskGroups = computed(() => {
-    const tasks = this.allTasks()
+    const currentUsername = this.username()
+    let tasks = this.allTasks()
+
+    if (this.starredOnly() && currentUsername) {
+      tasks = tasks.filter((t) => t.starring.includes(currentUsername))
+    }
     const groups: { status: TaskStatus; label: string; icon: string; tasks: typeof tasks }[] = [
       { status: 'waiting-you', label: 'Waiting for you', icon: 'mark_unread_chat_alt', tasks: [] },
       { status: 'in-progress', label: 'In progress', icon: 'pending', tasks: [] },
@@ -106,6 +124,10 @@ export class TaskControlComponent implements OnInit {
 
   setFilter(key: FilterKey): void {
     this.activeFilter.set(key)
+  }
+
+  toggleStarredFilter(): void {
+    this.starredOnly.update((v) => !v)
   }
 
   createTask(): void {

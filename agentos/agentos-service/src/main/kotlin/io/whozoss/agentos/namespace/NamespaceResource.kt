@@ -18,4 +18,8 @@ data class NamespaceResource(
     val description: String? = null,
     @Schema(description = "Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.)")
     val configPath: String? = null,
+    @Schema(description = "Optional external identifier for this namespace, e.g. a federation id from an external system")
+    val externalId: String? = null,
+    @Schema(description = "Logical name of the default agent for this namespace. Resolved at runtime against AgentConfig entries (case-insensitive). When null, messages without an @mention will produce an explicit error.")
+    val defaultAgentName: String? = null,
 )
