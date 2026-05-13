@@ -167,8 +167,6 @@ class AiProviderController(
     )
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(@RequestBody ids: List<UUID>): List<AiProviderResource> {
-        if (ids.size > MAX_BATCH_SIZE) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE")
         }
         if (ids.isEmpty()) return emptyList()
 

@@ -3,6 +3,7 @@ package io.whozoss.agentos.integrationConfig
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -18,7 +19,6 @@ import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.Authentication
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -66,7 +66,7 @@ import kotlin.math.min
  * from a missing row (Decision 20, breaking change vs. pre-fusion 403 on NS write).
  *
  * **Mass-assignment guards** :
- *  - On `POST`, the persisted `userId` is `currentUserId(auth)`.
+ *  - On `POST`, the persisted `userId` is the authenticated user's id.
  *  - On `PUT`, `id`, `namespaceId`, `userId` and `integrationType` are preserved
  *    from the persisted row. `integrationType` is immutable post-create
  *    (Decision 18 / AC11b) — aligns NS path on the invariant the user controller
@@ -153,9 +153,6 @@ class IntegrationConfigController(
     )
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(@RequestBody ids: List<UUID>): List<IntegrationConfigResource> {
-        if (ids.size > MAX_BATCH_SIZE) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE")
-        }
         if (ids.isEmpty()) return emptyList()
 
         val currentUser = userService.getCurrentUser()
@@ -215,24 +212,17 @@ class IntegrationConfigController(
     ): IntegrationConfigPage {
         val safeSize = size.coerceIn(1, MAX_PAGE_SIZE)
         val safePage = page.coerceAtLeast(0)
-        val nsFilter = parseNamespaceFilter(namespaceId)
-        val userFilter = parseUserFilter(userId, auth)
+        val resolvedNs = parseNamespaceParam(namespaceId)
+        val me = userService.getCurrentUser().id
+        validateUserParam(userId)
 
-        val all: List<IntegrationConfig> = when {
-            nsFilter is NamespaceFilter.Specific && userFilter is UserFilter.Any -> {
-                if (!callerCanReadNamespace(auth, nsFilter.target)) emptyList()
-                else integrationConfigService.findByNamespaceShared(nsFilter.target)
-            }
-
-            userFilter is UserFilter.CurrentUser ->
-                integrationConfigService.findByUserId(userFilter.id)
-                    .filter { nsFilter.accepts(it.namespaceId) }
-
-            else -> {
-                val me = currentUserId(auth)
-                integrationConfigService.findByUserId(me).filter { nsFilter.accepts(it.namespaceId) }
-            }
-        }
+        val all = integrationConfigService.findFiltered(
+            namespaceId = resolvedNs,
+            namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
+            callerId = me,
+            userRequested = userId != null,
+            canReadNamespace = { nsId -> callerCanReadNamespace(auth, nsId) },
+        )
 
         val total = all.size
         val from = (safePage.toLong() * safeSize).coerceAtMost(total.toLong()).toInt()
@@ -264,24 +254,18 @@ class IntegrationConfigController(
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
     override fun create(@Valid @RequestBody resource: IntegrationConfigResource): IntegrationConfigResource {
-        val me = currentUserId(currentAuth())
+        val me = userService.getCurrentUser().id
 
         // Phase 1 — mass-assignment guard
         if (resource.userId != null && resource.userId != me) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "userId in body must match authenticated user or be omitted",
-            )
+            throw BadRequestException("userId in body must match authenticated user or be omitted")
         }
 
         // Phase 2 — scope determination
         val resolvedNs: UUID? = resource.namespaceId
         val resolvedUser: UUID? = if (resource.userId != null) me else null
         if (resolvedNs == null && resolvedUser == null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "must provide namespaceId, userId, or both",
-            )
+            throw BadRequestException("must provide namespaceId, userId, or both")
         }
 
         // Phase 3 — per-scope authorization, run BEFORE the existence check so
@@ -346,64 +330,33 @@ class IntegrationConfigController(
 
     private fun callerCanReadNamespace(auth: Authentication, namespaceId: UUID): Boolean =
         permissionService.hasPermission(
-            userId = currentUserId(auth).toString(),
+            userId = userService.getCurrentUser().id.toString(),
             entityType = EntityType.NAMESPACE,
             entityId = namespaceId.toString(),
             action = Action.READ,
         )
 
-    private fun currentUserId(auth: Authentication): UUID {
-        val raw = auth.name ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
-        return runCatching { UUID.fromString(raw) }
-            .getOrElse {
-                logger.warn { "[IntegrationConfigController] auth.name is not a UUID: '$raw'" }
-                throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication identifier")
-            }
+    /**
+     * Parse the `namespaceId` query parameter. Returns `null` for absent or `none` sentinel,
+     * a valid UUID otherwise.
+     */
+    private fun parseNamespaceParam(raw: String?): UUID? = when {
+        raw == null -> null
+        raw.equals(NONE_SENTINEL, ignoreCase = true) -> null
+        else -> runCatching { UUID.fromString(raw) }
+            .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
     }
 
-    private fun currentAuth(): Authentication =
-        SecurityContextHolder.getContext().authentication
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
-
-    private fun parseNamespaceFilter(raw: String?): NamespaceFilter = when {
-        raw == null -> NamespaceFilter.Any
-        raw.equals(NONE_SENTINEL, ignoreCase = true) -> NamespaceFilter.UserGlobalOnly
-        else -> {
-            val parsed = runCatching { UUID.fromString(raw) }
-                .getOrElse { throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid namespaceId: '$raw'") }
-            NamespaceFilter.Specific(parsed)
+    /**
+     * Validate the `userId` query parameter. Only `me` and absent are valid;
+     * any other value is rejected with 400.
+     */
+    private fun validateUserParam(raw: String?) {
+        if (raw != null && !raw.equals(ME_SENTINEL, ignoreCase = true)) {
+            throw BadRequestException(
+                "Invalid userId filter: '$raw' — only 'me' is supported (cross-user listing is not exposed)",
+            )
         }
-    }
-
-    private fun parseUserFilter(raw: String?, auth: Authentication): UserFilter = when {
-        raw == null -> UserFilter.Any
-        raw.equals(ME_SENTINEL, ignoreCase = true) -> UserFilter.CurrentUser(currentUserId(auth))
-        else -> throw ResponseStatusException(
-            HttpStatus.BAD_REQUEST,
-            "Invalid userId filter: '$raw' — only 'me' is supported (cross-user listing is not exposed)",
-        )
-    }
-
-    private sealed class NamespaceFilter {
-        abstract fun accepts(namespaceId: UUID?): Boolean
-
-        data object Any : NamespaceFilter() {
-            override fun accepts(namespaceId: UUID?): Boolean = true
-        }
-
-        data object UserGlobalOnly : NamespaceFilter() {
-            override fun accepts(namespaceId: UUID?): Boolean = namespaceId == null
-        }
-
-        data class Specific(val target: UUID) : NamespaceFilter() {
-            override fun accepts(namespaceId: UUID?): Boolean = namespaceId == target
-        }
-    }
-
-    private sealed class UserFilter {
-        data object Any : UserFilter()
-
-        data class CurrentUser(val id: UUID) : UserFilter()
     }
 
     companion object : KLogging() {
