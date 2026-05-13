@@ -110,16 +110,15 @@ open class Neo4jUserGroupRepository(
         if (externalIds.isEmpty()) return emptyMap()
         return neo4jClient
             .query(
-                """
+                $$"""
                     MATCH (u:User)-[:MEMBER]->(g:UserGroup)
                     WHERE u.externalId IN $externalIds
                       AND (g.removed IS NULL OR g.removed = false)
                       AND (u.removed IS NULL OR u.removed = false)
                     RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
                     ORDER BY u.externalId ASC, g.name ASC
-                """,
-            ).bind(externalIds.toList())
-            .to("externalIds")
+                """.trimIndent(),
+            ).bindAll(mapOf("externalIds" to externalIds.toList()))
             .fetchAs(UserExternalIdGroupRow::class.java)
             .mappedBy { _, record ->
                 UserExternalIdGroupRow(
