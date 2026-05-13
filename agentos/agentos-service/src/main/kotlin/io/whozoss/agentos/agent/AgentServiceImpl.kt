@@ -127,7 +127,7 @@ class AgentServiceImpl(
      * model, provider name for the provider). When [userId] is null, falls back to direct
      * repository lookup with no overlay — preserves Epic 4 behaviour exactly (NFR-INT-1, AC11).
      *
-     * Fail-closed posture (review H-8 / NFR-REL-1): a [io.whozoss.agentos.reconciliation.ConfigNotFoundException]
+     * Fail-closed posture (review H-8 / NFR-REL-1): a [io.whozoss.agentos.exception.ConfigNotFoundException]
      * thrown by either reconciliation step is intentionally propagated — `baseModel` is the
      * row we just looked up by namespace, so reconciliation cannot legitimately fail to find
      * it. A failure here means corrupted state (orphan child after parent soft-delete, race

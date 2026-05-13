@@ -7,7 +7,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
-import io.whozoss.agentos.reconciliation.ConfigNotFoundException
+import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.integrationConfig.IntegrationConfig

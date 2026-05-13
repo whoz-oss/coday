@@ -3,7 +3,7 @@ package io.whozoss.agentos.tool
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
-import io.whozoss.agentos.reconciliation.ConfigNotFoundException
+import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.reconciliation.RunReconciliationCache
 import io.whozoss.agentos.sdk.tool.StandardTool
