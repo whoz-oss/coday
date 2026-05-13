@@ -198,7 +198,7 @@ class AiModelController(
     @ResponseStatus(HttpStatus.CREATED)
     @HideOnAccessDenied
     override fun create(@Valid @RequestBody resource: AiModelResource): AiModelResource {
-        val auth = currentAuth()
+        val auth = SecurityContextHolder.getContext().authentication ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
         ensureCallerAuth(auth)
 
         when (aiModelGuard.canCreateVerdict(resource, auth)) {
@@ -252,7 +252,7 @@ class AiModelController(
         val safeSize = size.coerceIn(1, MAX_PAGE_SIZE)
         val safePage = page.coerceAtLeast(0)
         val resolvedNs = parseNamespaceParam(namespaceId)
-        val me = currentUserId(auth)
+        val me = userService.getCurrentUser().id
         validateUserParam(userId)
 
         val rows = aiModelService.findFiltered(
@@ -297,20 +297,12 @@ class AiModelController(
 
     private fun callerCanReadNamespace(auth: Authentication, namespaceId: UUID): Boolean =
         permissionService.hasPermission(
-            userId = currentUserId(auth).toString(),
+            userId = userService.getCurrentUser().id.toString(),
             entityType = EntityType.NAMESPACE,
             entityId = namespaceId.toString(),
             action = Action.READ,
         )
 
-    private fun currentUserId(auth: Authentication): UUID {
-        val raw = auth.name ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
-        return runCatching { UUID.fromString(raw) }
-            .getOrElse {
-                logger.warn { "[AiModelController] auth.name is not a UUID: '$raw'" }
-                throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication identifier")
-            }
-    }
 
     /**
      * Validate caller authentication without consuming the resulting UUID.
@@ -321,12 +313,9 @@ class AiModelController(
      * the caller receives a 401 rather than a misleading 404 from `ParentInvisible`.
      */
     private fun ensureCallerAuth(auth: Authentication) {
-        currentUserId(auth)
+        userService.getCurrentUser().id
     }
 
-    private fun currentAuth(): Authentication =
-        SecurityContextHolder.getContext().authentication
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
 
     /**
      * Parse the `namespaceId` query parameter. Returns `null` for absent or `none` sentinel,

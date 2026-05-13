@@ -19,7 +19,6 @@ import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.Authentication
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -73,7 +72,7 @@ import kotlin.math.min
  * indistinguishable from a missing row.
  *
  * **Mass-assignment guards** :
- *  - On `POST`, the persisted `userId` is `currentUserId(auth)` (Phase 1 has already
+ *  - On `POST`, the persisted `userId` is `userService.getCurrentUser().id` (Phase 1 has already
  *    asserted that the body, if it carries a userId, agrees with the principal).
  *  - On `PUT`, `id`, `namespaceId`, `userId` and `apiType` are preserved from the
  *    persisted row via `existing.copy(...)`. `apiType` is immutable post-create
@@ -235,7 +234,7 @@ class AiProviderController(
         val safeSize = size.coerceIn(1, MAX_PAGE_SIZE)
         val safePage = page.coerceAtLeast(0)
         val resolvedNs = parseNamespaceParam(namespaceId)
-        val me = currentUserId(auth)
+        val me = userService.getCurrentUser().id
         validateUserParam(userId)
 
         val all = aiProviderService.findFiltered(
@@ -243,7 +242,7 @@ class AiProviderController(
             namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
             callerId = me,
             userRequested = userId != null,
-            canReadNamespace = { nsId -> callerCanReadNamespace(auth, nsId) },
+            canReadNamespace = { nsId -> callerCanReadNamespace(nsId) },
         )
 
         val total = all.size
@@ -276,7 +275,7 @@ class AiProviderController(
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
     override fun create(@Valid @RequestBody resource: AiProviderResource): AiProviderResource {
-        val me = currentUserId(currentAuth())
+        val me = userService.getCurrentUser().id
 
         // Phase 1 — mass-assignment guard
         if (resource.userId != null && resource.userId != me) {
@@ -379,26 +378,15 @@ class AiProviderController(
         else -> incoming
     }
 
-    private fun callerCanReadNamespace(auth: Authentication, namespaceId: UUID): Boolean =
+    private fun callerCanReadNamespace(namespaceId: UUID): Boolean =
         permissionService.hasPermission(
-            userId = currentUserId(auth).toString(),
+            userId = userService.getCurrentUser().id.toString(),
             entityType = EntityType.NAMESPACE,
             entityId = namespaceId.toString(),
             action = Action.READ,
         )
 
-    private fun currentUserId(auth: Authentication): UUID {
-        val raw = auth.name ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
-        return runCatching { UUID.fromString(raw) }
-            .getOrElse {
-                logger.warn { "[AiProviderController] auth.name is not a UUID: '$raw'" }
-                throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication identifier")
-            }
-    }
 
-    private fun currentAuth(): Authentication =
-        SecurityContextHolder.getContext().authentication
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
 
     /**
      * Parse the `namespaceId` query parameter. Returns `null` for absent or `none` sentinel,
