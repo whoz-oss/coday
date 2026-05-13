@@ -142,7 +142,7 @@ class AiModelController(
     )
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(@RequestBody ids: List<UUID>): List<AiModelResource> {
-        }
+
         if (ids.isEmpty()) return emptyList()
 
         val currentUser = userService.getCurrentUser()
@@ -250,34 +250,19 @@ class AiModelController(
     ): AiModelPage {
         val safeSize = size.coerceIn(1, MAX_PAGE_SIZE)
         val safePage = page.coerceAtLeast(0)
-        val nsFilter = parseNamespaceFilter(namespaceId)
-        val userFilter = parseUserFilter(userId, auth)
+        val resolvedNs = parseNamespaceParam(namespaceId)
+        val me = currentUserId(auth)
+        validateUserParam(userId)
 
-        val rows: List<AiModel> = when {
-            aiProviderId != null -> {
-                if (!aiModelGuard.canSeeProvider(aiProviderId, auth)) emptyList()
-                else when {
-                    nsFilter is NamespaceFilter.Specific && userFilter is UserFilter.Any ->
-                        aiModelService.findByParent(aiProviderId)
-                            .filter { it.namespaceId == nsFilter.target && it.userId == null }
-                    userFilter is UserFilter.CurrentUser ->
-                        aiModelService.findByUserId(userFilter.id)
-                            .filter { it.aiProviderId == aiProviderId }
-                            .filter { nsFilter.accepts(it.namespaceId) }
-                    else -> aiModelService.findByParent(aiProviderId)
-                }
-            }
-            nsFilter is NamespaceFilter.Specific && userFilter is UserFilter.Any -> {
-                if (!callerCanReadNamespace(auth, nsFilter.target)) emptyList()
-                else aiModelService.findByNamespaceId(nsFilter.target).filter { it.userId == null }
-            }
-            userFilter is UserFilter.CurrentUser ->
-                aiModelService.findByUserId(userFilter.id).filter { nsFilter.accepts(it.namespaceId) }
-            else -> {
-                val me = currentUserId(auth)
-                aiModelService.findByUserId(me).filter { nsFilter.accepts(it.namespaceId) }
-            }
-        }
+        val rows = aiModelService.findFiltered(
+            namespaceId = resolvedNs,
+            namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
+            callerId = me,
+            userRequested = userId != null,
+            aiProviderId = aiProviderId,
+            canReadNamespace = { nsId -> callerCanReadNamespace(auth, nsId) },
+            canSeeProvider = { providerId -> aiModelGuard.canSeeProvider(providerId, auth) },
+        )
 
         val total = rows.size
         val from = (safePage.toLong() * safeSize).coerceAtMost(total.toLong()).toInt()
@@ -342,45 +327,28 @@ class AiModelController(
         SecurityContextHolder.getContext().authentication
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authentication")
 
-    private fun parseNamespaceFilter(raw: String?): NamespaceFilter = when {
-        raw == null -> NamespaceFilter.Any
-        raw.equals(NONE_SENTINEL, ignoreCase = true) -> NamespaceFilter.UserGlobalOnly
-        else -> {
-            val parsed = runCatching { UUID.fromString(raw) }
-                .getOrElse { throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid namespaceId: '$raw'") }
-            NamespaceFilter.Specific(parsed)
-        }
+    /**
+     * Parse the `namespaceId` query parameter. Returns `null` for absent or `none` sentinel,
+     * a valid UUID otherwise.
+     */
+    private fun parseNamespaceParam(raw: String?): UUID? = when {
+        raw == null -> null
+        raw.equals(NONE_SENTINEL, ignoreCase = true) -> null
+        else -> runCatching { UUID.fromString(raw) }
+            .getOrElse { throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid namespaceId: '$raw'") }
     }
 
-    private fun parseUserFilter(raw: String?, auth: Authentication): UserFilter = when {
-        raw == null -> UserFilter.Any
-        raw.equals(ME_SENTINEL, ignoreCase = true) -> UserFilter.CurrentUser(currentUserId(auth))
-        else -> throw ResponseStatusException(
-            HttpStatus.BAD_REQUEST,
-            "Invalid userId filter: only 'me' is supported",
-        )
-    }
-
-    private sealed class NamespaceFilter {
-        abstract fun accepts(namespaceId: UUID?): Boolean
-
-        data object Any : NamespaceFilter() {
-            override fun accepts(namespaceId: UUID?): Boolean = true
+    /**
+     * Validate the `userId` query parameter. Only `me` and absent are valid;
+     * any other value is rejected with 400.
+     */
+    private fun validateUserParam(raw: String?) {
+        if (raw != null && !raw.equals(ME_SENTINEL, ignoreCase = true)) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Invalid userId filter: only 'me' is supported",
+            )
         }
-
-        data object UserGlobalOnly : NamespaceFilter() {
-            override fun accepts(namespaceId: UUID?): Boolean = namespaceId == null
-        }
-
-        data class Specific(val target: UUID) : NamespaceFilter() {
-            override fun accepts(namespaceId: UUID?): Boolean = namespaceId == target
-        }
-    }
-
-    private sealed class UserFilter {
-        data object Any : UserFilter()
-
-        data class CurrentUser(val id: UUID) : UserFilter()
     }
 
     companion object : KLogging() {

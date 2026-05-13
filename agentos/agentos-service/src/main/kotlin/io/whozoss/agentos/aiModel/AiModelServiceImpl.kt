@@ -87,6 +87,55 @@ class AiModelServiceImpl(
 
     override fun findByUserId(userId: UUID): List<AiModel> = repository.findByUserId(userId)
 
+    override fun findFiltered(
+        namespaceId: UUID?,
+        namespaceIsNone: Boolean,
+        callerId: UUID,
+        userRequested: Boolean,
+        aiProviderId: UUID?,
+        canReadNamespace: (UUID) -> Boolean,
+        canSeeProvider: (UUID) -> Boolean,
+    ): List<AiModel> = when {
+        // Provider-scoped queries: check provider visibility first, then apply ns/user filters
+        aiProviderId != null -> {
+            if (!canSeeProvider(aiProviderId)) emptyList()
+            else when {
+                namespaceId != null && !userRequested ->
+                    findByParent(aiProviderId).filter { it.namespaceId == namespaceId && it.userId == null }
+                userRequested -> {
+                    val nsFilter: (UUID?) -> Boolean = when {
+                        namespaceIsNone -> { nsId -> nsId == null }
+                        namespaceId != null -> { nsId -> nsId == namespaceId }
+                        else -> { _ -> true }
+                    }
+                    findByUserId(callerId)
+                        .filter { it.aiProviderId == aiProviderId }
+                        .filter { nsFilter(it.namespaceId) }
+                }
+                else -> findByParent(aiProviderId)
+            }
+        }
+
+        // NS-shared layer of a specific namespace (no userId param) : check READ permission
+        namespaceId != null && !userRequested -> {
+            if (!canReadNamespace(namespaceId)) emptyList()
+            else findByNamespaceId(namespaceId).filter { it.userId == null }
+        }
+
+        // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
+        userRequested -> {
+            val nsFilter: (UUID?) -> Boolean = when {
+                namespaceIsNone -> { nsId -> nsId == null }
+                namespaceId != null -> { nsId -> nsId == namespaceId }
+                else -> { _ -> true }
+            }
+            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+        }
+
+        // No filter at all : surface the caller's own overlays
+        else -> findByUserId(callerId)
+    }
+
     override fun findAiModel(
         namespaceId: UUID,
         name: String,

@@ -67,6 +67,33 @@ class AiProviderServiceImpl(
         name: String,
     ): AiProvider? = repository.findByTriple(namespaceId, userId, name)
 
+    override fun findFiltered(
+        namespaceId: UUID?,
+        namespaceIsNone: Boolean,
+        callerId: UUID,
+        userRequested: Boolean,
+        canReadNamespace: (UUID) -> Boolean,
+    ): List<AiProvider> = when {
+        // NS-shared layer of a specific namespace (no userId param) : check READ permission
+        namespaceId != null && !userRequested -> {
+            if (!canReadNamespace(namespaceId)) emptyList()
+            else findByNamespaceId(namespaceId).filter { it.userId == null }
+        }
+
+        // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
+        userRequested -> {
+            val nsFilter: (UUID?) -> Boolean = when {
+                namespaceIsNone -> { nsId -> nsId == null }
+                namespaceId != null -> { nsId -> nsId == namespaceId }
+                else -> { _ -> true }
+            }
+            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+        }
+
+        // No filter at all : surface the caller's own overlays
+        else -> findByUserId(callerId)
+    }
+
     private fun requireScope(entity: AiProvider) {
         if (entity.namespaceId == null && entity.userId == null) {
             throw ResponseStatusException(
