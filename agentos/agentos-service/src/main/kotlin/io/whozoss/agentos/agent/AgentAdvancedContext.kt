@@ -8,7 +8,6 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
-import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import java.util.UUID
 
@@ -24,7 +23,7 @@ data class AgentAdvancedContext(
  */
 internal fun AgentAdvancedContext.buildMessages(events: List<CaseEvent>): List<Message> {
     val history = convertEventsToMessages(events)
-    return if (instructions != null) listOf(SystemMessage(instructions)) + history else history
+    return if (instructions != null) listOf(UserMessage(instructions)) + history else history
 }
 
 /**

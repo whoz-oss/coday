@@ -13,7 +13,6 @@ import java.util.UUID
 
 @Service
 class AgentIntentionGenerator {
-
     fun generate(
         context: AgentAdvancedContext,
         events: List<CaseEvent>,
@@ -47,7 +46,7 @@ $toolsDescription
 $executionState
 
 ## Step 2 — Agent constraints
-Review the system instructions and ensure the next action stays within the agent's defined scope.
+Review the instructions and ensure the next action stays within the agent's defined scope.
 
 ## Step 3 — Capability check
 Does the required action fall within the available tools? If not, select $ANSWER_TOOL and explain why.
@@ -64,6 +63,9 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
         var lastException: Exception? = null
         var lastResponse: String? = null
 
+        logger.debug { "Intention generation: sending ${messages.size + 1} messages to LLM" }
+        logger.debug { "Intention prompt:\n$prompt" }
+
         repeat(MAX_INTENTION_ATTEMPTS) { attempt ->
             try {
                 val response =
@@ -72,6 +74,7 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
                         .call()
                         .content() ?: throw AgentIntentionGenerationException("Null LLM response")
 
+                logger.debug { "Intention generation response:\n$response" }
                 lastResponse = response
                 val (intention, toolName) = parseIntentionAndTool(response, toolNames)
 
@@ -108,7 +111,8 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
         validToolNames: List<String>,
     ): Pair<String, String> {
         if (response.isBlank()) throw AgentIntentionGenerationException("Empty LLM response")
-        val rawTool = extractFromTag(response, "toolName") ?: throw AgentIntentionGenerationException("Missing <toolName> tag in LLM response")
+        val rawTool =
+            extractFromTag(response, "toolName") ?: throw AgentIntentionGenerationException("Missing <toolName> tag in LLM response")
         val intention = extractFromTag(response, "intention") ?: response.trim()
         val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) } ?: ANSWER_TOOL
         return intention to toolName

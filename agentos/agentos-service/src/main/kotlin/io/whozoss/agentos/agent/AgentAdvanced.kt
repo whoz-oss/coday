@@ -65,45 +65,33 @@ class AgentAdvanced(
                     if (!shouldContinue()) break
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
-                    val repeatedTool = detectRepetitionLoop(accumulatedEvents)
-                    if (repeatedTool == null) repetitionWarningEmitted = false
-
                     val repetitionWarning =
-                        repeatedTool?.let { toolName ->
-                            val msg =
-                                "You have called `$toolName` $REPETITION_DETECTION_WINDOW times consecutively with no progress. " +
-                                    "Stop and use the ${AgentIntentionGenerator.ANSWER_TOOL} tool to explain the situation or ask the user for more information."
-                            if (!repetitionWarningEmitted) {
-                                logger.warn { "Repetition loop detected: $toolName called $REPETITION_DETECTION_WINDOW consecutive times" }
-                                emit(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
-                                repetitionWarningEmitted = true
-                            }
-                            msg
-                        }
+                        handleRepetitionDetection(
+                            accumulatedEvents,
+                            namespaceId,
+                            caseId,
+                            repetitionWarningEmitted,
+                        ) { event -> emit(event) }
+                    repetitionWarningEmitted = repetitionWarning != null
 
-                    val intention = intentionGenerator.generate(context, accumulatedEvents, namespaceId, caseId, repetitionWarning)
+                    val intention =
+                        intentionGenerator.generate(context, accumulatedEvents, namespaceId, caseId, repetitionWarning)
                     emit(intention)
                     accumulatedEvents.add(intention)
                     lastIntention = intention
 
                     if (intention.toolName == AgentIntentionGenerator.ANSWER_TOOL) {
                         continueLoop = false
-                        continue
+                    } else {
+                        handleToolExecution(
+                            accumulatedEvents,
+                            intention,
+                            namespaceId,
+                            caseId,
+                            shouldContinue,
+                        ) { event -> emit(event) }
                     }
-
-                    if (!shouldContinue()) break
-                    val toolRequestId = UUID.randomUUID().toString()
-                    val parameters =
-                        generateParameters(accumulatedEvents, intention, namespaceId, caseId, toolRequestId)
-                    emit(parameters)
-                    accumulatedEvents.add(parameters)
-
-                    if (!shouldContinue()) break
-                    val response = executeTool(parameters, namespaceId, caseId)
-                    emit(response)
-                    accumulatedEvents.add(response)
                 }
-
                 if (iteration >= maxIterations) {
                     emit(
                         WarnEvent(
@@ -113,37 +101,15 @@ class AgentAdvanced(
                         ),
                     )
                 }
-
                 if (shouldContinue()) {
-                    val finalPromptText = "Based on the above conversation and your analysis, provide your response to the user."
-                    val intentionContext = lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
-                    val messages = context.buildMessages(accumulatedEvents) + UserMessage(intentionContext)
-
-                    val contentBuilder = StringBuilder()
-                    context.chatClient
-                        .prompt(Prompt(messages))
-                        .stream()
-                        .content()
-                        .asFlow()
-                        .takeWhile { shouldContinue() }
-                        .collect { chunk ->
-                            contentBuilder.append(chunk)
-                            emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
-                        }
-                    val content = contentBuilder.toString()
-                    if (content.isNotEmpty()) {
-                        val msg =
-                            MessageEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                actor = Actor(id.toString(), name, ActorRole.AGENT),
-                                content = listOf(MessageContent.Text(content)),
-                            )
-                        emit(msg)
-                        accumulatedEvents.add(msg)
-                    }
+                    generateFinalResponse(
+                        accumulatedEvents,
+                        lastIntention,
+                        namespaceId,
+                        caseId,
+                        shouldContinue,
+                    ) { event -> emit(event) }
                 }
-
                 emit(
                     AgentFinishedEvent(
                         namespaceId = namespaceId,
@@ -166,6 +132,83 @@ class AgentAdvanced(
                 )
             }
         }
+
+    private suspend fun handleRepetitionDetection(
+        events: List<CaseEvent>,
+        namespaceId: UUID,
+        caseId: UUID,
+        warningAlreadyEmitted: Boolean,
+        emitEvent: suspend (CaseEvent) -> Unit,
+    ): String? {
+        val repeatedTool = detectRepetitionLoop(events) ?: return null
+        val msg =
+            "Calling a tool with the same parameters will produce the same results.\n" +
+                "You have called the tool $repeatedTool $REPETITION_DETECTION_WINDOW times consecutively. " +
+                "If the tool has not added meaningful information to the conversation, " +
+                "stop calling it and consider the next step toward achieving the user's goal. " +
+                "If you do not have enough information to proceed, use ${AgentIntentionGenerator.ANSWER_TOOL} to ask the user for further instructions."
+        if (!warningAlreadyEmitted) {
+            logger.warn { "Repetition loop detected: $repeatedTool called $REPETITION_DETECTION_WINDOW consecutive times" }
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+        }
+        return msg
+    }
+
+    private suspend fun handleToolExecution(
+        accumulatedEvents: MutableList<CaseEvent>,
+        intention: IntentionGeneratedEvent,
+        namespaceId: UUID,
+        caseId: UUID,
+        shouldContinue: () -> Boolean,
+        emitEvent: suspend (CaseEvent) -> Unit,
+    ) {
+        if (!shouldContinue()) return
+        val toolRequestId = UUID.randomUUID().toString()
+        val parameters = generateParameters(accumulatedEvents, intention, namespaceId, caseId, toolRequestId)
+        emitEvent(parameters)
+        accumulatedEvents.add(parameters)
+
+        if (!shouldContinue()) return
+        val response = executeTool(parameters, namespaceId, caseId)
+        emitEvent(response)
+        accumulatedEvents.add(response)
+    }
+
+    private suspend fun generateFinalResponse(
+        accumulatedEvents: List<CaseEvent>,
+        lastIntention: IntentionGeneratedEvent?,
+        namespaceId: UUID,
+        caseId: UUID,
+        shouldContinue: () -> Boolean,
+        emitEvent: suspend (CaseEvent) -> Unit,
+    ) {
+        val finalPromptText = "Based on the above conversation and your analysis, provide your response to the user."
+        val intentionContext = lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
+        val messages = context.buildMessages(accumulatedEvents) + UserMessage(intentionContext)
+
+        val contentBuilder = StringBuilder()
+        context.chatClient
+            .prompt(Prompt(messages))
+            .stream()
+            .content()
+            .asFlow()
+            .takeWhile { shouldContinue() }
+            .collect { chunk ->
+                contentBuilder.append(chunk)
+                emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+            }
+        val content = contentBuilder.toString()
+        if (content.isNotEmpty()) {
+            val msg =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor(id.toString(), name, ActorRole.AGENT),
+                    content = listOf(MessageContent.Text(content)),
+                )
+            emitEvent(msg)
+        }
+    }
 
     internal fun detectRepetitionLoop(events: List<CaseEvent>): String? =
         events
