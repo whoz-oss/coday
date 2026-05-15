@@ -1,6 +1,6 @@
 spring:
   application:
-    name: agentos-service
+    name: agentos
   cloud:
     # Spring Cloud 2024.0.x (Moore) targets Spring Boot 3.4.x officially.
     # AgentOS runs Spring Boot 3.5.x which is functionally compatible but
@@ -11,8 +11,6 @@ spring:
     config:
       # Disable Cloud Config by default. Enabled only with the 'whoz' profile.
       enabled: false
-      import-check:
-        enabled: false
     discovery:
       # Disable service discovery (Eureka) by default. Enabled only with the
       # 'whoz' profile. Without this, EurekaClientAutoConfiguration fires and
@@ -49,7 +47,7 @@ spring:
         enabled: ${MCP_ENABLED:false}
 
 server:
-  port: 8123
+  port: 8124
   compression:
     enabled: false
   error:
