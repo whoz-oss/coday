@@ -1,3 +1,13 @@
+## 0.145.1 (2026-05-15)
+
+### 🚀 Features
+
+- **agentos:** enhance spring cloud config and ensure correct log format (WZ-31881) ([#872](https://github.com/whoz-oss/coday/pull/872))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.145.0 (2026-05-13)
 
 ### 🚀 Features
