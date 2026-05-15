@@ -2,11 +2,9 @@ package io.whozoss.agentos.agentConfig
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.entity.InMemoryEntityRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import java.time.Instant
 import java.util.UUID
 
 class AgentConfigServiceImplUnitSpec : StringSpec({
@@ -28,9 +26,8 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
         name: String,
         nsId: UUID = namespaceId,
         modelName: String? = "BIG",
-        createdAt: Instant = Instant.ofEpochSecond(1_000_000),
     ) = AgentConfig(
-        metadata = EntityMetadata(id = UUID.randomUUID(), created = createdAt),
+        metadata = EntityMetadata(id = UUID.randomUUID()),
         namespaceId = nsId,
         name = name,
         modelName = modelName,
@@ -72,42 +69,4 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
         svc.findByName(namespaceId, "Dev").shouldBeNull()
     }
 
-    // -------------------------------------------------------------------------
-    // findDefault
-    // -------------------------------------------------------------------------
-
-    "findDefault returns built-in fallback when namespace has no configs" {
-        val svc = service()
-
-        val result = svc.findDefault(namespaceId)
-
-        result shouldBe AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG
-    }
-
-    "findDefault returns the oldest config when multiple exist" {
-        val repo = repository()
-        val svc = service(repo)
-        val older = repo.save(config("Alpha", nsId = namespaceId, createdAt = Instant.ofEpochSecond(1000)))
-        repo.save(config("Beta", nsId = namespaceId, createdAt = Instant.ofEpochSecond(2000)))
-
-        svc.findDefault(namespaceId) shouldBe older
-    }
-
-    "findDefault returns the single config when only one exists" {
-        val repo = repository()
-        val svc = service(repo)
-        val saved = repo.save(config("Solo", nsId = namespaceId))
-
-        svc.findDefault(namespaceId).shouldNotBeNull() shouldBe saved
-    }
-
-    "findDefault is scoped to the given namespace" {
-        val repo = repository()
-        val svc = service(repo)
-        val otherNamespaceId = UUID.randomUUID()
-        repo.save(config("Alpha", nsId = otherNamespaceId))
-
-        // own namespace is empty -> fallback
-        svc.findDefault(namespaceId) shouldBe AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG
-    }
 })

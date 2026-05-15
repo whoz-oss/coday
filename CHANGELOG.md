@@ -1,3 +1,87 @@
+## 0.145.1 (2026-05-15)
+
+### 🚀 Features
+
+- **agentos:** enhance spring cloud config and ensure correct log format (WZ-31881) ([#872](https://github.com/whoz-oss/coday/pull/872))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.145.0 (2026-05-13)
+
+### 🚀 Features
+
+- add PWA support for mobile installation ([0ca77e34](https://github.com/whoz-oss/coday/commit/0ca77e34))
+- return pr ([08e2578a](https://github.com/whoz-oss/coday/commit/08e2578a))
+- update pnpm-lock ([0651bd35](https://github.com/whoz-oss/coday/commit/0651bd35))
+
+### 🩹 Fixes
+
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.144.2 (2026-05-13)
+
+### 🩹 Fixes
+
+- #31424 Fix autocomplete query ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Fix autocomplete query ([#871](https://github.com/whoz-oss/coday/pull/871), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.144.1 (2026-05-13)
+
+### 🚀 Features
+
+- **agentos:** add repetition detection mechanism on AgentAdvanced (WZ-31597) ([#861](https://github.com/whoz-oss/coday/pull/861))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.144.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31783 call default agent - namespace defaultAgentName + routing fallback ([#854](https://github.com/whoz-oss/coday/pull/854), [#31783](https://github.com/whoz-oss/coday/issues/31783))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.143.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Rename user groups relations ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Rename user groups relations ([#864](https://github.com/whoz-oss/coday/pull/864), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.142.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Implement search users with user groups by external id ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Code review ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement search users with user groups by external id ([#863](https://github.com/whoz-oss/coday/pull/863), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.141.0 (2026-05-12)
 
 ### 🚀 Features

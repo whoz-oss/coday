@@ -44,10 +44,14 @@ jersey = "3.1.9"
 # required by EurekaClientAutoConfiguration in Spring Cloud 2024.0.x.
 # Version 2.0.4 is shipped within eureka-client 2.0.4 (part of netflix OSS).
 eurekaClientJersey3 = "2.0.4"
+# Logstash Logback Encoder — JSON structured logging for ELK/Filebeat
+# 8.1 is the last version compatible with Jackson 2.x (Spring Boot 3.x);
+# 9.0+ requires Jackson 3.x.
+logstashLogbackEncoder = "8.1"
 
 # AgentOS modules versions
-agentosSdk = "0.141.0"
-agentosService = "0.141.0"
+agentosSdk = "0.145.1"
+agentosService = "0.145.1"
 
 [libraries]
 # Kotlin
@@ -82,6 +86,9 @@ eureka-client-jersey3 = { module = "com.netflix.eureka:eureka-client-jersey3", v
 
 # Klogger
 klogger = {module="io.github.microutils:kotlin-logging-jvm", version.ref="klogger"}
+
+# Logstash Logback Encoder — JSON structured logging
+logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashLogbackEncoder" }
 
 # Springdoc OpenAPI
 springdoc-openapi-starter = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }

@@ -34,6 +34,8 @@ export class NamespaceFormComponent implements OnInit {
     }),
     description: new FormControl<string>('', { nonNullable: true }),
     configPath: new FormControl<string>('', { nonNullable: true }),
+    externalId: new FormControl<string>('', { nonNullable: true }),
+    defaultAgentName: new FormControl<string>('', { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -46,6 +48,14 @@ export class NamespaceFormComponent implements OnInit {
 
   protected get configPathControl() {
     return this.form.controls.configPath
+  }
+
+  protected get externalIdControl() {
+    return this.form.controls.externalId
+  }
+
+  protected get defaultAgentNameControl() {
+    return this.form.controls.defaultAgentName
   }
 
   protected readonly isEditMode = signal(false)
@@ -74,6 +84,8 @@ export class NamespaceFormComponent implements OnInit {
           this.nameControl.setValue(ns.name)
           this.descriptionControl.setValue(ns.description ?? '')
           this.configPathControl.setValue(ns.configPath ?? '')
+          this.externalIdControl.setValue(ns.externalId ?? '')
+          this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
           this.isLoading.set(false)
         },
         error: () => {
@@ -88,18 +100,18 @@ export class NamespaceFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
+    const payload: Namespace = {
+      ...this.existingNamespace,
+      name: this.nameControl.value.trim(),
+      description: this.descriptionControl.value.trim() || undefined,
+      configPath: this.configPathControl.value.trim() || undefined,
+      externalId: this.externalIdControl.value.trim() || undefined,
+      defaultAgentName: this.defaultAgentNameControl.value.trim() || undefined,
+    }
+
     const call$ = this.isEditMode()
-      ? this.namespaceController.updateNamespace(this.existingNamespace!.id ?? '', {
-          ...this.existingNamespace!,
-          name: this.nameControl.value.trim(),
-          description: this.descriptionControl.value.trim() || undefined,
-          configPath: this.configPathControl.value.trim() || undefined,
-        })
-      : this.namespaceController.createNamespace({
-          name: this.nameControl.value.trim(),
-          ...(this.descriptionControl.value.trim() ? { description: this.descriptionControl.value.trim() } : {}),
-          ...(this.configPathControl.value.trim() ? { configPath: this.configPathControl.value.trim() } : {}),
-        } as Namespace)
+      ? this.namespaceController.updateNamespace(this.existingNamespace!.id ?? '', payload)
+      : this.namespaceController.createNamespace(payload)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),

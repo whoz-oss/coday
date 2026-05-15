@@ -22,6 +22,7 @@ data class NamespaceNode(
     val description: String? = null,
     val configPath: String? = null,
     val externalId: String? = null,
+    val defaultAgentName: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -44,6 +45,7 @@ data class NamespaceNode(
             description = description,
             configPath = configPath,
             externalId = externalId,
+            defaultAgentName = defaultAgentName,
         )
 
     companion object {
@@ -54,6 +56,7 @@ data class NamespaceNode(
                 description = ns.description,
                 configPath = ns.configPath,
                 externalId = ns.externalId,
+                defaultAgentName = ns.defaultAgentName,
                 created = ns.metadata.created,
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,

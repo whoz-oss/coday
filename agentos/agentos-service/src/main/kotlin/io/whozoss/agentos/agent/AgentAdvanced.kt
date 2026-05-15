@@ -103,6 +103,7 @@ class AgentAdvanced(
             var iteration = 0
             var continueLoop = true
             var lastIntention: IntentionGeneratedEvent? = null
+            var repetitionWarningEmitted = false
             val accumulatedEvents = events.toMutableList()
 
             try {
@@ -115,7 +116,22 @@ class AgentAdvanced(
                     // iteration to complete.
                     if (!shouldContinue()) break
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
-                    val intention = resolveIntentionAndTool(accumulatedEvents, namespaceId, caseId)
+
+                    // Detect repetitive tool usage
+                    val repeatedTool = detectRepetitionLoop(accumulatedEvents)
+                    if (repeatedTool == null) repetitionWarningEmitted = false
+                    val repetitionWarning = repeatedTool?.let { toolName ->
+                        val msg = "You have called `$toolName` $REPETITION_DETECTION_WINDOW times consecutively with no progress. " +
+                            "Stop and use the $ANSWER_TOOL tool to explain the situation or ask the user for more information."
+                        if (!repetitionWarningEmitted) {
+                            logger.warn { "Repetition loop detected: $toolName called $REPETITION_DETECTION_WINDOW consecutive times" }
+                            emit(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+                            repetitionWarningEmitted = true
+                        }
+                        msg
+                    }
+
+                    val intention = resolveIntentionAndTool(accumulatedEvents, namespaceId, caseId, repetitionWarning)
                     emit(intention)
                     accumulatedEvents.add(intention)
                     lastIntention = intention
@@ -206,6 +222,22 @@ class AgentAdvanced(
         }
 
     /**
+     * Detects when the last N tool calls all targeted the same tool,
+     * indicating a potential infinite loop.
+     *
+     * @return the repeated tool name if a loop is detected, null otherwise
+     */
+    internal fun detectRepetitionLoop(events: List<CaseEvent>): String? =
+        events
+            .filterIsInstance<ToolResponseEvent>()
+            .filter { it.success }
+            .takeLast(REPETITION_DETECTION_WINDOW)
+            .takeIf { it.size == REPETITION_DETECTION_WINDOW }
+            ?.map { it.toolName }
+            ?.toSet()
+            ?.singleOrNull()
+
+    /**
      * Single LLM call that both reasons about the next step and selects the tool to call.
      *
      * The prompt follows a 4-step structured reasoning approach:
@@ -225,6 +257,7 @@ class AgentAdvanced(
         events: List<CaseEvent>,
         namespaceId: UUID,
         caseId: UUID,
+        repetitionWarning: String? = null,
     ): IntentionGeneratedEvent {
         val messages = buildMessages(events)
         val toolNames = tools.map { it.name } + ANSWER_TOOL
@@ -260,7 +293,7 @@ Does the required action fall within the available tools? If not, select $ANSWER
 ## Step 4 — Data prerequisites
 Is all the information required to call the next tool already available in the conversation history?
 If not, select $ANSWER_TOOL and ask the user for the missing information.
-
+${repetitionWarning?.let { "\n## WARNING — Repetition detected\n$it\n" } ?: ""}
 Now produce your response using EXACTLY these XML tags (no extra text outside the tags):
 <intention>your concise reasoning from the 4 steps above</intention>
 <toolName>one tool name from: $toolNames</toolName>
@@ -502,5 +535,6 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
     companion object : KLogging() {
         private const val ANSWER_TOOL = "Answer"
         private const val MAX_INTENTION_ATTEMPTS = 2
+        internal const val REPETITION_DETECTION_WINDOW = 3
     }
 }

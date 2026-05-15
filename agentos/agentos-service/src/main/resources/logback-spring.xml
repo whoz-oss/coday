@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <springProperty name="SERVICE_NAME" source="spring.application.name"/>
+
+  <!--
+    Profile: docker
+    Logs JSON to stdout; collected by Filebeat on the host.
+
+    Stacktrace policy:
+      - Root cause displayed first
+      - Max 10 lines per cause
+      - Framework packages stripped (Spring, Tomcat, Hibernate, CGLib, JDK internals)
+      - Business package io.biznet always preserved
+
+  -->
+  <springProfile name="docker">
+    <appender name="ECS" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+          <rootCauseFirst>true</rootCauseFirst>
+          <maxDepthPerThrowable>10</maxDepthPerThrowable>
+          <exclude>sun\.reflect\..*</exclude>
+          <exclude>java\.lang\.reflect\..*</exclude>
+          <exclude>kotlin\.reflect\..*</exclude>
+          <exclude>org\.springframework\..*</exclude>
+          <exclude>org\.apache\.catalina\..*</exclude>
+          <exclude>org\.apache\.tomcat\..*</exclude>
+          <exclude>org\.apache\.coyote\..*</exclude>
+          <exclude>net\.sf\.cglib\..*</exclude>
+          <exclude>org\.hibernate\..*</exclude>
+          <exclude>com\.sun\.proxy\..*</exclude>
+          <exclude>jdk\.internal\..*</exclude>
+          <exclude>jakarta\.servlet\..*</exclude>
+          <exclude>com\.mongodb\..*</exclude>
+          <exclude>org\.codehaus\.groovy\..*</exclude>
+          <exclude>groovy\.lang\..*</exclude>
+          <exclude>datadog\..*</exclude>
+        </throwableConverter>
+      </encoder>
+    </appender>
+
+    <root level="info">
+      <appender-ref ref="ECS"/>
+    </root>
+  </springProfile>
+
+  <springProfile name="test">
+    <root level="info">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+
+  <!--
+    Profile: development
+    Used for local development without ELK.
+    Debug level, plain console output.
+  -->
+  <springProfile name="development">
+    <root level="debug">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+
+</configuration>
