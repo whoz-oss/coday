@@ -10,4 +10,5 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
     fun removeAllAgents(userGroupId: UUID)
     fun addUsers(userGroupId: UUID, userExternalIds: Collection<String>)
     fun removeUsers(userGroupId: UUID, userExternalIds: Collection<String>)
+    fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>>
 }

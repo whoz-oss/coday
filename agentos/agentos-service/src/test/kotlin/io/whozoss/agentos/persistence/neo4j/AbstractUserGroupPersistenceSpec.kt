@@ -125,7 +125,7 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.save(userGroup(ns2.id, "Team Alpha"))
         }
 
-        "findByNamespaceExternalId returns userCount reflecting HAS_USER relations" {
+        "findByNamespaceExternalId returns userCount reflecting MEMBER relations" {
             val externalId = "fed-usercount"
             val ns = namespaceRepo.save(namespace(externalId = externalId))
             val g = userGroupRepo.save(userGroup(ns.id, "Group With Users"))

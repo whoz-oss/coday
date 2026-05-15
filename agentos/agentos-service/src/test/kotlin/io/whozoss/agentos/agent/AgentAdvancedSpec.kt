@@ -8,6 +8,7 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.*
@@ -149,6 +150,110 @@ class AgentAdvancedSpec :
         }
 
         // -------------------------------------------------------------------------
+        // Redirect contract
+        // -------------------------------------------------------------------------
+
+        "on redirect, AgentFinishedEvent is emitted before AgentSelectedEvent" {
+            // AgentAdvanced.executeTool() must re-throw AgentInterrupt so run()'s catch block
+            // handles it. The catch block must emit AgentFinishedEvent then AgentSelectedEvent
+            // in that order — CaseRuntime.processNextStep scans newest-first, so
+            // AgentSelectedEvent must appear after AgentFinishedEvent.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool = RedirectTool(
+                configName = "REDIRECT",
+                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            // First call() → intention selects the redirect tool
+            // Second call() → parameter generation returns valid JSON for the tool
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany listOf(
+                "<intention>Redirect to TargetAgent.</intention><toolName>REDIRECT__redirect</toolName>",
+                """{"agentName":"TargetAgent"}""",
+            )
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                chatClient = mockChatClient,
+                tools = listOf(redirectTool),
+                maxIterations = 5,
+            )
+
+            val events = agent.run(
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("do the thing")),
+                    ),
+                ),
+            ).toList()
+
+            val finishedIndex = events.indexOfFirst { it is AgentFinishedEvent }
+            val selectedIndex = events.indexOfFirst { it is AgentSelectedEvent }
+
+            (finishedIndex >= 0) shouldBe true
+            (selectedIndex >= 0) shouldBe true
+            // AgentFinishedEvent must come before AgentSelectedEvent
+            (finishedIndex < selectedIndex) shouldBe true
+            (events[selectedIndex] as AgentSelectedEvent).agentName shouldBe "TargetAgent"
+        }
+
+        "on redirect, no WarnEvent is emitted" {
+            // AgentInterrupt is not an error — the catch block must not emit WarnEvent.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool = RedirectTool(
+                configName = "REDIRECT",
+                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany listOf(
+                "<intention>Redirect to TargetAgent.</intention><toolName>REDIRECT__redirect</toolName>",
+                """{"agentName":"TargetAgent"}""",
+            )
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                chatClient = mockChatClient,
+                tools = listOf(redirectTool),
+                maxIterations = 5,
+            )
+
+            val events = agent.run(
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("do the thing")),
+                    ),
+                ),
+            ).toList()
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+        }
+
+        // -------------------------------------------------------------------------
         // Orchestration integration tests
         // -------------------------------------------------------------------------
 
@@ -233,18 +338,20 @@ class AgentAdvancedSpec :
 
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
-            } returnsMany listOf(
-                "This is a malformed response with no XML tags at all",
-                "<intention>All good on retry.</intention><toolName>Answer</toolName>",
-            )
+            } returnsMany
+                listOf(
+                    "This is a malformed response with no XML tags at all",
+                    "<intention>All good on retry.</intention><toolName>Answer</toolName>",
+                )
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("Done.")
 
-            val agent = AgentAdvanced(
-                name = "RetryAgent",
-                chatClient = mockChatClient,
-                tools = emptyList(),
-            )
+            val agent =
+                AgentAdvanced(
+                    name = "RetryAgent",
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -271,11 +378,12 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("Done.")
 
-            val agent = AgentAdvanced(
-                name = "RetryAgent",
-                chatClient = mockChatClient,
-                tools = emptyList(),
-            )
+            val agent =
+                AgentAdvanced(
+                    name = "RetryAgent",
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -297,11 +405,12 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("Fallback answer.")
 
-            val agent = AgentAdvanced(
-                name = "FallbackAgent",
-                chatClient = mockChatClient,
-                tools = emptyList(),
-            )
+            val agent =
+                AgentAdvanced(
+                    name = "FallbackAgent",
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -311,6 +420,158 @@ class AgentAdvancedSpec :
             intentionEvent.intention shouldBe "This is always malformed with no XML tags"
 
             // Agent should still finish normally
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // detectRepetitionLoop unit tests
+        // -------------------------------------------------------------------------
+
+        "detectRepetitionLoop returns null when fewer than WINDOW tool responses" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-1",
+                        toolName = "FILES__ReadFile",
+                        output = MessageContent.Text("content"),
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-2",
+                        toolName = "FILES__ReadFile",
+                        output = MessageContent.Text("content"),
+                    ),
+                )
+
+            agent.detectRepetitionLoop(events) shouldBe null
+        }
+
+        "detectRepetitionLoop returns tool name when WINDOW consecutive same-tool responses" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                (1..AgentAdvanced.REPETITION_DETECTION_WINDOW).map { i ->
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-$i",
+                        toolName = "FILES__ReadFile",
+                        output = MessageContent.Text("content"),
+                    )
+                }
+
+            agent.detectRepetitionLoop(events) shouldBe "FILES__ReadFile"
+        }
+
+        "detectRepetitionLoop returns null when WINDOW consecutive responses are all failures" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                (1..AgentAdvanced.REPETITION_DETECTION_WINDOW).map { i ->
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-$i",
+                        toolName = "FILES__ReadFile",
+                        output = MessageContent.Text("Error: file not found"),
+                        success = false,
+                    )
+                }
+
+            agent.detectRepetitionLoop(events) shouldBe null
+        }
+
+        "detectRepetitionLoop returns null when tools are mixed in the window" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-1",
+                        toolName = "FILES__ReadFile",
+                        output = MessageContent.Text("content"),
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-2",
+                        toolName = "JIRA__GetIssue",
+                        output = MessageContent.Text("content"),
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-3",
+                        toolName = "FILES__ReadFile",
+                        output = MessageContent.Text("content"),
+                    ),
+                )
+
+            agent.detectRepetitionLoop(events) shouldBe null
+        }
+
+        "emits WarnEvent when repetition loop is detected and agent eventually selects Answer" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+
+            // Each tool iteration consumes 2 call().content() invocations:
+            //   1st: resolveIntentionAndTool → returns toolName
+            //   2nd: generateParameters → returns JSON args (any string works)
+            // After 3 tool iterations (6 calls), the 7th call is the 4th intention → Answer.
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany
+                listOf(
+                    "<intention>Reading the file.</intention><toolName>FILES__ReadFile</toolName>", // iter 1 intention
+                    "{}", // iter 1 params
+                    "<intention>Reading the file again.</intention><toolName>FILES__ReadFile</toolName>", // iter 2 intention
+                    "{}", // iter 2 params
+                    "<intention>Reading the file yet again.</intention><toolName>FILES__ReadFile</toolName>", // iter 3 intention
+                    "{}", // iter 3 params
+                    "<intention>Stopping due to loop.</intention><toolName>Answer</toolName>", // iter 4 intention (after WarnEvent)
+                )
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Loop stopped.")
+
+            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "FILES__ReadFile"
+            every { mockTool.description } returns "Read a file"
+            every { mockTool.inputSchema } returns "{}"
+            every { mockTool.paramType } returns String::class.java
+            every { mockTool.executeWithJson(any(), any()) } returns "file content"
+
+            val agent =
+                AgentAdvanced(
+                    name = "LoopAgent",
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    maxIterations = 10,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val warnEvents = events.filterIsInstance<WarnEvent>()
+            warnEvents shouldHaveSize 1
+            warnEvents.first().message shouldContain "FILES__ReadFile"
+            warnEvents.first().message shouldContain "consecutively"
+
+            val intentionEvents = events.filterIsInstance<IntentionGeneratedEvent>()
+            intentionEvents.last().toolName shouldBe "Answer"
+
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
@@ -327,11 +588,12 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("Fallback answer.")
 
-            val agent = AgentAdvanced(
-                name = "FallbackAgent",
-                chatClient = mockChatClient,
-                tools = emptyList(),
-            )
+            val agent =
+                AgentAdvanced(
+                    name = "FallbackAgent",
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 

@@ -84,11 +84,22 @@ interface ToolPlugin : ExtensionPoint {
      * using the convention `configName__ToolName`
      * (e.g. "JIRA_PROD__GetIssue" and "JIRA_STAGING__GetIssue").
      *
+     * [context] carries the resolution context: [ToolContext.namespaceId] scopes the
+     * tool set to the correct namespace, and other fields (userId, caseEvents) are
+     * available for plugins that need per-request identity or history at instantiation
+     * time. Most plugins ignore [context] entirely — it is provided as a default
+     * parameter to preserve binary compatibility with existing plugin JARs.
+     *
      * @param config Parsed JSON parameters from the persisted IntegrationConfig,
      *               or null if no configuration is available.
      * @param configName The name of the IntegrationConfig being instantiated,
      *                   or null for config-less plugins.
+     * @param context Resolution context for namespace-scoped or user-scoped tool factories.
      * @return List of tool implementations to register.
      */
-    fun provideTools(config: JsonNode?, configName: String? = null): List<StandardTool<*>>
+    fun provideTools(
+        config: JsonNode?,
+        configName: String? = null,
+        context: ToolContext? = null,
+    ): List<StandardTool<*>>
 }

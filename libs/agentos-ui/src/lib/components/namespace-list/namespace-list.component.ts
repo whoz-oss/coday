@@ -43,6 +43,7 @@ export class NamespaceListComponent {
           id: ns.id ?? '',
           name: ns.name,
           description: ns.description,
+          badges: ns.defaultAgentName ? [{ label: ns.defaultAgentName, variant: 'info' }] : undefined,
         })
       )
     )

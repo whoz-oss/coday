@@ -9,6 +9,7 @@ import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.userGroup.UserGroupService
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 import java.util.UUID
@@ -45,7 +46,8 @@ class UserControllerSpec : StringSpec({
 
     val userService = mockk<UserService>()
     val permissionService = mockk<io.whozoss.agentos.permissions.PermissionService>(relaxed = true)
-    val controller = UserController(userService, permissionService)
+    val userGroupService = mockk<UserGroupService>(relaxed = true)
+    val controller = UserController(userService, permissionService, userGroupService)
 
     fun user(
         id: UUID = UUID.randomUUID(),

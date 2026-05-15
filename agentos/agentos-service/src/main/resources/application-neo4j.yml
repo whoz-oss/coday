@@ -19,4 +19,4 @@ spring:
   data:
     neo4j:
       repositories:
-        enabled: true
+        type: imperative

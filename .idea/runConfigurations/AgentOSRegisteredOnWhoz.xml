@@ -1,6 +1,9 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="AgentOSRegisteredOnWhoz" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-    <option name="ACTIVE_PROFILES" value="whoz, transient" />
+    <option name="ACTIVE_PROFILES" value="whoz,priv,development,transient,priv_development,priv_transient" />
+    <envs>
+      <env name="PLUGINS_DIR" value="./plugins" />
+    </envs>
     <module name="agentos-service.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
     <option name="WORKING_DIRECTORY" value="file://agentos" />
