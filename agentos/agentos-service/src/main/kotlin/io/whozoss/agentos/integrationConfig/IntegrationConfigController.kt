@@ -29,7 +29,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -279,7 +278,7 @@ class IntegrationConfigController(
         // super-admin bypass in PermissionService.hasPermission returns true for
         // dangling namespaceIds).
         if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Namespace not found: $resolvedNs")
+            throw ResourceNotFoundException("Namespace not found: $resolvedNs")
         }
 
         // Phase 4 — explicit domain build

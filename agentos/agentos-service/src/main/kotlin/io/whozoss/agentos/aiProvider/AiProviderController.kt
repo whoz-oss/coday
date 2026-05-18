@@ -29,7 +29,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import io.whozoss.agentos.exception.BadRequestException
 import java.util.UUID
 
@@ -263,20 +262,14 @@ class AiProviderController(
 
         // Phase 1 — mass-assignment guard
         if (resource.userId != null && resource.userId != me) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "userId in body must match authenticated user or be omitted",
-            )
+            throw BadRequestException("userId in body must match authenticated user or be omitted")
         }
 
         // Phase 2 — scope determination
         val resolvedNs: UUID? = resource.namespaceId
         val resolvedUser: UUID? = if (resource.userId != null) me else null
         if (resolvedNs == null && resolvedUser == null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "must provide namespaceId, userId, or both",
-            )
+            throw BadRequestException("must provide namespaceId, userId, or both")
         }
 
         // Phase 3 — per-scope authorization, run BEFORE the existence check so
@@ -309,7 +302,7 @@ class AiProviderController(
         // returns true even for dangling namespaceIds — without this, a super-admin
         // POST'ing with an unknown namespaceId would create a dangling FK row.
         if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Namespace not found: $resolvedNs")
+            throw ResourceNotFoundException("Namespace not found: $resolvedNs")
         }
 
         // Phase 4 — explicit domain build (never re-read the body for scope fields)
@@ -389,8 +382,7 @@ class AiProviderController(
      */
     private fun validateUserParam(raw: String?) {
         if (raw != null && !raw.equals(ME_SENTINEL, ignoreCase = true)) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
+            throw BadRequestException(
                 "Invalid userId filter: '$raw' — only 'me' is supported (cross-user listing is not exposed)",
             )
         }
