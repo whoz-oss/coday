@@ -1,3 +1,14 @@
+## 0.146.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31610: namespace id to federation id bridge ([#870](https://github.com/whoz-oss/coday/pull/870))
+
+### ❤️ Thank You
+
+- mathieu_dearmey @mathieu-dearmey
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.145.1 (2026-05-15)
 
 ### 🚀 Features
