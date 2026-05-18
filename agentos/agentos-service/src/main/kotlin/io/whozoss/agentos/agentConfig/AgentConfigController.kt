@@ -55,6 +55,7 @@ class AgentConfigController(
             modelName = entity.modelName,
             integrations = entity.integrations,
             advancedExecution = entity.advancedExecution.takeIf { it },
+            externalMetadata = entity.externalMetadata,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -67,6 +68,7 @@ class AgentConfigController(
             modelName = resource.modelName,
             integrations = resource.integrations,
             advancedExecution = resource.advancedExecution ?: false,
+            externalMetadata = resource.externalMetadata,
         )
 
     /**
@@ -85,6 +87,7 @@ class AgentConfigController(
             modelName = resource.modelName,
             integrations = resource.integrations,
             advancedExecution = resource.advancedExecution ?: false,
+            externalMetadata = resource.externalMetadata,
         )
 
     @GetMapping("/{id}")
