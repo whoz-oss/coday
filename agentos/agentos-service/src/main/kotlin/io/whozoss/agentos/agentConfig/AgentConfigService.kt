@@ -18,4 +18,11 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
         name: String,
     ): AgentConfig?
 
+    /**
+     * Returns the deduplicated list of [AgentConfig] available to the user identified
+     * by [userExternalId], across all their group and namespace memberships.
+     *
+     * See [AgentConfigRepository.findAvailableByUserExternalId] for the full semantics.
+     */
+    fun findAvailableByUserExternalId(userExternalId: String): List<AgentConfig>
 }

@@ -336,6 +336,27 @@ class AgentConfigControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // availableAgents
+    // -------------------------------------------------------------------------
+
+    "availableAgents returns mapped resources for given userExternalId" {
+        val c1 = config(name = "agent-a")
+        val c2 = config(name = "agent-b")
+        every { service.findAvailableByUserExternalId("alice@example.com") } returns listOf(c1, c2)
+
+        val result = controller.availableAgents("alice@example.com")
+
+        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+        verify(exactly = 1) { service.findAvailableByUserExternalId("alice@example.com") }
+    }
+
+    "availableAgents returns empty list when service returns no agents" {
+        every { service.findAvailableByUserExternalId("ghost@example.com") } returns emptyList()
+
+        controller.availableAgents("ghost@example.com") shouldBe emptyList()
+    }
+
+    // -------------------------------------------------------------------------
     // delete (inherited)
     // -------------------------------------------------------------------------
 

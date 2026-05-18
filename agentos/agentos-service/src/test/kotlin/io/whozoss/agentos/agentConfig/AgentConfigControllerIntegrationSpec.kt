@@ -237,5 +237,23 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
         }
+
+        // -------------------------------------------------------------------------
+        // GET /api/agent-configs/available-agents
+        // -------------------------------------------------------------------------
+
+        "GET /api/agent-configs/available-agents without userExternalId returns 400" {
+            mockMvc.perform(get("/api/agent-configs/available-agents"))
+                .andExpect(status().isBadRequest)
+        }
+
+        "GET /api/agent-configs/available-agents with unknown userExternalId returns 200 with empty list" {
+            mockMvc.perform(
+                get("/api/agent-configs/available-agents")
+                    .param("userExternalId", "ghost@example.com"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
     }
 }

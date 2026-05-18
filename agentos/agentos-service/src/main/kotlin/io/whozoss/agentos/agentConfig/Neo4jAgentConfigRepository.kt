@@ -44,6 +44,12 @@ open class Neo4jAgentConfigRepository(
                 true
             } ?: false
 
+    override fun findAvailableByUserExternalId(userExternalId: String): List<AgentConfig> {
+        return neo4jRepository
+            .findAvailableByUserExternalId(userExternalId)
+            .map { it.toDomain() }
+    }
+
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())

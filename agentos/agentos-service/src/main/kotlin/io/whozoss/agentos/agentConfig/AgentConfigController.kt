@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -118,6 +119,27 @@ class AgentConfigController(
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'DELETE')")
     override fun delete(@PathVariable id: UUID) = super.delete(id)
+
+    /**
+     * GET /api/agent-configs/available-agents?userExternalId=xxx
+     *
+     * Returns the deduplicated list of [AgentConfigResource] available to the user
+     * identified by [userExternalId]. Availability is the union of:
+     * - Agents deployed on any [io.whozoss.agentos.userGroup.UserGroup] the user is a member of
+     * - Agents deployed directly on any [io.whozoss.agentos.namespace.Namespace] the user
+     *   has a MEMBER or ADMIN relation on
+     *
+     * Authorization: any authenticated caller. The query is scoped to the requested
+     * [userExternalId] — only agents that user can actually reach are returned.
+     */
+    @GetMapping("/available-agents")
+    // TODO what permission?
+    fun availableAgents(
+        @RequestParam userExternalId: String,
+    ): List<AgentConfigResource> =
+        agentConfigService
+            .findAvailableByUserExternalId(userExternalId)
+            .map { toResource(it) }
 
     companion object : KLogging()
 }
