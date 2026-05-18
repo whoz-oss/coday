@@ -1789,7 +1789,7 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        userExternalIds:
+        userExternalIdsToAdd:
           type: array
           items:
             type: string
@@ -1808,7 +1808,7 @@ components:
       - agentIds
       - name
       - namespaceExternalId
-      - userExternalIds
+      - userExternalIdsToAdd
     UserGroupSearchResult:
       type: object
       properties:
@@ -1844,14 +1844,14 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        addedUserExternalIds:
+        userExternalIdsToAdd:
           type: array
           items:
             type: string
           maxItems: 200
           minItems: 0
           uniqueItems: true
-        removedUserExternalIds:
+        userExternalIdsToRemove:
           type: array
           items:
             type: string
@@ -1867,10 +1867,10 @@ components:
           minItems: 0
           uniqueItems: true
       required:
-      - addedUserExternalIds
       - agentIds
       - name
-      - removedUserExternalIds
+      - userExternalIdsToAdd
+      - userExternalIdsToRemove
     PluginActionResponse:
       type: object
       properties:

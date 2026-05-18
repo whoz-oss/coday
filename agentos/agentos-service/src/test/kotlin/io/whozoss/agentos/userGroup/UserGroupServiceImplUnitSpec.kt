@@ -214,7 +214,7 @@ class UserGroupServiceImplUnitSpec :
                 UserGroupCreateRequest(
                     namespaceExternalId = externalId,
                     name = "Team E",
-                    userExternalIds = setOf("alice@example.com", "bob@example.com"),
+                    userExternalIdsToAdd = setOf("alice@example.com", "bob@example.com"),
                 ),
             )
 
@@ -253,7 +253,7 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupCreateRequest(
                         namespaceExternalId = externalId,
                         name = "Team E",
-                        userExternalIds = setOf("alice@example.com", "bob@example.com"),
+                        userExternalIdsToAdd = setOf("alice@example.com", "bob@example.com"),
                     ),
                 )
 
@@ -304,8 +304,8 @@ class UserGroupServiceImplUnitSpec :
                     UserGroupUpdateRequest(
                         name = "New Name",
                         agentIds = setOf(agentId),
-                        addedUserExternalIds = setOf("alice@example.com"),
-                        removedUserExternalIds = setOf("bob@example.com"),
+                        userExternalIdsToAdd = setOf("alice@example.com"),
+                        userExternalIdsToRemove = setOf("bob@example.com"),
                     ),
                 )
 
@@ -353,8 +353,8 @@ class UserGroupServiceImplUnitSpec :
                     groupId,
                     UserGroupUpdateRequest(
                         name = "Team",
-                        addedUserExternalIds = setOf("alice@example.com", "carol@example.com"),
-                        removedUserExternalIds = setOf("carol@example.com", "bob@example.com"),
+                        userExternalIdsToAdd = setOf("alice@example.com", "carol@example.com"),
+                        userExternalIdsToRemove = setOf("carol@example.com", "bob@example.com"),
                     ),
                 )
             }
