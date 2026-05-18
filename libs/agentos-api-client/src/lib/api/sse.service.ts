@@ -10,7 +10,7 @@
 /* tslint:disable:no-unused-variable member-ordering */
 
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
 // @ts-ignore
@@ -34,29 +34,34 @@ export class SseService extends BaseService {
    * Stream case events via SSE
    * Server-Sent Events stream emitting all events generated during case execution. Use the browser EventSource API to consume this endpoint, not a regular HTTP client.
    * @param caseId
+   * @param live
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public streamEventsCaseEventSse(
     caseId: string,
+    live?: boolean,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any>
   public streamEventsCaseEventSse(
     caseId: string,
+    live?: boolean,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<any>>
   public streamEventsCaseEventSse(
     caseId: string,
+    live?: boolean,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<any>>
   public streamEventsCaseEventSse(
     caseId: string,
+    live?: boolean,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
@@ -64,6 +69,9 @@ export class SseService extends BaseService {
     if (caseId === null || caseId === undefined) {
       throw new Error('Required parameter caseId was null or undefined when calling streamEventsCaseEventSse.')
     }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>live, 'live')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -92,6 +100,7 @@ export class SseService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<any>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

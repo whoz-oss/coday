@@ -46,7 +46,7 @@ class ChatModelFactory {
 
             AiApiType.vLLM -> {
                 createVllmModel(
-                    baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
+                    baseUrl = baseUrl!!,
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,

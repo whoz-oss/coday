@@ -17,9 +17,11 @@ export interface AiProvider {
   apiType: AiProviderApiTypeEnum
   baseUrl?: string
   apiKey?: string
+  headers?: { [key: string]: string }
 }
 export enum AiProviderApiTypeEnum {
   OpenAI = 'OpenAI',
   Anthropic = 'Anthropic',
   Gemini = 'Gemini',
+  vLLM = 'vLLM',
 }
