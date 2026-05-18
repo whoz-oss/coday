@@ -20,11 +20,9 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -184,12 +182,11 @@ class IntegrationConfigControllerSpec : StringSpec({
             permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.WRITE)
         } returns true
 
-        val ex = withAuth(aliceId) {
-            shouldThrow<ResponseStatusException> {
+        withAuth(aliceId) {
+            shouldThrow<ResourceNotFoundException> {
                 controller.create(resource(id = null, nsId = unknownNs, userId = null))
             }
         }
-        ex.statusCode shouldBe HttpStatus.NOT_FOUND
         verify(exactly = 0) { service.create(any()) }
     }
 

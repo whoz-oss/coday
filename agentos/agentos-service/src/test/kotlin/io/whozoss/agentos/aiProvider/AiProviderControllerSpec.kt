@@ -11,6 +11,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -163,22 +164,20 @@ class AiProviderControllerSpec : StringSpec({
     "create rejects body.userId mismatched with authenticated principal with 400" {
         // Migrated from UserAiProviderControllerSpec "create forces userId=auth.name and ignores body.userId"
         // — Decision 15 Phase 1 makes the reject explicit (400) rather than silently overriding.
-        val ex = withAuth(aliceId) {
-            shouldThrow<ResponseStatusException> {
+        withAuth(aliceId) {
+            shouldThrow<BadRequestException> {
                 controller.create(resource(id = null, nsId = null, uId = bobId))
             }
         }
-        ex.statusCode shouldBe HttpStatus.BAD_REQUEST
         verify(exactly = 0) { service.create(any()) }
     }
 
     "create rejects payload with neither namespaceId nor userId with 400" {
-        val ex = withAuth(aliceId) {
-            shouldThrow<ResponseStatusException> {
+        withAuth(aliceId) {
+            shouldThrow<BadRequestException> {
                 controller.create(resource(id = null, nsId = null, uId = null))
             }
         }
-        ex.statusCode shouldBe HttpStatus.BAD_REQUEST
     }
 
     // -------------------------------------------------------------------------
@@ -193,12 +192,11 @@ class AiProviderControllerSpec : StringSpec({
             permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.WRITE)
         } returns true
 
-        val ex = withAuth(aliceId) {
-            shouldThrow<ResponseStatusException> {
+        withAuth(aliceId) {
+            shouldThrow<ResourceNotFoundException> {
                 controller.create(resource(id = null, nsId = unknownNs, uId = null))
             }
         }
-        ex.statusCode shouldBe HttpStatus.NOT_FOUND
         verify(exactly = 0) { service.create(any()) }
     }
 
@@ -476,9 +474,8 @@ class AiProviderControllerSpec : StringSpec({
         // Replaces the legacy test "list always queries by auth.name regardless of any
         // attempted userId param" : post-fusion the unified controller does not silently
         // override, it explicitly rejects cross-user listing attempts.
-        val ex = shouldThrow<ResponseStatusException> {
+        shouldThrow<BadRequestException> {
             controller.list(namespaceId = null, userId = bobId.toString(), auth = authFor(aliceId))
         }
-        ex.statusCode.value() shouldBe 400
     }
 })
