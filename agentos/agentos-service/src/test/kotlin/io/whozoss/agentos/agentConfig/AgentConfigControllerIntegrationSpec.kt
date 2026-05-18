@@ -88,6 +88,26 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
             ).andExpect(status().isCreated)
         }
 
+        "POST /api/agent-configs without advancedExecution defaults to false" {
+            mockMvc.perform(
+                post("/api/agent-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "name": "no-advanced" }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.advancedExecution").doesNotExist())
+        }
+
+        "POST /api/agent-configs with advancedExecution=true returns true" {
+            mockMvc.perform(
+                post("/api/agent-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "name": "advanced-agent", "advancedExecution": true }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.advancedExecution").value(true))
+        }
+
         // -------------------------------------------------------------------------
         // PUT /api/agent-configs/{id} — update
         // -------------------------------------------------------------------------

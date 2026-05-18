@@ -1,6 +1,6 @@
 spring:
   application:
-    name: agentos-service
+    name: agentos
   
   # Spring AI configuration (using environment variables)
   ai:
@@ -10,7 +10,7 @@ spring:
       api-key: ${SPRING_AI_OPENAI_API_KEY:}
 
 server:
-  port: ${SERVER_PORT:8123}
+  port: ${AGENTOS_PORT:8124}
   shutdown: graceful
 
 management:
@@ -41,15 +41,6 @@ agentos:
 logging:
   level:
     root: ${LOGGING_LEVEL_ROOT:INFO}
-    io.whozoss.agentos.service: ${LOGGING_LEVEL_IO_BIZNET_AGENTOS:DEBUG}
+    io.whozoss.agentos.service: ${LOGGING_LEVEL_IO_BIZNET_AGENTOS:INFO}
     org.pf4j: INFO
     org.springframework.boot: INFO
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-  file:
-    name: /app/logs/agentos-service.log
-  logback:
-    rollingpolicy:
-      max-file-size: 10MB
-      max-history: 7

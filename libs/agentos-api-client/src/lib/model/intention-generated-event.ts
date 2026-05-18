@@ -18,4 +18,5 @@ export interface IntentionGeneratedEvent {
   type: 'IntentionGeneratedEvent'
   agentId: string
   intention: string
+  toolName: string
 }

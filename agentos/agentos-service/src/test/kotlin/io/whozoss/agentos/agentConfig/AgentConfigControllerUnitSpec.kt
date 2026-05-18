@@ -123,6 +123,22 @@ class AgentConfigControllerUnitSpec : StringSpec({
         result.modelName shouldBe null
     }
 
+    "toResource maps advancedExecution=false to null (omitted in JSON)" {
+        val c = config().copy(advancedExecution = false)
+
+        val result = controller.toResource(c)
+
+        result.advancedExecution shouldBe null
+    }
+
+    "toResource maps advancedExecution=true to true" {
+        val c = config().copy(advancedExecution = true)
+
+        val result = controller.toResource(c)
+
+        result.advancedExecution shouldBe true
+    }
+
     // -------------------------------------------------------------------------
     // toDomain mapping
     // -------------------------------------------------------------------------
@@ -163,6 +179,22 @@ class AgentConfigControllerUnitSpec : StringSpec({
         result.description shouldBe null
         result.instructions shouldBe null
         result.modelName shouldBe null
+    }
+
+    "toDomain defaults advancedExecution to false when null" {
+        val r = resource().copy(advancedExecution = null)
+
+        val result = controller.toDomain(r)
+
+        result.advancedExecution shouldBe false
+    }
+
+    "toDomain preserves advancedExecution=true when explicitly set" {
+        val r = resource().copy(advancedExecution = true)
+
+        val result = controller.toDomain(r)
+
+        result.advancedExecution shouldBe true
     }
 
     // -------------------------------------------------------------------------

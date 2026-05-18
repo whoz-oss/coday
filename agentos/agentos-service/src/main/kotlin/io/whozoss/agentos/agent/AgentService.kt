@@ -29,23 +29,6 @@ interface AgentService {
     ): Agent
 
     /**
-     * Get the default agent for cases where no agent is explicitly selected.
-     * Returns null if the default [io.whozoss.agentos.agentConfig.AgentConfig]
-     * has no [io.whozoss.agentos.agentConfig.AgentConfig.modelName] and no
-     * [io.whozoss.agentos.aiModel.AiModel] is configured for the namespace.
-     */
-    fun getDefaultAgent(context: AgentExecutionContext): Agent?
-
-    /**
-     * Get the logical name of the default agent for [namespaceId] without
-     * instantiating a full Agent.
-     *
-     * Always returns a non-null name: when no [io.whozoss.agentos.agentConfig.AgentConfig]
-     * has been persisted for the namespace, the built-in fallback config name is returned.
-     */
-    fun getDefaultAgentName(namespaceId: UUID): String
-
-    /**
      * Resolve the canonical name for [namePart] within [namespaceId] by
      * [io.whozoss.agentos.agentConfig.AgentConfig] name matching,
      * without instantiating a full Agent.

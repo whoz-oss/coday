@@ -22,12 +22,15 @@ export class TaskCardComponent {
   readonly task = input.required<TaskThread>()
   readonly projectNameOverride = input<string | null>(null)
   readonly showProject = input<boolean>(false)
+  /** When true, clicking the card emits previewRequested instead of navigating. */
+  readonly previewMode = input<boolean>(false)
   readonly stopRequested = output<string>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<string>()
   readonly closeTaskRequested = output<string>()
   readonly markDoneRequested = output<string>()
   readonly markActiveRequested = output<string>()
+  readonly previewRequested = output<string>()
 
   private readonly router = inject(Router)
   private readonly projectState = inject(ProjectStateService)
@@ -40,6 +43,10 @@ export class TaskCardComponent {
   protected readonly isWorktree = computed(() => !!this.task().worktreeProject)
 
   navigate(): void {
+    if (this.previewMode()) {
+      this.previewRequested.emit(this.task().id)
+      return
+    }
     const project = this.projectName()
     if (!project) return
     // Pre-select the project so the guard finds it already loaded on first click
@@ -75,6 +82,15 @@ export class TaskCardComponent {
   onMarkActive(event: Event): void {
     event.stopPropagation()
     this.markActiveRequested.emit(this.task().id)
+  }
+
+  /** Navigate directly to the thread, bypassing preview mode. */
+  onOpenDirect(event: Event): void {
+    event.stopPropagation()
+    const project = this.projectName()
+    if (!project) return
+    this.projectState.selectProject(project)
+    void this.router.navigate(['project', project, 'thread', this.task().id])
   }
 
   formatRelativeTime(dateString: string): string {

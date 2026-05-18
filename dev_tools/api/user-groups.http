@@ -1,6 +1,6 @@
-@namespaceExternalId=456
-@agentId=cb631ec3-0169-41cf-a4e2-3de4c2eaec5f
-@userGroupId=b5a467a8-e355-4a1d-9ac3-9343f3cd4830
+@namespaceExternalId=123
+@agentId=98db9aae-40d2-4ecb-8f23-8dd737c0534b
+@userGroupId=64aa823a-259d-45a1-834b-dcd75cf63b56
 
 ### List user groups
 GET {{apiBaseUrl}}/api/user-groups?namespaceExternalId={{namespaceExternalId}}
@@ -10,14 +10,17 @@ Content-Type: application/json
 GET {{apiBaseUrl}}/api/user-groups/{{userGroupId}}
 Content-Type: application/json
 
-
 ### Create a user group
 POST {{apiBaseUrl}}/api/user-groups
 Content-Type: application/json
 
 {
   "namespaceExternalId": "{{namespaceExternalId}}",
-  "name": "User group 3",
+  "name": "User group 1",
   "agentIds": ["{{agentId}}"],
   "userExternalIds": ["alan"]
 }
+
+
+### Delete a user group
+DELETE {{apiBaseUrl}}/api/user-groups/{{userGroupId}}

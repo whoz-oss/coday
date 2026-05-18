@@ -13,7 +13,16 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
     )
     fun findActiveByNamespaceId(namespaceId: String): List<UserGroupNode>
 
-    @Query($$"MATCH (:UserGroup {id: $groupId})-[r:HAS_AGENT]->(:AgentConfig) DELETE r")
+    @Query($$"MATCH (g:UserGroup {id: $id}) SET g:ActiveUserGroup")
+    fun setActive(id: String)
+
+    @Query($$"MATCH (g:UserGroup {id: $id}) REMOVE g:ActiveUserGroup")
+    fun setInactive(id: String)
+
+    @Query($$"MATCH (g:UserGroup) WHERE g.namespaceId = $namespaceId AND (g.removed IS NULL OR g.removed = false) REMOVE g:ActiveUserGroup")
+    fun setInactiveByNamespaceId(namespaceId: String)
+
+    @Query($$"MATCH (:AgentConfig)-[r:DEPLOYED_TO]->(:UserGroup {id: $groupId}) DELETE r")
     fun removeAllAgents(groupId: String)
 
     @Query(
@@ -21,7 +30,7 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         UNWIND $agentIds AS agentId
         MATCH (g:UserGroup {id: $groupId})
         MATCH (a:AgentConfig {id: agentId})
-        MERGE (g)-[:HAS_AGENT]->(a)
+        MERGE (a)-[:DEPLOYED_TO]->(g)
         """,
     )
     fun addAgents(
@@ -35,7 +44,7 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         MATCH (g:UserGroup {id: $groupId})
         MATCH (u:User {externalId: userExternalId})
           WHERE u.removed IS NULL OR u.removed = false
-        MERGE (g)-[:HAS_USER]->(u)
+        MERGE (u)-[:MEMBER]->(g)
         """,
     )
     fun addUsers(
@@ -46,7 +55,7 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
     @Query(
         $$"""
         UNWIND $userExternalIds AS userExternalId
-        MATCH (g:UserGroup {id: $groupId})-[r:HAS_USER]->(u:User {externalId: userExternalId})
+        MATCH (u:User {externalId: userExternalId})-[r:MEMBER]->(g:UserGroup {id: $groupId})
         DELETE r
         """,
     )

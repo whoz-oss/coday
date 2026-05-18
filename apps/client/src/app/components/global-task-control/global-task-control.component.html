@@ -1,4 +1,4 @@
-<div class="gtc">
+<div class="gtc" #layoutContainer>
   <!-- Toolbar -->
   <header class="gtc-toolbar">
     <div class="gtc-toolbar-left">
@@ -129,61 +129,112 @@
     </nav>
   </div>
 
-  <!-- Content -->
-  <main class="gtc-content">
-    @if (isLoading()) {
-      <div class="gtc-loading">
-        <mat-spinner diameter="36"></mat-spinner>
-        <p>Loading tasks from all projects&hellip;</p>
-      </div>
-    } @else if (displayedTasks().length === 0) {
-      <div class="gtc-empty">
-        <mat-icon class="empty-icon">hub</mat-icon>
-        <p>No tasks found.</p>
-      </div>
-    } @else if (activeFilter() === 'all' && !searchQuery()) {
-      <!-- Grouped by status -->
-      @for (group of taskGroups(); track group.status) {
-        <section class="gtc-group">
-          <h3 class="gtc-group-title">
-            <mat-icon class="group-icon">{{ group.icon }}</mat-icon>
-            {{ group.label }}
-            <span class="group-count">{{ group.tasks.length }}</span>
-          </h3>
-          <div class="gtc-grid">
-            @for (task of group.tasks; track task.id) {
-              <app-task-card
-                [task]="task"
-                [projectNameOverride]="task.projectId"
-                [showProject]="true"
-                (stopRequested)="onStopRequested($event, task.projectId)"
-                (deleteRequested)="onDeleteRequested($event, task.projectId)"
-                (starToggled)="onStarToggled($event, task.projectId)"
-                (closeTaskRequested)="onCloseTaskRequested($event, task.projectId)"
-                (markDoneRequested)="onMarkDoneRequested($event, task.projectId)"
-                (markActiveRequested)="onMarkActiveRequested($event, task.projectId)"
-              />
-            }
-          </div>
-        </section>
-      }
-    } @else {
-      <!-- Flat view (filtered or searching) -->
-      <div class="gtc-grid">
-        @for (task of displayedTasks(); track task.id) {
-          <app-task-card
-            [task]="task"
-            [projectNameOverride]="task.projectId"
-            [showProject]="true"
-            (stopRequested)="onStopRequested($event, task.projectId)"
-            (deleteRequested)="onDeleteRequested($event, task.projectId)"
-            (starToggled)="onStarToggled($event, task.projectId)"
-            (closeTaskRequested)="onCloseTaskRequested($event, task.projectId)"
-            (markDoneRequested)="onMarkDoneRequested($event, task.projectId)"
-            (markActiveRequested)="onMarkActiveRequested($event, task.projectId)"
-          />
+  <!-- Body: task list + optional preview panel -->
+  <div class="gtc-body">
+    <!-- Left: task list -->
+    <main class="gtc-content">
+      @if (isLoading()) {
+        <div class="gtc-loading">
+          <mat-spinner diameter="36"></mat-spinner>
+          <p>Loading tasks from all projects&hellip;</p>
+        </div>
+      } @else if (displayedTasks().length === 0) {
+        <div class="gtc-empty">
+          <mat-icon class="empty-icon">hub</mat-icon>
+          <p>No tasks found.</p>
+        </div>
+      } @else if (activeFilter() === 'all' && !searchQuery()) {
+        <!-- Grouped by status -->
+        @for (group of taskGroups(); track group.status) {
+          <section class="gtc-group">
+            <h3 class="gtc-group-title">
+              <mat-icon class="group-icon">{{ group.icon }}</mat-icon>
+              {{ group.label }}
+              <span class="group-count">{{ group.tasks.length }}</span>
+            </h3>
+            <div class="gtc-grid">
+              @for (task of group.tasks; track task.id) {
+                <app-task-card
+                  [task]="task"
+                  [projectNameOverride]="task.projectId"
+                  [showProject]="true"
+                  [previewMode]="previewActive()"
+                  [class.is-previewed]="previewThreadId() === task.id"
+                  (stopRequested)="onStopRequested($event, task.projectId)"
+                  (deleteRequested)="onDeleteRequested($event, task.projectId)"
+                  (starToggled)="onStarToggled($event, task.projectId)"
+                  (closeTaskRequested)="onCloseTaskRequested($event, task.projectId)"
+                  (markDoneRequested)="onMarkDoneRequested($event, task.projectId)"
+                  (markActiveRequested)="onMarkActiveRequested($event, task.projectId)"
+                  (previewRequested)="onPreviewRequested($event, task.projectId, task.name)"
+                />
+              }
+            </div>
+          </section>
         }
+      } @else {
+        <!-- Flat view (filtered or searching) -->
+        <div class="gtc-grid">
+          @for (task of displayedTasks(); track task.id) {
+            <app-task-card
+              [task]="task"
+              [projectNameOverride]="task.projectId"
+              [showProject]="true"
+              [previewMode]="previewActive()"
+              [class.is-previewed]="previewThreadId() === task.id"
+              (stopRequested)="onStopRequested($event, task.projectId)"
+              (deleteRequested)="onDeleteRequested($event, task.projectId)"
+              (starToggled)="onStarToggled($event, task.projectId)"
+              (closeTaskRequested)="onCloseTaskRequested($event, task.projectId)"
+              (markDoneRequested)="onMarkDoneRequested($event, task.projectId)"
+              (markActiveRequested)="onMarkActiveRequested($event, task.projectId)"
+              (previewRequested)="onPreviewRequested($event, task.projectId, task.name)"
+            />
+          }
+        </div>
+      }
+    </main>
+
+    <!-- Resizer + Preview panel (desktop + preview enabled only) -->
+    @if (previewActive() && previewThreadId() && previewProjectId()) {
+      <div
+        class="gtc-resizer"
+        (mousedown)="onResizerMousedown($event)"
+        matTooltip="Drag to resize"
+        aria-hidden="true"
+      ></div>
+
+      <div class="gtc-preview-pane" [style.width.%]="previewPanelWidthPercent()">
+        <!-- Panel header -->
+        <header class="gtc-preview-header">
+          <span class="gtc-preview-title">{{ previewTaskName() || 'Task' }}</span>
+          <div class="gtc-preview-actions">
+            <button
+              class="preview-action-btn"
+              (click)="navigateToThread()"
+              matTooltip="Open full view"
+              aria-label="Open thread in full view"
+              type="button"
+            >
+              <mat-icon>open_in_new</mat-icon>
+            </button>
+            <button
+              class="preview-action-btn"
+              (click)="closePreview()"
+              matTooltip="Close panel"
+              aria-label="Close preview panel"
+              type="button"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+        </header>
+
+        <!-- Thread content -->
+        <div class="gtc-preview-body thread-preview-host">
+          <app-thread [projectName]="previewProjectId()!" [threadId]="previewThreadId()!" />
+        </div>
       </div>
     }
-  </main>
+  </div>
 </div>

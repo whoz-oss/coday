@@ -233,6 +233,12 @@ app-sidenav {
   height: 100%;
 }
 
+/* Thread embedded in a preview panel — override 100vh/100dvh to fill container */
+.thread-preview-host app-thread .drag-drop-wrapper,
+.thread-preview-host app-thread .file-drawer-container {
+  height: 100% !important;
+}
+
 /* Ensure main-app has no interfering z-index */
 app-main {
   position: relative;

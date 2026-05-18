@@ -95,6 +95,28 @@
     </div>
   </div>
 
+  <!-- Mission Control Group -->
+  <div class="option-section">
+    <div class="section-title">
+      <mat-icon>rocket_launch</mat-icon>
+      <span>Mission Control</span>
+    </div>
+
+    <div class="option-group">
+      <div class="toggle-option">
+        <div class="option-label-with-hint">
+          <span class="option-label">Side-by-side thread preview</span>
+          <span class="option-hint">Click a mission card to open a preview panel. Recommended for large screens.</span>
+        </div>
+        <mat-slide-toggle
+          [(ngModel)]="missionPreviewEnabled"
+          (change)="onMissionPreviewEnabledChange()"
+          color="primary"
+        ></mat-slide-toggle>
+      </div>
+    </div>
+  </div>
+
   <!-- Notifications Group -->
   <div class="option-section">
     <div class="section-title">

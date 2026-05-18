@@ -247,6 +247,7 @@ class CaseEventNodeMapper(
                     node.timestamp,
                     node.agentId,
                     node.intention,
+                    node.toolName,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -404,6 +405,7 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             agentId = UUID.fromString(n.agentId),
             intention = n.intention,
+            toolName = n.toolName,
         )
 
     private fun toDomain(n: ToolSelectedEventNode) =
@@ -606,6 +608,7 @@ class CaseEventNodeMapper(
             timestamp = e.timestamp,
             agentId = e.agentId.toString(),
             intention = e.intention,
+            toolName = e.toolName,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
