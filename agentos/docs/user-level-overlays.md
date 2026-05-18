@@ -1,27 +1,14 @@
 # User-Level Overlays
 
 User-level overlays let individual users personalise `IntegrationConfig` and `AiProvider`
-configurations without modifying the shared namespace defaults.
+without modifying namespace defaults.
 
-## 3-Tier Precedence
+Configs are resolved via a 3-tier field-by-field merge (lowest → highest):
+1. **Namespace-shared** — `(namespaceId=N, userId=null)`
+2. **User-global** — `(namespaceId=null, userId=U)`
+3. **User × namespace** — `(namespaceId=N, userId=U)`
 
-Resolution follows a strict priority cascade applied left-to-right via field-by-field merge:
+Missing layers are skipped; if none exist, `ConfigNotFoundException` is thrown.
 
-| Tier | Layer              | Lookup triple                 | Precedence |
-|------|--------------------|-------------------------------|------------|
-| 1    | Namespace-shared   | `(namespaceId=N, userId=null)` | lowest     |
-| 2    | User-global        | `(namespaceId=null, userId=U)` | middle     |
-| 3    | User × namespace   | `(namespaceId=N, userId=U)`    | highest    |
-
-Each present layer is folded onto the accumulator; missing layers are skipped.
-If all three layers are absent, `ConfigNotFoundException` is thrown (fail-closed).
-
-## Endpoint Layout
-
-| Resource           | Base path                    | Supported methods          |
-|--------------------|------------------------------|----------------------------|
-| IntegrationConfig  | `/api/integration-configs`   | GET, POST, PUT, DELETE     |
-| AiProvider         | `/api/ai-providers`          | GET, POST, PUT, DELETE     |
-
-Scope is inferred from `(body.namespaceId, body.userId)` on POST (Decision 15) and from
-`?namespaceId=&userId=me` query params on GET list. `userId` only accepts the `me` sentinel.
+Scope is inferred from `(body.namespaceId, body.userId)` on creation and from
+`?namespaceId=&userId=me` query params on list. `userId` only accepts `me`.
