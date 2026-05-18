@@ -1,7 +1,5 @@
 package io.whozoss.agentos.security.declarative
 
-import io.whozoss.agentos.aiProvider.AiProviderService
-import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.permissions.EntityType
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -10,22 +8,18 @@ import java.util.UUID
  * Resolves the owner (`userId`) of a scope-aware entity by id, for the ownership
  * branch of [AgentOsPermissionEvaluator].
  *
- * Extracted from the evaluator to break a potential Spring dependency cycle: the
- * evaluator is wired early in Spring Security ; the entity services arrive later.
- * Keeping the dispatcher in a separate `@Component` lets Spring break the wiring
- * chain cleanly. If `@Lazy` is needed in the evaluator's injection of this
- * resolver, it can be added there without touching this class.
- *
- * Supports AI_PROVIDER and INTEGRATION_CONFIG — owners are the row's userId field.
+ * Auto-collects all [OwnershipAware] beans so new scope-aware entities just need
+ * to implement the interface — no change required here (Open/Closed Principle).
  */
 @Component
 class OwnershipResolver(
-    private val aiProviderService: AiProviderService,
-    private val integrationConfigService: IntegrationConfigService,
+    resolvers: List<OwnershipAware>,
 ) {
-    fun resolveOwner(entityType: EntityType, targetId: UUID): UUID? = when (entityType) {
-        EntityType.AI_PROVIDER -> aiProviderService.findById(targetId)?.userId
-        EntityType.INTEGRATION_CONFIG -> integrationConfigService.findById(targetId)?.userId
-        else -> null
-    }
+    private val resolverMap: Map<EntityType, OwnershipAware> =
+        resolvers.associateBy { it.ownershipEntityType }
+
+    val supportedTypes: Set<EntityType> get() = resolverMap.keys
+
+    fun resolveOwner(entityType: EntityType, targetId: UUID): UUID? =
+        resolverMap[entityType]?.resolveOwner(targetId)
 }

@@ -1,7 +1,9 @@
 package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.entity.EntityService
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.security.declarative.OwnershipAware
 import java.util.UUID
 
 /**
@@ -9,7 +11,9 @@ import java.util.UUID
  *
  * Extends [EntityService] with scope-aware listing and a point lookup by natural key.
  */
-interface AiProviderService : EntityService<AiProvider, UUID> {
+interface AiProviderService : EntityService<AiProvider, UUID>, OwnershipAware {
+    override val ownershipEntityType: EntityType get() = EntityType.AI_PROVIDER
+    override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
     /**
      * Find all [AiProvider] scoped to the given namespace.
      */

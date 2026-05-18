@@ -20,7 +20,9 @@ import java.util.UUID
 class AgentOsPermissionEvaluatorSpec : StringSpec({
 
     val permissionService = mockk<PermissionService>()
-    val ownershipResolver = mockk<OwnershipResolver>(relaxed = true)
+    val ownershipResolver = mockk<OwnershipResolver>(relaxed = true) {
+        every { supportedTypes } returns setOf(EntityType.AI_PROVIDER, EntityType.INTEGRATION_CONFIG)
+    }
     val evaluator = AgentOsPermissionEvaluator(permissionService, ownershipResolver)
 
     val userId = UUID.randomUUID().toString()

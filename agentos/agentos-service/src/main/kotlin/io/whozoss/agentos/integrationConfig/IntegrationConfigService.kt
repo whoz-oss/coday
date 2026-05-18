@@ -1,6 +1,8 @@
 package io.whozoss.agentos.integrationConfig
 
 import io.whozoss.agentos.entity.EntityService
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.security.declarative.OwnershipAware
 import java.util.UUID
 
 /**
@@ -15,7 +17,9 @@ import java.util.UUID
  * - [findByNamespaceAndName]: legacy two-key lookup that always assumes `userId = null`,
  *   preserved for Epic 4 callers and tests.
  */
-interface IntegrationConfigService : EntityService<IntegrationConfig, UUID> {
+interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, OwnershipAware {
+    override val ownershipEntityType: EntityType get() = EntityType.INTEGRATION_CONFIG
+    override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
     /**
      * Find a single [IntegrationConfig] matching the (namespaceId, userId, name) triple.
      *

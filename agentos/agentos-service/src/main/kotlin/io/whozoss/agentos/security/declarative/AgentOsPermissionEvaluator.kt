@@ -72,7 +72,7 @@ class AgentOsPermissionEvaluator(
         //    path : super-admin requests short-circuit without paying a findById Neo4j
         //    round-trip. The cache `PermissionServiceImpl.permissionCache` is NOT hit
         //    by this branch — owner-miss requests pay 1 extra DB read.
-        if (entityType in OWNERSHIP_AWARE_TYPES) {
+        if (entityType in ownershipResolver.supportedTypes) {
             val ownerUserId = runCatching { ownershipResolver.resolveOwner(entityType, UUID.fromString(targetId.toString())) }
                 .getOrNull()
             if (ownerUserId != null && ownerUserId.toString() == userId) return true
@@ -91,12 +91,5 @@ class AgentOsPermissionEvaluator(
         return hasPermission(authentication, targetDomainObject.id, type, permission)
     }
 
-    companion object : KLogging() {
-        /**
-         * Entities whose authz model supports an ownership branch (`entity.userId == auth.userId`)
-         * in addition to the namespace-membership / super-admin path. Wired into the
-         * fall-through branch above. Supports AI_PROVIDER and INTEGRATION_CONFIG.
-         */
-        private val OWNERSHIP_AWARE_TYPES = setOf(EntityType.AI_PROVIDER, EntityType.INTEGRATION_CONFIG)
-    }
+    companion object : KLogging()
 }
