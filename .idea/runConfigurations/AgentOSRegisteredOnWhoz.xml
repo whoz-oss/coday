@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="AgentOSRegisteredOnWhoz" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-    <option name="ACTIVE_PROFILES" value="whoz,priv,development,priv_development,priv_transient" />
+    <option name="ACTIVE_PROFILES" value="whoz,priv,development,transient,priv_development,priv_transient" />
     <envs>
       <env name="PLUGINS_DIR" value="./plugins" />
     </envs>

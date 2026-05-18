@@ -29,5 +29,7 @@ interface NamespaceService : EntityService<Namespace, String> {
      */
     fun findByExternalId(externalId: String): Namespace?
 
+    fun findByExternalIds(externalIds: Collection<String>): List<Namespace>
+
     fun findIdsVisibleTo(userId: String, action: Action): List<UUID>
 }

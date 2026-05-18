@@ -152,6 +152,49 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // POST /api/namespaces/by-external-ids — bulk lookup by external ids
+        // -------------------------------------------------------------------------
+
+        "POST /api/namespaces/by-external-ids returns matching namespaces" {
+            val externalId1 = "fed-${UUID.randomUUID()}"
+            val externalId2 = "fed-${UUID.randomUUID()}"
+            namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "ext-a", externalId = externalId1)
+            )
+            namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "ext-b", externalId = externalId2)
+            )
+
+            mockMvc.perform(
+                post("/api/namespaces/by-external-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("[\"$externalId1\", \"$externalId2\"]"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+        }
+
+        "POST /api/namespaces/by-external-ids with empty list returns 200 with empty result" {
+            mockMvc.perform(
+                post("/api/namespaces/by-external-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("[]"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
+
+        "POST /api/namespaces/by-external-ids silently omits unknown external ids" {
+            mockMvc.perform(
+                post("/api/namespaces/by-external-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("[\"does-not-exist\"]"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
+
+        // -------------------------------------------------------------------------
         // POST /api/namespaces/by-ids — batch authorization (story 5-3)
         // -------------------------------------------------------------------------
 

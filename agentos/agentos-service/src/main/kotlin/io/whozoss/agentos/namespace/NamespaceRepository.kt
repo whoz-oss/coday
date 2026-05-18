@@ -11,6 +11,8 @@ import io.whozoss.agentos.entity.EntityRepository
 interface NamespaceRepository : EntityRepository<Namespace, String> {
     fun findByExternalId(externalId: String): Namespace?
 
+    fun findByExternalIds(externalIds: Collection<String>): List<Namespace>
+
     companion object {
         const val NAMESPACE_PARENT_KEY = "all"
     }

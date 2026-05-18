@@ -802,6 +802,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Namespace"
+  /api/namespaces/by-external-ids:
+    post:
+      tags:
+      - namespace-controller
+      operationId: listByExternalIdsNamespace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
   /api/integration-configs:
     post:
       tags:
@@ -1322,6 +1344,11 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: live
+        in: query
+        required: false
+        schema:
+          type: boolean
       responses:
         "200":
           description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
