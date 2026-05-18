@@ -1,3 +1,16 @@
+## 0.148.0 (2026-05-18)
+
+### 🚀 Features
+
+- #WZ-31424 Rename user group API fields ([1895af0b](https://github.com/whoz-oss/coday/commit/1895af0b))
+- #WZ-31424 Fix http file ([6477704c](https://github.com/whoz-oss/coday/commit/6477704c))
+- #WZ-31424 Rename user group API fields ([#877](https://github.com/whoz-oss/coday/pull/877))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.147.0 (2026-05-18)
 
 ### 🚀 Features
