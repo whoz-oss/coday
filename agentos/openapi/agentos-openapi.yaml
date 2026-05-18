@@ -1692,10 +1692,15 @@ components:
           - OpenAI
           - Anthropic
           - Gemini
+          - vLLM
         baseUrl:
           type: string
         apiKey:
           type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
       required:
       - apiType
       - name
