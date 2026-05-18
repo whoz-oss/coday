@@ -9,5 +9,5 @@ import java.util.*
  * Agent configs are scoped under a namespace — [parentId] is the namespace UUID.
  */
 interface AgentConfigRepository : EntityRepository<AgentConfig, UUID> {
-    fun findAvailableByUserExternalId(userExternalId: String): List<AgentConfig>
+    fun findAvailableByUserExternalId(namespaceExternalId: String, userExternalId: String): List<AgentConfig>
 }

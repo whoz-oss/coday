@@ -30,6 +30,6 @@ class AgentConfigServiceImpl(
             .findByParent(namespaceId)
             .firstOrNull { it.name.equals(name, ignoreCase = true) }
 
-    override fun findAvailableByUserExternalId(userExternalId: String): List<AgentConfig> =
-        agentConfigRepository.findAvailableByUserExternalId(userExternalId)
+    override fun findAvailableByUserExternalId(namespaceExternalId: String, userExternalId: String): List<AgentConfig> =
+        agentConfigRepository.findAvailableByUserExternalId(namespaceExternalId, userExternalId)
 }

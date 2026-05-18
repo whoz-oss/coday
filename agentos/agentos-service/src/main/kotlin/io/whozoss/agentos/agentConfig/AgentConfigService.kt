@@ -24,5 +24,5 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
      *
      * See [AgentConfigRepository.findAvailableByUserExternalId] for the full semantics.
      */
-    fun findAvailableByUserExternalId(userExternalId: String): List<AgentConfig>
+    fun findAvailableByUserExternalId(namespaceExternalId: String, userExternalId: String): List<AgentConfig>
 }

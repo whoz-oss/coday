@@ -22,9 +22,10 @@ import java.util.UUID
 /**
  * Persistence contract tests for [AgentConfigRepository.findAvailableByUserExternalId].
  *
- * Verifies the two resolution paths and their union/deduplication semantics:
- * 1. Agents deployed on a [UserGroup] the user is a member of
- * 2. Agents deployed on a [Namespace] the user has a MEMBER or ADMIN relation on
+ * The query is scoped to a namespace identified by its [Namespace.externalId].
+ * Availability is the union of:
+ * 1. Agents deployed on a [UserGroup] belonging to that namespace, of which the user is a member
+ * 2. Agents deployed directly on that namespace, for a user holding MEMBER or ADMIN on it
  */
 abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
@@ -35,8 +36,8 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
     @Autowired lateinit var userRepo: UserRepository
     @Autowired lateinit var driver: Driver
 
-    private fun namespace(name: String = "ns-${UUID.randomUUID()}") =
-        Namespace(metadata = EntityMetadata(), name = name)
+    private fun namespace(externalId: String = "ext-${UUID.randomUUID()}") =
+        Namespace(metadata = EntityMetadata(), name = "ns-$externalId", externalId = externalId)
 
     private fun agentConfig(namespaceId: UUID, name: String) =
         AgentConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = name)
@@ -47,19 +48,19 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
     private fun userGroup(namespaceId: UUID, name: String = "group-${UUID.randomUUID()}") =
         UserGroup(metadata = EntityMetadata(), namespaceId = namespaceId, name = name)
 
-    private fun grantMember(userId: String, namespaceId: String) =
+    private fun grantMember(userExternalId: String, namespaceId: String) =
         driver.session().use { session ->
             session.run(
                 "MATCH (u:User {externalId: \$userId}) MATCH (n:Namespace {id: \$nsId}) MERGE (u)-[:MEMBER]->(n)",
-                mapOf("userId" to userId, "nsId" to namespaceId),
+                mapOf("userId" to userExternalId, "nsId" to namespaceId),
             )
         }
 
-    private fun grantAdmin(userId: String, namespaceId: String) =
+    private fun grantAdmin(userExternalId: String, namespaceId: String) =
         driver.session().use { session ->
             session.run(
                 "MATCH (u:User {externalId: \$userId}) MATCH (n:Namespace {id: \$nsId}) MERGE (u)-[:ADMIN]->(n)",
-                mapOf("userId" to userId, "nsId" to namespaceId),
+                mapOf("userId" to userExternalId, "nsId" to namespaceId),
             )
         }
 
@@ -71,7 +72,8 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "returns empty list for unknown userExternalId" {
-            agentConfigRepo.findAvailableByUserExternalId("ghost@example.com").shouldBeEmpty()
+            val ns = namespaceRepo.save(namespace())
+            agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "ghost@example.com").shouldBeEmpty()
         }
 
         "returns empty list for user with no group and no namespace membership" {
@@ -80,11 +82,11 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             agentConfigRepo.save(agentConfig(ns.id, "agent-a"))
             // no DEPLOYED_TO, no group, no namespace relation
 
-            agentConfigRepo.findAvailableByUserExternalId("alice@example.com").shouldBeEmpty()
+            agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com").shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
-        // Path 1: agents deployed on a UserGroup the user is a member of
+        // Path 1: agents deployed on a UserGroup (in the namespace) the user is a member of
         // -------------------------------------------------------------------------
 
         "returns agents deployed on user group the user is a member of" {
@@ -95,7 +97,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             userGroupRepo.addAgents(group.id, listOf(agent.id))
             userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
 
-            val result = agentConfigRepo.findAvailableByUserExternalId("alice@example.com")
+            val result = agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com")
 
             result shouldHaveSize 1
             result.first().name shouldBe "group-agent"
@@ -110,11 +112,24 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             userGroupRepo.addAgents(group.id, listOf(agent.id))
             userGroupRepo.addUsers(group.id, listOf("bob@example.com"))
 
-            agentConfigRepo.findAvailableByUserExternalId("alice@example.com").shouldBeEmpty()
+            agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com").shouldBeEmpty()
+        }
+
+        "does not return agents from a group belonging to a different namespace" {
+            val ns = namespaceRepo.save(namespace())
+            val otherNs = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(otherNs.id, "other-ns-group-agent"))
+            val group = userGroupRepo.save(userGroup(otherNs.id))
+            userRepo.save(user("alice@example.com"))
+            userGroupRepo.addAgents(group.id, listOf(agent.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+
+            // alice is in a group with an agent, but that group belongs to otherNs, not ns
+            agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com").shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
-        // Path 2: agents deployed on a Namespace the user has MEMBER/ADMIN on
+        // Path 2: agents deployed directly on the namespace
         // -------------------------------------------------------------------------
 
         "returns agents deployed on a namespace the user has MEMBER relation on" {
@@ -124,7 +139,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             namespaceRepo.deployAgents(ns.id, listOf(agent.id))
             grantMember("alice@example.com", ns.id.toString())
 
-            val result = agentConfigRepo.findAvailableByUserExternalId("alice@example.com")
+            val result = agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com")
 
             result shouldHaveSize 1
             result.first().name shouldBe "ns-agent"
@@ -137,7 +152,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             namespaceRepo.deployAgents(ns.id, listOf(agent.id))
             grantAdmin("alice@example.com", ns.id.toString())
 
-            val result = agentConfigRepo.findAvailableByUserExternalId("alice@example.com")
+            val result = agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com")
 
             result shouldHaveSize 1
             result.first().name shouldBe "admin-ns-agent"
@@ -150,7 +165,19 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             namespaceRepo.deployAgents(ns.id, listOf(agent.id))
             // alice has no MEMBER/ADMIN on ns
 
-            agentConfigRepo.findAvailableByUserExternalId("alice@example.com").shouldBeEmpty()
+            agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com").shouldBeEmpty()
+        }
+
+        "does not return agents deployed on a different namespace" {
+            val ns = namespaceRepo.save(namespace())
+            val otherNs = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(otherNs.id, "other-ns-agent"))
+            userRepo.save(user("alice@example.com"))
+            namespaceRepo.deployAgents(otherNs.id, listOf(agent.id))
+            grantMember("alice@example.com", otherNs.id.toString())
+
+            // querying ns, not otherNs
+            agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com").shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
@@ -168,7 +195,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             userGroupRepo.addUsers(group1.id, listOf("alice@example.com"))
             userGroupRepo.addUsers(group2.id, listOf("alice@example.com"))
 
-            val result = agentConfigRepo.findAvailableByUserExternalId("alice@example.com")
+            val result = agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com")
 
             result shouldHaveSize 1
             result.first().name shouldBe "shared-agent"
@@ -179,31 +206,29 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val agent = agentConfigRepo.save(agentConfig(ns.id, "shared-agent"))
             val group = userGroupRepo.save(userGroup(ns.id))
             userRepo.save(user("alice@example.com"))
-            // deploy on both the group and the namespace
             userGroupRepo.addAgents(group.id, listOf(agent.id))
             userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
             namespaceRepo.deployAgents(ns.id, listOf(agent.id))
             grantMember("alice@example.com", ns.id.toString())
 
-            val result = agentConfigRepo.findAvailableByUserExternalId("alice@example.com")
+            val result = agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com")
 
             result shouldHaveSize 1
             result.first().name shouldBe "shared-agent"
         }
 
-        "returns union of agents from multiple groups and namespaces" {
-            val ns1 = namespaceRepo.save(namespace())
-            val ns2 = namespaceRepo.save(namespace())
-            val groupAgent = agentConfigRepo.save(agentConfig(ns1.id, "group-agent"))
-            val nsAgent = agentConfigRepo.save(agentConfig(ns2.id, "ns-agent"))
-            val group = userGroupRepo.save(userGroup(ns1.id))
+        "returns union of agents from group and namespace deployments" {
+            val ns = namespaceRepo.save(namespace())
+            val groupAgent = agentConfigRepo.save(agentConfig(ns.id, "group-agent"))
+            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent"))
+            val group = userGroupRepo.save(userGroup(ns.id))
             userRepo.save(user("alice@example.com"))
             userGroupRepo.addAgents(group.id, listOf(groupAgent.id))
             userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
-            namespaceRepo.deployAgents(ns2.id, listOf(nsAgent.id))
-            grantMember("alice@example.com", ns2.id.toString())
+            namespaceRepo.deployAgents(ns.id, listOf(nsAgent.id))
+            grantMember("alice@example.com", ns.id.toString())
 
-            val result = agentConfigRepo.findAvailableByUserExternalId("alice@example.com")
+            val result = agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com")
 
             result.map { it.name } shouldContainExactlyInAnyOrder listOf("group-agent", "ns-agent")
         }
@@ -221,7 +246,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
             agentConfigRepo.delete(agent.id)
 
-            agentConfigRepo.findAvailableByUserExternalId("alice@example.com").shouldBeEmpty()
+            agentConfigRepo.findAvailableByUserExternalId(ns.externalId!!, "alice@example.com").shouldBeEmpty()
         }
     }
 }

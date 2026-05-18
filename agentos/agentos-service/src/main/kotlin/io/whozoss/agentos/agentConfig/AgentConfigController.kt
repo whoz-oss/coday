@@ -121,7 +121,7 @@ class AgentConfigController(
     override fun delete(@PathVariable id: UUID) = super.delete(id)
 
     /**
-     * GET /api/agent-configs/available-agents?userExternalId=xxx
+     * POST /api/agent-configs/available-agents
      *
      * Returns the deduplicated list of [AgentConfigResource] available to the user
      * identified by [userExternalId]. Availability is the union of:
@@ -129,16 +129,15 @@ class AgentConfigController(
      * - Agents deployed directly on any [io.whozoss.agentos.namespace.Namespace] the user
      *   has a MEMBER or ADMIN relation on
      *
-     * Authorization: any authenticated caller. The query is scoped to the requested
      * [userExternalId] — only agents that user can actually reach are returned.
      */
-    @GetMapping("/available-agents")
+    @PostMapping("/search")
     // TODO what permission?
-    fun availableAgents(
-        @RequestParam userExternalId: String,
+    fun search(
+        @Valid @RequestBody agentConfigSearchRequest: AgentConfigSearchRequest,
     ): List<AgentConfigResource> =
         agentConfigService
-            .findAvailableByUserExternalId(userExternalId)
+            .findAvailableByUserExternalId(agentConfigSearchRequest.namespaceExternalId, agentConfigSearchRequest.userExternalId)
             .map { toResource(it) }
 
     companion object : KLogging()

@@ -339,21 +339,23 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // availableAgents
     // -------------------------------------------------------------------------
 
-    "availableAgents returns mapped resources for given userExternalId" {
+    "search returns mapped resources for given namespaceExternalId and userExternalId" {
         val c1 = config(name = "agent-a")
         val c2 = config(name = "agent-b")
-        every { service.findAvailableByUserExternalId("alice@example.com") } returns listOf(c1, c2)
+        val request = AgentConfigSearchRequest(namespaceExternalId = "ext-ns", userExternalId = "alice@example.com")
+        every { service.findAvailableByUserExternalId("ext-ns", "alice@example.com") } returns listOf(c1, c2)
 
-        val result = controller.availableAgents("alice@example.com")
+        val result = controller.search(request)
 
         result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-        verify(exactly = 1) { service.findAvailableByUserExternalId("alice@example.com") }
+        verify(exactly = 1) { service.findAvailableByUserExternalId("ext-ns", "alice@example.com") }
     }
 
-    "availableAgents returns empty list when service returns no agents" {
-        every { service.findAvailableByUserExternalId("ghost@example.com") } returns emptyList()
+    "search returns empty list when service returns no agents" {
+        val request = AgentConfigSearchRequest(namespaceExternalId = "ext-ns", userExternalId = "ghost@example.com")
+        every { service.findAvailableByUserExternalId("ext-ns", "ghost@example.com") } returns emptyList()
 
-        controller.availableAgents("ghost@example.com") shouldBe emptyList()
+        controller.search(request) shouldBe emptyList()
     }
 
     // -------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 @namespaceId=4fbbbb65-6aaa-46d7-adf3-5b3fb62ddad3
 @userExternalId=
+@namespaceExternalId=
 
 ### Create a agent config
 POST {{apiBaseUrl}}/api/agent-configs
@@ -16,5 +17,10 @@ Content-Type: application/json
 
 
 ### List agents by user external id
-GET {{apiBaseUrl}}/api/agent-configs/available-agents?userExternalId={{userExternalId}}
+POST {{apiBaseUrl}}/api/agent-configs/search
 Content-Type: application/json
+
+{
+  "userExternalId": "{{userExternalId}}",
+  "namespaceExternalId": "{{namespaceExternalId}}"
+}
