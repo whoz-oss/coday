@@ -69,17 +69,21 @@ class NamespaceServiceImpl(
 
     @Transactional
     override fun deployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>) {
-        findById(namespaceId)
-            ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
-        validateAgentsInNamespace(agentConfigIds, namespaceId)
-        namespaceRepository.deployAgents(namespaceId, agentConfigIds)
+        agentConfigIds.takeIf { it.isNotEmpty() }?.let { ids ->
+            findById(namespaceId)
+                ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
+            validateAgentsInNamespace(ids, namespaceId)
+            namespaceRepository.deployAgents(namespaceId, ids)
+        }
     }
 
     @Transactional
     override fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>) {
-        findById(namespaceId)
-            ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
-        namespaceRepository.undeployAgents(namespaceId, agentConfigIds)
+        agentConfigIds.takeIf { it.isNotEmpty() }?.let { ids ->
+            findById(namespaceId)
+                ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
+            namespaceRepository.undeployAgents(namespaceId, ids)
+        }
     }
 
     private fun validateAgentsInNamespace(agentConfigIds: Collection<UUID>, namespaceId: UUID) {
