@@ -18,7 +18,7 @@ Content-Type: application/json
   "namespaceExternalId": "{{namespaceExternalId}}",
   "name": "User group 1",
   "agentIds": ["{{agentId}}"],
-  "userExternalIds": ["alan"]
+  "userExternalIdsToAdd": ["alan"]
 }
 
 
