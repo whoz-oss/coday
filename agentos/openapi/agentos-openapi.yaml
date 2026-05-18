@@ -522,6 +522,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /api/users/groups-by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: getGroupsByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/UserGroupSummary"
   /api/users/by-ids:
     post:
       tags:
@@ -625,6 +649,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
+    delete:
+      tags:
+      - user-group-controller
+      operationId: deleteUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -754,6 +792,28 @@ paths:
               items:
                 type: string
                 format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+  /api/namespaces/by-external-ids:
+    post:
+      tags:
+      - namespace-controller
+      operationId: listByExternalIdsNamespace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
         required: true
       responses:
         "200":
@@ -1284,6 +1344,11 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: live
+        in: query
+        required: false
+        schema:
+          type: boolean
       responses:
         "200":
           description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
@@ -1551,6 +1616,11 @@ components:
           type: string
           description: "Optional external identifier for this namespace, e.g. a federation\
             \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: "Logical name of the default agent for this namespace. Resolved\
+            \ at runtime against AgentConfig entries (case-insensitive). When null,\
+            \ messages without an @mention will produce an explicit error."
       required:
       - name
     IntegrationConfig:
@@ -1688,9 +1758,22 @@ components:
             type: array
             items:
               type: string
+        advancedExecution:
+          type: boolean
       required:
       - name
       - namespaceId
+    UserGroupSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
     UserGroupCreateRequest:
       type: object
       properties:
@@ -2026,6 +2109,8 @@ components:
             format: uuid
           intention:
             type: string
+          toolName:
+            type: string
       required:
       - agentId
       - caseId
@@ -2034,6 +2119,7 @@ components:
       - metadata
       - namespaceId
       - timestamp
+      - toolName
       - type
     MessageContent:
       discriminator:
@@ -2150,6 +2236,9 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
+          durationMs:
+            type: integer
+            format: int64
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
@@ -2257,6 +2346,10 @@ components:
           type: string
           description: "Optional external identifier for this namespace, e.g. a federation\
             \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: Logical name of the default agent for this namespace. Null
+            means no default is configured. Name matching is case-insensitive.
         role:
           type: string
           description: The caller's effective role on this namespace

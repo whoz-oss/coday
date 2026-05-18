@@ -2,10 +2,12 @@ package io.whozoss.agentos.integrationConfig
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
@@ -30,12 +32,14 @@ import java.util.UUID
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles("test", "embedded-neo4j")
+@Import(EmbeddedNeo4jTestConfiguration::class)
 class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var integrationConfigService: IntegrationConfigService
+    @Autowired lateinit var namespaceService: io.whozoss.agentos.namespace.NamespaceService
 
     private val namespaceId = UUID.randomUUID()
 
@@ -133,6 +137,13 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
         "GET /api/integration-configs/by-parentId/{namespaceId} returns configs for a super-admin caller" {
             val listNamespaceId = UUID.randomUUID()
+            namespaceService.create(
+                io.whozoss.agentos.namespace.Namespace(
+                    metadata = EntityMetadata(id = listNamespaceId),
+                    name = "test-ns-${listNamespaceId}",
+                    externalId = "ext-${listNamespaceId}",
+                ),
+            )
             integrationConfigService.create(
                 IntegrationConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "JIRA_A", integrationType = "JIRA"),
             )
