@@ -1,3 +1,144 @@
+## 0.148.0 (2026-05-18)
+
+### 🚀 Features
+
+- #WZ-31424 Rename user group API fields ([1895af0b](https://github.com/whoz-oss/coday/commit/1895af0b))
+- #WZ-31424 Fix http file ([6477704c](https://github.com/whoz-oss/coday/commit/6477704c))
+- #WZ-31424 Rename user group API fields ([#877](https://github.com/whoz-oss/coday/pull/877))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.147.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31609 add support of vllm with headers ([2bcd23fb](https://github.com/whoz-oss/coday/commit/2bcd23fb))
+- npx ops ([25c23bde](https://github.com/whoz-oss/coday/commit/25c23bde))
+- wz-31609 add support of vllm with headers ([#876](https://github.com/whoz-oss/coday/pull/876))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.146.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31610: namespace id to federation id bridge ([#870](https://github.com/whoz-oss/coday/pull/870))
+
+### ❤️ Thank You
+
+- mathieu_dearmey @mathieu-dearmey
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.145.1 (2026-05-15)
+
+### 🚀 Features
+
+- **agentos:** enhance spring cloud config and ensure correct log format (WZ-31881) ([#872](https://github.com/whoz-oss/coday/pull/872))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.145.0 (2026-05-13)
+
+### 🚀 Features
+
+- add PWA support for mobile installation ([0ca77e34](https://github.com/whoz-oss/coday/commit/0ca77e34))
+- return pr ([08e2578a](https://github.com/whoz-oss/coday/commit/08e2578a))
+- update pnpm-lock ([0651bd35](https://github.com/whoz-oss/coday/commit/0651bd35))
+
+### 🩹 Fixes
+
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.144.2 (2026-05-13)
+
+### 🩹 Fixes
+
+- #31424 Fix autocomplete query ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Fix autocomplete query ([#871](https://github.com/whoz-oss/coday/pull/871), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.144.1 (2026-05-13)
+
+### 🚀 Features
+
+- **agentos:** add repetition detection mechanism on AgentAdvanced (WZ-31597) ([#861](https://github.com/whoz-oss/coday/pull/861))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.144.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31783 call default agent - namespace defaultAgentName + routing fallback ([#854](https://github.com/whoz-oss/coday/pull/854), [#31783](https://github.com/whoz-oss/coday/issues/31783))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.143.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Rename user groups relations ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Rename user groups relations ([#864](https://github.com/whoz-oss/coday/pull/864), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.142.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Implement search users with user groups by external id ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Code review ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement search users with user groups by external id ([#863](https://github.com/whoz-oss/coday/pull/863), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.141.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31681 REDIRECT internal integration tool ([#852](https://github.com/whoz-oss/coday/pull/852), [#31681](https://github.com/whoz-oss/coday/issues/31681))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.140.1 (2026-05-11)
+
+### 🚀 Features
+
+- **agentos:** add retry mechanism on resolveIntentionAndTool (WZ-31597) ([4708dfc2](https://github.com/whoz-oss/coday/commit/4708dfc2))
+
+### ❤️ Thank You
+
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.140.0 (2026-05-11)
 
 ### 🚀 Features

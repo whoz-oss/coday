@@ -31,15 +31,6 @@ import java.util.UUID
  *   base system prompt, and resolve the model via `config.modelName`
  *   (alias-first, then apiName).
  * - If not found: throws [IllegalArgumentException].
- *
- * ## Resolution strategy for [getDefaultAgent] / [getDefaultAgentName]
- *
- * Delegates to [AgentConfigService.findDefault], which always returns a non-null
- * [AgentConfig] — either the oldest persisted config in the namespace, or the
- * built-in fallback. [getDefaultAgentName] is therefore always non-null.
- *
- * [getDefaultAgent] can still return null when the resolved config has no
- * [AgentConfig.modelName] and no [AiModel] is configured for the namespace.
  */
 @Service
 class AgentServiceImpl(
@@ -64,19 +55,6 @@ class AgentServiceImpl(
                 )
         return createAgentFromConfig(agentConfig, context)
     }
-
-    override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
-        val config =
-            agentConfigService
-                .findDefault(context.namespaceId)
-                .let { if (it.hasNoRealNamespace()) it.copy(namespaceId = context.namespaceId) else it }
-        return runCatching { createAgentFromConfig(config, context) }
-            .onFailure {
-                logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" }
-            }.getOrNull()
-    }
-
-    override fun getDefaultAgentName(namespaceId: UUID): String = agentConfigService.findDefault(namespaceId).name
 
     override fun resolveAgentName(
         namePart: String,

@@ -8,4 +8,5 @@ interface UserGroupService : EntityService<UserGroup, UUID> {
     fun findByIdWithDetails(id: UUID): UserGroupSearchResult?
     fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult
     fun updateFromRequest(userGroupId: UUID, request: UserGroupUpdateRequest): UserGroupSearchResult
+    fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>>
 }

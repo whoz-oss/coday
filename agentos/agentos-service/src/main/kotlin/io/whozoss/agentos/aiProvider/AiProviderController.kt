@@ -108,6 +108,7 @@ class AiProviderController(
             apiType = entity.apiType,
             baseUrl = entity.baseUrl,
             apiKey = maskApiKey(entity.apiKey),
+            headers = entity.headers,
         )
 
     /**
@@ -126,6 +127,7 @@ class AiProviderController(
             apiType = resource.apiType!!,
             baseUrl = resource.baseUrl,
             apiKey = resource.apiKey,
+            headers = resource.headers ?: emptyMap(),
         )
 
     private fun toDomainForUpdate(
@@ -140,6 +142,7 @@ class AiProviderController(
             apiType = existing.apiType,
             baseUrl = resource.baseUrl,
             apiKey = resolveApiKey(resource.apiKey, existing.apiKey),
+            headers = resource.headers ?: emptyMap(),
         )
 
     @GetMapping("/{id}")

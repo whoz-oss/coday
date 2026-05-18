@@ -10,7 +10,6 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
-import io.whozoss.agentos.agentConfig.AgentConfigServiceImpl
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
@@ -500,29 +499,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.findAgentByName("my-agent", context)
 
             verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations) }
-        }
-
-        // -------------------------------------------------------------------------
-        // getDefaultAgentName
-        // -------------------------------------------------------------------------
-
-        "getDefaultAgentName returns AgentConfig name when one exists" {
-            val config = agentConfig(name = "my-agent")
-            every { agentConfigService.findDefault(namespaceId) } returns config
-
-            agentService.getDefaultAgentName(namespaceId) shouldBe "my-agent"
-
-            verify(exactly = 0) { aiModelService.findAiModel(any()) }
-            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
-        }
-
-        "getDefaultAgentName returns built-in fallback name when no AgentConfig is persisted" {
-            every { agentConfigService.findDefault(namespaceId) } returns AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG
-
-            agentService.getDefaultAgentName(namespaceId) shouldBe "Default Agent"
-
-            verify(exactly = 0) { aiModelService.findAiModel(any()) }
-            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any()) }
         }
 
         // -------------------------------------------------------------------------

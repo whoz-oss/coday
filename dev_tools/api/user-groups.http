@@ -1,6 +1,6 @@
 @namespaceExternalId=123
-@agentId=ce8c3f5c-a139-42a8-96e1-bfd2fb9e8474
-@userGroupId=40fa102b-cbf0-4c0c-a092-cb139fa9cc6c
+@agentId=98db9aae-40d2-4ecb-8f23-8dd737c0534b
+@userGroupId=64aa823a-259d-45a1-834b-dcd75cf63b56
 
 ### List user groups
 GET {{apiBaseUrl}}/api/user-groups?namespaceExternalId={{namespaceExternalId}}
@@ -18,7 +18,7 @@ Content-Type: application/json
   "namespaceExternalId": "{{namespaceExternalId}}",
   "name": "User group 1",
   "agentIds": ["{{agentId}}"],
-  "userExternalIds": ["alan"]
+  "userExternalIdsToAdd": ["alan"]
 }
 
 

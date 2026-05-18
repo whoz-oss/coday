@@ -37,7 +37,7 @@ class ToolResolverServiceSpec : StringSpec({
         object : ToolPlugin {
             override val integrationType = integrationType
             override val configSchema: JsonNode? = null
-            override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> =
+            override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> =
                 toolNames.map { makeTool(it) }
         }
 
@@ -45,7 +45,7 @@ class ToolResolverServiceSpec : StringSpec({
         object : ToolPlugin {
             override val integrationType = integrationType
             override val configSchema: JsonNode = mockk(relaxed = true)
-            override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> =
+            override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> =
                 toolNames.map { makeTool(it) }
         }
 

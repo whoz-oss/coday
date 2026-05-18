@@ -23,6 +23,12 @@ import java.util.concurrent.ConcurrentHashMap
 class ToolRegistryService(
     private val pluginManager: PluginManager,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
+    /**
+     * Spring-managed [ToolPlugin] beans (internal integrations such as REDIRECT).
+     * Registered alongside PF4J-loaded plugins; Spring injects all implementations
+     * automatically via the list constructor parameter.
+     */
+    private val springToolPlugins: List<ToolPlugin> = emptyList(),
 ) {
     private val pluginsByType = ConcurrentHashMap<String, ToolPlugin>()
 
@@ -36,22 +42,34 @@ class ToolRegistryService(
     }
 
     private fun loadPlugins() {
-        val toolPlugins = pluginManager.getExtensions(ToolPlugin::class.java)
-        logger.info { "Found ${toolPlugins.size} ToolPlugin extension(s)" }
+        val pf4jPlugins = pluginManager.getExtensions(ToolPlugin::class.java)
+        logger.info { "Found ${pf4jPlugins.size} PF4J ToolPlugin extension(s) and ${springToolPlugins.size} Spring ToolPlugin bean(s)" }
 
-        if (toolPlugins.isEmpty()) {
+        // Spring-managed internal plugins are registered first so PF4J plugins can
+        // override them by type if needed (last-write-wins in pluginsByType).
+        springToolPlugins.forEach { toolPlugin ->
+            logger.info { "Registering Spring plugin: ${toolPlugin::class.simpleName} (integrationType='${toolPlugin.integrationType}')" }
+            try {
+                integrationTypeRegistry.registerFromPlugin(toolPlugin)
+                pluginsByType[toolPlugin.integrationType] = toolPlugin
+            } catch (e: Exception) {
+                logger.error(e) { "Error loading Spring plugin ${toolPlugin::class.simpleName}: ${e.message}" }
+            }
+        }
+
+        if (pf4jPlugins.isEmpty() && springToolPlugins.isEmpty()) {
             logger.warn { "No ToolPlugin extensions found." }
             return
         }
 
-        toolPlugins.forEach { toolPlugin ->
+        pf4jPlugins.forEach { toolPlugin ->
             val pluginWrapper = pluginManager.whichPlugin(toolPlugin::class.java)
             val pluginId = pluginWrapper?.pluginId ?: run {
                 logger.warn { "Could not determine plugin ID for ToolPlugin: ${toolPlugin::class.simpleName}" }
                 "unknown"
             }
 
-            logger.info { "Registering plugin: $pluginId (integrationType='${toolPlugin.integrationType}')" }
+            logger.info { "Registering PF4J plugin: $pluginId (integrationType='${toolPlugin.integrationType}')" }
 
             try {
                 integrationTypeRegistry.registerFromPlugin(toolPlugin)
@@ -63,7 +81,7 @@ class ToolRegistryService(
                     logger.info { "Plugin '$pluginId' requires config — tools will be resolved per namespace" }
                 }
             } catch (e: Exception) {
-                logger.error(e) { "Error loading plugin $pluginId: ${e.message}" }
+                logger.error(e) { "Error loading PF4J plugin $pluginId: ${e.message}" }
             }
         }
     }

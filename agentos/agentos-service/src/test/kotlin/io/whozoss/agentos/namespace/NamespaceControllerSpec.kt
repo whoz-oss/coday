@@ -60,11 +60,13 @@ class NamespaceControllerSpec : StringSpec({
         name: String = "engineering",
         description: String? = null,
         configPath: String? = null,
+        externalId: String? = null,
     ) = Namespace(
         metadata = EntityMetadata(id = id),
         name = name,
         description = description,
         configPath = configPath,
+        externalId = externalId,
     )
 
     fun resource(
@@ -107,6 +109,53 @@ class NamespaceControllerSpec : StringSpec({
         val first = controller.toDomain(resource(id = null))
         val second = controller.toDomain(resource(id = null))
         (first.metadata.id == second.metadata.id) shouldBe false
+    }
+
+    // -------------------------------------------------------------------------
+    // listByExternalIds
+    // -------------------------------------------------------------------------
+
+    "listByExternalIds returns empty list immediately when input is empty" {
+        controller.listByExternalIds(emptyList()) shouldBe emptyList()
+    }
+
+    "listByExternalIds returns all matches for a super-admin caller" {
+        val ns1 = ns(externalId = "fed-1")
+        val ns2 = ns(externalId = "fed-2")
+        every { namespaceService.findByExternalIds(listOf("fed-1", "fed-2")) } returns listOf(ns1, ns2)
+        every { userService.getCurrentUser() } returns superAdmin
+
+        val result = controller.listByExternalIds(listOf("fed-1", "fed-2"))
+
+        result.map { it.externalId } shouldBe listOf("fed-1", "fed-2")
+    }
+
+    "listByExternalIds filters to readable namespaces for a regular user" {
+        val readable = ns(externalId = "fed-readable")
+        val forbidden = ns(externalId = "fed-forbidden")
+        every { namespaceService.findByExternalIds(listOf("fed-readable", "fed-forbidden")) } returns listOf(readable, forbidden)
+        every { userService.getCurrentUser() } returns regularUser
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ) } returns listOf(readable.id)
+
+        val result = controller.listByExternalIds(listOf("fed-readable", "fed-forbidden"))
+
+        result.map { it.externalId } shouldBe listOf("fed-readable")
+    }
+
+    "listByExternalIds returns empty list when regular user has no readable namespaces" {
+        val ns1 = ns(externalId = "fed-1")
+        every { namespaceService.findByExternalIds(listOf("fed-1")) } returns listOf(ns1)
+        every { userService.getCurrentUser() } returns regularUser
+        every { namespaceService.findIdsVisibleTo(regularUserId.toString(), Action.READ) } returns emptyList()
+
+        controller.listByExternalIds(listOf("fed-1")) shouldBe emptyList()
+    }
+
+    "listByExternalIds silently omits external ids that match no namespace" {
+        every { namespaceService.findByExternalIds(listOf("fed-ghost")) } returns emptyList()
+        every { userService.getCurrentUser() } returns superAdmin
+
+        controller.listByExternalIds(listOf("fed-ghost")) shouldBe emptyList()
     }
 
     // -------------------------------------------------------------------------

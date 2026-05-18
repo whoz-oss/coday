@@ -50,6 +50,10 @@ open class Neo4jNamespaceRepository(
     override fun findByExternalId(externalId: String): Namespace? =
         namespaceNodeNeo4jRepository.findActiveByExternalId(externalId)?.toDomain()
 
+    override fun findByExternalIds(externalIds: Collection<String>): List<Namespace> =
+        if (externalIds.isEmpty()) emptyList()
+        else namespaceNodeNeo4jRepository.findActiveByExternalIdIn(externalIds).map { it.toDomain() }
+
     @Transactional
     open override fun deleteByParent(parentId: String): Int {
         val active = namespaceNodeNeo4jRepository.findAllActive()

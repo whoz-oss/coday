@@ -522,6 +522,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /api/users/groups-by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: getGroupsByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/UserGroupSummary"
   /api/users/by-ids:
     post:
       tags:
@@ -768,6 +792,28 @@ paths:
               items:
                 type: string
                 format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+  /api/namespaces/by-external-ids:
+    post:
+      tags:
+      - namespace-controller
+      operationId: listByExternalIdsNamespace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
         required: true
       responses:
         "200":
@@ -1372,6 +1418,11 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: live
+        in: query
+        required: false
+        schema:
+          type: boolean
       responses:
         "200":
           description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
@@ -1575,6 +1626,11 @@ components:
           type: string
           description: "Optional external identifier for this namespace, e.g. a federation\
             \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: "Logical name of the default agent for this namespace. Resolved\
+            \ at runtime against AgentConfig entries (case-insensitive). When null,\
+            \ messages without an @mention will produce an explicit error."
       required:
       - name
     IntegrationConfig:
@@ -1656,10 +1712,15 @@ components:
           - OpenAI
           - Anthropic
           - Gemini
+          - vLLM
         baseUrl:
           type: string
         apiKey:
           type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
       required:
       - apiType
       - name
@@ -1727,6 +1788,17 @@ components:
       required:
       - name
       - namespaceId
+    UserGroupSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
     UserGroupCreateRequest:
       type: object
       properties:
@@ -1737,7 +1809,7 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        userExternalIds:
+        userExternalIdsToAdd:
           type: array
           items:
             type: string
@@ -1756,7 +1828,7 @@ components:
       - agentIds
       - name
       - namespaceExternalId
-      - userExternalIds
+      - userExternalIdsToAdd
     UserGroupSearchResult:
       type: object
       properties:
@@ -1792,14 +1864,14 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        addedUserExternalIds:
+        userExternalIdsToAdd:
           type: array
           items:
             type: string
           maxItems: 200
           minItems: 0
           uniqueItems: true
-        removedUserExternalIds:
+        userExternalIdsToRemove:
           type: array
           items:
             type: string
@@ -1815,10 +1887,10 @@ components:
           minItems: 0
           uniqueItems: true
       required:
-      - addedUserExternalIds
       - agentIds
       - name
-      - removedUserExternalIds
+      - userExternalIdsToAdd
+      - userExternalIdsToRemove
     PluginActionResponse:
       type: object
       properties:
@@ -2299,6 +2371,10 @@ components:
           type: string
           description: "Optional external identifier for this namespace, e.g. a federation\
             \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: Logical name of the default agent for this namespace. Null
+            means no default is configured. Name matching is case-insensitive.
         role:
           type: string
           description: The caller's effective role on this namespace

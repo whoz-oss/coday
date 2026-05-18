@@ -8,6 +8,8 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.whozoss.agentos.redirect.RedirectTool
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -240,6 +242,52 @@ class AgentSimpleToolCallbackUnitSpec :
 
             events shouldHaveAtLeastSize 3
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // Redirect event order contract
+        // -------------------------------------------------------------------------
+
+        "on redirect, AgentFinishedEvent is emitted before AgentSelectedEvent" {
+            // CaseRuntime.processNextStep scans events newest-first. For it to launch
+            // the redirect target rather than stop, AgentFinishedEvent (current agent)
+            // must appear BEFORE AgentSelectedEvent (target agent) in the event list.
+            // This test pins that emission order as a contract.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool = RedirectTool(
+                configName = "REDIRECT",
+                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every {
+                mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream()
+            } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "REDIRECT__redirect" }
+                // Let AgentInterrupt.Redirect propagate — AgentSimple catches it in its flow
+                // and emits AgentFinishedEvent + AgentSelectedEvent in the correct order.
+                cb.call("{\"agentName\":\"TargetAgent\"}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(redirectTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "do the thing"))).toList()
+
+            val finishedIndex = events.indexOfFirst { it is AgentFinishedEvent }
+            val selectedIndex = events.indexOfFirst { it is AgentSelectedEvent }
+
+            (finishedIndex >= 0) shouldBe true
+            (selectedIndex >= 0) shouldBe true
+            // AgentFinishedEvent must come before AgentSelectedEvent
+            (finishedIndex < selectedIndex) shouldBe true
+            (events[selectedIndex] as AgentSelectedEvent).agentName shouldBe "TargetAgent"
+            events.filterIsInstance<ToolResponseEvent>().first().success shouldBe true
         }
 
         "convertEventsToMessages should not crash when history contains a ToolRequestEvent with null args" {

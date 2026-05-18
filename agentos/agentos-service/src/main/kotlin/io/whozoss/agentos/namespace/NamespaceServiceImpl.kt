@@ -55,6 +55,8 @@ class NamespaceServiceImpl(
 
     override fun findByExternalId(externalId: String): Namespace? = namespaceRepository.findByExternalId(externalId)
 
+    override fun findByExternalIds(externalIds: Collection<String>): List<Namespace> = namespaceRepository.findByExternalIds(externalIds)
+
     @Transactional
     override fun delete(id: UUID): Boolean {
         // Cascade soft-delete the children introduced by this branch BEFORE the namespace

@@ -122,6 +122,9 @@ dependencies {
     implementation(libs.springdoc.openapi.starter)
     implementation(libs.klogger)
 
+    // Logstash Logback Encoder — JSON structured logging (used by logback-spring.xml docker profile)
+    runtimeOnly(libs.logstash.logback.encoder)
+
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)
 
