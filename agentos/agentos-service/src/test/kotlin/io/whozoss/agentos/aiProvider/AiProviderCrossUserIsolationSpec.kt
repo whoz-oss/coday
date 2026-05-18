@@ -168,16 +168,16 @@ class AiProviderCrossUserIsolationSpec : StringSpec() {
             createBobProvider(namespaceId = sharedNamespaceId, name = "BOB_NS_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/ai-providers?size=100"))
+            mockMvc.perform(get("/api/ai-providers"))
                 .andExpect(status().isOk)
-                .andExpect(jsonPath("$.content[?(@.userId != '$aliceId')]").isEmpty)
+                .andExpect(jsonPath("$[?(@.userId != '$aliceId')]").isEmpty)
         }
 
         "LIST as alice with ?userId=<bob.id> returns 400 (only 'me' sentinel exposed)" {
             createBobProvider(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/ai-providers?userId=$bobId&size=100"))
+            mockMvc.perform(get("/api/ai-providers?userId=$bobId"))
                 .andExpect(status().isBadRequest)
         }
     }

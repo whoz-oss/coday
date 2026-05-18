@@ -15,8 +15,6 @@ import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { IntegrationConfig } from '../model/integration-config'
-// @ts-ignore
-import { IntegrationConfigPage } from '../model/integration-config-page'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -333,46 +331,36 @@ export class IntegrationConfigControllerService extends BaseService {
 
   /**
    * List IntegrationConfigs by scope
-   * Scope is inferred from the query params :  | query                                              | mode             | required permission                            | |----------------------------------------------------|------------------|------------------------------------------------| | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&#x60;                              | NS-shared        | READ on the namespace (empty list if missing)  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&amp;userId&#x3D;me&#x60;                    | user × namespace | authenticated                                  | | &#x60;?namespaceId&#x3D;none&amp;userId&#x3D;me&#x60;                      | user-global      | authenticated                                  | | &#x60;?userId&#x3D;me&#x60; (no namespace)                        | all caller\&#39;s     | authenticated                                  |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400 (cross-user listing is not exposed). &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;. Pagination defaults to page&#x3D;0, size&#x3D;20 ; size is capped at 100.
+   * Scope is inferred from the query params :  | query                                              | mode             | required permission                            | |----------------------------------------------------|------------------|------------------------------------------------| | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&#x60;                              | NS-shared        | READ on the namespace (empty list if missing)  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&amp;userId&#x3D;me&#x60;                    | user × namespace | authenticated                                  | | &#x60;?namespaceId&#x3D;none&amp;userId&#x3D;me&#x60;                      | user-global      | authenticated                                  | | &#x60;?userId&#x3D;me&#x60; (no namespace)                        | all caller\&#39;s     | authenticated                                  |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400 (cross-user listing is not exposed). &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;.
    * @param namespaceId
    * @param userId
-   * @param page
-   * @param size
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public listIntegrationConfig(
     namespaceId?: string,
     userId?: string,
-    page?: number,
-    size?: number,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<IntegrationConfigPage>
+  ): Observable<Array<IntegrationConfig>>
   public listIntegrationConfig(
     namespaceId?: string,
     userId?: string,
-    page?: number,
-    size?: number,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<IntegrationConfigPage>>
+  ): Observable<HttpResponse<Array<IntegrationConfig>>>
   public listIntegrationConfig(
     namespaceId?: string,
     userId?: string,
-    page?: number,
-    size?: number,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<IntegrationConfigPage>>
+  ): Observable<HttpEvent<Array<IntegrationConfig>>>
   public listIntegrationConfig(
     namespaceId?: string,
     userId?: string,
-    page?: number,
-    size?: number,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -380,8 +368,6 @@ export class IntegrationConfigControllerService extends BaseService {
     let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
     localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
     localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>userId, 'userId')
-    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>page, 'page')
-    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>size, 'size')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -408,7 +394,7 @@ export class IntegrationConfigControllerService extends BaseService {
 
     let localVarPath = `/api/integration-configs`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<IntegrationConfigPage>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<IntegrationConfig>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       params: localVarQueryParameters,
       responseType: <any>responseType_,

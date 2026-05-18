@@ -32,7 +32,6 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import io.whozoss.agentos.exception.BadRequestException
 import java.util.UUID
-import kotlin.math.min
 
 /**
  * Unified REST API for [AiProvider] entities — covers the **three scopes** that the
@@ -219,20 +218,15 @@ class AiProviderController(
             "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
             "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
             "listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the " +
-            "sentinel for `namespaceId IS NULL`. Pagination defaults to page=0, size=20 ; " +
-            "size is capped at 100.",
+            "sentinel for `namespaceId IS NULL`.",
     )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     fun list(
         @RequestParam(required = false) namespaceId: String?,
         @RequestParam(required = false) userId: String?,
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int,
         auth: Authentication,
-    ): AiProviderPage {
-        val safeSize = size.coerceIn(1, MAX_PAGE_SIZE)
-        val safePage = page.coerceAtLeast(0)
+    ): List<AiProviderResource> {
         val resolvedNs = parseNamespaceParam(namespaceId)
         val me = userService.getCurrentUser().id
         validateUserParam(userId)
@@ -245,17 +239,7 @@ class AiProviderController(
             canReadNamespace = { nsId -> callerCanReadNamespace(nsId) },
         )
 
-        val total = all.size
-        val from = (safePage.toLong() * safeSize).coerceAtMost(total.toLong()).toInt()
-        val to = min(from + safeSize, total)
-        val pageItems = if (from >= to) emptyList() else all.subList(from, to)
-        return AiProviderPage(
-            content = pageItems.map { toResource(it) },
-            page = safePage,
-            size = safeSize,
-            totalElements = total.toLong(),
-            totalPages = ((total.toLong() + safeSize - 1) / safeSize).toInt(),
-        )
+        return all.map { toResource(it) }
     }
 
     @Operation(
@@ -415,18 +399,5 @@ class AiProviderController(
     companion object : KLogging() {
         const val NONE_SENTINEL = "none"
         const val ME_SENTINEL = "me"
-        const val MAX_PAGE_SIZE = 100
     }
 }
-
-/**
- * Pagination envelope for [AiProviderController.list]. Kept narrow on purpose —
- * Spring Data's `Page<T>` would couple the API to a JPA-flavoured shape we do not need here.
- */
-data class AiProviderPage(
-    val content: List<AiProviderResource>,
-    val page: Int,
-    val size: Int,
-    val totalElements: Long,
-    val totalPages: Int,
-)

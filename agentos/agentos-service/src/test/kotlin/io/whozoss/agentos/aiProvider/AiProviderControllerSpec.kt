@@ -396,7 +396,7 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // list — three modes, pagination, mass-assignment guard
+    // list — three modes, mass-assignment guard
     // -------------------------------------------------------------------------
 
     "list without filter returns the caller's overlays with masked apiKeys" {
@@ -406,11 +406,11 @@ class AiProviderControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 20, auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
 
-        resp.totalElements shouldBe 2
-        resp.content.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL", "NS")
-        resp.content.forEach { r ->
+        resp.size shouldBe 2
+        resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL", "NS")
+        resp.forEach { r ->
             r.apiKey shouldNotBe null
             r.apiKey?.contains("****") shouldBe true
         }
@@ -422,11 +422,11 @@ class AiProviderControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns globalRows
 
-        val respLower = controller.list(namespaceId = "none", userId = "me", page = 0, size = 20, auth = authFor(aliceId))
-        respLower.content.map { it.name } shouldBe listOf("GLOBAL")
+        val respLower = controller.list(namespaceId = "none", userId = "me", auth = authFor(aliceId))
+        respLower.map { it.name } shouldBe listOf("GLOBAL")
 
-        val respUpper = controller.list(namespaceId = "NONE", userId = "me", page = 0, size = 20, auth = authFor(aliceId))
-        respUpper.content.map { it.name } shouldBe listOf("GLOBAL")
+        val respUpper = controller.list(namespaceId = "NONE", userId = "me", auth = authFor(aliceId))
+        respUpper.map { it.name } shouldBe listOf("GLOBAL")
     }
 
     "list with specific namespaceId and userId=me returns only that namespace's user rows" {
@@ -438,12 +438,10 @@ class AiProviderControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = "me",
-            page = 0,
-            size = 20,
             auth = authFor(aliceId),
         )
 
-        resp.content.map { it.name } shouldBe listOf("NS")
+        resp.map { it.name } shouldBe listOf("NS")
     }
 
     "list with specific namespaceId and no userId returns NS-shared rows for that namespace" {
@@ -456,12 +454,10 @@ class AiProviderControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            page = 0,
-            size = 20,
             auth = authFor(aliceId),
         )
 
-        resp.content.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
+        resp.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
@@ -470,13 +466,10 @@ class AiProviderControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            page = 0,
-            size = 20,
             auth = authFor(aliceId),
         )
 
-        resp.content shouldBe emptyList()
-        resp.totalElements shouldBe 0
+        resp shouldBe emptyList()
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
@@ -484,29 +477,8 @@ class AiProviderControllerSpec : StringSpec({
         // attempted userId param" : post-fusion the unified controller does not silently
         // override, it explicitly rejects cross-user listing attempts.
         val ex = shouldThrow<ResponseStatusException> {
-            controller.list(namespaceId = null, userId = bobId.toString(), page = 0, size = 20, auth = authFor(aliceId))
+            controller.list(namespaceId = null, userId = bobId.toString(), auth = authFor(aliceId))
         }
         ex.statusCode.value() shouldBe 400
-    }
-
-    "list pagination returns the correct slice" {
-        val rows = (1..5).map { config(nsId = null, uId = aliceId, name = "P$it") }
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
-
-        val resp = controller.list(namespaceId = null, userId = null, page = 1, size = 2, auth = authFor(aliceId))
-
-        resp.content.map { it.name } shouldBe listOf("P3", "P4")
-        resp.totalElements shouldBe 5
-        resp.totalPages shouldBe 3
-        resp.page shouldBe 1
-        resp.size shouldBe 2
-    }
-
-    "list pagination caps size at 100" {
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
-
-        val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 200, auth = authFor(aliceId))
-
-        resp.size shouldBe 100
     }
 })

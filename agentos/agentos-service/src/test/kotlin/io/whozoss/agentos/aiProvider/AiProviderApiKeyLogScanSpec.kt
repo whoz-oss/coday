@@ -104,7 +104,7 @@ class AiProviderApiKeyLogScanSpec : StringSpec() {
                     .andExpect(status().isOk)
 
                 // LIST
-                mockMvc.perform(get("/api/ai-providers?size=100"))
+                mockMvc.perform(get("/api/ai-providers"))
                     .andExpect(status().isOk)
 
                 // PUT with masked apiKey (round-trip)

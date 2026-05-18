@@ -37,17 +37,17 @@ describe('AiProviderConfigStateService', () => {
 
   beforeEach(() => {
     nsController = {
-      // Unified `listAiProvider(namespaceId, userId, page, size)` returns a paginated envelope.
+      // Unified `listAiProvider(namespaceId, userId)` returns a flat array.
       // The mock dispatches by query params : `userId === undefined` → NS-shared layer ;
       // `namespaceId === 'none'` → user-global ; both present → user × ns.
       listAiProvider: jest.fn().mockImplementation((namespaceId?: string, userId?: string) => {
         if (!userId) {
-          return of({ content: [nsProvider], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+          return of([nsProvider])
         }
         if (namespaceId === 'none') {
-          return of({ content: [userGlobalProvider], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+          return of([userGlobalProvider])
         }
-        return of({ content: [userOnNsProvider], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+        return of([userOnNsProvider])
       }),
       createAiProvider: jest.fn().mockReturnValue(of(nsProvider)),
       updateAiProvider: jest.fn().mockReturnValue(of(nsProvider)),
@@ -79,11 +79,11 @@ describe('AiProviderConfigStateService', () => {
       expect(vm.userGlobal).toEqual([userGlobalProvider])
 
       // NS-shared layer : namespaceId set, userId omitted.
-      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, undefined, 0, expect.any(Number))
+      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID)
       // user × namespace : both NS and userId='me' sentinel.
-      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
+      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, 'me')
       // user-global : namespaceId='none', userId='me'.
-      expect(nsController.listAiProvider).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
+      expect(nsController.listAiProvider).toHaveBeenCalledWith('none', 'me')
     })
   })
 
@@ -91,13 +91,13 @@ describe('AiProviderConfigStateService', () => {
     it('translates "global" into the backend sentinel pair (none, me), never leaking it to callers', async () => {
       const result = await firstValueFrom(service.loadUserProviders('global'))
       expect(result).toEqual([userGlobalProvider])
-      expect(nsController.listAiProvider).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
+      expect(nsController.listAiProvider).toHaveBeenCalledWith('none', 'me')
     })
 
     it('passes a UUID for user × namespace and pins userId to "me"', async () => {
       const result = await firstValueFrom(service.loadUserProviders(NS_ID))
       expect(result).toEqual([userOnNsProvider])
-      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
+      expect(nsController.listAiProvider).toHaveBeenCalledWith(NS_ID, 'me')
     })
   })
 

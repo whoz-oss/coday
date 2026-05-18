@@ -7,10 +7,9 @@ import {
   AiProvider,
   AiProviderControllerService,
   AiModelControllerService,
-  AiProviderPage,
 } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, combineLatest, map, Observable, switchMap } from 'rxjs'
+import { BehaviorSubject, combineLatest, Observable, switchMap, map } from 'rxjs'
 import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 
 /**
@@ -54,9 +53,7 @@ export class NamespaceAiModelsComponent {
     switchMap(() =>
       combineLatest([
         this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
-        this.aiProviderController
-          .listAiProvider(this.namespaceId, undefined, 0, 1000)
-          .pipe(map((page: AiProviderPage) => page.content)),
+        this.aiProviderController.listAiProvider(this.namespaceId),
       ])
     )
   )

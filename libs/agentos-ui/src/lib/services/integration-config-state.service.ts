@@ -39,8 +39,6 @@ const NAMESPACE_NONE_SENTINEL = 'none'
 /** Backend sentinel: `?userId=me` means "the authenticated user". */
 const USER_ME_SENTINEL = 'me'
 
-const LIST_PAGE_SIZE = 1000
-
 /**
  * IntegrationConfigStateService — orchestrates the 3 sources of truth for the unified
  * Integrations page. Post-PR-#838 (`unify-ns-user-crud-controllers`) all 3 calls land on
@@ -105,9 +103,7 @@ export class IntegrationConfigStateService {
    */
   loadUserConfigs(scope: 'global' | string): Observable<IntegrationConfig[]> {
     const namespaceParam = scope === 'global' ? NAMESPACE_NONE_SENTINEL : scope
-    return this.nsController
-      .listIntegrationConfig(namespaceParam, USER_ME_SENTINEL, 0, LIST_PAGE_SIZE)
-      .pipe(map((page) => page.content ?? []))
+    return this.nsController.listIntegrationConfig(namespaceParam, USER_ME_SENTINEL)
   }
 
   /** User-global slice consumed by `UserProfileComponent.recap` — see `multicastRefreshable`. */
@@ -119,9 +115,7 @@ export class IntegrationConfigStateService {
 
   loadNamespaceConfigs(namespaceId: string): Observable<IntegrationConfig[]> {
     if (!namespaceId) return of([])
-    return this.nsController
-      .listIntegrationConfig(namespaceId, undefined, 0, LIST_PAGE_SIZE)
-      .pipe(map((page) => page.content ?? []))
+    return this.nsController.listIntegrationConfig(namespaceId)
   }
 
   /**

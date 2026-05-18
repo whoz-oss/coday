@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
-import { catchError, map, of } from 'rxjs'
+import { catchError, of } from 'rxjs'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
@@ -42,10 +42,7 @@ export class AiModelFormComponent implements OnInit {
 
   /** All providers for this namespace — used to populate the provider select. */
   protected readonly providers = toSignal(
-    this.aiProviderController.listAiProvider(this.namespaceId, undefined, 0, 1000).pipe(
-      map((page) => page.content),
-      catchError(() => of([] as AiProvider[]))
-    ),
+    this.aiProviderController.listAiProvider(this.namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
     { initialValue: [] as AiProvider[] }
   )
 

@@ -332,7 +332,7 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // list — three modes, pagination, mass-assignment guard
+    // list — three modes, mass-assignment guard
     // -------------------------------------------------------------------------
 
     "list without namespace filter returns rows for both modes" {
@@ -342,10 +342,10 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 20, auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
 
-        resp.totalElements shouldBe 2
-        resp.content.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
+        resp.size shouldBe 2
+        resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
     }
 
     "list with namespaceId=none returns only user-global rows" {
@@ -354,9 +354,9 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = "none", userId = "me", page = 0, size = 20, auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = "none", userId = "me", auth = authFor(aliceId))
 
-        resp.content.map { it.name } shouldBe listOf("GLOBAL")
+        resp.map { it.name } shouldBe listOf("GLOBAL")
     }
 
     "list with namespaceId=NONE (uppercase) is also user-global" {
@@ -365,9 +365,9 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = "NONE", userId = "me", page = 0, size = 20, auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = "NONE", userId = "me", auth = authFor(aliceId))
 
-        resp.content.map { it.name } shouldBe listOf("GLOBAL")
+        resp.map { it.name } shouldBe listOf("GLOBAL")
     }
 
     "list with specific namespaceId and userId=me returns only that namespace's user rows" {
@@ -379,12 +379,10 @@ class IntegrationConfigControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = "me",
-            page = 0,
-            size = 20,
             auth = authFor(aliceId),
         )
 
-        resp.content.map { it.name } shouldBe listOf("NS")
+        resp.map { it.name } shouldBe listOf("NS")
     }
 
     "list with specific namespaceId and no userId returns NS-shared rows" {
@@ -397,12 +395,10 @@ class IntegrationConfigControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            page = 0,
-            size = 20,
             auth = authFor(aliceId),
         )
 
-        resp.content.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
+        resp.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
@@ -411,45 +407,21 @@ class IntegrationConfigControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            page = 0,
-            size = 20,
             auth = authFor(aliceId),
         )
 
-        resp.content shouldBe emptyList()
-        resp.totalElements shouldBe 0
+        resp shouldBe emptyList()
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = null, userId = bobId.toString(), page = 0, size = 20, auth = authFor(aliceId))
+            controller.list(namespaceId = null, userId = bobId.toString(), auth = authFor(aliceId))
         }
-    }
-
-    "list pagination returns the correct slice" {
-        val rows = (1..5).map { config(nsId = null, userId = aliceId, name = "N$it") }
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
-
-        val resp = controller.list(namespaceId = null, userId = null, page = 1, size = 2, auth = authFor(aliceId))
-
-        resp.content.map { it.name } shouldBe listOf("N3", "N4")
-        resp.totalElements shouldBe 5
-        resp.totalPages shouldBe 3
-        resp.page shouldBe 1
-        resp.size shouldBe 2
-    }
-
-    "list pagination caps size at 100" {
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
-
-        val resp = controller.list(namespaceId = null, userId = null, page = 0, size = 500, auth = authFor(aliceId))
-
-        resp.size shouldBe 100
     }
 
     "list with invalid namespaceId throws 400 BAD_REQUEST" {
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null, page = 0, size = 20, auth = authFor(aliceId))
+            controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null, auth = authFor(aliceId))
         }
     }
 })

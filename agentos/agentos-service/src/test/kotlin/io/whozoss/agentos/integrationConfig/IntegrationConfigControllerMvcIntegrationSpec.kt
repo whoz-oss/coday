@@ -311,7 +311,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "LIST returns paginated envelope for caller's configs" {
+        "LIST returns a flat JSON array for caller's configs" {
             val tag = "LIST_${UUID.randomUUID()}"
             integrationConfigService.create(
                 IntegrationConfig(
@@ -323,11 +323,9 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/integration-configs?size=100"))
+            mockMvc.perform(get("/api/integration-configs"))
                 .andExpect(status().isOk)
-                .andExpect(jsonPath("$.content").isArray)
-                .andExpect(jsonPath("$.totalElements").exists())
-                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$").isArray)
         }
     }
 }

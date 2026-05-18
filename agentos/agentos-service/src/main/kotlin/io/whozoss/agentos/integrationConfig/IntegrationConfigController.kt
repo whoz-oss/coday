@@ -31,7 +31,6 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
-import kotlin.math.min
 
 /**
  * Unified REST API for [IntegrationConfig] entities — covers the **three scopes**
@@ -198,20 +197,15 @@ class IntegrationConfigController(
             "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
             "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
             "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
-            "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`. " +
-            "Pagination defaults to page=0, size=20 ; size is capped at 100.",
+            "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.",
     )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     fun list(
         @RequestParam(required = false) namespaceId: String?,
         @RequestParam(required = false) userId: String?,
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int,
         auth: Authentication,
-    ): IntegrationConfigPage {
-        val safeSize = size.coerceIn(1, MAX_PAGE_SIZE)
-        val safePage = page.coerceAtLeast(0)
+    ): List<IntegrationConfigResource> {
         val resolvedNs = parseNamespaceParam(namespaceId)
         val me = userService.getCurrentUser().id
         validateUserParam(userId)
@@ -224,17 +218,7 @@ class IntegrationConfigController(
             canReadNamespace = { nsId -> callerCanReadNamespace(auth, nsId) },
         )
 
-        val total = all.size
-        val from = (safePage.toLong() * safeSize).coerceAtMost(total.toLong()).toInt()
-        val to = min(from + safeSize, total)
-        val pageItems = if (from >= to) emptyList() else all.subList(from, to)
-        return IntegrationConfigPage(
-            content = pageItems.map { toResource(it) },
-            page = safePage,
-            size = safeSize,
-            totalElements = total.toLong(),
-            totalPages = ((total.toLong() + safeSize - 1) / safeSize).toInt(),
-        )
+        return all.map { toResource(it) }
     }
 
     @Operation(
@@ -362,18 +346,5 @@ class IntegrationConfigController(
     companion object : KLogging() {
         const val NONE_SENTINEL = "none"
         const val ME_SENTINEL = "me"
-        const val MAX_PAGE_SIZE = 100
     }
 }
-
-/**
- * Pagination envelope for [IntegrationConfigController.list]. Kept narrow on purpose —
- * Spring Data's `Page<T>` would couple the API to a JPA-flavoured shape we do not need here.
- */
-data class IntegrationConfigPage(
-    val content: List<IntegrationConfigResource>,
-    val page: Int,
-    val size: Int,
-    val totalElements: Long,
-    val totalPages: Int,
-)

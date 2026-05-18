@@ -48,8 +48,6 @@ const NAMESPACE_NONE_SENTINEL = 'none'
 /** Sentinel accepted by the backend's `?userId=` to mean "the authenticated user". */
 const USER_ME_SENTINEL = 'me'
 
-const LIST_PAGE_SIZE = 1000
-
 /**
  * AiProviderConfigStateService — orchestrates the 3 sources of truth for the unified
  * AI Providers page. Post-PR-#838 (`unify-ns-user-crud-controllers`) all 3 calls land on
@@ -112,9 +110,7 @@ export class AiProviderConfigStateService {
    */
   loadUserProviders(scope: 'global' | string): Observable<AiProvider[]> {
     const namespaceParam = scope === 'global' ? NAMESPACE_NONE_SENTINEL : scope
-    return this.nsController
-      .listAiProvider(namespaceParam, USER_ME_SENTINEL, 0, LIST_PAGE_SIZE)
-      .pipe(map((page) => page.content ?? []))
+    return this.nsController.listAiProvider(namespaceParam, USER_ME_SENTINEL)
   }
 
   /** User-global slice consumed by `UserProfileComponent.recap` — see `multicastRefreshable`. */
@@ -127,9 +123,7 @@ export class AiProviderConfigStateService {
   loadNamespaceProviders(namespaceId: string): Observable<AiProvider[]> {
     if (!namespaceId) return of([])
     // NS-shared : `userId` omitted → backend serves the namespace-scoped layer for that NS.
-    return this.nsController
-      .listAiProvider(namespaceId, undefined, 0, LIST_PAGE_SIZE)
-      .pipe(map((page) => page.content ?? []))
+    return this.nsController.listAiProvider(namespaceId)
   }
 
   /**

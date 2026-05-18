@@ -330,7 +330,7 @@ class AiProviderControllerIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "LIST returns paginated JSON envelope with content/page/size/totalElements/totalPages" {
+        "LIST returns a flat JSON array" {
             val tag = "LIST_${UUID.randomUUID()}"
             aiProviderService.create(
                 AiProvider(
@@ -342,13 +342,9 @@ class AiProviderControllerIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/ai-providers?size=100"))
+            mockMvc.perform(get("/api/ai-providers"))
                 .andExpect(status().isOk)
-                .andExpect(jsonPath("$.content").isArray)
-                .andExpect(jsonPath("$.totalElements").exists())
-                .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").exists())
-                .andExpect(jsonPath("$.totalPages").exists())
+                .andExpect(jsonPath("$").isArray)
         }
     }
 }

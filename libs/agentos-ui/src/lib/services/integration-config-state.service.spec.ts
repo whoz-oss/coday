@@ -35,17 +35,17 @@ describe('IntegrationConfigStateService', () => {
 
   beforeEach(() => {
     nsController = {
-      // Unified `listIntegrationConfig(namespaceId, userId, page, size)` returns a
-      // paginated envelope. The mock dispatches by query params : userId omitted →
+      // Unified `listIntegrationConfig(namespaceId, userId)` returns a flat array.
+      // The mock dispatches by query params : userId omitted →
       // NS-shared layer ; namespaceId === 'none' → user-global ; both → user × ns.
       listIntegrationConfig: jest.fn().mockImplementation((namespaceId?: string, userId?: string) => {
         if (!userId) {
-          return of({ content: [nsConfig], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+          return of([nsConfig])
         }
         if (namespaceId === 'none') {
-          return of({ content: [userGlobalConfig], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+          return of([userGlobalConfig])
         }
-        return of({ content: [userOnNsConfig], page: 0, size: 20, totalElements: 1, totalPages: 1 })
+        return of([userOnNsConfig])
       }),
       createIntegrationConfig: jest.fn().mockReturnValue(of(nsConfig)),
       updateIntegrationConfig: jest.fn().mockReturnValue(of(nsConfig)),
@@ -76,9 +76,9 @@ describe('IntegrationConfigStateService', () => {
       expect(vm.userOnNs).toEqual([userOnNsConfig])
       expect(vm.userGlobal).toEqual([userGlobalConfig])
 
-      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, undefined, 0, expect.any(Number))
-      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
-      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID)
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, 'me')
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none', 'me')
     })
   })
 
@@ -86,13 +86,13 @@ describe('IntegrationConfigStateService', () => {
     it('translates "global" into the (none, me) sentinel pair, never leaking it', async () => {
       const result = await firstValueFrom(service.loadUserConfigs('global'))
       expect(result).toEqual([userGlobalConfig])
-      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none', 'me', 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none', 'me')
     })
 
     it('passes a UUID for user × namespace and pins userId to "me"', async () => {
       const result = await firstValueFrom(service.loadUserConfigs(NS_ID))
       expect(result).toEqual([userOnNsConfig])
-      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, 'me', 0, expect.any(Number))
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, 'me')
     })
   })
 

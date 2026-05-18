@@ -793,7 +793,7 @@ paths:
         | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
 
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`. Pagination defaults to page=0, size=20 ; size is capped at 100.
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
       operationId: listIntegrationConfig
       parameters:
       - name: namespaceId
@@ -806,27 +806,15 @@ paths:
         required: false
         schema:
           type: string
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 20
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IntegrationConfigPage"
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
     post:
       tags:
       - integration-config-controller
@@ -1023,7 +1011,7 @@ paths:
         | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
 
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`. Pagination defaults to page=0, size=20 ; size is capped at 100.
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
       operationId: listAiProvider
       parameters:
       - name: namespaceId
@@ -1036,27 +1024,15 @@ paths:
         required: false
         schema:
           type: string
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 20
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AiProviderPage"
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
     post:
       tags:
       - ai-provider-controller
@@ -2375,53 +2351,3 @@ components:
       - description
       - displayName
       - type
-    IntegrationConfigPage:
-      type: object
-      properties:
-        content:
-          type: array
-          items:
-            $ref: "#/components/schemas/IntegrationConfig"
-        page:
-          type: integer
-          format: int32
-        size:
-          type: integer
-          format: int32
-        totalElements:
-          type: integer
-          format: int64
-        totalPages:
-          type: integer
-          format: int32
-      required:
-      - content
-      - page
-      - size
-      - totalElements
-      - totalPages
-    AiProviderPage:
-      type: object
-      properties:
-        content:
-          type: array
-          items:
-            $ref: "#/components/schemas/AiProvider"
-        page:
-          type: integer
-          format: int32
-        size:
-          type: integer
-          format: int32
-        totalElements:
-          type: integer
-          format: int64
-        totalPages:
-          type: integer
-          format: int32
-      required:
-      - content
-      - page
-      - size
-      - totalElements
-      - totalPages
