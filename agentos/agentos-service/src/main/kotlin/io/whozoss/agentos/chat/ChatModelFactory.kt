@@ -16,6 +16,7 @@ import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.ai.openai.api.OpenAiApi
 import org.springframework.ai.retry.RetryUtils
 import org.springframework.stereotype.Component
+import org.springframework.util.LinkedMultiValueMap
 
 @Component
 class ChatModelFactory {
@@ -26,6 +27,7 @@ class ChatModelFactory {
         modelName: String,
         temperature: Double? = null,
         maxTokens: Int? = null,
+        headers: Map<String, String> = emptyMap(),
     ): ChatModel {
         val resolvedApiKey =
             apiKey?.takeIf { it.isNotBlank() }
@@ -39,6 +41,17 @@ class ChatModelFactory {
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
                     maxTokens = maxTokens,
+                )
+            }
+
+            AiApiType.vLLM -> {
+                createVllmModel(
+                    baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
+                    apiKey = resolvedApiKey,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
+                    headers = headers,
                 )
             }
 
@@ -62,7 +75,6 @@ class ChatModelFactory {
             }
         }
     }
-
     private fun createOpenAiModel(
         baseUrl: String,
         apiKey: String,
@@ -70,12 +82,7 @@ class ChatModelFactory {
         temp: Double,
         maxTokens: Int?,
     ): ChatModel {
-        val api =
-            OpenAiApi
-                .Builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .build()
+        val api = OpenAiApi.Builder().baseUrl(baseUrl).apiKey(apiKey).build()
 
         val optionsBuilder =
             OpenAiChatOptions
@@ -97,6 +104,43 @@ class ChatModelFactory {
         )
     }
 
+    private fun createVllmModel(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        temp: Double,
+        maxTokens: Int?,
+        headers: Map<String, String>,
+    ): ChatModel {
+        var builder = OpenAiApi.Builder().baseUrl(baseUrl).apiKey(apiKey)
+        if (headers.isNotEmpty()) {
+            val multiValueHeaders = LinkedMultiValueMap<String, String>(
+                headers.mapValues { (_, value) -> listOf(value) }
+            )
+            builder = builder.headers(multiValueHeaders)
+        }
+        val api = builder.build()
+
+        val optionsBuilder =
+            OpenAiChatOptions
+                .builder()
+                .temperature(temp)
+                .model(model)
+        if (maxTokens != null) {
+            optionsBuilder.maxTokens(maxTokens)
+        }
+        val options = optionsBuilder.extraBody(mapOf("chat_template_kwargs" to mapOf("enable_thinking" to false))).build()
+
+        return OpenAiChatModel(
+            api,
+            options,
+            DefaultToolCallingManager.builder().build(),
+            RetryUtils.DEFAULT_RETRY_TEMPLATE,
+            ObservationRegistry.NOOP,
+            DefaultToolExecutionEligibilityPredicate(),
+        )
+    }
+
     private fun createAnthropicModel(
         baseUrl: String,
         apiKey: String,
@@ -104,12 +148,8 @@ class ChatModelFactory {
         temp: Double,
         maxTokens: Int?,
     ): ChatModel {
-        val api =
-            AnthropicApi
-                .Builder()
-                .baseUrl(baseUrl)
-                .apiKey(apiKey)
-                .build()
+        val builder = AnthropicApi.Builder().baseUrl(baseUrl).apiKey(apiKey)
+        val api = builder.build()
 
         val options =
             AnthropicChatOptions

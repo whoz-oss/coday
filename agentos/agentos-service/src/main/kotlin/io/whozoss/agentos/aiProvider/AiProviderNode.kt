@@ -9,6 +9,8 @@ import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
 import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.util.UUID
 
 /**
@@ -40,6 +42,7 @@ data class AiProviderNode(
     val apiType: String,
     val baseUrl: String? = null,
     val apiKey: String? = null,
+    val headersJson: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -67,9 +70,13 @@ data class AiProviderNode(
             apiType = AiApiType.valueOf(apiType),
             baseUrl = baseUrl,
             apiKey = apiKey,
+            headers = headersJson?.let { MAPPER.readValue(it, HEADERS_TYPE) } ?: emptyMap(),
         )
 
     companion object {
+        private val MAPPER = jacksonObjectMapper()
+        private val HEADERS_TYPE = object : TypeReference<Map<String, String>>() {}
+
         fun fromDomain(config: AiProvider): AiProviderNode =
             AiProviderNode(
                 id = config.id.toString(),
@@ -80,6 +87,7 @@ data class AiProviderNode(
                 apiType = config.apiType.name,
                 baseUrl = config.baseUrl,
                 apiKey = config.apiKey,
+                headersJson = config.headers.takeIf { it.isNotEmpty() }?.let { MAPPER.writeValueAsString(it) },
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,

@@ -6,4 +6,5 @@ data class AiProviderYamlModel(
     val apiType: String,
     val baseUrl: String? = null,
     val apiKey: String? = null,
+    val headers: Map<String, String>? = null,
 )

@@ -68,6 +68,7 @@ class AiProviderController(
             apiType = entity.apiType,
             baseUrl = entity.baseUrl,
             apiKey = maskApiKey(entity.apiKey),
+            headers = entity.headers,
         )
 
     override fun toDomain(resource: AiProviderResource): AiProvider =
@@ -83,6 +84,7 @@ class AiProviderController(
             apiType = resource.apiType!!,
             baseUrl = resource.baseUrl,
             apiKey = resource.apiKey,
+            headers = resource.headers ?: emptyMap(),
         )
 
     private fun toDomainForUpdate(
@@ -99,6 +101,7 @@ class AiProviderController(
             } else {
                 resource.apiKey?.takeIf { it.isNotBlank() } ?: existing.apiKey
             },
+            headers = resource.headers ?: emptyMap(),
         )
 
     @GetMapping("/{id}")
