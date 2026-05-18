@@ -1,6 +1,8 @@
 package io.whozoss.agentos.security
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.security.AuthSecurityService.Companion.CF_AUTHORIZATION_HEADER
+import io.whozoss.agentos.security.AuthSecurityService.Companion.X_FORWARDED_EMAIL_HEADER
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.web.context.request.RequestContextHolder
@@ -30,15 +32,18 @@ import java.util.Base64
 class AuthSecurityService(
     private val objectMapper: ObjectMapper,
 ) : SecurityService {
-
     override fun resolveCurrentIdentity(): String {
         val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
 
         val cfHeader = request.getHeader(CF_AUTHORIZATION_HEADER)
+        val authHeader = request.getHeader(AUTHORIZATION_HEADER)
         val emailHeader = request.getHeader(X_FORWARDED_EMAIL_HEADER)
-        logger.info { "[Security/auth] Resolving identity — CF_Authorization present=${!cfHeader.isNullOrBlank()}, x-forwarded-email='$emailHeader'" }
+        logger.info {
+            "[Security/auth] Resolving identity — CF_Authorization present=${!cfHeader.isNullOrBlank()}, Authorization present=${!authHeader
+                .isNullOrBlank()}, x-forwarded-email='$emailHeader'"
+        }
 
-        return resolveEmail(cfHeader, emailHeader)
+        return resolveEmail(authHeader, cfHeader, emailHeader)
             ?: run {
                 logger.warn { "[Security/auth] No identity header found — returning 401" }
                 throw ResponseStatusException(
@@ -48,14 +53,28 @@ class AuthSecurityService(
             }
     }
 
-    private fun resolveEmail(cfJwt: String?, forwardedEmail: String?): String? =
+    private fun resolveEmail(
+        authHeader: String?,
+        cfJwt: String?,
+        forwardedEmail: String?,
+    ): String? =
         when {
-            !cfJwt.isNullOrBlank() -> extractEmailFromJwt(cfJwt)
+            !cfJwt.isNullOrBlank() -> {
+                extractEmailFromJwt(cfJwt)
+            }
+
+            !authHeader.isNullOrBlank() -> {
+                extractPreferredUsernameHeader(authHeader)
+            }
+
             !forwardedEmail.isNullOrBlank() -> {
                 logger.info { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwardedEmail" }
                 forwardedEmail
             }
-            else -> null
+
+            else -> {
+                null
+            }
         }
 
     /**
@@ -63,14 +82,12 @@ class AuthSecurityService(
      * No signature verification — Cloudflare Access guarantees the token is valid
      * before forwarding the request.
      */
-    internal fun extractEmailFromJwt(token: String): String? {
-        return try {
-            val payload = token.split(".").getOrNull(1)
-                ?: return null
-            val decoded = Base64.getUrlDecoder().decode(payload)
-            @Suppress("UNCHECKED_CAST")
-            val claims = objectMapper.readValue(decoded, Map::class.java) as Map<String, Any?>
-            val email = claims["email"] as? String
+    internal fun extractEmailFromJwt(token: String): String? =
+        try {
+            val email =
+                extractJwtBodyFromHeaderValue(token)?.let {
+                    it["email"] as? String
+                }
             if (email.isNullOrBlank()) {
                 logger.warn { "[Security/auth] JWT payload has no 'email' claim" }
                 null
@@ -82,10 +99,46 @@ class AuthSecurityService(
             logger.warn(e) { "[Security/auth] Failed to decode JWT payload" }
             null
         }
-    }
+
+    private fun extractJwtBodyFromHeaderValue(headerValue: String): Map<String, Any?>? =
+        try {
+            headerValue
+                .split(".")
+                .getOrNull(1)
+                ?.let { encodedPayload: String ->
+                    val decoded = Base64.getUrlDecoder().decode(encodedPayload)
+                    @Suppress("UNCHECKED_CAST")
+                    objectMapper.readValue(decoded, Map::class.java) as Map<String, Any?>?
+                }
+        } catch (e: Exception) {
+            logger.warn(e) { "[Security/auth] Failed to decode JWT payload" }
+            null
+        }
+
+    private fun extractPreferredUsernameHeader(authHeader: String): String? =
+        try {
+            val bearerToken = authHeader.substring(BEARER.length).trim()
+            val preferredUsername =
+                extractJwtBodyFromHeaderValue(bearerToken)?.let {
+                    it[PREFERRED_USERNAME] as? String
+                }
+            if (preferredUsername.isNullOrBlank()) {
+                logger.warn { "[Security/auth] JWT payload has no '$PREFERRED_USERNAME' claim" }
+                null
+            } else {
+                logger.debug { "[Security/auth] Resolved identity from JWT: $preferredUsername" }
+                preferredUsername
+            }
+        } catch (e: Exception) {
+            logger.warn(e) { "[Security/auth] Failed to decode JWT payload" }
+            null
+        }
 
     companion object : KLogging() {
         const val CF_AUTHORIZATION_HEADER = "CF_Authorization"
         const val X_FORWARDED_EMAIL_HEADER = "x-forwarded-email"
+        const val AUTHORIZATION_HEADER = "Authorization"
+        const val BEARER = "Bearer "
+        const val PREFERRED_USERNAME = "preferred_username"
     }
 }
