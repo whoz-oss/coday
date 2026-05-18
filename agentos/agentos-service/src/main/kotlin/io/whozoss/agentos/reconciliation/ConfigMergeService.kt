@@ -75,7 +75,7 @@ interface MergeStrategy<T : Entity> {
  *
  * @param T the entity type being reconciled
  */
-open class ConfigMergeService<T : Entity>(
+class ConfigMergeService<T : Entity>(
     private val lookup: ConfigLookup<T>,
     private val mergeStrategy: MergeStrategy<T>,
 ) {
