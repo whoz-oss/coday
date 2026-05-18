@@ -227,6 +227,38 @@ class NamespaceController(
         }
     }
 
+    /**
+     * POST /api/namespaces/{namespaceId}/deploy-agents
+     *
+     * Deploys the given agents on the namespace by creating a DEPLOYED_TO relation.
+     */
+    @PostMapping("/{namespaceId}/deploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun deployAgents(
+        @PathVariable namespaceId: UUID,
+        @RequestBody request: NamespaceAgentDeployRequest,
+    ) {
+        logger.info { "Deploying ${request.agentIds.size} agent(s) on namespace $namespaceId" }
+        namespaceService.deployAgents(namespaceId, request.agentIds)
+    }
+
+    /**
+     * POST /api/namespaces/{namespaceId}/undeploy-agents
+     *
+     * Removes the DEPLOYED_TO relation between the given agents and the namespace.
+     */
+    @PostMapping("/{namespaceId}/undeploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun undeployAgents(
+        @PathVariable namespaceId: UUID,
+        @RequestBody request: NamespaceAgentDeployRequest,
+    ) {
+        logger.info { "Undeploying ${request.agentIds.size} agent(s) from namespace $namespaceId" }
+        namespaceService.undeployAgents(namespaceId, request.agentIds)
+    }
+
     private fun toListItem(
         entity: Namespace,
         role: String,
@@ -246,4 +278,5 @@ class NamespaceController(
         private const val ADMIN = "ADMIN"
         private const val MEMBER = "MEMBER"
     }
+
 }
