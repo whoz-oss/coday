@@ -1,6 +1,6 @@
 package io.whozoss.agentos.aiProvider
 
-import io.whozoss.agentos.persistence.TripleKeyEncoding
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -41,9 +41,9 @@ class AiProviderSchemaInitializer(
     private fun backfillTripleKey() {
         // Cypher mirrors `AiProviderNode.computeTripleKey` / `tombstoneTripleKey` and pulls
         // the literals from the shared encoding to avoid drift if a maintainer renames them.
-        val nullSentinel = TripleKeyEncoding.NULL_ID_SENTINEL
-        val separator = TripleKeyEncoding.SEPARATOR
-        val tombstonePrefix = TripleKeyEncoding.TOMBSTONE_PREFIX
+        val nullSentinel = OverlayKeyEncoding.NULL_ID_SENTINEL
+        val separator = OverlayKeyEncoding.SEPARATOR
+        val tombstonePrefix = OverlayKeyEncoding.TOMBSTONE_PREFIX
         val cypher =
             """
             MATCH (c:AiProvider)

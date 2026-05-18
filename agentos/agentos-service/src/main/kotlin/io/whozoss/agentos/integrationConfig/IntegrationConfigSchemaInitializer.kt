@@ -1,6 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
-import io.whozoss.agentos.persistence.TripleKeyEncoding
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -86,11 +86,11 @@ class IntegrationConfigSchemaInitializer(
         // collision the constraint is meant to prevent (multiple soft-deleted rows can legally
         // pre-date the constraint with identical triples).
         // Cypher mirrors `IntegrationConfigNode.computeTripleKey` / `tombstoneTripleKey` and
-        // pulls the literals from the shared `TripleKeyEncoding` object — keeping the two
+        // pulls the literals from the shared `OverlayKeyEncoding` object — keeping the two
         // sides in sync if a maintainer later renames the sentinel or the prefix.
-        val nullSentinel = TripleKeyEncoding.NULL_ID_SENTINEL
-        val separator = TripleKeyEncoding.SEPARATOR
-        val tombstonePrefix = TripleKeyEncoding.TOMBSTONE_PREFIX
+        val nullSentinel = OverlayKeyEncoding.NULL_ID_SENTINEL
+        val separator = OverlayKeyEncoding.SEPARATOR
+        val tombstonePrefix = OverlayKeyEncoding.TOMBSTONE_PREFIX
         val cypher =
             """
             MATCH (c:IntegrationConfig)

@@ -4,7 +4,7 @@ import java.util.UUID
 
 /**
  * Shared encoding for the `tripleKey` discriminator used by user-level overlay entities
- * (`IntegrationConfig`, `AiProvider`, `AiModel`).
+ * (`IntegrationConfig`, `AiProvider`).
  *
  * The discriminator concatenates the 3 components of the business unique-key
  * `(namespaceId, userId, name)` into a single non-null String. It backs a single-property
@@ -23,7 +23,7 @@ import java.util.UUID
  *
  * NOT thread-unsafe — pure functions, no state.
  */
-object TripleKeyEncoding {
+object OverlayKeyEncoding {
     /**
      * Sentinel substituted for a NULL id component when computing the active key. `_` is
      * outside the UUID alphabet (hex + dashes), so it cannot collide with a real UUID

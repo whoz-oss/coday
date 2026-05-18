@@ -2,7 +2,7 @@ package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
-import io.whozoss.agentos.persistence.TripleKeyEncoding
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -81,9 +81,9 @@ data class IntegrationConfigNode(
             namespaceId: UUID?,
             userId: UUID?,
             name: String,
-        ): String = TripleKeyEncoding.activeKey(namespaceId, userId, name)
+        ): String = OverlayKeyEncoding.activeKey(namespaceId, userId, name)
 
-        fun tombstoneTripleKey(id: String): String = TripleKeyEncoding.tombstoneKey(id)
+        fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
 
         fun fromDomain(
             config: IntegrationConfig,

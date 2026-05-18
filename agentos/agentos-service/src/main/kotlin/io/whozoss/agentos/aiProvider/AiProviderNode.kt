@@ -1,7 +1,7 @@
 package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.namespace.NamespaceNode
-import io.whozoss.agentos.persistence.TripleKeyEncoding
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -41,7 +41,7 @@ data class AiProviderNode(
      * Denormalised discriminator for the unique business triple `(namespaceId, userId,
      * name)`. Backed by a UNIQUE CONSTRAINT (cf. `AiProviderSchemaInitializer`). Same
      * pattern as [io.whozoss.agentos.integrationConfig.IntegrationConfigNode.tripleKey] —
-     * see [TripleKeyEncoding] and the RFC §D11 for rationale.
+     * see [OverlayKeyEncoding] and the RFC §D11 for rationale.
      *
      * Soft-deleted rows carry a per-id `tombstone:<uuid>` value so the unique slot is
      * freed for re-creation immediately after a delete.
@@ -87,9 +87,9 @@ data class AiProviderNode(
             namespaceId: UUID?,
             userId: UUID?,
             name: String,
-        ): String = TripleKeyEncoding.activeKey(namespaceId, userId, name)
+        ): String = OverlayKeyEncoding.activeKey(namespaceId, userId, name)
 
-        fun tombstoneTripleKey(id: String): String = TripleKeyEncoding.tombstoneKey(id)
+        fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
 
         fun fromDomain(config: AiProvider): AiProviderNode {
             val idString = config.id.toString()
