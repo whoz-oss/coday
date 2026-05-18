@@ -11,9 +11,9 @@ data class UserGroupUpdateRequest(
     @field:Size(max = 250)
     val name: String,
     @field:Size(max = 200)
-    val addedUserExternalIds: Set<@NotBlank String> = emptySet(),
+    val userExternalIdsToAdd: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
-    val removedUserExternalIds: Set<@NotBlank String> = emptySet(),
+    val userExternalIdsToRemove: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
     val agentIds: Set<UUID> = emptySet(),
 )
