@@ -1,3 +1,16 @@
+## 0.147.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31609 add support of vllm with headers ([2bcd23fb](https://github.com/whoz-oss/coday/commit/2bcd23fb))
+- npx ops ([25c23bde](https://github.com/whoz-oss/coday/commit/25c23bde))
+- wz-31609 add support of vllm with headers ([#876](https://github.com/whoz-oss/coday/pull/876))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.146.0 (2026-05-18)
 
 ### 🚀 Features
