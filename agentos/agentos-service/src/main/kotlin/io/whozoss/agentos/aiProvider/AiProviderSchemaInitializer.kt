@@ -35,6 +35,7 @@ class AiProviderSchemaInitializer(
     override fun run(args: ApplicationArguments) {
         backfillTripleKey()
         ensureTripleKeyUniqueConstraint()
+        ensureReconciliationIndexes()
     }
 
     private fun backfillTripleKey() {
@@ -70,6 +71,16 @@ class AiProviderSchemaInitializer(
             """.trimIndent()
         neo4jClient.query(cypher).run()
         logger.info { "[AiProviderSchema] constraint 'ai_provider_triple_key_unique' ensured" }
+    }
+
+    private fun ensureReconciliationIndexes() {
+        neo4jClient.query(
+            "CREATE INDEX aiProvider_triple IF NOT EXISTS FOR (n:AiProvider) ON (n.namespaceId, n.userId, n.name)",
+        ).run()
+        neo4jClient.query(
+            "CREATE INDEX aiProvider_userId IF NOT EXISTS FOR (n:AiProvider) ON (n.userId)",
+        ).run()
+        logger.info { "[AiProviderSchema] reconciliation indexes ensured" }
     }
 
     companion object : KLogging()
