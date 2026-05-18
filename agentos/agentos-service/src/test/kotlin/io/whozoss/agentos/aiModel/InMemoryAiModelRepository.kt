@@ -17,23 +17,9 @@ class InMemoryAiModelRepository : AiModelRepository {
     override fun delete(id: UUID): Boolean = delegate.delete(id)
     override fun deleteByParent(parentId: UUID): Int = delegate.deleteByParent(parentId)
     override fun findByNamespaceId(namespaceId: UUID): List<AiModel> =
-        delegate.findAll().filter { it.namespaceId == namespaceId && it.userId == null }
+        delegate.findAll().filter { it.namespaceId == namespaceId }
     override fun findByAiProviderAndApiName(aiProviderId: UUID, apiName: String): AiModel? =
         findByParent(aiProviderId).firstOrNull { it.apiModelName == apiName }
     override fun findByAiProviderAndAlias(aiProviderId: UUID, alias: String): AiModel? =
         findByParent(aiProviderId).firstOrNull { it.alias == alias }
-
-    override fun findByUserId(userId: UUID): List<AiModel> =
-        delegate.findAll().filter { it.userId == userId }
-
-    override fun findByTriple(
-        namespaceId: UUID?,
-        userId: UUID?,
-        name: String,
-    ): AiModel? =
-        delegate.findAll().firstOrNull {
-            it.namespaceId == namespaceId &&
-                it.userId == userId &&
-                (it.alias == name || (it.alias == null && it.apiModelName == name))
-        }
 }

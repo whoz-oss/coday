@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
@@ -110,17 +111,47 @@ class AiModelControllerMvcIntegrationSpec : StringSpec() {
                 ).andExpect(status().isOk)
         }
 
-        // Hard-break: /by-parentId/ is now a stub returning 404 (use ?aiProviderId= instead)
-        "GET /api/ai-models/by-parentId/{providerId} returns 404 (endpoint removed)" {
+        // Secured listing through /by-parentId/{providerId}
+        "GET /api/ai-models/by-parentId/{providerId} returns models for super-admin caller" {
             val parent = createParentAiProvider()
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = namespaceId,
+                    apiModelName = "claude-haiku-4-5",
+                ),
+            )
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = namespaceId,
+                    apiModelName = "claude-opus-4-6",
+                ),
+            )
+
             mockMvc.perform(get("/api/ai-models/by-parentId/${parent.id}"))
-                .andExpect(status().isNotFound)
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
         }
 
-        // Hard-break: /by-namespaceId/ is fully removed (use ?namespaceId= instead)
-        "GET /api/ai-models/by-namespaceId/{namespaceId} returns 404 (endpoint removed)" {
-            mockMvc.perform(get("/api/ai-models/by-namespaceId/$namespaceId"))
-                .andExpect(status().isNotFound)
+        // Secured listing through /by-namespaceId/{namespaceId}
+        "GET /api/ai-models/by-namespaceId/{namespaceId} returns models in namespace" {
+            val listNs = UUID.randomUUID()
+            val parent = createParentAiProvider(nsId = listNs)
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = parent.id,
+                    namespaceId = listNs,
+                    apiModelName = "gpt-4o",
+                ),
+            )
+
+            mockMvc.perform(get("/api/ai-models/by-namespaceId/$listNs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(1)))
         }
     }
 }

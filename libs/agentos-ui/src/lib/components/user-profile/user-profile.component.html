@@ -197,35 +197,6 @@
                   }
                 </ul>
               }
-
-              @if (recap().aiModels.length > 0) {
-                <h3 class="user-profile__overrides-subtitle">AI Models</h3>
-                <ul class="user-profile__overrides-list">
-                  @for (entry of recap().aiModels; track trackEntry($index, entry)) {
-                    <li class="user-profile__overrides-row">
-                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
-                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
-                      @if (isPendingDelete(entry)) {
-                        <span class="user-profile__overrides-confirm-label">Delete?</span>
-                        <button
-                          class="user-profile__overrides-delete user-profile__overrides-delete--confirm"
-                          type="button"
-                          (click)="confirmDelete(entry)"
-                        >
-                          Confirm
-                        </button>
-                        <button class="user-profile__overrides-delete" type="button" (click)="cancelDelete()">
-                          Cancel
-                        </button>
-                      } @else {
-                        <button class="user-profile__overrides-delete" type="button" (click)="armDelete(entry)">
-                          Delete
-                        </button>
-                      }
-                    </li>
-                  }
-                </ul>
-              }
             }
           }
         </div>

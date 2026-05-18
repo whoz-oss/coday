@@ -50,7 +50,6 @@ class AgentServiceImpl(
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
-    private val aiModelReconciliationService: ConfigMergeService<AiModel>,
     private val aiProviderReconciliationService: ConfigMergeService<AiProvider>,
     private val agentConfigService: AgentConfigService,
 ) : AgentService {
@@ -123,16 +122,9 @@ class AgentServiceImpl(
     }
 
     /**
-     * Apply 3-tier reconciliation on a pre-resolved [baseModel] (alias-first key for the
-     * model, provider name for the provider). When [userId] is null, falls back to direct
-     * repository lookup with no overlay — preserves Epic 4 behaviour exactly (NFR-INT-1, AC11).
-     *
-     * Fail-closed posture (review H-8 / NFR-REL-1): a [io.whozoss.agentos.exception.ConfigNotFoundException]
-     * thrown by either reconciliation step is intentionally propagated — `baseModel` is the
-     * row we just looked up by namespace, so reconciliation cannot legitimately fail to find
-     * it. A failure here means corrupted state (orphan child after parent soft-delete, race
-     * with cleanup, etc.) and the LLM run must abort rather than silently fall back. This
-     * mirrors the namespace-shared posture in [ToolResolverService.resolveToolsForRun].
+     * Resolve the [AiProvider] for a pre-resolved [baseModel]. When [userId] is non-null,
+     * applies 3-tier reconciliation on the provider. When null, falls back to direct
+     * repository lookup — preserves Epic 4 behaviour exactly.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -140,27 +132,21 @@ class AgentServiceImpl(
         userId: UUID?,
         cache: RunReconciliationCache?,
     ): Pair<AiModel, AiProvider> {
-        val (modelConfig, providerConfig) = if (userId != null) {
-            val reconciliationName = baseModel.alias ?: baseModel.apiModelName
-            val resolvedModel = cache?.getOrCompute(reconciliationName, AiModel::class.java, namespaceId, userId) {
-                aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
-            } ?: aiModelReconciliationService.resolve(namespaceId, userId, reconciliationName)
-
-            val baseProvider = aiProviderService.getById(resolvedModel.aiProviderId)
-            val resolvedProvider = cache?.getOrCompute(baseProvider.name, AiProvider::class.java, namespaceId, userId) {
+        val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
+        val providerConfig = if (userId != null) {
+            cache?.getOrCompute(baseProvider.name, AiProvider::class.java, namespaceId, userId) {
                 aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
             } ?: aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
-            resolvedModel to resolvedProvider
         } else {
-            baseModel to aiProviderService.getById(baseModel.aiProviderId)
+            baseProvider
         }
 
         logger.info {
-            "[AgentService] Resolved model '${modelConfig.alias ?: modelConfig.apiModelName}' " +
-                "-> apiName='${modelConfig.apiModelName}' (priority=${modelConfig.priority}, " +
+            "[AgentService] Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
+                "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
                 "provider='${providerConfig.name}', userId=$userId)"
         }
-        return modelConfig to providerConfig
+        return baseModel to providerConfig
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)

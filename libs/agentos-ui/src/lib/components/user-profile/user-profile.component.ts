@@ -4,13 +4,12 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
 import { combineLatest, map } from 'rxjs'
-import { AiModelConfigStateService } from '../../services/ai-model-config-state.service'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { UserStateService } from '../../services/user-state.service'
 
 interface UserGlobalEntry {
-  category: 'integration' | 'aiProvider' | 'aiModel'
+  category: 'integration' | 'aiProvider'
   id: string
   name: string
   subtitle: string
@@ -19,7 +18,6 @@ interface UserGlobalEntry {
 interface UserGlobalRecap {
   integrations: UserGlobalEntry[]
   aiProviders: UserGlobalEntry[]
-  aiModels: UserGlobalEntry[]
   total: number
 }
 
@@ -31,8 +29,8 @@ interface UserGlobalRecap {
  *   - Edit mode: reactive form for firstname, lastname, bio
  *
  * Story 6.6 also adds a "Mes configurations utilisateur" section that recaps the user's
- * user-global overrides (`namespaceId IS NULL`) across the 3 ressources (Integrations, AI
- * Providers, AI Models). The section is collapsable and discreet, and each entry exposes a
+ * user-global overrides (`namespaceId IS NULL`) for Integrations and AI Providers.
+ * The section is collapsable and discreet, and each entry exposes a
  * delete action — edit navigation requires a namespace context which `/me` doesn't have, so
  * users edit overrides from the namespace pages where they were created.
  */
@@ -51,8 +49,6 @@ export class UserProfileComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
-  private readonly modelState = inject(AiModelConfigStateService)
-
   protected readonly isEditing = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isSaving = signal(false)
@@ -72,12 +68,8 @@ export class UserProfileComponent implements OnInit {
    * delete from this view). The state services already cache via shareReplay.
    */
   protected readonly recap = toSignal(
-    combineLatest([
-      this.integrationState.userGlobal$,
-      this.providerState.userGlobal$,
-      this.modelState.userGlobal$,
-    ]).pipe(
-      map(([integrations, providers, models]): UserGlobalRecap => {
+    combineLatest([this.integrationState.userGlobal$, this.providerState.userGlobal$]).pipe(
+      map(([integrations, providers]): UserGlobalRecap => {
         const integrationEntries = integrations.map(
           (c): UserGlobalEntry => ({
             category: 'integration',
@@ -94,19 +86,10 @@ export class UserProfileComponent implements OnInit {
             subtitle: p.apiType,
           })
         )
-        const modelEntries = models.map(
-          (m): UserGlobalEntry => ({
-            category: 'aiModel',
-            id: m.id ?? '',
-            name: m.alias ?? m.apiModelName,
-            subtitle: m.apiModelName,
-          })
-        )
         return {
           integrations: integrationEntries,
           aiProviders: providerEntries,
-          aiModels: modelEntries,
-          total: integrationEntries.length + providerEntries.length + modelEntries.length,
+          total: integrationEntries.length + providerEntries.length,
         }
       })
     ),
@@ -114,7 +97,6 @@ export class UserProfileComponent implements OnInit {
       initialValue: {
         integrations: [],
         aiProviders: [],
-        aiModels: [],
         total: 0,
       } as UserGlobalRecap,
     }
@@ -199,9 +181,7 @@ export class UserProfileComponent implements OnInit {
     const call$ =
       entry.category === 'integration'
         ? this.integrationState.delete(entry.id, 'userGlobal')
-        : entry.category === 'aiProvider'
-          ? this.providerState.delete(entry.id, 'userGlobal')
-          : this.modelState.delete(entry.id, 'userGlobal')
+        : this.providerState.delete(entry.id, 'userGlobal')
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       error: (err) => {

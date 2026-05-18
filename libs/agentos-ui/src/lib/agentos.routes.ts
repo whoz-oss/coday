@@ -109,8 +109,8 @@ export const AGENTOS_ROUTES: Route[] = [
             path: ':namespaceId/ai-models',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/ai-models-all-scopes/ai-models-all-scopes.component').then(
-                (m) => m.AiModelsAllScopesComponent
+              import('./components/namespace-ai-models/namespace-ai-models.component').then(
+                (m) => m.NamespaceAiModelsComponent
               ),
           },
           // --- Agent Configs ---

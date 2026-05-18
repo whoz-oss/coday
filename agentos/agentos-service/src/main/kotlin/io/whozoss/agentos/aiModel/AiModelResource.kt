@@ -8,11 +8,9 @@ import java.util.UUID
 /**
  * HTTP resource (DTO) for [AiModel] entities.
  *
- * Request body : [namespaceId] and [userId] are silently ignored on POST/PUT — server-side
- * denormalized from the parent [io.whozoss.agentos.aiProvider.AiProvider] via
- * [AiModelServiceImpl.create]. [aiProviderId] is required and immutable after creation.
- *
- * Response body : [namespaceId] and [userId] carry the persisted denormalized values.
+ * [namespaceId] and [userId] are read-only from the client perspective: they are
+ * resolved server-side from the parent [io.whozoss.agentos.aiProvider.AiProvider]
+ * at creation time and must not be overridden by the caller.
  *
  * Annotated with @Schema(name = "AiModel") so the generated OpenAPI spec uses
  * the clean name instead of "AiModelResource".
@@ -22,9 +20,7 @@ data class AiModelResource(
     val id: UUID? = null,
     @field:NotNull
     val aiProviderId: UUID?,
-    @field:Schema(types = ["string", "null"], format = "uuid")
     val namespaceId: UUID? = null,
-    @field:Schema(types = ["string", "null"], format = "uuid")
     val userId: UUID? = null,
     @field:NotBlank
     val apiModelName: String,

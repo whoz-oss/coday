@@ -29,7 +29,6 @@ import io.whozoss.agentos.user.UserService
 import org.springframework.ai.chat.client.ChatClient
 import java.util.UUID
 
-@Suppress("UNCHECKED_CAST")
 class AgentServiceImplUnitSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
     private val toolResolverService: ToolResolverService = mockk()
@@ -38,8 +37,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val namespaceService: NamespaceService = mockk()
     private val integrationConfigService: IntegrationConfigService = mockk(relaxed = true)
     private val userService: UserService = mockk(relaxed = true)
-    private val aiModelReconciliationService: ConfigMergeService<AiModel> =
-        mockk(relaxed = true)
     private val aiProviderReconciliationService: ConfigMergeService<AiProvider> =
         mockk(relaxed = true)
     private val agentConfigService: AgentConfigService = mockk()
@@ -52,7 +49,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             namespaceService,
             integrationConfigService,
             userService,
-            aiModelReconciliationService,
             aiProviderReconciliationService,
             agentConfigService,
         )
@@ -185,100 +181,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) { aiModelService.findAiModel(namespaceId) }
         }
 
-        "findAgentByName applies user overlays on default-model fallback when userId is set" {
-            // Regression guard: both the named-model and the default-model branches must
-            // route through `applyOverlaysToModel`. If a refactor ever bypasses overlays
-            // on the default-model branch (e.g. by skipping reconciliation when modelName
-            // is null), the chat client would be built from base instead of overlaid
-            // model/provider and the strict mock below would not match.
-            val userId = UUID.randomUUID()
-            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
-            val config = agentConfig(name = "my-agent", modelName = null)
-            val defaultModel = modelConfig(alias = "default")
-            val overlaidModel = defaultModel.copy(metadata = EntityMetadata(id = UUID.randomUUID()), priority = 99)
-            val baseProvider = providerConfig()
-            val overlaidProvider = baseProvider.copy(metadata = EntityMetadata(id = UUID.randomUUID()), apiKey = "user-key")
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId) } returns defaultModel
-            every { aiModelReconciliationService.resolve(namespaceId, userId, "default") } returns overlaidModel
-            every { aiProviderService.getById(aiProviderId) } returns baseProvider
-            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns overlaidProvider
-            every { chatClientProvider.getChatClient(overlaidModel, overlaidProvider) } returns chatClient
-
-            agentService.findAgentByName("my-agent", contextWithUser)
-
-            verify(exactly = 1) { aiModelService.findAiModel(namespaceId) }
-            verify(exactly = 1) { aiModelReconciliationService.resolve(namespaceId, userId, "default") }
-            verify(exactly = 1) { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") }
-            verify(exactly = 1) { chatClientProvider.getChatClient(overlaidModel, overlaidProvider) }
-        }
-
-        "findAgentByName uses NS aiModel + user-overlaid aiProvider when only the provider has a user override" {
-            // Asymmetric overlay scenario (review item 6, user-question driven): NS aiModel
-            // `sonnet` is linked to NS aiProvider `anthropic-prod`; the user has only
-            // overridden the provider. The agent must receive (NS model, user-overlaid
-            // provider) — i.e. the model carries its NS identity but the provider's apiKey
-            // and metadata come from the user-level overlay.
-            //
-            // The strict mock on `getChatClient(baseModel, overlaidProvider)` is the regression
-            // guard: a refactor that re-looks up the provider by id (instead of re-resolving by
-            // name after the model resolves) would silently lose the overlay.
-            val userId = UUID.randomUUID()
-            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-            val baseModel = modelConfig(alias = "sonnet")
-            val baseProvider = providerConfig(apiKey = "ns-key")
-            val overlaidProvider = baseProvider.copy(metadata = EntityMetadata(id = UUID.randomUUID()), apiKey = "user-key")
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns baseModel
-            // Model has no user override → reconciliation passes-through the NS model.
-            every { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") } returns baseModel
-            every { aiProviderService.getById(aiProviderId) } returns baseProvider
-            // Provider has a user×ns override → reconciliation merges the overlay.
-            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns overlaidProvider
-            every { chatClientProvider.getChatClient(baseModel, overlaidProvider) } returns chatClient
-
-            agentService.findAgentByName("my-agent", contextWithUser)
-
-            verify(exactly = 1) { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") }
-            verify(exactly = 1) { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") }
-            verify(exactly = 1) { chatClientProvider.getChatClient(baseModel, overlaidProvider) }
-        }
-
-        "findAgentByName uses user-overlaid aiModel + NS aiProvider when only the model has a user override" {
-            // Symmetric companion of the previous test: only the model is user-overlaid.
-            // The provider link must follow the *resolved* model — `applyOverlaysToModel`
-            // calls `aiProviderService.getById(resolvedModel.aiProviderId)` so a user-overlaid
-            // model that retains the same `aiProviderId` (typical case) lands on the NS
-            // provider; reconciliation then passes that NS provider through unchanged.
-            val userId = UUID.randomUUID()
-            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-            val baseModel = modelConfig(alias = "sonnet")
-            val overlaidModel = baseModel.copy(metadata = EntityMetadata(id = UUID.randomUUID()), maxTokens = 4096)
-            val baseProvider = providerConfig(apiKey = "ns-key")
-            val chatClient = mockk<ChatClient>(relaxed = true)
-
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns baseModel
-            every { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") } returns overlaidModel
-            // The overlaid model retains the NS aiProviderId → provider lookup hits the NS row.
-            every { aiProviderService.getById(aiProviderId) } returns baseProvider
-            // No user override on the provider name → reconciliation passes-through.
-            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns baseProvider
-            every { chatClientProvider.getChatClient(overlaidModel, baseProvider) } returns chatClient
-
-            agentService.findAgentByName("my-agent", contextWithUser)
-
-            verify(exactly = 1) { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") }
-            verify(exactly = 1) { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") }
-            verify(exactly = 1) { chatClientProvider.getChatClient(overlaidModel, baseProvider) }
-        }
-
         "findAgentByName resolution is case-insensitive for AgentConfig names" {
             val config = agentConfig(name = "My-Agent", modelName = "sonnet")
             val model = modelConfig(alias = "sonnet")
@@ -394,7 +296,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     namespaceService,
                     localIntegrationService,
                     userService,
-                    aiModelReconciliationService,
                     aiProviderReconciliationService,
                     agentConfigService,
                 )
@@ -499,7 +400,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") } returns model
+
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
@@ -533,7 +434,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiModelReconciliationService.resolve(namespaceId, userId, "sonnet") } returns model
+
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient

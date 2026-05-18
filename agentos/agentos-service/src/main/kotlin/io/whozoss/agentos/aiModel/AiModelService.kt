@@ -55,37 +55,4 @@ interface AiModelService : EntityService<AiModel, UUID> {
         namespaceId: UUID,
         name: String = "default",
     ): AiModel?
-
-    /**
-     * Find all non-removed [AiModel] scoped to the given user, regardless of [AiModel.namespaceId].
-     * Used by [AiModelController.list] user-scope branches.
-     */
-    fun findByUserId(userId: UUID): List<AiModel>
-
-    /**
-     * Scope-aware filtered listing used by [AiModelController.list].
-     *
-     * Dispatches the query based on the resolved namespace/user/provider filter combination:
-     * - When [aiProviderId] is set, results are scoped to that provider (guarded by [canSeeProvider])
-     * - When a specific namespace is given with no user request -> namespace-shared rows
-     * - When user is requested -> user-scoped rows, optionally filtered by namespace
-     * - No filters -> caller's own overlays
-     *
-     * @param namespaceId resolved namespace UUID (null when absent or `none` sentinel)
-     * @param namespaceIsNone true when the raw query parameter was the `none` sentinel
-     * @param callerId the authenticated user's id (always provided)
-     * @param userRequested true when the caller explicitly passed `userId=me`
-     * @param aiProviderId optional provider filter
-     * @param canReadNamespace callback to check caller READ permission on a namespace
-     * @param canSeeProvider callback to check caller visibility on a provider
-     */
-    fun findFiltered(
-        namespaceId: UUID?,
-        namespaceIsNone: Boolean,
-        callerId: UUID,
-        userRequested: Boolean,
-        aiProviderId: UUID?,
-        canReadNamespace: (UUID) -> Boolean,
-        canSeeProvider: (UUID) -> Boolean,
-    ): List<AiModel>
 }

@@ -1,6 +1,6 @@
 # User-Level Overlays
 
-User-level overlays let individual users personalise `IntegrationConfig`, `AiProvider`, and `AiModel`
+User-level overlays let individual users personalise `IntegrationConfig` and `AiProvider`
 configurations without modifying the shared namespace defaults.
 
 ## 3-Tier Precedence
@@ -22,7 +22,6 @@ If all three layers are absent, `ConfigNotFoundException` is thrown (fail-closed
 |--------------------|------------------------------|----------------------------|
 | IntegrationConfig  | `/api/integration-configs`   | GET, POST, PUT, DELETE     |
 | AiProvider         | `/api/ai-providers`          | GET, POST, PUT, DELETE     |
-| AiModel            | `/api/ai-models`             | GET, POST, PUT, DELETE     |
 
 Scope is inferred from `(body.namespaceId, body.userId)` on POST (Decision 15) and from
 `?namespaceId=&userId=me` query params on GET list. `userId` only accepts the `me` sentinel.

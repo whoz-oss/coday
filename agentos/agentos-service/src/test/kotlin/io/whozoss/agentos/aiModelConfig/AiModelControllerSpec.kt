@@ -8,7 +8,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.aiModel.AiModelController
-import io.whozoss.agentos.aiModel.AiModelGuard
 import io.whozoss.agentos.aiModel.AiModelResource
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -28,10 +27,9 @@ import java.util.UUID
 class AiModelControllerSpec : StringSpec({
 
     val service = mockk<AiModelService>()
-    val aiModelGuard = mockk<AiModelGuard>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = AiModelController(service, aiModelGuard, userService, permissionService)
+    val controller = AiModelController(service, userService, permissionService)
 
     val namespaceId = UUID.randomUUID()
     val aiProviderId = UUID.randomUUID()

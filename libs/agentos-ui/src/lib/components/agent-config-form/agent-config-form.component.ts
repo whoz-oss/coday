@@ -7,6 +7,7 @@ import {
   AgentConfigControllerService,
   IntegrationConfig,
   IntegrationConfigControllerService,
+  IntegrationConfigPage,
 } from '@whoz-oss/agentos-api-client'
 import { forkJoin, map } from 'rxjs'
 
@@ -119,7 +120,7 @@ export class AgentConfigFormComponent implements OnInit {
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
       integrations: this.integrationConfigController
         .listIntegrationConfig(this.namespaceId, undefined, 0, 1000)
-        .pipe(map((page) => page.content ?? [])),
+        .pipe(map((page: IntegrationConfigPage) => page.content)),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -145,11 +146,11 @@ export class AgentConfigFormComponent implements OnInit {
     this.integrationConfigController
       .listIntegrationConfig(this.namespaceId, undefined, 0, 1000)
       .pipe(
-        map((page) => page.content ?? []),
+        map((page: IntegrationConfigPage) => page.content),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe({
-        next: (integrations) => {
+        next: (integrations: IntegrationConfig[]) => {
           this.integrationRows.set(this.buildIntegrationRows(integrations, existingIntegrations ?? undefined))
         },
       })

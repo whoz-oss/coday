@@ -1,47 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
+import { Router } from '@angular/router'
 import { AiModel } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
-import { AiModelScope } from '../../services/ai-model-config-state.service'
-import { AiProviderScope } from '../../services/ai-provider-config-state.service'
-
-interface ScopeBadge {
-  label: string
-  ariaLabel: string
-  variant: 'neutral' | 'info' | 'warning'
-}
-
-const SCOPE_BADGES: Readonly<Record<AiModelScope, ScopeBadge>> = Object.freeze({
-  namespace: { label: 'NS', ariaLabel: 'Configuration partagée du namespace', variant: 'neutral' },
-  userOnNs: { label: 'USER × NS', ariaLabel: 'Configuration utilisateur sur ce namespace', variant: 'info' },
-  userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Configuration utilisateur globale', variant: 'warning' },
-})
 
 /**
- * Identification of the parent provider for display alongside the model row.
- * The container resolves it via `AiModelConfigStateService.eligibleProviders$` and passes it
- * down — the item itself never queries.
+ * AiModelItemComponent — presentational component for a single AI model card.
  *
- * `null` means the parent provider is unknown to the user (could be a deleted record or one
- * the user lost access to). The item then renders a discreet warning per AC6 — orphan AiModel
- * stays visible (FR30 dormant override) rather than being hidden.
- */
-export interface ParentProviderRef {
-  name: string
-  scope: AiProviderScope
-}
-
-/**
- * AiModelItemComponent — presentational row for one AI model config (story 6.6).
- *
- * Displays the model display name (alias or apiModelName), priority, and the parent provider
- * (with its own scope tag — useful when a userOnNs model points to a userOnNs provider). The
- * scope badge follows the same convention as `AiProviderItemComponent` and the integration
- * config item from story 6.5.
- *
- * Edit and delete are dispatched upward via outputs. A "Duplicate" button is shown on every
- * card; the container decides the default destination scope and the user can re-target via
- * the radio in the form (the form's eligibleProviders$ filter handles the FR3 constraint
- * when the parent provider is no longer compatible with the chosen destination).
+ * Displays the model display name, api name, and optional parameters (temperature,
+ * maxTokens). Edit navigates to the dedicated edit route; delete uses a two-step
+ * inline confirmation before emitting upward.
  */
 @Component({
   selector: 'agentos-ai-model-item',
@@ -52,40 +19,28 @@ export interface ParentProviderRef {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiModelItemComponent {
-  readonly model = input.required<AiModel>()
-  readonly scope = input.required<AiModelScope>()
-  readonly readOnly = input<boolean>(false)
-  /** Parent provider info resolved by the container; null means unknown / orphan. */
-  readonly parentProvider = input<ParentProviderRef | null>(null)
+  private readonly router = inject(Router)
 
-  readonly editRequested = output<AiModel>()
-  readonly deleteRequested = output<AiModel>()
-  readonly duplicateRequested = output<AiModel>()
+  @Input({ required: true }) model!: AiModel
+  @Input({ required: true }) namespaceId!: string
+
+  @Output() deleteRequested = new EventEmitter<AiModel>()
 
   protected readonly pendingDelete = signal(false)
 
-  protected readonly badge = computed<ScopeBadge>(() => SCOPE_BADGES[this.scope()])
-
-  protected readonly displayTitle = computed(() => this.model().alias ?? this.model().apiModelName)
-
-  protected readonly parentLabel = computed<string>(() => {
-    const provider = this.parentProvider()
-    if (!provider) return 'Provider introuvable'
-    const scopeTag = SCOPE_BADGES[provider.scope].label
-    return `${provider.name} (${scopeTag})`
-  })
-
-  protected readonly parentIsOrphan = computed(() => !this.parentProvider())
-
-  protected readonly menuItems = computed<KebabMenuItem[]>(() => [
+  protected readonly menuItems: KebabMenuItem[] = [
     { key: 'edit', label: 'Edit model', icon: 'edit' },
     { key: 'delete', label: 'Delete model', icon: 'delete', variant: 'danger' },
-  ])
+  ]
+
+  protected get displayTitle(): string {
+    return this.model.alias ?? this.model.apiModelName
+  }
 
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.editRequested.emit(this.model())
+        this.router.navigate(['/agentos', this.namespaceId, 'ai-models', this.model.id, 'edit'])
         break
       case 'delete':
         this.pendingDelete.set(true)
@@ -93,13 +48,9 @@ export class AiModelItemComponent {
     }
   }
 
-  protected onDuplicate(): void {
-    this.duplicateRequested.emit(this.model())
-  }
-
   protected onDeleteConfirmed(): void {
     this.pendingDelete.set(false)
-    this.deleteRequested.emit(this.model())
+    this.deleteRequested.emit(this.model)
   }
 
   protected onDeleteCancelled(): void {

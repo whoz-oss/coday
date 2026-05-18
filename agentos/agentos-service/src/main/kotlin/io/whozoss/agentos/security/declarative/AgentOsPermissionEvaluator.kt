@@ -95,8 +95,8 @@ class AgentOsPermissionEvaluator(
         /**
          * Entities whose authz model supports an ownership branch (`entity.userId == auth.userId`)
          * in addition to the namespace-membership / super-admin path. Wired into the
-         * fall-through branch above. Supports AI_PROVIDER, INTEGRATION_CONFIG, AI_MODEL.
+         * fall-through branch above. Supports AI_PROVIDER and INTEGRATION_CONFIG.
          */
-        private val OWNERSHIP_AWARE_TYPES = setOf(EntityType.AI_PROVIDER, EntityType.INTEGRATION_CONFIG, EntityType.AI_MODEL)
+        private val OWNERSHIP_AWARE_TYPES = setOf(EntityType.AI_PROVIDER, EntityType.INTEGRATION_CONFIG)
     }
 }

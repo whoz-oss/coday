@@ -11,8 +11,8 @@
 export interface AiModel {
   id?: string
   aiProviderId: string
-  namespaceId?: string | null
-  userId?: string | null
+  namespaceId?: string
+  userId?: string
   apiModelName: string
   description?: string
   alias?: string
