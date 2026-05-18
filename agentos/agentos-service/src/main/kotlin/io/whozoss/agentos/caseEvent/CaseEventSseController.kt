@@ -66,7 +66,7 @@ class CaseEventSseController(
     @HideOnAccessDenied
     fun streamEvents(
         @PathVariable caseId: UUID,
-        @RequestParam(required = false) live: Boolean?,
+        @RequestParam(required = false) live: Boolean? = false,
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
