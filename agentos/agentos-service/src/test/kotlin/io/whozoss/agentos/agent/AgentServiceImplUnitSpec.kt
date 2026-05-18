@@ -23,7 +23,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.ai.chat.client.ChatClient
@@ -32,7 +32,7 @@ import java.util.UUID
 @Suppress("UNCHECKED_CAST")
 class AgentServiceImplUnitSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
-    private val toolRegistryService: ToolRegistryService = mockk()
+    private val toolResolverService: ToolResolverService = mockk()
     private val aiModelService: AiModelService = mockk()
     private val aiProviderService: AiProviderService = mockk()
     private val namespaceService: NamespaceService = mockk()
@@ -46,7 +46,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
-            toolRegistryService,
+            toolResolverService,
             aiModelService,
             aiProviderService,
             namespaceService,
@@ -108,8 +108,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolRegistryService.resolveToolsForNamespace(any(), any()) } returns emptyList()
-        every { toolRegistryService.resolveToolsForRun(any(), any(), any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForNamespace(any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(any(), any(), any(), any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
@@ -388,7 +388,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val localService =
                 AgentServiceImpl(
                     chatClientProvider,
-                    toolRegistryService,
+                    toolResolverService,
                     aiModelService,
                     aiProviderService,
                     namespaceService,
@@ -568,7 +568,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // Tool filtering via agentConfig.integrations
         // -------------------------------------------------------------------------
 
-        "findAgentByName passes null integrations to ToolRegistryService when agentConfig has no integrations" {
+        "findAgentByName passes null integrations to ToolResolverService when agentConfig has no integrations" {
             val config = agentConfig(name = "my-agent", modelName = "sonnet")
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
@@ -581,10 +581,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolRegistryService.resolveToolsForNamespace(namespaceId, null) }
+            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, null) }
         }
 
-        "findAgentByName passes integrations map to ToolRegistryService when agentConfig has integrations" {
+        "findAgentByName passes integrations map to ToolResolverService when agentConfig has integrations" {
             val integrations = mapOf("FILES" to null, "JIRA_PROD" to listOf("GetIssue"))
             val config = agentConfig(name = "my-agent", modelName = "sonnet").copy(integrations = integrations)
             val model = modelConfig(alias = "sonnet")
@@ -598,7 +598,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolRegistryService.resolveToolsForNamespace(namespaceId, integrations) }
+            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations) }
         }
 
         // -------------------------------------------------------------------------

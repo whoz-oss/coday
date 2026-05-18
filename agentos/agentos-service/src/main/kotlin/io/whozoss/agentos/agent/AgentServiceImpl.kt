@@ -13,7 +13,7 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -44,7 +44,7 @@ import java.util.UUID
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
-    private val toolRegistryService: ToolRegistryService,
+    private val toolResolverService: ToolResolverService,
     private val aiModelService: AiModelService,
     private val aiProviderService: AiProviderService,
     private val namespaceService: NamespaceService,
@@ -132,7 +132,7 @@ class AgentServiceImpl(
      * row we just looked up by namespace, so reconciliation cannot legitimately fail to find
      * it. A failure here means corrupted state (orphan child after parent soft-delete, race
      * with cleanup, etc.) and the LLM run must abort rather than silently fall back. This
-     * mirrors the namespace-shared posture in [ToolRegistryService.resolveToolsForRun].
+     * mirrors the namespace-shared posture in [ToolResolverService.resolveToolsForRun].
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -177,9 +177,9 @@ class AgentServiceImpl(
      * [agentIntegrations] is the optional tool-access filter from [AgentConfig.integrations].
      * The namespace description, integrations, and user context are always appended.
      *
-     * When [context.userId] is non-null, uses [ToolRegistryService.resolveToolsForRun] to apply
+     * When [context.userId] is non-null, uses [ToolResolverService.resolveToolsForRun] to apply
      * 3-tier tool reconciliation while still honoring [agentIntegrations]. Falls back to
-     * [ToolRegistryService.resolveToolsForNamespace] for anonymous/system runs
+     * [ToolResolverService.resolveToolsForNamespace] for anonymous/system runs
      * (userId == null, legacy path, AC11).
      */
     private fun createAgentInstance(
@@ -196,9 +196,9 @@ class AgentServiceImpl(
 
         val tools =
             if (context.userId != null) {
-                toolRegistryService.resolveToolsForRun(context.namespaceId, context.userId, cache, agentIntegrations)
+                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, cache, agentIntegrations)
             } else {
-                toolRegistryService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
+                toolResolverService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
             }
         logger.info {
             "[AgentService] Loaded ${tools.size} tool(s) " +
