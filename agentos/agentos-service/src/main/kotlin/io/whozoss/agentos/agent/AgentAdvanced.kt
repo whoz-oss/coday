@@ -162,6 +162,18 @@ class AgentAdvanced(
             } catch (e: AgentInterrupt) {
                 // Not an error: a tool requested a structured interruption of this agent run.
                 emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+            } catch (e: ConfirmationConfigurationException) {
+                // DI wiring bug — surface loudly so prod logs catch it. Still emit a WarnEvent
+                // so the per-case lifecycle terminates cleanly, but the operator-facing signal
+                // is the error log, not the per-run warning.
+                logger.error(e) { "AgentAdvanced confirmation flow misconfigured for case $caseId" }
+                emit(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "Confirmation flow misconfigured: ${e.message}",
+                    ),
+                )
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -238,12 +250,11 @@ class AgentAdvanced(
                 }
 
             if (typed.requiresConfirmation(parsedInput, toolCtx)) {
-                val confirmationManager = context.confirmationManager
-                if (confirmationManager == null) {
-                    throw IllegalStateException(
-                        "Tool '${tool.name}' requires confirmation but no ConfirmationManager configured for AgentAdvanced.",
-                    )
-                }
+                val confirmationManager =
+                    context.confirmationManager
+                        ?: throw ConfirmationConfigurationException(
+                            "Tool '${tool.name}' requires confirmation but no ConfirmationManager configured for AgentAdvanced.",
+                        )
 
                 val history = context.buildMessages(accumulatedEvents)
                 val needsExplicit =

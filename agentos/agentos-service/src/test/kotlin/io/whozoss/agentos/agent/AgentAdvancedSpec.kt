@@ -894,7 +894,7 @@ class AgentAdvancedSpec :
             (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "User declined."
         }
 
-        "AC10: missing ConfirmationManager throws IllegalStateException — surfaced as WarnEvent" {
+        "AC10: missing ConfirmationManager throws ConfirmationConfigurationException — surfaced as WarnEvent" {
             val tempDir = Files.createTempDirectory("agentadvanced-ac10-").also { it.toFile().deleteOnExit() }
             tempDir.resolve("old.txt").writeText("data")
             val namespaceId = UUID.randomUUID()
@@ -921,6 +921,7 @@ class AgentAdvancedSpec :
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
             val warn = events.filterIsInstance<WarnEvent>().single()
+            warn.message shouldContain "Confirmation flow misconfigured"
             warn.message shouldContain "no ConfirmationManager"
             events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
         }
