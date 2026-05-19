@@ -4,7 +4,6 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.reconciliation.ConfigMergeService
-import io.whozoss.agentos.reconciliation.RunReconciliationCache
 import io.whozoss.agentos.sdk.tool.StandardTool
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -60,7 +59,6 @@ class ToolResolverService(
     fun resolveToolsForRun(
         namespaceId: UUID,
         userId: UUID,
-        cache: RunReconciliationCache? = null,
         agentIntegrations: Map<String, List<String>?>? = null,
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
@@ -110,9 +108,7 @@ class ToolResolverService(
             }
 
             val resolvedConfig = try {
-                cache?.getOrCompute(name, IntegrationConfig::class.java, namespaceId, userId) {
-                    integrationConfigMergeService.resolve(namespaceId, userId, name)
-                } ?: integrationConfigMergeService.resolve(namespaceId, userId, name)
+                integrationConfigMergeService.resolve(namespaceId, userId, name)
             } catch (e: ConfigNotFoundException) {
                 if (name in sharedNames) {
                     logger.error { "[ToolResolver] Reconciliation failed for namespace-shared name='$name' — failing the run" }

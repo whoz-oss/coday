@@ -8,7 +8,6 @@ import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
-import io.whozoss.agentos.reconciliation.RunReconciliationCache
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -78,7 +77,6 @@ class AgentServiceImpl(
         config: AgentConfig,
         context: AgentExecutionContext,
     ): Agent {
-        val cache = if (context.userId != null) RunReconciliationCache() else null
         val baseModel =
             config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
                 ?: findDefaultModelConfig(context.namespaceId)
@@ -86,7 +84,7 @@ class AgentServiceImpl(
                     "AgentConfig '${config.name}' could not resolve an AiModel " +
                         "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
                 )
-        val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId, cache)
+        val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId)
         return createAgentInstance(
             config.name,
             config.instructions,
@@ -95,7 +93,6 @@ class AgentServiceImpl(
             modelConfig,
             providerConfig,
             context,
-            cache,
         )
     }
 
@@ -108,13 +105,10 @@ class AgentServiceImpl(
         baseModel: AiModel,
         namespaceId: UUID,
         userId: UUID?,
-        cache: RunReconciliationCache?,
     ): Pair<AiModel, AiProvider> {
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
         val providerConfig = if (userId != null) {
-            cache?.getOrCompute(baseProvider.name, AiProvider::class.java, namespaceId, userId) {
-                aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
-            } ?: aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+            aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
         } else {
             baseProvider
         }
@@ -154,13 +148,12 @@ class AgentServiceImpl(
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
-        cache: RunReconciliationCache? = null,
     ): Agent {
         logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
 
         val tools =
             if (context.userId != null) {
-                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, cache, agentIntegrations)
+                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, agentIntegrations)
             } else {
                 toolResolverService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
             }
