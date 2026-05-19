@@ -62,21 +62,6 @@ class ToolResolverService(
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
 
-        toolRegistryService.findConfigLessPlugins()
-            .forEach { plugin ->
-                try {
-                    val tools = plugin.provideTools(null)
-                    tools.forEach { tool ->
-                        if (resolved.containsKey(tool.name)) {
-                            logger.warn { "[ToolResolver] Tool name conflict: '${tool.name}' from config-less plugin" }
-                        }
-                        resolved[tool.name] = tool
-                    }
-                } catch (e: Exception) {
-                    logger.error(e) { "[ToolResolver] Error instantiating config-less tools for plugin '${plugin.integrationType}': ${e.message}" }
-                }
-            }
-
         val sharedConfigs = integrationConfigService.findByNamespaceShared(namespaceId)
         val userOverrides = integrationConfigService.findByUserId(userId)
             .filter { it.namespaceId == null || it.namespaceId == namespaceId }

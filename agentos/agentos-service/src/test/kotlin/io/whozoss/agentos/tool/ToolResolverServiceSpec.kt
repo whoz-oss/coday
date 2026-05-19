@@ -329,7 +329,7 @@ class ToolResolverServiceSpec : StringSpec({
         return ToolResolverService(registry, integrationConfigService, reconciliationService)
     }
 
-    "resolveToolsForRun returns config-less tools when no shared or user configs exist" {
+    "resolveToolsForRun returns empty when no IntegrationConfig exists, even if config-less plugins are loaded" {
         val namespaceId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
@@ -337,8 +337,7 @@ class ToolResolverServiceSpec : StringSpec({
 
         val tools = service.resolveToolsForRun(namespaceId, userId)
 
-        tools shouldHaveSize 1
-        tools.first().name shouldBe "GetCurrentDateTime"
+        tools.shouldBeEmpty()
     }
 
     "resolveToolsForRun resolves tools from namespace-shared config only (no user override)" {
@@ -448,16 +447,17 @@ class ToolResolverServiceSpec : StringSpec({
         tools shouldHaveSize 0
     }
 
-    "resolveToolsForRun combines config-less and reconciled config tools" {
+    "resolveToolsForRun combines config-less and configured tools when both have IntegrationConfigs" {
         val namespaceId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         val configLessPlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
         val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
-        val shared = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "jira", integrationType = "JIRA")
+        val datetimeConfig = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "datetime", integrationType = "DATETIME")
+        val jiraConfig = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "jira", integrationType = "JIRA")
         val service = buildServiceForRun(
             plugins = listOf(configLessPlugin, configuredPlugin),
-            sharedConfigs = listOf(shared),
-            reconciledConfigs = mapOf("jira" to shared),
+            sharedConfigs = listOf(datetimeConfig, jiraConfig),
+            reconciledConfigs = mapOf("datetime" to datetimeConfig, "jira" to jiraConfig),
         )
 
         val tools = service.resolveToolsForRun(namespaceId, userId)
