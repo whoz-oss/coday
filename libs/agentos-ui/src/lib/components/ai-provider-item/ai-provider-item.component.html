@@ -1,9 +1,14 @@
 <div class="ai-provider-item" role="listitem">
   <div class="ai-provider-item__body">
-    <span class="ai-provider-item__name">{{ config.name }}</span>
-    <span class="ai-provider-item__type">{{ config.apiType }}</span>
-    @if (config.baseUrl) {
-      <span class="ai-provider-item__url">{{ config.baseUrl }}</span>
+    <div class="ai-provider-item__heading">
+      <span class="ai-provider-item__name">{{ config().name }}</span>
+      <span class="ai-provider-item__badge" [attr.data-variant]="badge().variant" [attr.aria-label]="badge().ariaLabel">
+        {{ badge().label }}
+      </span>
+    </div>
+    <span class="ai-provider-item__type">{{ config().apiType }}</span>
+    @if (config().baseUrl) {
+      <span class="ai-provider-item__url">{{ config().baseUrl }}</span>
     }
   </div>
 
@@ -13,7 +18,10 @@
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
       <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
     } @else {
-      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+      <ds-icon-button icon="content_copy" title="Duplicate this provider" (action)="onDuplicate()" />
+      @if (!readOnly()) {
+        <ds-kebab-menu [items]="menuItems()" (itemSelected)="onMenuAction($event)" />
+      }
     }
   </div>
 </div>

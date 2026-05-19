@@ -867,9 +867,57 @@ paths:
                 items:
                   $ref: "#/components/schemas/Namespace"
   /api/integration-configs:
+    get:
+      tags:
+      - integration-config-controller
+      summary: List IntegrationConfigs by scope
+      description: |-
+        Scope is inferred from the query params :
+
+        | query                                              | mode             | required permission                            |
+        |----------------------------------------------------|------------------|------------------------------------------------|
+        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+      operationId: listIntegrationConfig
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
     post:
       tags:
       - integration-config-controller
+      summary: Create an IntegrationConfig
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | —             | 400 Bad Request                      |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15). A `namespaceId` that does not exist returns 404.
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -1037,9 +1085,57 @@ paths:
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
   /api/ai-providers:
+    get:
+      tags:
+      - ai-provider-controller
+      summary: List AiProviders by scope
+      description: |-
+        Scope is inferred from the query params :
+
+        | query                                              | mode             | required permission                            |
+        |----------------------------------------------------|------------------|------------------------------------------------|
+        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+      operationId: listAiProvider
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
     post:
       tags:
       - ai-provider-controller
+      summary: Create an AiProvider
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | —             | 400 Bad Request                      |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` that does not exist returns 404 (Decision 15 / AC7).
       operationId: createAiProvider
       requestBody:
         content:
@@ -1368,28 +1464,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationTypeDescriptor"
-  /api/integration-configs/by-parentId/{parentId}:
-    get:
-      tags:
-      - integration-config-controller
-      operationId: listByParentIntegrationConfig
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/IntegrationConfig"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -1508,70 +1582,6 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
-  /api/ai-providers/by-userId/{userId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByUserIdAiProvider
-      parameters:
-      - name: userId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
-  /api/ai-providers/by-parentId/{parentId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByParentAiProvider
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
-  /api/ai-providers/by-namespaceId/{namespaceId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByNamespaceIdAiProvider
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
   /api/ai-models/by-parentId/{parentId}:
     get:
       tags:
@@ -1692,7 +1702,14 @@ components:
           type: string
           format: uuid
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
@@ -1707,7 +1724,6 @@ components:
       required:
       - integrationType
       - name
-      - namespaceId
     JsonNode: {}
     Case:
       type: object
@@ -1738,10 +1754,14 @@ components:
           type: string
           format: uuid
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
