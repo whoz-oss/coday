@@ -34,14 +34,31 @@ class RemoveFileToolSpec :
             tempDir.toFile().deleteRecursively()
         }
 
-        "execute() refuses to delete: it requires the confirmation flow" {
+        "removing existing file should succeed" {
             val tool = RemoveFileTool(tempDir)
             val file = tempDir.resolve("file.txt").also { it.writeText("content") }
 
             val result = tool.execute(RemoveFileTool.Input("file.txt"), ctx)
 
-            result shouldContain "requires user confirmation"
-            file.exists() shouldBe true
+            result shouldBe "File deleted successfully"
+            file.exists() shouldBe false
+        }
+
+        "removing non-existent file should return not found message" {
+            val tool = RemoveFileTool(tempDir)
+
+            val result = tool.execute(RemoveFileTool.Input("nonexistent.txt"), ctx)
+
+            result shouldContain "Path does not exist"
+        }
+
+        "attempting to remove directory should reject" {
+            val tool = RemoveFileTool(tempDir)
+            Files.createDirectories(tempDir.resolve("dir"))
+
+            val result = tool.execute(RemoveFileTool.Input("dir"), ctx)
+
+            result shouldContain "Cannot remove directories"
         }
 
         "removing existing file via confirmation flow succeeds" {

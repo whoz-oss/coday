@@ -16,12 +16,12 @@ import kotlin.io.path.isDirectory
  *
  * Only removes files, not directories. Fails if file doesn't exist or is a directory.
  *
- * Opts in to the WZ-31596 confirmation flow: the orchestrator validates the path via
- * [getConfirmationPayload] (no side-effect), asks the user to confirm, then calls
- * [executeWithConfirmation] to actually delete. The direct [execute] path is therefore
- * unreachable in production and exists only to satisfy the [StandardTool] contract —
- * it returns an error so that an orchestrator without confirmation support cannot
- * inadvertently apply a deletion.
+ * Two execution paths coexist:
+ *  - [execute] — direct path used by orchestrators without confirmation support
+ *    (typically AgentSimple via Spring AI native tool_use). Validates + deletes.
+ *  - [getConfirmationPayload] + [executeWithConfirmation] — WZ-31596 confirmation flow
+ *    used by AgentAdvanced. The orchestrator prompts the user before applying the
+ *    deletion. AgentAdvanced bypasses [execute] entirely via `maybeRunConfirmationFlow`.
  */
 class RemoveFileTool(
     private val projectRoot: Path,
@@ -81,15 +81,43 @@ class RemoveFileTool(
         val displayPath: String = "",
     )
 
-    /**
-     * Direct execute is unreachable in production (the orchestrator routes opt-in tools
-     * through the confirmation flow). Returns a clear error so that any orchestrator
-     * without confirmation support cannot apply a deletion.
-     */
     override fun execute(
         input: Input?,
         context: ToolContext,
-    ): String = "RemoveFileTool requires user confirmation. This orchestrator does not yet support the confirmation flow."
+    ): String {
+        val params = input ?: Input()
+
+        return try {
+            runIOWithTimeout(IO_TIMEOUT) {
+                removeFile(params.path)
+            }
+        } catch (e: TimeoutCancellationException) {
+            createErrorResponse("Operation timed out after $IO_TIMEOUT seconds")
+        } catch (e: IllegalArgumentException) {
+            createErrorResponse(e.message ?: "Invalid path")
+        } catch (e: Exception) {
+            createErrorResponse("Error removing file: ${e.message}")
+        }
+    }
+
+    private fun removeFile(path: String): String {
+        val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
+        val resolved = resolver.resolve(path, createIntent = false)
+
+        // Don't allow removing directories
+        if (resolved.isDirectory()) {
+            throw IllegalArgumentException("Cannot remove directories: $path")
+        }
+
+        return try {
+            Files.delete(resolved)
+            "File deleted successfully"
+        } catch (e: NoSuchFileException) {
+            "File not found: $path"
+        }
+    }
+
+    private fun createErrorResponse(message: String): String = message
 
     override fun requiresConfirmation(
         input: Input?,
