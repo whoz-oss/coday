@@ -1,3 +1,20 @@
+## 0.149.0 (2026-05-19)
+
+### 🚀 Features
+
+- #wz-31875 endpoints to deploy and undeploy agents ([4a3d323d](https://github.com/whoz-oss/coday/commit/4a3d323d))
+- #31875 Add tests ([#31875](https://github.com/whoz-oss/coday/issues/31875))
+- #WZ-31424 Update openapi ([f5c4bb39](https://github.com/whoz-oss/coday/commit/f5c4bb39))
+- #WZ-31875 Code review ([9859547d](https://github.com/whoz-oss/coday/commit/9859547d))
+- #WZ-31875 remove unused import ([9d2bf0b2](https://github.com/whoz-oss/coday/commit/9d2bf0b2))
+- #WZ-31875: Deploy agent into namespace ([#878](https://github.com/whoz-oss/coday/pull/878))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+
 ## 0.148.0 (2026-05-18)
 
 ### 🚀 Features
