@@ -1,3 +1,15 @@
+## 0.150.0 (2026-05-19)
+
+### 🚀 Features
+
+- #wz-31876 list available agents for user external id ([8b5bd437](https://github.com/whoz-oss/coday/commit/8b5bd437))
+- #wz-31876 list available agents for user external id ([ce0d1084](https://github.com/whoz-oss/coday/commit/ce0d1084))
+- #wz-31876 update openapi spec ([1c536505](https://github.com/whoz-oss/coday/commit/1c536505))
+
+### ❤️ Thank You
+
+- mbarroux @mickael-barroux-whoz
+
 ## 0.149.0 (2026-05-19)
 
 ### 🚀 Features
