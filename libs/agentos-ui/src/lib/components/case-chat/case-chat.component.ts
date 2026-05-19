@@ -19,12 +19,10 @@ import {
   CaseEvent,
   Configuration,
   MessageEvent as CaseMessageEvent,
-  QuestionEvent,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
-import { CaseQuestionComponent } from '../case-question/case-question.component'
 
 export interface ToolCall {
   requestId: string
@@ -38,7 +36,6 @@ export type TimelineItem =
   | { kind: 'message'; event: CaseMessageEvent }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming'; text: string }
-  | { kind: 'question'; event: QuestionEvent; respondedAnswer: string | null }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -60,7 +57,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
 @Component({
   selector: 'agentos-case-chat',
   standalone: true,
-  imports: [IconButtonComponent, CaseQuestionComponent],
+  imports: [IconButtonComponent],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -183,66 +180,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Build questionId → { answer, sourceMessageId? } in a single forward pass.
-    // Priority: AnswerEvent linked via questionId, otherwise the first user MessageEvent
-    // posterior to the question (free-text fallback). The sourceMessageId is captured so we
-    // can skip that user MessageEvent in the rendered timeline — it's already represented
-    // by the question's "Réponse envoyée: <answer>" indicator.
-    const questionResolutions = new Map<string, { answer: string; sourceMessageId?: string }>()
-    const pendingQuestions: QuestionEvent[] = []
-    for (const e of allEvents) {
-      if (e.type === 'QuestionEvent') {
-        if (!questionResolutions.has(e.id)) pendingQuestions.push(e)
-      } else if (e.type === 'AnswerEvent') {
-        if (e.answer && !questionResolutions.has(e.questionId)) {
-          questionResolutions.set(e.questionId, { answer: e.answer })
-          // Drop from pending so a later user MessageEvent doesn't clobber it.
-          const idx = pendingQuestions.findIndex((q) => q.id === e.questionId)
-          if (idx >= 0) pendingQuestions.splice(idx, 1)
-        }
-      } else if (e.type === 'MessageEvent' && e.actor.role === 'USER' && pendingQuestions.length > 0) {
-        const text = this.extractText(e).trim()
-        if (text) {
-          // The oldest pending question gets resolved by the next user message.
-          const q = pendingQuestions.shift()!
-          questionResolutions.set(q.id, { answer: text, sourceMessageId: e.id })
-        }
-      }
-    }
-    const userMessagesUsedAsAnswer = new Set(
-      Array.from(questionResolutions.values())
-        .map((r) => r.sourceMessageId)
-        .filter((id): id is string => id !== undefined)
-    )
-
-    // v3-F1: skip MessageEvent(role=AGENT) whose text matches the IMMEDIATELY-PRECEDING
-    // QuestionEvent — the QuestionEvent UI already renders that text via case-question.
-    // Emission order is PendingConfirmationEvent → QuestionEvent → MessageEvent, so we
-    // scan adjacent pairs (Question → Message) and skip the Message.
-    const skippedMessageIds = new Set<string>()
-    for (let i = 0; i < allEvents.length - 1; i++) {
-      const cur = allEvents[i]
-      const next = allEvents[i + 1]
-      if (!cur || !next) continue
-      if (
-        cur.type === 'QuestionEvent' &&
-        next.type === 'MessageEvent' &&
-        next.actor?.role === 'AGENT' &&
-        this.extractText(next).trim() === cur.question.trim()
-      ) {
-        skippedMessageIds.add(next.id)
-      }
-    }
-
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     for (const e of allEvents) {
       if (e.type === 'MessageEvent') {
-        if (userMessagesUsedAsAnswer.has(e.id)) continue
-        if (skippedMessageIds.has(e.id)) continue
         items.push({ kind: 'message', event: e })
-      } else if (e.type === 'QuestionEvent') {
-        items.push({ kind: 'question', event: e, respondedAnswer: questionResolutions.get(e.id)?.answer ?? null })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
@@ -269,8 +211,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return item.event.id
       case 'tool':
         return item.call.requestId
-      case 'question':
-        return item.event.id
       case 'streaming':
         return 'streaming'
     }
@@ -446,10 +386,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'TextChunkEvent',
       'ToolRequestEvent',
       'ToolResponseEvent',
-      'QuestionEvent',
       'PendingConfirmationEvent',
       'ConfirmationResolvedEvent',
-      'AnswerEvent',
+      'WarnEvent',
     ] as const
 
     // handle the different event names we see in the SSE stream
@@ -536,16 +475,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           this.isRunning.set(false)
         },
       })
-  }
-
-  /**
-   * MVP: POST the chosen option as a regular user message so the backend's free-text
-   * fallback (`analyzeConfirmation`) resolves the pending confirmation. A typed
-   * AnswerEvent on a dedicated endpoint would skip the LLM judge — tracked debt.
-   */
-  protected onQuestionAnswer(event: { questionId: string; answer: string }): void {
-    console.log('[CaseChat] Question answered', event)
-    this.sendMessage(event.answer)
   }
 
   protected interrupt(): void {

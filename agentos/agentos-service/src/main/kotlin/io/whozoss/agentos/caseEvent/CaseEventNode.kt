@@ -270,11 +270,8 @@ class PendingConfirmationEventNode(
     timestamp: Instant,
     val toolRequestId: String,
     val toolName: String,
-    val pendingPayloadJson: String,
-    val confirmationLabel: String,
+    val inputJson: String,
     val analysisInstructions: String = "",
-    /** Id of the paired QuestionEvent (stored as String for Neo4j). Empty when legacy. */
-    val questionId: String = "",
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

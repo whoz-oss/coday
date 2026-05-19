@@ -15,12 +15,6 @@
             <span class="case-chat__message-author">{{ item.event.actor.displayName }}</span>
             <p class="case-chat__message-text">{{ extractText(item.event) }}</p>
           </div>
-        } @else if (item.kind === 'question') {
-          <agentos-case-question
-            [event]="item.event"
-            [respondedAnswer]="item.respondedAnswer"
-            (answer)="onQuestionAnswer($event)"
-          />
         } @else if (item.kind === 'streaming') {
           <div class="case-chat__message case-chat__message--agent case-chat__message--streaming">
             <span class="case-chat__message-author">{{ agentDisplayName() }}</span>

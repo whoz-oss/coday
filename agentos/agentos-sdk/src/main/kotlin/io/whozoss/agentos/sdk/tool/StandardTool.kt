@@ -50,39 +50,26 @@ interface StandardTool<T> {
 
     // ─── User-confirmation opt-in (WZ-31596) ───────────────────────────────────────────────
     //
-    // A tool may opt in to the user-confirmation flow by overriding [supportsConfirmation]
-    // to `true` AND overriding [requiresConfirmation], [getConfirmationPayload],
-    // [executeWithConfirmation], and (optionally) [confirmationLabel],
-    // [getConfirmationAnalysisInstructions], [onRejected].
+    // A tool opts in to the confirmation flow by overriding [requiresConfirmation] to
+    // return `true` for the inputs that need explicit user validation. The orchestrator
+    // then routes via the [PendingConfirmationEvent] persistence cycle and calls
+    // [executeWithConfirmation] (post-confirmation) or [onRejected] (post-refusal).
     //
-    // When the flow is active the tool's regular [execute] is NOT called — the orchestrator
-    // routes via [getConfirmationPayload] → user prompt → [executeWithConfirmation] or
-    // [onRejected]. See AgentSimple/AgentAdvanced for the orchestration entry points.
-
-    /**
-     * Static declaration that this tool implements the confirmation flow. Used by
-     * orchestrators (e.g. AgentAdvanced) to detect support without invoking the dynamic
-     * [requiresConfirmation]. Tools that override [requiresConfirmation] MUST also set
-     * this to `true`.
-     */
-    val supportsConfirmation: Boolean get() = false
+    // When [requiresConfirmation] returns `false` (the default), the tool runs through
+    // its standard [execute] path — same as a tool that never opted in.
 
     /**
      * When `true`, the orchestrator skips the implicit-consent check (`shouldConfirm`)
      * and always asks the user for an explicit confirmation prompt. Set this on tools
      * whose side-effects are destructive enough that the LLM-judged "user already
      * authorised" path is unsafe (e.g. file deletion, irreversible writes).
-     *
-     * Default `false` keeps the Copilot-style "minimise interruptions" UX for non-
-     * destructive opt-in tools (CreateTask, UpdateProfile, etc.).
      */
     val bypassImplicitConsent: Boolean get() = false
 
     /**
      * Returns `true` if this specific call requires explicit user confirmation before any
-     * side-effect is applied. Evaluated by the orchestrator before [execute]. Conditional
-     * on [input] so a tool may confirm only for "dangerous" inputs (e.g. paths outside a
-     * safe directory).
+     * side-effect is applied. Single opt-in for the confirmation flow — a tool that never
+     * overrides this method behaves as a non-confirmation tool.
      */
     fun requiresConfirmation(
         input: T?,
@@ -90,65 +77,38 @@ interface StandardTool<T> {
     ): Boolean = false
 
     /**
-     * Computes the payload to confirm and persist with the [PendingConfirmationEvent].
-     * Called only when [requiresConfirmation] returned true. MUST be side-effect-free:
-     * validate, resolve paths, transform — but do NOT mutate external state. Throws if
-     * [input] is invalid; the orchestrator will surface that as a regular tool error
-     * without emitting any pending event.
+     * Instructions appended to the `analyzeConfirmation` prompt to guide the LLM judge
+     * when interpreting the user's free-form reply. For destructive actions this SHOULD
+     * be a strict prompt (e.g. "Require explicit confirmation: a bare 'ok' is not enough
+     * unless the previous turn clearly described the destructive action."). Plugin authors
+     * MUST NOT include user-controlled strings here.
+     */
+    fun getConfirmationInstructions(): String = ""
+
+    /**
+     * Applies the actual side-effect after the user confirmed. Receives the same typed
+     * [input] that [requiresConfirmation] saw — the input is JSON-round-tripped via the
+     * [PendingConfirmationEvent.inputJson] so the call is replay-safe across server
+     * restarts.
      *
-     * Returned value MUST be JSON-serializable by the application ObjectMapper and avoid
-     * polymorphic Jackson type info (`@JsonTypeInfo(use = Id.CLASS)`).
-     */
-    fun getConfirmationPayload(
-        input: T?,
-        context: ToolContext,
-    ): Any = throw IllegalStateException("Tool $name opted-in to confirmation but does not implement getConfirmationPayload")
-
-    /**
-     * Short human-readable label derived from the validated payload. Used by the
-     * orchestrator to build the user-visible confirmation prompt. MUST be derived from
-     * the structured payload only — NEVER concatenate free-form user input here, since
-     * the label is injected into the LLM context. The orchestrator additionally sanitizes
-     * (whitelist + length cap) before injection.
-     */
-    fun confirmationLabel(pendingPayload: Any): String = "Confirm $name"
-
-    /**
-     * Instructions appended to the analyzeConfirmation prompt. Use this to be more or
-     * less strict about what counts as confirmation. For destructive actions this SHOULD
-     * be a non-empty strict prompt (e.g. "Require explicit confirmation: a bare 'ok' is
-     * not enough unless the previous turn clearly described the destructive action.").
-     * Plugin authors MUST NOT include user-controlled strings here.
-     */
-    fun getConfirmationAnalysisInstructions(): String = ""
-
-    /**
-     * Applies the actual side-effect after the user confirmed. [pendingPayload] is the
-     * JSON-round-tripped object that [getConfirmationPayload] returned, deserialized as
-     * a generic Map. Tools convert it back to their typed payload via
-     * `objectMapper.convertValue(pendingPayload, MyPayload::class.java)` — this keeps
-     * deserialization inside the plugin classloader.
+     * Default delegates to [execute] — suitable for tools whose only difference between
+     * "with confirmation" and "without" is the orchestrator's gating step. Override when
+     * the post-confirmation path must differ (e.g. freeze a resolved snapshot, skip
+     * permission checks already done, etc.).
      *
-     * Idempotence requirement: implementations SHOULD be idempotent. The orchestrator
-     * guards with `shouldContinue()` before calling, but cancellation can race between
-     * the guard and the actual side-effect — a re-invocation on the same payload must
-     * be safe (or detect "already applied" and return gracefully).
+     * Idempotence note: implementations SHOULD be safe to re-invoke on the same input
+     * (the orchestrator guards with `shouldContinue()`, but cancellation can race).
      */
     fun executeWithConfirmation(
-        pendingPayload: Any,
+        input: T?,
         context: ToolContext,
-    ): String = throw IllegalStateException("Tool $name opted-in to confirmation but does not implement executeWithConfirmation")
+    ): String = execute(input, context)
 
     /**
-     * Called when the user rejected the action. [pendingPayload] is the same Map shape as
-     * in [executeWithConfirmation]; [userMessage] is the literal text the user replied
-     * with, for human-friendly logging.
+     * Called when the user rejected the action. Default returns a generic cancellation
+     * message; override if the tool wants to log/clean up or produce a custom message.
      */
-    fun onRejected(
-        pendingPayload: Any,
-        userMessage: String,
-        context: ToolContext,
-    ): String = "Action cancelled. User said: \"$userMessage\""
+    fun onRejected(): String = "Action cancelled."
 
     companion object {
         private val objectMapper = jacksonObjectMapper()

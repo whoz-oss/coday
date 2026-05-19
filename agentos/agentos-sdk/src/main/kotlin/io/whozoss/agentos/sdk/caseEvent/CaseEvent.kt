@@ -320,22 +320,18 @@ data class TextChunkEvent(
 /**
  * Emitted when a tool execution was deferred awaiting explicit user confirmation.
  *
- * Carries the payload [getConfirmationPayload] computed and a sanitized human-readable
- * label. The pairing with [ConfirmationResolvedEvent] (matched on
- * [ConfirmationResolvedEvent.pendingEventId]) is what `AgentSimple` uses to detect
- * unresolved confirmations on case re-entry — including after a server restart
- * (WZ-31596 CA6).
+ * The pairing with [ConfirmationResolvedEvent] (matched on
+ * [ConfirmationResolvedEvent.pendingEventId]) is what `AgentAdvanced` uses to detect
+ * unresolved confirmations on case re-entry — including after a server restart.
  *
  * @param toolRequestId The id of the [ToolRequestEvent] that triggered this pending
  *   (kept for traceability with the LLM-visible tool-call cycle).
  * @param toolName The qualified tool name (e.g. `FILES__remove`).
- * @param pendingPayloadJson The payload, serialized as JSON. Stored as a String to
- *   stay classloader-safe across plugin/service boundaries (no `Class.forName`).
- *   The owning tool re-converts to its typed payload inside its plugin classloader.
- * @param confirmationLabel A short, sanitized label suitable for inclusion in an
- *   LLM prompt and a UI message (whitelist + 200-char cap applied at emission).
+ * @param inputJson The tool input, serialized as JSON. Stored as a String to stay
+ *   classloader-safe across plugin/service boundaries (no `Class.forName`). The owning
+ *   tool re-converts to its typed input via `StandardTool.parseInput`.
  * @param analysisInstructions Optional tool-supplied instructions appended to the
- *   `analyzeConfirmation` prompt.
+ *   `ConfirmationManager.analyzeConfirmation` prompt.
  */
 data class PendingConfirmationEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -344,14 +340,8 @@ data class PendingConfirmationEvent(
     override val timestamp: Instant = Instant.now(),
     val toolRequestId: String,
     val toolName: String,
-    val pendingPayloadJson: String,
-    val confirmationLabel: String,
+    val inputJson: String,
     val analysisInstructions: String = "",
-    /**
-     * WZ-31596: id of the paired [QuestionEvent] used to prompt the user out-of-LLM-channel.
-     * Nullable for backward compat with legacy pendings created without a QuestionEvent.
-     */
-    val questionId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.PENDING_CONFIRMATION
 }

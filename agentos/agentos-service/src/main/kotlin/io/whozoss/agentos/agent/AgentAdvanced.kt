@@ -5,14 +5,12 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
-import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
-import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -119,7 +117,7 @@ class AgentAdvanced(
                     if (intention.toolName == AgentIntentionGenerator.ANSWER_TOOL) {
                         continueLoop = false
                     } else {
-                        val outcome =
+                        val awaiting =
                             handleToolExecution(
                                 accumulatedEvents,
                                 intention,
@@ -127,7 +125,7 @@ class AgentAdvanced(
                                 caseId,
                                 shouldContinue,
                             ) { event -> emit(event) }
-                        if (outcome == ToolFlowOutcome.AwaitingConfirmation) {
+                        if (awaiting) {
                             interruptedByConfirmation = true
                             continueLoop = false
                         }
@@ -197,6 +195,10 @@ class AgentAdvanced(
         return msg
     }
 
+    /**
+     * Returns true if a confirmation flow was triggered (the agent must exit and wait for
+     * the user's reply); false if the tool was executed normally.
+     */
     private suspend fun handleToolExecution(
         accumulatedEvents: MutableList<CaseEvent>,
         intention: IntentionGeneratedEvent,
@@ -204,109 +206,121 @@ class AgentAdvanced(
         caseId: UUID,
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
-    ): ToolFlowOutcome {
-        if (!shouldContinue()) return ToolFlowOutcome.Completed
+    ): Boolean {
+        if (!shouldContinue()) return false
         val toolRequestId = UUID.randomUUID().toString()
         val parameters = generateParameters(accumulatedEvents, intention, namespaceId, caseId, toolRequestId)
         emitEvent(parameters)
         accumulatedEvents.add(parameters)
-        if (!shouldContinue()) return ToolFlowOutcome.Completed
+        if (!shouldContinue()) return false
 
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
-
-        // WZ-31596 pre-flight: tools that opt-in route through the confirmation flow.
-        if (tool != null && tool.supportsConfirmation) {
-            val outcome =
+        if (tool != null) {
+            @Suppress("UNCHECKED_CAST")
+            val typed = tool as StandardTool<Any?>
+            val toolCtx = buildToolContext(tool.name, namespaceId)
+            val parsedInput =
                 try {
-                    maybeRunConfirmationFlow(tool, parameters.args, namespaceId, caseId, accumulatedEvents)
-                } catch (e: IllegalStateException) {
-                    // Config misuse (no ConfirmationManager injected). Fail loudly — do not swallow.
-                    throw e
+                    typed.parseInput(parameters.args)
                 } catch (e: Exception) {
-                    // Validation failure (e.g. "Cannot remove directories").
-                    // Surface as a tool error so the LLM can retry with corrected input.
-                    val errorMsg = "Error: ${e.message}"
                     val errResponse =
                         ToolResponseEvent(
                             namespaceId = namespaceId,
                             caseId = caseId,
                             toolRequestId = toolRequestId,
                             toolName = parameters.toolName,
-                            output = MessageContent.Text(errorMsg),
+                            output = MessageContent.Text("Error parsing tool input: ${e.message}"),
                             success = false,
                         )
                     emitEvent(errResponse)
                     accumulatedEvents.add(errResponse)
-                    return ToolFlowOutcome.Completed
+                    return false
                 }
-            when (outcome) {
-                is ConfirmationOutcome.Skip -> Unit
-                is ConfirmationOutcome.ExecutedDirectly -> {
+
+            if (typed.requiresConfirmation(parsedInput, toolCtx)) {
+                val confirmationManager = context.confirmationManager
+                if (confirmationManager == null) {
+                    throw IllegalStateException(
+                        "Tool '${tool.name}' requires confirmation but no ConfirmationManager configured for AgentAdvanced.",
+                    )
+                }
+
+                val history = context.buildMessages(accumulatedEvents)
+                val needsExplicit =
+                    tool.bypassImplicitConsent ||
+                        confirmationManager.shouldConfirm(
+                            chatClient = context.chatClient,
+                            history = history,
+                            actionLabel = "Tool ${tool.name}",
+                            proposedData = parsedInput ?: emptyMap<String, Any>(),
+                        )
+                if (!needsExplicit) {
+                    // User already implicitly confirmed — fall through to direct execution.
+                    val resultText =
+                        try {
+                            typed.executeWithConfirmation(parsedInput, toolCtx)
+                        } catch (e: Exception) {
+                            "Error executing tool: ${e.message}"
+                        }
                     val response =
                         ToolResponseEvent(
                             namespaceId = namespaceId,
                             caseId = caseId,
                             toolRequestId = toolRequestId,
                             toolName = parameters.toolName,
-                            output = MessageContent.Text(outcome.result),
+                            output = MessageContent.Text(resultText),
                             success = true,
                         )
                     emitEvent(response)
                     accumulatedEvents.add(response)
-                    return ToolFlowOutcome.Completed
+                    return false
                 }
-                is ConfirmationOutcome.Await -> {
-                    emitEvent(
-                        PendingConfirmationEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = toolRequestId,
-                            toolName = parameters.toolName,
-                            pendingPayloadJson = outcome.payloadJson,
-                            confirmationLabel = outcome.label,
-                            analysisInstructions = outcome.instructions,
-                            questionId = outcome.questionId,
-                        ),
+
+                val question =
+                    confirmationManager.formulateQuestion(
+                        chatClient = context.chatClient,
+                        history = history,
+                        fallbackLabel = tool.name,
+                        pendingData = parsedInput ?: emptyMap<String, Any>(),
                     )
-                    emitEvent(
-                        QuestionEvent(
-                            metadata = EntityMetadata(id = outcome.questionId),
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            agentId = id,
-                            agentName = name,
-                            question = outcome.question,
-                            options = CONFIRMATION_OPTIONS,
-                        ),
-                    )
-                    // IN-CHANNEL: emit a MessageEvent so the LLM sees the pause naturally
-                    // in the conversation context (visible via convertEventsToMessages).
-                    emitEvent(
-                        MessageEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            actor = Actor(id.toString(), name, ActorRole.AGENT),
-                            content = listOf(MessageContent.Text(outcome.question)),
-                        ),
-                    )
-                    emitEvent(
-                        AgentFinishedEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            agentId = id,
-                            agentName = name,
-                        ),
-                    )
-                    return ToolFlowOutcome.AwaitingConfirmation
-                }
+                emitEvent(
+                    PendingConfirmationEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequestId,
+                        toolName = parameters.toolName,
+                        inputJson = parameters.args ?: "{}",
+                        analysisInstructions = typed.getConfirmationInstructions(),
+                    ),
+                )
+                // IN-CHANNEL: emit a MessageEvent so the LLM sees the pause naturally
+                // in the conversation context, and the user sees the question in the chat
+                // UI as a regular agent message (no typed button — free-form reply).
+                emitEvent(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor(id.toString(), name, ActorRole.AGENT),
+                        content = listOf(MessageContent.Text(question)),
+                    ),
+                )
+                emitEvent(
+                    AgentFinishedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = id,
+                        agentName = name,
+                    ),
+                )
+                return true
             }
         }
 
-        // Standard path — no confirmation needed or tool doesn't opt-in.
+        // Standard path — tool doesn't require confirmation.
         val response = executeTool(parameters, namespaceId, caseId)
         emitEvent(response)
         accumulatedEvents.add(response)
-        return ToolFlowOutcome.Completed
+        return false
     }
 
     private fun findUnresolvedPendingConfirmation(events: List<CaseEvent>): PendingConfirmationEvent? {
@@ -328,9 +342,9 @@ class AgentAdvanced(
         appendTo: MutableList<CaseEvent>,
         emitEvent: suspend (CaseEvent) -> Unit,
     ): Boolean {
-        // Helper (F6 + v3-F3): close orphan pending durably with an error result so it is
-        // not re-detected on every subsequent run when the tool is missing / payload is
-        // corrupted. Also emits an IN-CHANNEL MessageEvent so the LLM stops re-questioning.
+        // Helper: close orphan pending durably with an error so it is not re-detected on
+        // every subsequent run when the tool is missing / input is malformed. Also emits
+        // an IN-CHANNEL MessageEvent so the LLM stops re-questioning.
         suspend fun closePendingWithError(reason: String): Boolean {
             logger.warn { "[AgentAdvanced] closing orphan pending '${pending.toolName}': $reason" }
             val errorText = "Cannot resolve confirmation: $reason"
@@ -363,85 +377,51 @@ class AgentAdvanced(
             return true
         }
 
-        val mapper =
-            context.objectMapper
-                ?: return closePendingWithError("ObjectMapper not available.")
         val tool =
             context.tools.firstOrNull { it.name == pending.toolName }
                 ?: return closePendingWithError("tool '${pending.toolName}' not available in this agent.")
-        val payload =
+
+        @Suppress("UNCHECKED_CAST")
+        val typed = tool as StandardTool<Any?>
+
+        val parsedInput =
             try {
-                mapper.readValue(pending.pendingPayloadJson, Map::class.java)
+                typed.parseInput(pending.inputJson)
             } catch (e: Exception) {
-                logger.warn(e) { "[AgentAdvanced] failed to deserialize pending payload for ${pending.toolName}" }
-                return closePendingWithError("payload deserialization failed (${e.message}).")
+                logger.warn(e) { "[AgentAdvanced] failed to parse pending input for ${pending.toolName}" }
+                return closePendingWithError("input deserialization failed (${e.message}).")
             }
 
-        // CRITICAL (F2/AC7): only events strictly AFTER the pending count as a reply.
+        // CRITICAL (AC7): only events strictly AFTER the pending count as a reply.
         // Use index comparison (deterministic regardless of timestamp ordering).
         val pendingIndex = events.indexOfFirst { it.metadata.id == pending.metadata.id }
         val eventsAfterPending = if (pendingIndex >= 0) events.subList(pendingIndex + 1, events.size) else emptyList()
 
-        val toolCtx =
-            ToolContext(
-                namespaceId = namespaceId,
-                userId = userId,
-                userExternalId = userExternalId,
-                caseEvents = filterEventsByIntegration(pending.toolName, caseEventsProvider()),
-            )
+        // Free-form user reply via LLM analysis — no typed button click anymore.
+        val confirmationManager =
+            context.confirmationManager
+                ?: return closePendingWithError("ConfirmationManager not available.")
+        val freeFormText =
+            eventsAfterPending
+                .filterIsInstance<MessageEvent>()
+                .lastOrNull { it.actor.role == ActorRole.USER }
+                ?.content
+                ?.filterIsInstance<MessageContent.Text>()
+                ?.joinToString(" ") { it.content }
+        if (freeFormText.isNullOrBlank()) {
+            // AC7: reload session without user reply. No reply yet.
+            return false
+        }
 
-        // Path 1: AnswerEvent linked to the pending's questionId (button click).
-        val answerEvent =
-            pending.questionId?.let { qid ->
-                eventsAfterPending.filterIsInstance<AnswerEvent>().firstOrNull { it.questionId == qid }
-            }
-        // F10 fix: split AnswerEvent.answer into three buckets (Confirm / Reject / Other → defer to LLM judge).
-        // Avoids silently rejecting unexpected answer values (typo, label mismatch, custom UI).
-        val answerDecision: Pair<Boolean, String>? =
-            answerEvent?.let { evt ->
-                val ans = evt.answer.trim()
-                when {
-                    ans.equals(CONFIRMATION_ANSWER_CONFIRM, ignoreCase = true) -> true to evt.answer
-                    ans.equals(CONFIRMATION_ANSWER_REJECT, ignoreCase = true) -> false to evt.answer
-                    else -> null
-                }
-            }
-
-        val confirmed: Boolean
-        val replyText: String
-        if (answerDecision != null) {
-            confirmed = answerDecision.first
-            replyText = answerDecision.second
-        } else {
-            // Path 2: free-form user MessageEvent + LLM lenient matching.
-            // Also entered when AnswerEvent.answer is unrecognized (F10).
-            val manager =
-                context.confirmationManager
-                    ?: return closePendingWithError("ConfirmationManager not available for free-form reply.")
-            val freeFormText =
-                answerEvent?.answer
-                    ?: eventsAfterPending
-                        .filterIsInstance<MessageEvent>()
-                        .lastOrNull { it.actor.role == ActorRole.USER }
-                        ?.content
-                        ?.filterIsInstance<MessageContent.Text>()
-                        ?.joinToString(" ") { it.content }
-            if (freeFormText.isNullOrBlank()) {
-                // AC7: reload session without user reply. No reply yet.
-                return false
-            }
-            // NOTE (F8): history is full conversation; the LLM judge could read pre-pending context.
-            // Mitigation lives in tool.getConfirmationAnalysisInstructions().
-            val history = context.buildMessages(events)
+        val history = context.buildMessages(events)
+        val confirmed =
             try {
-                confirmed =
-                    manager.analyzeConfirmation(
-                        chatClient = context.chatClient,
-                        history = history,
-                        pendingPayload = payload,
-                        specificInstructions = pending.analysisInstructions,
-                    )
-                replyText = freeFormText
+                confirmationManager.analyzeConfirmation(
+                    chatClient = context.chatClient,
+                    history = history,
+                    pendingPayload = parsedInput ?: emptyMap<String, Any>(),
+                    specificInstructions = pending.analysisInstructions,
+                )
             } catch (e: AmbiguousConfirmationException) {
                 emitEvent(
                     WarnEvent(
@@ -452,20 +432,14 @@ class AgentAdvanced(
                 )
                 return false
             }
-        }
 
         // Guard before destructive call — mitigate cancel mid-execution.
         if (!shouldContinue()) return false
 
+        val toolCtx = buildToolContext(pending.toolName, namespaceId)
         val resultText: String =
             try {
-                if (confirmed) {
-                    @Suppress("UNCHECKED_CAST")
-                    (tool as StandardTool<Any?>).executeWithConfirmation(payload, toolCtx)
-                } else {
-                    @Suppress("UNCHECKED_CAST")
-                    (tool as StandardTool<Any?>).onRejected(payload, replyText, toolCtx)
-                }
+                if (confirmed) typed.executeWithConfirmation(parsedInput, toolCtx) else typed.onRejected()
             } catch (e: Exception) {
                 logger.warn(e) { "[AgentAdvanced] tool execution failed during confirmation resolution for ${pending.toolName}" }
                 "Error during tool execution: ${e.message}"
@@ -482,8 +456,7 @@ class AgentAdvanced(
         emitEvent(resolved)
         appendTo += resolved
 
-        // F2 fix: prefix decision explicitly so the LLM disambiguates the resolution
-        // without needing a dedicated user MessageEvent (button clicks emit none).
+        // IN-CHANNEL: prefix decision explicitly so the LLM disambiguates the resolution.
         val decisionPrefix = if (confirmed) "User confirmed. " else "User declined. "
         val resolutionMessage =
             MessageEvent(
@@ -496,8 +469,8 @@ class AgentAdvanced(
         appendTo += resolutionMessage
 
         // Synthetic ToolResponseEvent paired on the original toolRequestId so the next
-        // intention turn sees a coherent lastToolResponse. v3-F2: success reflects the
-        // user's decision (true=executed, false=rejected/cancelled).
+        // intention turn sees a coherent lastToolResponse. success reflects the user's
+        // decision (true=executed, false=rejected/cancelled).
         val syntheticResponse =
             ToolResponseEvent(
                 namespaceId = namespaceId,
@@ -512,64 +485,16 @@ class AgentAdvanced(
         return true
     }
 
-    private fun maybeRunConfirmationFlow(
-        tool: StandardTool<*>,
-        toolInput: String?,
+    private fun buildToolContext(
+        toolName: String,
         namespaceId: UUID,
-        caseId: UUID,
-        accumulatedEvents: List<CaseEvent>,
-    ): ConfirmationOutcome {
-        val confirmationManager = context.confirmationManager
-        val mapper = context.objectMapper
-        if (confirmationManager == null || mapper == null) {
-            throw IllegalStateException(
-                "Tool '${tool.name}' requires confirmation but no ConfirmationManager / ObjectMapper configured for AgentAdvanced.",
-            )
-        }
-        @Suppress("UNCHECKED_CAST")
-        val typed = tool as StandardTool<Any?>
-        val parsedInput = typed.parseInput(toolInput)
-        val toolCtx =
-            ToolContext(
-                namespaceId = namespaceId,
-                userId = userId,
-                userExternalId = userExternalId,
-                caseEvents = filterEventsByIntegration(tool.name, caseEventsProvider()),
-            )
-        if (!typed.requiresConfirmation(parsedInput, toolCtx)) return ConfirmationOutcome.Skip
-
-        val payload = typed.getConfirmationPayload(parsedInput, toolCtx)
-        val history = context.buildMessages(accumulatedEvents)
-        val needsExplicit =
-            tool.bypassImplicitConsent ||
-                confirmationManager.shouldConfirm(
-                    chatClient = context.chatClient,
-                    history = history,
-                    actionLabel = "Tool ${tool.name}",
-                    proposedData = payload,
-                )
-        if (!needsExplicit) {
-            return ConfirmationOutcome.ExecutedDirectly(typed.executeWithConfirmation(payload, toolCtx))
-        }
-        val payloadJson = mapper.writeValueAsString(payload)
-        val sanitizedLabel = sanitizeForLlm(typed.confirmationLabel(payload))
-        val question =
-            confirmationManager.formulateQuestion(
-                chatClient = context.chatClient,
-                history = history,
-                fallbackLabel = sanitizedLabel,
-                pendingData = payload,
-            )
-        return ConfirmationOutcome.Await(
-            payloadJson = payloadJson,
-            label = sanitizedLabel,
-            question = question,
-            instructions = typed.getConfirmationAnalysisInstructions(),
-            questionId = UUID.randomUUID(),
+    ): ToolContext =
+        ToolContext(
+            namespaceId = namespaceId,
+            userId = userId,
+            userExternalId = userExternalId,
+            caseEvents = filterEventsByIntegration(toolName, caseEventsProvider()),
         )
-    }
-
-    private fun sanitizeForLlm(s: String): String = s.filter { it.isLetterOrDigit() || it in " _-./" }.take(200)
 
     private fun filterEventsByIntegration(
         toolName: String,
@@ -675,12 +600,13 @@ Intention: ${intentionEvent.intention}
 Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.
             """.trimIndent()
 
-        val parameters =
+        val rawParameters =
             context.chatClient
                 .prompt(Prompt(messages + UserMessage(parametersPrompt)))
                 .call()
                 .content()
                 ?.trim() ?: "{}"
+        val parameters = stripJsonFence(rawParameters)
 
         return ToolRequestEvent(
             namespaceId = namespaceId,
@@ -690,6 +616,8 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
             args = parameters,
         )
     }
+
+    private fun stripJsonFence(raw: String): String = JSON_FENCE_REGEX.matchEntire(raw)?.groupValues?.get(1)?.trim() ?: raw
 
     private fun executeTool(
         toolRequest: ToolRequestEvent,
@@ -746,23 +674,13 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
         }
     }
 
-    private enum class ToolFlowOutcome { Completed, AwaitingConfirmation }
-
-    private sealed class ConfirmationOutcome {
-        object Skip : ConfirmationOutcome()
-
-        data class ExecutedDirectly(val result: String) : ConfirmationOutcome()
-
-        data class Await(
-            val payloadJson: String,
-            val label: String,
-            val question: String,
-            val instructions: String,
-            val questionId: UUID,
-        ) : ConfirmationOutcome()
-    }
-
     companion object : KLogging() {
         internal const val REPETITION_DETECTION_WINDOW = 3
+
+        private val JSON_FENCE_REGEX =
+            Regex(
+                """^```(?:json)?\s*(.*?)\s*```$""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
     }
 }

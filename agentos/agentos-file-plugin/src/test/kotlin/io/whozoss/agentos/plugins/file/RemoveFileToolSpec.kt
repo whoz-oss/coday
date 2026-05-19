@@ -1,6 +1,5 @@
 package io.whozoss.agentos.plugins.file.tools
 
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -12,13 +11,13 @@ import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
 /**
- * RemoveFileTool now opts in to the WZ-31596 confirmation flow. The tool's `execute`
- * path is deliberately a guard that refuses to apply the deletion (the orchestrator is
- * expected to route through `getConfirmationPayload` → user prompt → `executeWithConfirmation`).
+ * RemoveFileTool exposes two paths:
+ *  - `execute(input, ctx)` — direct, used by AgentSimple (Spring AI native tool_use)
+ *  - `executeWithConfirmation(input, ctx)` — used by AgentAdvanced post-confirmation;
+ *    default delegates to `execute` so the deletion logic is shared.
  *
- * These specs exercise the same scenarios as before, but against the confirmation flow:
- * `getConfirmationPayload` performs all validation (no side-effect) and
- * `executeWithConfirmation` does the actual deletion.
+ * The orchestrator gating is asserted in `AgentAdvancedSpec` — here we only validate the
+ * tool's own behaviour (validation, error handling, requiresConfirmation flag).
  */
 class RemoveFileToolSpec :
     StringSpec({
@@ -61,83 +60,60 @@ class RemoveFileToolSpec :
             result shouldContain "Cannot remove directories"
         }
 
-        "removing existing file via confirmation flow succeeds" {
+        "removing file via executeWithConfirmation succeeds (default delegates to execute)" {
             val tool = RemoveFileTool(tempDir)
             val file = tempDir.resolve("file.txt").also { it.writeText("content") }
 
-            val payload = tool.getConfirmationPayload(RemoveFileTool.Input("file.txt"), ctx)
-            val result = tool.executeWithConfirmation(payload, ctx)
+            val result = tool.executeWithConfirmation(RemoveFileTool.Input("file.txt"), ctx)
 
-            result shouldContain "deleted successfully"
+            result shouldBe "File deleted successfully"
             file.exists() shouldBe false
         }
 
-        "removing non-existent file is rejected at getConfirmationPayload (validation step)" {
+        "removing nested file via executeWithConfirmation works" {
             val tool = RemoveFileTool(tempDir)
-            val ex = shouldThrow<IllegalArgumentException> {
-                tool.getConfirmationPayload(RemoveFileTool.Input("nonexistent.txt"), ctx)
-            }
-            ex.message!! shouldContain "Path does not exist"
+            Files.createDirectories(tempDir.resolve("a/b/c"))
+            val file = tempDir.resolve("a/b/c/file.txt").also { it.writeText("content") }
+
+            val result = tool.executeWithConfirmation(RemoveFileTool.Input("a/b/c/file.txt"), ctx)
+
+            result shouldBe "File deleted successfully"
+            file.exists() shouldBe false
         }
 
-        "attempting to remove directory is rejected at getConfirmationPayload" {
-            val tool = RemoveFileTool(tempDir)
-            Files.createDirectories(tempDir.resolve("dir"))
-
-            val ex = shouldThrow<IllegalArgumentException> {
-                tool.getConfirmationPayload(RemoveFileTool.Input("dir"), ctx)
-            }
-            ex.message!! shouldContain "Cannot remove directories"
-        }
-
-        "removing file through valid symlink resolves the target via the confirmation flow" {
+        "removing file through valid symlink resolves the target" {
             val tool = RemoveFileTool(tempDir)
             val targetFile = tempDir.resolve("target.txt").also { it.writeText("content") }
             val linkFile = tempDir.resolve("link.txt")
             Files.createSymbolicLink(linkFile, targetFile)
 
-            val payload = tool.getConfirmationPayload(RemoveFileTool.Input("link.txt"), ctx)
-            val result = tool.executeWithConfirmation(payload, ctx)
+            val result = tool.executeWithConfirmation(RemoveFileTool.Input("link.txt"), ctx)
 
-            result shouldContain "deleted successfully"
+            result shouldBe "File deleted successfully"
             linkFile.exists() shouldBe false
         }
 
-        "nested file removal works via the confirmation flow" {
-            val tool = RemoveFileTool(tempDir)
-            Files.createDirectories(tempDir.resolve("a/b/c"))
-            val file = tempDir.resolve("a/b/c/file.txt").also { it.writeText("content") }
-
-            val payload = tool.getConfirmationPayload(RemoveFileTool.Input("a/b/c/file.txt"), ctx)
-            val result = tool.executeWithConfirmation(payload, ctx)
-
-            result shouldContain "deleted successfully"
-            file.exists() shouldBe false
-        }
-
-        "path traversal attempt is rejected at getConfirmationPayload" {
+        "path traversal attempt is rejected" {
             val tool = RemoveFileTool(tempDir)
 
-            val ex = shouldThrow<IllegalArgumentException> {
-                tool.getConfirmationPayload(RemoveFileTool.Input("../outside.txt"), ctx)
-            }
-            ex.message!! shouldContain "path traversal not allowed"
+            val result = tool.execute(RemoveFileTool.Input("../outside.txt"), ctx)
+
+            result shouldContain "path traversal not allowed"
         }
 
-        "onRejected() returns a non-execution message without touching the file" {
+        "onRejected() returns the default cancellation message without touching the file" {
             val tool = RemoveFileTool(tempDir)
             val file = tempDir.resolve("file.txt").also { it.writeText("content") }
 
-            val payload = tool.getConfirmationPayload(RemoveFileTool.Input("file.txt"), ctx)
-            val result = tool.onRejected(payload, "non, annule", ctx)
+            val result = tool.onRejected()
 
-            result shouldContain "was not performed"
+            result shouldBe "Action cancelled."
             file.exists() shouldBe true
         }
 
-        "supportsConfirmation is true and requiresConfirmation depends on path presence" {
+        "requiresConfirmation depends on path presence; bypassImplicitConsent is true" {
             val tool = RemoveFileTool(tempDir)
-            tool.supportsConfirmation shouldBe true
+            tool.bypassImplicitConsent shouldBe true
             tool.requiresConfirmation(RemoveFileTool.Input("file.txt"), ctx) shouldBe true
             tool.requiresConfirmation(RemoveFileTool.Input(""), ctx) shouldBe false
             tool.requiresConfirmation(null, ctx) shouldBe false

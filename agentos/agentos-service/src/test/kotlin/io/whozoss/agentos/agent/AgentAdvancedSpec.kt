@@ -26,19 +26,16 @@ import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
 /**
- * Test-only confirmation-aware tool that mimics the shape of RemoveFileTool without
- * requiring a runtime dependency on agentos-file-plugin. Deletes a file path under
- * [rootDir] when confirmed; rejects with "was not performed." text when refused.
+ * Test-only confirmation-aware tool that mimics the shape of RemoveFileTool. Deletes a
+ * file path under [rootDir] when invoked. `execute` and `executeWithConfirmation` share
+ * the same body (the default delegation pattern).
  */
 internal class TestRemoveTool(
     private val rootDir: java.nio.file.Path,
     override val name: String = "FILES__remove",
-    override val supportsConfirmation: Boolean = true,
     override val bypassImplicitConsent: Boolean = true,
 ) : StandardTool<TestRemoveTool.Input> {
     data class Input(val path: String? = null)
-
-    data class PendingRemoval(val absolutePath: String, val displayPath: String)
 
     override val description: String = "Remove a file"
     override val inputSchema: String = """{"type":"object","properties":{"path":{"type":"string"}}}"""
@@ -48,48 +45,24 @@ internal class TestRemoveTool(
     override fun execute(
         input: Input?,
         context: ToolContext,
-    ): String = "TestRemoveTool requires user confirmation."
+    ): String {
+        val path = input?.path?.takeIf { it.isNotBlank() } ?: return "Error: path required"
+        val resolved = rootDir.resolve(path)
+        if (Files.isDirectory(resolved)) return "Error: Cannot remove directories: $path"
+        Files.deleteIfExists(resolved)
+        return "File $path deleted successfully"
+    }
 
     override fun requiresConfirmation(
         input: Input?,
         context: ToolContext,
     ): Boolean = !input?.path.isNullOrBlank()
 
-    override fun getConfirmationPayload(
-        input: Input?,
-        context: ToolContext,
-    ): Any {
-        val path = input?.path ?: throw IllegalArgumentException("path required")
-        val resolved = rootDir.resolve(path)
-        if (Files.isDirectory(resolved)) throw IllegalArgumentException("Cannot remove directories: $path")
-        return PendingRemoval(absolutePath = resolved.toString(), displayPath = path)
-    }
-
-    override fun confirmationLabel(pendingPayload: Any): String {
-        val typed = jacksonObjectMapper().convertValue(pendingPayload, PendingRemoval::class.java)
-        return "Delete file ${typed.displayPath}"
-    }
-
-    override fun getConfirmationAnalysisInstructions(): String =
+    override fun getConfirmationInstructions(): String =
         "Be strict: explicit confirmation only after the assistant's question."
 
-    override fun executeWithConfirmation(
-        pendingPayload: Any,
-        context: ToolContext,
-    ): String {
-        val typed = jacksonObjectMapper().convertValue(pendingPayload, PendingRemoval::class.java)
-        Files.deleteIfExists(java.nio.file.Path.of(typed.absolutePath))
-        return "File ${typed.displayPath} deleted successfully"
-    }
-
-    override fun onRejected(
-        pendingPayload: Any,
-        userMessage: String,
-        context: ToolContext,
-    ): String {
-        val typed = jacksonObjectMapper().convertValue(pendingPayload, PendingRemoval::class.java)
-        return "Deletion of ${typed.displayPath} was not performed."
-    }
+    // executeWithConfirmation: default delegates to execute() — verifies the SDK default works.
+    // onRejected: default returns "Action cancelled." — no override needed.
 }
 
 class AgentAdvancedSpec :
@@ -568,7 +541,7 @@ class AgentAdvancedSpec :
             return gen
         }
 
-        "AC1: destructive tool triggers PendingConfirmation IN-CHANNEL with full event order" {
+        "AC1: destructive tool triggers PendingConfirmation IN-CHANNEL — no QuestionEvent, conversational only" {
             val tempDir = Files.createTempDirectory("agentadvanced-ac1-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("old.txt").also { it.writeText("data") }
             val namespaceId = UUID.randomUUID()
@@ -592,37 +565,34 @@ class AgentAdvancedSpec :
 
             val toolReqIdx = events.indexOfFirst { it is ToolRequestEvent }
             val pendingIdx = events.indexOfFirst { it is PendingConfirmationEvent }
-            val questionIdx = events.indexOfFirst { it is QuestionEvent }
-            // The IN-CHANNEL MessageEvent(AGENT) is the *second* MessageEvent (first is the user input).
+            // The IN-CHANNEL MessageEvent(AGENT) carries the question for both UI display and LLM context.
             val agentMsgIdx = events.indexOfFirst { it is MessageEvent && (it as MessageEvent).actor.role == ActorRole.AGENT }
             val finishedIdx = events.indexOfFirst { it is AgentFinishedEvent }
 
             (toolReqIdx >= 0) shouldBe true
             (pendingIdx > toolReqIdx) shouldBe true
-            (questionIdx > pendingIdx) shouldBe true
-            (agentMsgIdx > questionIdx) shouldBe true
+            (agentMsgIdx > pendingIdx) shouldBe true
             (finishedIdx > agentMsgIdx) shouldBe true
             // No ToolResponseEvent for this tool call at this turn.
             events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
             // File still on disk.
             target.exists() shouldBe true
-            // Question text propagates to both QuestionEvent and IN-CHANNEL MessageEvent.
-            (events[questionIdx] as QuestionEvent).question shouldBe "Voulez-vous supprimer old.txt?"
-            (events[questionIdx] as QuestionEvent).options shouldBe CONFIRMATION_OPTIONS
+            // IN-CHANNEL MessageEvent carries the LLM-formulated question.
             val agentMsg = events[agentMsgIdx] as MessageEvent
             (agentMsg.content.first() as MessageContent.Text).content shouldBe "Voulez-vous supprimer old.txt?"
+            // PendingConfirmationEvent carries the input JSON for replay.
+            val pending = events[pendingIdx] as PendingConfirmationEvent
+            pending.inputJson shouldContain "old.txt"
         }
 
-        "AC2: explicit confirm via AnswerEvent executes the tool with success=true synthetic response" {
+        "AC2: free-form 'yes' triggers analyzeConfirmation, executes the tool with success=true synthetic response" {
             val tempDir = Files.createTempDirectory("agentadvanced-ac2-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("old.txt").also { it.writeText("data") }
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
-            val payload = TestRemoveTool.PendingRemoval(target.toString(), "old.txt")
             val pendingId = UUID.randomUUID()
-            val questionId = UUID.randomUUID()
             val pending =
                 PendingConfirmationEvent(
                     metadata = EntityMetadata(id = pendingId),
@@ -630,139 +600,16 @@ class AgentAdvancedSpec :
                     caseId = caseId,
                     toolRequestId = "orig-req-1",
                     toolName = "FILES__remove",
-                    pendingPayloadJson = jacksonObjectMapper().writeValueAsString(payload),
-                    confirmationLabel = "Delete file old.txt",
-                    questionId = questionId,
-                )
-            val answer =
-                AnswerEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    questionId = questionId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    answer = CONFIRMATION_ANSWER_CONFIRM,
-                )
-            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
-            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = ctx,
-                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
-                    maxIterations = 1,
-                )
-            val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + answer).toList()
-
-            val resolved = events.filterIsInstance<ConfirmationResolvedEvent>().single()
-            resolved.confirmed shouldBe true
-            resolved.pendingEventId shouldBe pendingId
-            resolved.resultText shouldContain "deleted successfully"
-
-            val agentMessages =
-                events.filterIsInstance<MessageEvent>().filter { it.actor.role == ActorRole.AGENT }
-            val resolutionMsg =
-                agentMessages.first {
-                    (it.content.first() as MessageContent.Text).content.startsWith("User confirmed.")
-                }
-            (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "deleted successfully"
-
-            val synthetic =
-                events.filterIsInstance<ToolResponseEvent>().single { it.toolRequestId == "orig-req-1" }
-            synthetic.success shouldBe true
-            (synthetic.output as MessageContent.Text).content shouldContain "deleted successfully"
-
-            target.exists() shouldBe false
-            // Confirmation path did not call analyzeConfirmation.
-            verify(exactly = 0) { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) }
-        }
-
-        "AC3: explicit reject via AnswerEvent invokes onRejected with success=false synthetic response" {
-            val tempDir = Files.createTempDirectory("agentadvanced-ac3-").also { it.toFile().deleteOnExit() }
-            val target = tempDir.resolve("old.txt").also { it.writeText("data") }
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-            val tool = TestRemoveTool(tempDir)
-            val payload = TestRemoveTool.PendingRemoval(target.toString(), "old.txt")
-            val pendingId = UUID.randomUUID()
-            val questionId = UUID.randomUUID()
-            val pending =
-                PendingConfirmationEvent(
-                    metadata = EntityMetadata(id = pendingId),
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    toolRequestId = "orig-req-2",
-                    toolName = "FILES__remove",
-                    pendingPayloadJson = jacksonObjectMapper().writeValueAsString(payload),
-                    confirmationLabel = "Delete file old.txt",
-                    questionId = questionId,
-                )
-            val answer =
-                AnswerEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    questionId = questionId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    answer = CONFIRMATION_ANSWER_REJECT,
-                )
-            val (ctx, _) = confirmationContext(listOf(tool), agentId)
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = ctx,
-                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
-                    maxIterations = 1,
-                )
-            val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + answer).toList()
-
-            val resolved = events.filterIsInstance<ConfirmationResolvedEvent>().single()
-            resolved.confirmed shouldBe false
-            resolved.resultText shouldContain "was not performed"
-
-            val resolutionMsg =
-                events
-                    .filterIsInstance<MessageEvent>()
-                    .filter { it.actor.role == ActorRole.AGENT }
-                    .first { (it.content.first() as MessageContent.Text).content.startsWith("User declined.") }
-            (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "was not performed"
-
-            val synthetic =
-                events.filterIsInstance<ToolResponseEvent>().single { it.toolRequestId == "orig-req-2" }
-            synthetic.success shouldBe false
-            target.exists() shouldBe true
-        }
-
-        "AC4: free-form user MessageEvent triggers analyzeConfirmation (yes case)" {
-            val tempDir = Files.createTempDirectory("agentadvanced-ac4-").also { it.toFile().deleteOnExit() }
-            val target = tempDir.resolve("old.txt").also { it.writeText("data") }
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-            val tool = TestRemoveTool(tempDir)
-            val pendingId = UUID.randomUUID()
-            val pending =
-                PendingConfirmationEvent(
-                    metadata = EntityMetadata(id = pendingId),
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    toolRequestId = "orig-req-4",
-                    toolName = "FILES__remove",
-                    pendingPayloadJson = jacksonObjectMapper().writeValueAsString(
-                        TestRemoveTool.PendingRemoval(target.toString(), "old.txt"),
-                    ),
-                    confirmationLabel = "Delete file old.txt",
-                    questionId = UUID.randomUUID(),
+                    inputJson = """{"path":"old.txt"}""",
                 )
             val userReply =
                 MessageEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("oui supprime ça")),
+                    content = listOf(MessageContent.Text("oui")),
                 )
-            val confirmationManager = mockk<ConfirmationManager>()
+            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns true
             val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
@@ -775,9 +622,78 @@ class AgentAdvancedSpec :
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
-            events.filterIsInstance<ConfirmationResolvedEvent>().single().confirmed shouldBe true
+            val resolved = events.filterIsInstance<ConfirmationResolvedEvent>().single()
+            resolved.confirmed shouldBe true
+            resolved.pendingEventId shouldBe pendingId
+            resolved.resultText shouldContain "deleted successfully"
+
+            val resolutionMsg =
+                events
+                    .filterIsInstance<MessageEvent>()
+                    .filter { it.actor.role == ActorRole.AGENT }
+                    .first { (it.content.first() as MessageContent.Text).content.startsWith("User confirmed.") }
+            (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "deleted successfully"
+
+            val synthetic =
+                events.filterIsInstance<ToolResponseEvent>().single { it.toolRequestId == "orig-req-1" }
+            synthetic.success shouldBe true
+            (synthetic.output as MessageContent.Text).content shouldContain "deleted successfully"
+
             target.exists() shouldBe false
             verify(exactly = 1) { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) }
+        }
+
+        "AC3: free-form 'no' calls onRejected with success=false synthetic response" {
+            val tempDir = Files.createTempDirectory("agentadvanced-ac3-").also { it.toFile().deleteOnExit() }
+            val target = tempDir.resolve("old.txt").also { it.writeText("data") }
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val tool = TestRemoveTool(tempDir)
+            val pending =
+                PendingConfirmationEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = "orig-req-2",
+                    toolName = "FILES__remove",
+                    inputJson = """{"path":"old.txt"}""",
+                )
+            val userReply =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("non")),
+                )
+            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
+            every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns false
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
+                    maxIterations = 1,
+                )
+            val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
+
+            val resolved = events.filterIsInstance<ConfirmationResolvedEvent>().single()
+            resolved.confirmed shouldBe false
+            // Default onRejected returns "Action cancelled."
+            resolved.resultText shouldBe "Action cancelled."
+
+            val resolutionMsg =
+                events
+                    .filterIsInstance<MessageEvent>()
+                    .filter { it.actor.role == ActorRole.AGENT }
+                    .first { (it.content.first() as MessageContent.Text).content.startsWith("User declined.") }
+            (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "Action cancelled."
+
+            val synthetic =
+                events.filterIsInstance<ToolResponseEvent>().single { it.toolRequestId == "orig-req-2" }
+            synthetic.success shouldBe false
+            target.exists() shouldBe true
         }
 
         "AC5: ambiguous free-form reply emits WarnEvent and keeps pending alive" {
@@ -793,11 +709,7 @@ class AgentAdvancedSpec :
                     caseId = caseId,
                     toolRequestId = "orig-req-5",
                     toolName = "FILES__remove",
-                    pendingPayloadJson = jacksonObjectMapper().writeValueAsString(
-                        TestRemoveTool.PendingRemoval(target.toString(), "old.txt"),
-                    ),
-                    confirmationLabel = "Delete file old.txt",
-                    questionId = UUID.randomUUID(),
+                    inputJson = """{"path":"old.txt"}""",
                 )
             val userReply =
                 MessageEvent(
@@ -828,11 +740,10 @@ class AgentAdvancedSpec :
             target.exists() shouldBe true
         }
 
-        "AC6bis: non-destructive tool with shouldConfirm=false executes directly without PendingConfirmation" {
+        "AC6bis: tool with bypassImplicitConsent=false + shouldConfirm=false executes directly without PendingConfirmation" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            // bypassImplicitConsent=false so the orchestrator consults shouldConfirm.
             val tempDir = Files.createTempDirectory("agentadvanced-ac6bis-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
             val tool = TestRemoveTool(tempDir, name = "TEST__safe", bypassImplicitConsent = false)
@@ -886,7 +797,6 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
-            // User MessageEvent is BEFORE the pending (original request). No reply AFTER.
             val initialUserMsg = makeInitialEvents(namespaceId, caseId)
             val pending =
                 PendingConfirmationEvent(
@@ -894,11 +804,7 @@ class AgentAdvancedSpec :
                     caseId = caseId,
                     toolRequestId = "orig-req-7",
                     toolName = "FILES__remove",
-                    pendingPayloadJson = jacksonObjectMapper().writeValueAsString(
-                        TestRemoveTool.PendingRemoval(target.toString(), "old.txt"),
-                    ),
-                    confirmationLabel = "Delete file old.txt",
-                    questionId = UUID.randomUUID(),
+                    inputJson = """{"path":"old.txt"}""",
                 )
             val (ctx, _) = confirmationContext(listOf(tool), agentId)
             val agent =
@@ -917,55 +823,6 @@ class AgentAdvancedSpec :
             target.exists() shouldBe true
         }
 
-        "AC9: validation error in getConfirmationPayload surfaces as tool error and skips pending" {
-            val tempDir = Files.createTempDirectory("agentadvanced-ac9-").also { it.toFile().deleteOnExit() }
-            // Make a sub-directory so getConfirmationPayload throws (Cannot remove directories).
-            val subDir = tempDir.resolve("un-dossier").also { Files.createDirectories(it) }
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-            val tool = TestRemoveTool(tempDir)
-            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId)
-            every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"un-dossier"}"""
-
-            val mockGenerator = mockk<AgentIntentionGenerator>()
-            every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
-            } returnsMany
-                listOf(
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "delete un-dossier",
-                        toolName = "FILES__remove",
-                    ),
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "done",
-                        toolName = "Answer",
-                    ),
-                )
-
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = ctx,
-                    intentionGenerator = mockGenerator,
-                    maxIterations = 5,
-                )
-            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
-
-            events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
-            val errResponse =
-                events.filterIsInstance<ToolResponseEvent>().single { !it.success }
-            (errResponse.output as MessageContent.Text).content shouldContain "Cannot remove directories"
-            subDir.exists() shouldBe true
-        }
-
         "AC10: missing ConfirmationManager throws IllegalStateException — surfaced as WarnEvent" {
             val tempDir = Files.createTempDirectory("agentadvanced-ac10-").also { it.toFile().deleteOnExit() }
             tempDir.resolve("old.txt").writeText("data")
@@ -973,7 +830,7 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
-            // No confirmationManager / objectMapper.
+            // No confirmationManager.
             val (ctx, chatClient) = confirmationContext(
                 listOf(tool),
                 agentId,
@@ -992,56 +849,9 @@ class AgentAdvancedSpec :
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
-            // The global catch surfaces the IllegalStateException as a WarnEvent.
             val warn = events.filterIsInstance<WarnEvent>().single()
             warn.message shouldContain "no ConfirmationManager"
             events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
-        }
-
-        "AC11: AnswerEvent with unrecognized value falls through to LLM judge" {
-            val tempDir = Files.createTempDirectory("agentadvanced-ac11-").also { it.toFile().deleteOnExit() }
-            val target = tempDir.resolve("old.txt").also { it.writeText("data") }
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-            val tool = TestRemoveTool(tempDir)
-            val questionId = UUID.randomUUID()
-            val pending =
-                PendingConfirmationEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    toolRequestId = "orig-req-11",
-                    toolName = "FILES__remove",
-                    pendingPayloadJson = jacksonObjectMapper().writeValueAsString(
-                        TestRemoveTool.PendingRemoval(target.toString(), "old.txt"),
-                    ),
-                    confirmationLabel = "Delete file old.txt",
-                    questionId = questionId,
-                )
-            val answer =
-                AnswerEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    questionId = questionId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    answer = "yep",
-                )
-            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
-            every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns true
-            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = ctx,
-                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
-                    maxIterations = 1,
-                )
-            val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + answer).toList()
-
-            verify(exactly = 1) { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) }
-            events.filterIsInstance<ConfirmationResolvedEvent>().single().confirmed shouldBe true
-            target.exists() shouldBe false
         }
 
         "AC12: orphan pending (missing tool) closes durably with ConfirmationResolved + MessageEvent + WarnEvent" {
@@ -1056,9 +866,7 @@ class AgentAdvancedSpec :
                     caseId = caseId,
                     toolRequestId = "orphan-req",
                     toolName = "SOMETHING__obsolete",
-                    pendingPayloadJson = """{"a":"b"}""",
-                    confirmationLabel = "obsolete",
-                    questionId = UUID.randomUUID(),
+                    inputJson = """{"a":"b"}""",
                 )
             // No matching tool in the registry.
             val (ctx, _) = confirmationContext(emptyList(), agentId)
@@ -1084,7 +892,7 @@ class AgentAdvancedSpec :
             events.filterIsInstance<WarnEvent>().any { it.message.contains("Cannot resolve pending confirmation") } shouldBe true
         }
 
-        "detectRepetitionLoop returns null when window contains a synthetic ToolResponseEvent (v3-F4)" {
+        "detectRepetitionLoop returns null when window contains a synthetic ToolResponseEvent" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1097,8 +905,7 @@ class AgentAdvancedSpec :
                     caseId = caseId,
                     toolRequestId = pendingReqId,
                     toolName = "FILES__remove",
-                    pendingPayloadJson = "{}",
-                    confirmationLabel = "delete",
+                    inputJson = "{}",
                 )
             val resolved =
                 ConfirmationResolvedEvent(
@@ -1118,7 +925,6 @@ class AgentAdvancedSpec :
                         toolName = "FILES__remove",
                         output = MessageContent.Text("ok"),
                     ),
-                    // Synthetic response paired on the pending's toolRequestId.
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
