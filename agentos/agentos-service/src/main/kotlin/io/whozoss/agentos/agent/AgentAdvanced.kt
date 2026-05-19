@@ -395,7 +395,7 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
     /**
      * Execute the tool with the generated parameters.
      */
-    private fun executeTool(
+    private suspend fun executeTool(
         toolRequest: ToolRequestEvent,
         namespaceId: UUID,
         caseId: UUID,

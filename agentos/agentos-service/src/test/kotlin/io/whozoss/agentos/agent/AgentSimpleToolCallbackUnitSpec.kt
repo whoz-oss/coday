@@ -106,7 +106,7 @@ class AgentSimpleToolCallbackUnitSpec :
                     override val version = "1.0.0"
                     override val paramType: Class<Nothing>? = null
 
-                    override fun execute(input: Nothing?, context: ToolContext): String = ""
+                    override suspend fun execute(input: Nothing?, context: ToolContext): String = ""
                 }
 
             val capturedCallbacks = slot<List<ToolCallback>>()
@@ -150,9 +150,9 @@ class AgentSimpleToolCallbackUnitSpec :
                     override val version = "1.0.0"
                     override val paramType: Class<Nothing>? = null
 
-                    override fun execute(input: Nothing?, context: ToolContext): String = ""
+                    override suspend fun execute(input: Nothing?, context: ToolContext): String = ""
 
-                    override fun executeWithJson(json: String?, context: ToolContext): String {
+                    override suspend fun executeWithJson(json: String?, context: ToolContext): String {
                         receivedArgs += json
                         return """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}"""
                     }

@@ -60,7 +60,7 @@ class ListFilesTool(
         val relPath: String = "",
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): String {
         val params = input ?: Input()
 
         return try {

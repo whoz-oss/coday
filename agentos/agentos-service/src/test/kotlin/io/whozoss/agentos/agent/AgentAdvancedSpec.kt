@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.redirect.RedirectTool
@@ -552,7 +553,7 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "Read a file"
             every { mockTool.inputSchema } returns "{}"
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.executeWithJson(any(), any()) } returns "file content"
+            coEvery { mockTool.executeWithJson(any(), any()) } returns "file content"
 
             val agent =
                 AgentAdvanced(

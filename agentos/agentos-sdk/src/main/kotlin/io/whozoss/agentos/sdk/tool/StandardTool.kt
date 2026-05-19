@@ -9,7 +9,7 @@ interface StandardTool<T> {
     val version: String
     val paramType: Class<T>?
 
-    fun execute(
+    suspend fun execute(
         input: T?,
         context: ToolContext,
     ): String
@@ -26,7 +26,7 @@ interface StandardTool<T> {
      * @param context The execution context for this tool call
      * @return The execution result as a String
      */
-    fun executeWithJson(
+    suspend fun executeWithJson(
         json: String?,
         context: ToolContext,
     ): String {

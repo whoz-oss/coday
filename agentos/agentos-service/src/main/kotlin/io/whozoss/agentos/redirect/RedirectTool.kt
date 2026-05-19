@@ -81,7 +81,7 @@ class RedirectTool(
      * [io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent] before invoking [executeWithJson],
      * so traces are complete before the exception propagates.
      */
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): String {
         val target = input?.agentName
             ?: error("RedirectTool: agentName is required but was not provided by the LLM")
         throw AgentInterrupt.Redirect(target)

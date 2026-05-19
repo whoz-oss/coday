@@ -4,8 +4,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.atomic.AtomicInteger
@@ -53,10 +53,10 @@ class IOUtilsSpec : StringSpec({
 
         val threads = (1..callCount).map { i ->
             Thread {
-                val result = runIOWithTimeout(10) {
+                val result = runBlocking { runIOWithTimeout(10) {
                     barrier.await() // All threads start simultaneously
                     i * 10
-                }
+                } }
                 results.addAndGet(result)
                 latch.countDown()
             }
