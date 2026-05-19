@@ -823,6 +823,77 @@ class AgentAdvancedSpec :
             target.exists() shouldBe true
         }
 
+        "executeWithConfirmation throws after user confirms: success=false, MessageEvent says declined" {
+            // Blocker #1 from review: even if the user said yes, if the tool execution
+            // throws then the synthetic ToolResponseEvent.success must be false and the
+            // IN-CHANNEL MessageEvent must NOT claim "User confirmed." (the action did not apply).
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            // Tool whose executeWithConfirmation throws.
+            val tool = object : StandardTool<Map<String, Any>> {
+                override val name = "FAILING__remove"
+                override val description = "always throws on executeWithConfirmation"
+                override val inputSchema = "{}"
+                override val version = "1.0.0"
+                override val paramType = null
+                override val bypassImplicitConsent = true
+                override fun execute(input: Map<String, Any>?, context: ToolContext): String = "ok"
+                override fun requiresConfirmation(input: Map<String, Any>?, context: ToolContext) = true
+                override fun executeWithConfirmation(input: Map<String, Any>?, context: ToolContext): String {
+                    throw RuntimeException("disk full")
+                }
+            }
+            val pending =
+                PendingConfirmationEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = "throw-req",
+                    toolName = "FAILING__remove",
+                    inputJson = "{}",
+                )
+            val userYes =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("oui")),
+                )
+            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
+            every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns true
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
+                    maxIterations = 1,
+                )
+            val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userYes).toList()
+
+            // ConfirmationResolvedEvent.confirmed reflects effective success (user confirmed
+            // AND execution applied). The user said yes, but the tool threw → false.
+            val resolved = events.filterIsInstance<ConfirmationResolvedEvent>().single()
+            resolved.confirmed shouldBe false
+            resolved.resultText shouldContain "disk full"
+
+            // Synthetic ToolResponseEvent.success likewise reflects whether the action applied.
+            val synthetic =
+                events.filterIsInstance<ToolResponseEvent>().single { it.toolRequestId == "throw-req" }
+            synthetic.success shouldBe false
+            (synthetic.output as MessageContent.Text).content shouldContain "disk full"
+
+            // IN-CHANNEL MessageEvent must NOT mislead the LLM with "User confirmed.".
+            val agentMessages =
+                events.filterIsInstance<MessageEvent>().filter { it.actor.role == ActorRole.AGENT }
+            val resolutionMsg =
+                agentMessages.first {
+                    (it.content.first() as MessageContent.Text).content.contains("disk full")
+                }
+            (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "User declined."
+        }
+
         "AC10: missing ConfirmationManager throws IllegalStateException — surfaced as WarnEvent" {
             val tempDir = Files.createTempDirectory("agentadvanced-ac10-").also { it.toFile().deleteOnExit() }
             tempDir.resolve("old.txt").writeText("data")

@@ -413,12 +413,15 @@ class AgentAdvanced(
             return false
         }
 
-        val history = context.buildMessages(events)
+        // Slice the history shown to analyzeConfirmation to events at-or-after the pending.
+        // Prevents the LLM judge from picking up a "yes" from an unrelated earlier turn
+        // (defense-in-depth for tools with bypassImplicitConsent=true).
+        val historyFromPending = context.buildMessages(events.subList(pendingIndex, events.size))
         val confirmed =
             try {
                 confirmationManager.analyzeConfirmation(
                     chatClient = context.chatClient,
-                    history = history,
+                    history = historyFromPending,
                     pendingPayload = parsedInput ?: emptyMap<String, Any>(),
                     specificInstructions = pending.analysisInstructions,
                 )
@@ -437,27 +440,36 @@ class AgentAdvanced(
         if (!shouldContinue()) return false
 
         val toolCtx = buildToolContext(pending.toolName, namespaceId)
+        var executionFailed = false
         val resultText: String =
             try {
                 if (confirmed) typed.executeWithConfirmation(parsedInput, toolCtx) else typed.onRejected()
             } catch (e: Exception) {
                 logger.warn(e) { "[AgentAdvanced] tool execution failed during confirmation resolution for ${pending.toolName}" }
+                executionFailed = true
                 "Error during tool execution: ${e.message}"
             }
+
+        // Authoritative outcome: the action took effect only if the user confirmed AND the
+        // tool did not throw. ConfirmationResolvedEvent.confirmed and the synthetic
+        // ToolResponseEvent.success both reflect that combined state.
+        val effectiveSuccess = confirmed && !executionFailed
 
         val resolved =
             ConfirmationResolvedEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 pendingEventId = pending.metadata.id,
-                confirmed = confirmed,
+                confirmed = effectiveSuccess,
                 resultText = resultText,
             )
         emitEvent(resolved)
         appendTo += resolved
 
         // IN-CHANNEL: prefix decision explicitly so the LLM disambiguates the resolution.
-        val decisionPrefix = if (confirmed) "User confirmed. " else "User declined. "
+        // "User confirmed." only when the action actually applied; otherwise "User declined."
+        // (covers both explicit rejection and confirmed-but-failed execution).
+        val decisionPrefix = if (effectiveSuccess) "User confirmed. " else "User declined. "
         val resolutionMessage =
             MessageEvent(
                 namespaceId = namespaceId,
@@ -469,8 +481,7 @@ class AgentAdvanced(
         appendTo += resolutionMessage
 
         // Synthetic ToolResponseEvent paired on the original toolRequestId so the next
-        // intention turn sees a coherent lastToolResponse. success reflects the user's
-        // decision (true=executed, false=rejected/cancelled).
+        // intention turn sees a coherent lastToolResponse. success = action actually applied.
         val syntheticResponse =
             ToolResponseEvent(
                 namespaceId = namespaceId,
@@ -478,7 +489,7 @@ class AgentAdvanced(
                 toolRequestId = pending.toolRequestId,
                 toolName = pending.toolName,
                 output = MessageContent.Text(resultText),
-                success = confirmed,
+                success = effectiveSuccess,
             )
         emitEvent(syntheticResponse)
         appendTo += syntheticResponse
