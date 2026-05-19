@@ -8,13 +8,15 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import org.springframework.dao.DataIntegrityViolationException
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository.Companion.NAMESPACE_PARENT_KEY
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.dao.DataIntegrityViolationException
 
 /**
  * Shared namespace persistence contract tests.
@@ -27,6 +29,9 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
 
     @Autowired
     lateinit var repo: NamespaceRepository
+
+    @Autowired
+    lateinit var agentConfigRepo: AgentConfigRepository
 
     @Autowired
     lateinit var driver: Driver
@@ -110,5 +115,87 @@ abstract class AbstractNamespacePersistenceSpec : StringSpec() {
             repo.save(Namespace(metadata = EntityMetadata(), name = "ns-a", externalId = null))
             repo.save(Namespace(metadata = EntityMetadata(), name = "ns-b", externalId = null))
         }
+
+        // -------------------------------------------------------------------------
+        // deployAgents / undeployAgents
+        // -------------------------------------------------------------------------
+
+        "deployAgents creates a DEPLOYED_TO relationship" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "ns"))
+            val agent = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent"))
+
+            repo.deployAgents(ns.id, listOf(agent.id))
+
+            val count = deployedToCount(ns.id.toString(), agent.id.toString())
+            count shouldBe 1
+        }
+
+        "deployAgents is idempotent: double call creates only one relationship" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "ns"))
+            val agent = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent"))
+
+            repo.deployAgents(ns.id, listOf(agent.id))
+            repo.deployAgents(ns.id, listOf(agent.id))
+
+            val count = deployedToCount(ns.id.toString(), agent.id.toString())
+            count shouldBe 1
+        }
+
+        "deployAgents creates relationships for all agents in the list" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "ns"))
+            val agent1 = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent1"))
+            val agent2 = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent2"))
+
+            repo.deployAgents(ns.id, listOf(agent1.id, agent2.id))
+
+            deployedToCount(ns.id.toString(), agent1.id.toString()) shouldBe 1
+            deployedToCount(ns.id.toString(), agent2.id.toString()) shouldBe 1
+        }
+
+        "undeployAgents removes the DEPLOYED_TO relationship" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "ns"))
+            val agent = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent"))
+            repo.deployAgents(ns.id, listOf(agent.id))
+
+            repo.undeployAgents(ns.id, listOf(agent.id))
+
+            val count = deployedToCount(ns.id.toString(), agent.id.toString())
+            count shouldBe 0
+        }
+
+        "undeployAgents is a no-op when the relationship does not exist" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "ns"))
+            val agent = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent"))
+
+            repo.undeployAgents(ns.id, listOf(agent.id))
+
+            val count = deployedToCount(ns.id.toString(), agent.id.toString())
+            count shouldBe 0
+        }
+
+        "undeployAgents removes only the requested relationships" {
+            val ns = repo.save(Namespace(metadata = EntityMetadata(), name = "ns"))
+            val agent1 = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent1"))
+            val agent2 = agentConfigRepo.save(AgentConfig(metadata = EntityMetadata(), namespaceId = ns.id, name = "agent2"))
+            repo.deployAgents(ns.id, listOf(agent1.id, agent2.id))
+
+            repo.undeployAgents(ns.id, listOf(agent1.id))
+
+            deployedToCount(ns.id.toString(), agent1.id.toString()) shouldBe 0
+            deployedToCount(ns.id.toString(), agent2.id.toString()) shouldBe 1
+        }
     }
+
+    private fun deployedToCount(
+        namespaceId: String,
+        agentId: String,
+    ): Long =
+        driver.session().use { session ->
+            session
+                .run(
+                    $$"MATCH (:AgentConfig {id: $agentId})-[:DEPLOYED_TO]->(:Namespace {id: $namespaceId}) RETURN count(*) AS c",
+                    mapOf("agentId" to agentId, "namespaceId" to namespaceId),
+                ).single()["c"]
+                .asLong()
+        }
 }

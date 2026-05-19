@@ -13,18 +13,9 @@ import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.access.prepost.PostFilter
 import org.springframework.security.access.prepost.PreAuthorize
-import org.springframework.web.bind.annotation.DeleteMapping
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.PutMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.ResponseStatus
-import org.springframework.web.bind.annotation.RestController
-import java.util.UUID
+import org.springframework.web.bind.annotation.*
+import java.util.*
 
 /**
  * REST API for managing Namespaces.
@@ -206,7 +197,10 @@ class NamespaceController(
                 val found = namespaceService.findByExternalIds(ids)
                 val currentUser = userService.getCurrentUser()
                 when {
-                    currentUser.isAdmin -> found
+                    currentUser.isAdmin -> {
+                        found
+                    }
+
                     else -> {
                         val readableIds = namespaceService.findIdsVisibleTo(currentUser.id.toString(), Action.READ).toSet()
                         found.filter { it.metadata.id in readableIds }
@@ -247,6 +241,38 @@ class NamespaceController(
             val role = if (ns.metadata.id in adminIdsSet) ADMIN else MEMBER
             toListItem(ns, role)
         }
+    }
+
+    /**
+     * POST /api/namespaces/{namespaceId}/deploy-agents
+     *
+     * Deploys the given agents on the namespace by creating a DEPLOYED_TO relation.
+     */
+    @PostMapping("/{namespaceId}/deploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun deployAgents(
+        @PathVariable namespaceId: UUID,
+        @RequestBody request: NamespaceAgentDeployRequest,
+    ) {
+        logger.info { "Deploying ${request.agentIds.size} agent(s) on namespace $namespaceId" }
+        namespaceService.deployAgents(namespaceId, request.agentIds)
+    }
+
+    /**
+     * POST /api/namespaces/{namespaceId}/undeploy-agents
+     *
+     * Removes the DEPLOYED_TO relation between the given agents and the namespace.
+     */
+    @PostMapping("/{namespaceId}/undeploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun undeployAgents(
+        @PathVariable namespaceId: UUID,
+        @RequestBody request: NamespaceAgentDeployRequest,
+    ) {
+        logger.info { "Undeploying ${request.agentIds.size} agent(s) from namespace $namespaceId" }
+        namespaceService.undeployAgents(namespaceId, request.agentIds)
     }
 
     private fun toListItem(

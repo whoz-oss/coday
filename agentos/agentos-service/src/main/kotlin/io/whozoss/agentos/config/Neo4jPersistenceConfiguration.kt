@@ -5,7 +5,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository
 import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
 import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
@@ -84,12 +83,12 @@ class Neo4jPersistenceConfiguration {
     fun neo4jAgentConfigRepository(
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
-        namespaceService: NamespaceService,
+        namespaceRepository: NamespaceRepository,
     ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemAgentConfigRepository(
             delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
-            namespaceService = namespaceService,
+            namespaceRepository = namespaceRepository,
         )
     }
 

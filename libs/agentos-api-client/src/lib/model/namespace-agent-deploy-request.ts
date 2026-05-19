@@ -8,9 +8,6 @@
  * Do not edit the class manually.
  */
 
-export interface UserGroupUpdateRequest {
-  name: string
-  userExternalIdsToAdd: Set<string>
-  userExternalIdsToRemove: Set<string>
-  agentIds: Set<string>
+export interface NamespaceAgentDeployRequest {
+  agentIds: Array<string>
 }
