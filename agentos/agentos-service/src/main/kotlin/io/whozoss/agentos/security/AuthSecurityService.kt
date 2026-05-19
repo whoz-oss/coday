@@ -39,11 +39,15 @@ class AuthSecurityService(
         val authHeader = request.getHeader(AUTHORIZATION_HEADER)
         val emailHeader = request.getHeader(X_FORWARDED_EMAIL_HEADER)
         logger.info {
-            "[Security/auth] Resolving identity — CF_Authorization present=${!cfHeader.isNullOrBlank()}, Authorization present=${!authHeader
-                .isNullOrBlank()}, x-forwarded-email='$emailHeader'"
+            "[Security/auth] Resolving identity — $CF_AUTHORIZATION_HEADER present=${!cfHeader.isNullOrBlank()}, $AUTHORIZATION_HEADER present=${!authHeader
+                .isNullOrBlank()}, $X_FORWARDED_EMAIL_HEADER='$emailHeader'"
         }
 
-        return resolveEmail(authHeader, cfHeader, emailHeader)
+        return resolveEmail(
+            authHeader = authHeader,
+            cfHeader = cfHeader,
+            emailHeader = emailHeader,
+        )
             ?: run {
                 logger.warn { "[Security/auth] No identity header found — returning 401" }
                 throw ResponseStatusException(
@@ -55,27 +59,30 @@ class AuthSecurityService(
 
     private fun resolveEmail(
         authHeader: String?,
-        cfJwt: String?,
-        forwardedEmail: String?,
-    ): String? =
-        when {
-            !cfJwt.isNullOrBlank() -> {
-                extractEmailFromJwt(cfJwt)
-            }
+        cfHeader: String?,
+        emailHeader: String?,
+    ): String? {
+        val emailFromToken =
+            when {
+                !cfHeader.isNullOrBlank() -> {
+                    extractEmailFromJwt(cfHeader)
+                }
 
-            !authHeader.isNullOrBlank() -> {
-                extractPreferredUsernameHeader(authHeader)
-            }
+                !authHeader.isNullOrBlank() -> {
+                    extractPreferredUsernameHeader(authHeader)
+                }
 
-            !forwardedEmail.isNullOrBlank() -> {
-                logger.info { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwardedEmail" }
-                forwardedEmail
+                else -> {
+                    null
+                }
             }
-
-            else -> {
-                null
-            }
+        return emailFromToken ?: if (!emailHeader.isNullOrBlank()) {
+            logger.info { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $emailHeader" }
+            emailHeader
+        } else {
+            null
         }
+    }
 
     /**
      * Decodes the JWT payload (middle segment) and extracts the `email` claim.
@@ -86,10 +93,10 @@ class AuthSecurityService(
         try {
             val email =
                 extractJwtBodyFromHeaderValue(token)?.let {
-                    it["email"] as? String
+                    it[EMAIL_CLAIM] as? String
                 }
             if (email.isNullOrBlank()) {
-                logger.warn { "[Security/auth] JWT payload has no 'email' claim" }
+                logger.warn { "[Security/auth] JWT payload has no '$EMAIL_CLAIM' claim" }
                 null
             } else {
                 logger.debug { "[Security/auth] Resolved identity from CF JWT: $email" }
@@ -140,5 +147,6 @@ class AuthSecurityService(
         const val AUTHORIZATION_HEADER = "Authorization"
         const val BEARER = "Bearer "
         const val PREFERRED_USERNAME = "preferred_username"
+        const val EMAIL_CLAIM = "email"
     }
 }
