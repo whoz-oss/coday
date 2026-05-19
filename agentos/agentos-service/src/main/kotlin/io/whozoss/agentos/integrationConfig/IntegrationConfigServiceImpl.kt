@@ -20,7 +20,7 @@ import java.util.UUID
  * Uniqueness on the (namespaceId, userId, name) triple is enforced on [create] (409 on
  * conflict) and on [update] when a rename would collide with another row in the same scope.
  *
- * The applicative pre-check ([findByNamespaceAndUserAndName]) is kept for the common case so the
+ * The applicative pre-check ([findByTriple]) is kept for the common case so the
  * caller gets a descriptive 409 message; the catch on [DataIntegrityViolationException] is the
  * defence against concurrent inserts that race past the pre-check (the DB-level unique constraint
  * on `tripleKey` catches the loser).
@@ -31,7 +31,7 @@ class IntegrationConfigServiceImpl(
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig {
         requireScope(entity)
-        findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)?.let {
+        findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
                 conflictMessage(entity),
@@ -43,7 +43,7 @@ class IntegrationConfigServiceImpl(
 
     override fun update(entity: IntegrationConfig): IntegrationConfig {
         requireScope(entity)
-        findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)
+        findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
                 throw ResponseStatusException(
@@ -63,7 +63,7 @@ class IntegrationConfigServiceImpl(
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
-    override fun findByNamespaceAndUserAndName(
+    override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,
@@ -72,7 +72,7 @@ class IntegrationConfigServiceImpl(
     override fun findByNamespaceAndName(
         namespaceId: UUID,
         name: String,
-    ): IntegrationConfig? = findByNamespaceAndUserAndName(namespaceId, null, name)
+    ): IntegrationConfig? = findByTriple(namespaceId, null, name)
 
     override fun findByUserId(userId: UUID): List<IntegrationConfig> = repository.findByUserId(userId)
 

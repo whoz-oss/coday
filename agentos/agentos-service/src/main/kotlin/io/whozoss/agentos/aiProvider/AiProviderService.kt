@@ -2,6 +2,7 @@ package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.reconciliation.ConfigLookup
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.security.declarative.OwnershipAware
 import java.util.UUID
@@ -9,9 +10,11 @@ import java.util.UUID
 /**
  * Service for managing [AiProvider] entities.
  *
- * Extends [EntityService] with scope-aware listing and a point lookup by natural key.
+ * Extends [EntityService] with scope-aware listing, and implements [ConfigLookup] so the
+ * generic [io.whozoss.agentos.reconciliation.ConfigMergeService] can resolve overlays
+ * without an intermediate wrapper bean.
  */
-interface AiProviderService : EntityService<AiProvider, UUID>, OwnershipAware {
+interface AiProviderService : EntityService<AiProvider, UUID>, ConfigLookup<AiProvider>, OwnershipAware {
     override val ownershipEntityType: EntityType get() = EntityType.AI_PROVIDER
     override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
     /**
@@ -23,18 +26,6 @@ interface AiProviderService : EntityService<AiProvider, UUID>, OwnershipAware {
      * Find all [AiProvider] scoped to the given user.
      */
     fun findByUserId(userId: UUID): List<AiProvider>
-
-    /**
-     * Find a single [AiProvider] by its natural key.
-     *
-     * [namespaceId] and [userId] may each be null; the lookup matches only configs
-     * where both fields equal the provided values (including null equality).
-     */
-    fun findByNamespaceAndUserAndName(
-        namespaceId: UUID?,
-        userId: UUID?,
-        name: String,
-    ): AiProvider?
 
     /**
      * Scope-aware filtered listing used by [io.whozoss.agentos.aiProvider.AiProviderController.list].

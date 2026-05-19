@@ -219,10 +219,10 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
             // All three are persisted as distinct rows
             (setOf(nsOnly.id, userOnly.id, userNamespace.id)).size shouldBe 3
 
-            // findByNamespaceAndUserAndName retrieves each one independently
-            service.findByNamespaceAndUserAndName(nsA, null, "JIRA")?.id shouldBe nsOnly.id
-            service.findByNamespaceAndUserAndName(null, alice, "JIRA")?.id shouldBe userOnly.id
-            service.findByNamespaceAndUserAndName(nsA, alice, "JIRA")?.id shouldBe userNamespace.id
+            // findByTriple retrieves each one independently
+            service.findByTriple(nsA, null, "JIRA")?.id shouldBe nsOnly.id
+            service.findByTriple(null, alice, "JIRA")?.id shouldBe userOnly.id
+            service.findByTriple(nsA, alice, "JIRA")?.id shouldBe userNamespace.id
         }
 
         "update conflict check uses the triple, not just (namespaceId, name)" {

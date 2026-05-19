@@ -1,10 +1,10 @@
 package io.whozoss.agentos.reconciliation
 
-import io.whozoss.agentos.aiProvider.AiProviderLookup
 import io.whozoss.agentos.aiProvider.AiProviderMergeStrategy
+import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
-import io.whozoss.agentos.integrationConfig.IntegrationConfigLookup
 import io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy
+import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -21,13 +21,13 @@ import org.springframework.context.annotation.Configuration
 class MergeConfiguration {
     @Bean
     fun integrationConfigMergeService(
-        lookup: IntegrationConfigLookup,
+        lookup: IntegrationConfigService,
         mergeStrategy: IntegrationConfigMergeStrategy,
     ): ConfigMergeService<IntegrationConfig> = ConfigMergeService(lookup, mergeStrategy)
 
     @Bean
     fun aiProviderReconciliationService(
-        lookup: AiProviderLookup,
+        lookup: AiProviderService,
         mergeStrategy: AiProviderMergeStrategy,
     ): ConfigMergeService<AiProvider> = ConfigMergeService(lookup, mergeStrategy)
 

@@ -18,7 +18,7 @@ import java.util.UUID
  * Uniqueness on the (namespaceId, userId, name) triple is enforced on [create] (409 on
  * conflict) and on [update] when a rename would collide with another row in the same scope.
  *
- * The applicative pre-check ([findByNamespaceAndUserAndName]) is kept for the common case
+ * The applicative pre-check ([findByTriple]) is kept for the common case
  * so the caller gets a descriptive 409 message; the catch on [DataIntegrityViolationException]
  * is the defence against concurrent inserts that race past the pre-check (the DB-level
  * unique constraint on `tripleKey` catches the loser). Mirrors the
@@ -31,7 +31,7 @@ class AiProviderServiceImpl(
 ) : AiProviderService {
     override fun create(entity: AiProvider): AiProvider {
         requireScope(entity)
-        findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)?.let {
+        findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
         }
         assertConsistentApiTypeAcrossLayers(entity)
@@ -40,7 +40,7 @@ class AiProviderServiceImpl(
 
     override fun update(entity: AiProvider): AiProvider {
         requireScope(entity)
-        findByNamespaceAndUserAndName(entity.namespaceId, entity.userId, entity.name)
+        findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
                 throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
@@ -61,7 +61,7 @@ class AiProviderServiceImpl(
 
     override fun findByUserId(userId: UUID): List<AiProvider> = repository.findByUserId(userId)
 
-    override fun findByNamespaceAndUserAndName(
+    override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,
