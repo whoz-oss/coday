@@ -27,9 +27,11 @@ import java.util.UUID
 @Schema(name = "AiProvider")
 data class AiProviderResource(
     val id: UUID? = null,
-    // OpenAPI 3.1 nullable encoding : `type: [string, "null"]`. The simpler `nullable = true`
-    // attribute is OpenAPI 3.0-only and silently dropped by SpringDoc 2.x in 3.1 mode, leaving
-    // generated SDKs typing the field as `string | undefined` instead of `string | null` (F3).
+    // SpringDoc 2.x workaround for nullable Kotlin fields in OpenAPI 3.1 mode: without the
+    // explicit `types = ["string", "null"]`, the generated schema occasionally drops the
+    // field entirely or flips it to `required` (verified by removing the annotation and
+    // regenerating: `userId` disappeared from the IntegrationConfig schema and `namespaceId`
+    // became required, even though both are nullable Kotlin fields with default `null`).
     @field:Schema(types = ["string", "null"], format = "uuid")
     val namespaceId: UUID? = null,
     @field:Schema(types = ["string", "null"], format = "uuid")
