@@ -1,3 +1,102 @@
+## 0.153.0 (2026-05-19)
+
+### 🚀 Features
+
+- user-level overlays for Tools + LLM (#wz-31189) ([#837](https://github.com/whoz-oss/coday/pull/837), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.152.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31611 add agent config external metadata ([17274bab](https://github.com/whoz-oss/coday/commit/17274bab))
+- #WZ-31611 add externalMetadataJson to AgentConfigNode ([cb67abb6](https://github.com/whoz-oss/coday/commit/cb67abb6))
+- #WZ-31611 update openapi to add externalMetadata to AgentConfig ([0d5de149](https://github.com/whoz-oss/coday/commit/0d5de149))
+- #WZ-31611 add agent config external metadata ([#879](https://github.com/whoz-oss/coday/pull/879))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.151.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31607 smarter cleanup of deployed plugins ([#873](https://github.com/whoz-oss/coday/pull/873))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.150.0 (2026-05-19)
+
+### 🚀 Features
+
+- #wz-31876 list available agents for user external id ([8b5bd437](https://github.com/whoz-oss/coday/commit/8b5bd437))
+- #wz-31876 list available agents for user external id ([ce0d1084](https://github.com/whoz-oss/coday/commit/ce0d1084))
+- #wz-31876 update openapi spec ([1c536505](https://github.com/whoz-oss/coday/commit/1c536505))
+
+### ❤️ Thank You
+
+- mbarroux @mickael-barroux-whoz
+
+## 0.149.0 (2026-05-19)
+
+### 🚀 Features
+
+- #wz-31875 endpoints to deploy and undeploy agents ([4a3d323d](https://github.com/whoz-oss/coday/commit/4a3d323d))
+- #31875 Add tests ([#31875](https://github.com/whoz-oss/coday/issues/31875))
+- #WZ-31424 Update openapi ([f5c4bb39](https://github.com/whoz-oss/coday/commit/f5c4bb39))
+- #WZ-31875 Code review ([9859547d](https://github.com/whoz-oss/coday/commit/9859547d))
+- #WZ-31875 remove unused import ([9d2bf0b2](https://github.com/whoz-oss/coday/commit/9d2bf0b2))
+- #WZ-31875: Deploy agent into namespace ([#878](https://github.com/whoz-oss/coday/pull/878))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+
+## 0.148.0 (2026-05-18)
+
+### 🚀 Features
+
+- #WZ-31424 Rename user group API fields ([1895af0b](https://github.com/whoz-oss/coday/commit/1895af0b))
+- #WZ-31424 Fix http file ([6477704c](https://github.com/whoz-oss/coday/commit/6477704c))
+- #WZ-31424 Rename user group API fields ([#877](https://github.com/whoz-oss/coday/pull/877))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.147.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31609 add support of vllm with headers ([2bcd23fb](https://github.com/whoz-oss/coday/commit/2bcd23fb))
+- npx ops ([25c23bde](https://github.com/whoz-oss/coday/commit/25c23bde))
+- wz-31609 add support of vllm with headers ([#876](https://github.com/whoz-oss/coday/pull/876))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.146.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31610: namespace id to federation id bridge ([#870](https://github.com/whoz-oss/coday/pull/870))
+
+### ❤️ Thank You
+
+- mathieu_dearmey @mathieu-dearmey
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.145.1 (2026-05-15)
 
 ### 🚀 Features

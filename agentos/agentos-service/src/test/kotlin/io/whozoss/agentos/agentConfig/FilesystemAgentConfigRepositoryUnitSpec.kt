@@ -9,7 +9,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.namespace.Namespace
-import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
@@ -57,12 +57,23 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
     fun buildRepo(
         delegate: AgentConfigRepository,
-        namespaceService: NamespaceService,
+        namespaceRepository: NamespaceRepository,
     ) = FilesystemAgentConfigRepository(
         delegate = delegate,
-        namespaceService = namespaceService,
+        namespaceRepository = namespaceRepository,
         ttl = Duration.ofMinutes(5),
     )
+
+    fun nsRepoWith(namespaceId: UUID, configPath: String?): NamespaceRepository =
+        mockk<NamespaceRepository>().also {
+            every { it.findByIds(listOf(namespaceId)) } returns listOf(
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "ns",
+                    configPath = configPath,
+                )
+            )
+        }
 
     val namespaceId: UUID = UUID.randomUUID()
 
@@ -72,17 +83,12 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
     "findByParent delegates to underlying repository when namespace has no configPath" {
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, configPath = null)
         val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
 
         every { delegate.findByParent(namespaceId) } returns persisted
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = null,
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldBe persisted
         verify(exactly = 1) { delegate.findByParent(namespaceId) }
@@ -90,13 +96,13 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
     "findByParent delegates to underlying repository when namespace is not found" {
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = mockk<NamespaceRepository>()
         val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
 
         every { delegate.findByParent(namespaceId) } returns persisted
-        every { nsService.findById(namespaceId) } returns null
+        every { nsRepo.findByIds(listOf(namespaceId)) } returns emptyList()
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldBe persisted
     }
@@ -112,15 +118,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         writeYaml(agentsDir, "reviewer.yaml", agentYaml("Reviewer", modelName = "SMALL"))
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldHaveSize 2
         result.map { it.name }.toSet() shouldBe setOf("Dev", "Reviewer")
@@ -131,15 +132,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result.single().namespaceId shouldBe namespaceId
     }
@@ -152,15 +148,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         )
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId).single()
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
         result.name shouldBe "Dev"
         result.description shouldBe "Backend specialist"
@@ -172,18 +163,15 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val repo = buildRepo(delegate, nsService)
+        val repo = buildRepo(delegate, nsRepo)
         val id1 = repo.findByParent(namespaceId).single().id
         // force TTL expiry by using a zero-TTL repo on the same directory
-        val repo2 = FilesystemAgentConfigRepository(delegate, nsService, ttl = Duration.ZERO)
+        val nsRepo2 = nsRepoWith(namespaceId, root.toString())
+        every { delegate.findByParent(namespaceId) } returns emptyList()
+        val repo2 = FilesystemAgentConfigRepository(delegate, nsRepo2, ttl = Duration.ZERO)
         val id2 = repo2.findByParent(namespaceId).single().id
 
         id1 shouldBe id2
@@ -200,15 +188,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val persisted = listOf(persistedConfig(namespaceId, "Gamma"))
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns persisted
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldHaveSize 3
         result.first().name shouldBe "Gamma"  // persisted first
@@ -222,15 +205,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val persisted = listOf(persistedConfig(namespaceId, "dev", modelName = "BIG"))
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns persisted
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldHaveSize 1
         result.single().modelName shouldBe "BIG"  // persisted version kept
@@ -241,15 +219,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns persisted
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldBe persisted
     }
@@ -265,15 +238,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         writeYaml(dir, "blank.yaml", "name: \n")  // blank name
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldHaveSize 1
         result.single().name shouldBe "Good Agent"
@@ -297,15 +265,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         )
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         val agent = result.single()
         agent.name shouldBe "Coday Agent"
@@ -329,15 +292,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         )
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId).single()
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
         val integrations = result.integrations.shouldNotBeNull()
         integrations shouldBe mapOf("FILES" to null, "GIT" to null)
@@ -358,15 +316,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         )
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId).single()
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
         val integrations = result.integrations.shouldNotBeNull()
         integrations["GITHUB"] shouldBe listOf("add_issue_comment", "pull_request_read")
@@ -378,15 +331,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         writeYaml(agentsDir(root), "simple.yaml", agentYaml("Simple Agent"))
 
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
         every { delegate.findByParent(namespaceId) } returns emptyList()
-        every { nsService.findById(namespaceId) } returns Namespace(
-            metadata = EntityMetadata(id = namespaceId),
-            name = "ns",
-            configPath = root.toString(),
-        )
 
-        val result = buildRepo(delegate, nsService).findByParent(namespaceId).single()
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
         result.integrations shouldBe null
     }
@@ -397,11 +345,11 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
     "save delegates to underlying repository" {
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = mockk<NamespaceRepository>()
         val config = persistedConfig(namespaceId, "Alpha")
         every { delegate.save(config) } returns config
 
-        val result = buildRepo(delegate, nsService).save(config)
+        val result = buildRepo(delegate, nsRepo).save(config)
 
         result shouldBe config
         verify(exactly = 1) { delegate.save(config) }
@@ -409,11 +357,11 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
     "delete delegates to underlying repository" {
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = mockk<NamespaceRepository>()
         val id = UUID.randomUUID()
         every { delegate.delete(id) } returns true
 
-        val result = buildRepo(delegate, nsService).delete(id)
+        val result = buildRepo(delegate, nsRepo).delete(id)
 
         result shouldBe true
         verify(exactly = 1) { delegate.delete(id) }
@@ -421,10 +369,10 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
     "deleteByParent delegates to underlying repository" {
         val delegate = mockk<AgentConfigRepository>()
-        val nsService = mockk<NamespaceService>()
+        val nsRepo = mockk<NamespaceRepository>()
         every { delegate.deleteByParent(namespaceId) } returns 3
 
-        val result = buildRepo(delegate, nsService).deleteByParent(namespaceId)
+        val result = buildRepo(delegate, nsRepo).deleteByParent(namespaceId)
 
         result shouldBe 3
         verify(exactly = 1) { delegate.deleteByParent(namespaceId) }

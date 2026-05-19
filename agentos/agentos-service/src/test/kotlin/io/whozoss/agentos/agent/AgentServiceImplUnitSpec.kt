@@ -19,11 +19,12 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.ai.chat.client.ChatClient
@@ -31,12 +32,14 @@ import java.util.UUID
 
 class AgentServiceImplUnitSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
-    private val toolRegistryService: ToolRegistryService = mockk()
+    private val toolResolverService: ToolResolverService = mockk()
     private val aiModelService: AiModelService = mockk()
     private val aiProviderService: AiProviderService = mockk()
     private val namespaceService: NamespaceService = mockk()
     private val integrationConfigService: IntegrationConfigService = mockk(relaxed = true)
     private val userService: UserService = mockk(relaxed = true)
+    private val aiProviderReconciliationService: ConfigMergeService<AiProvider> =
+        mockk(relaxed = true)
     private val agentConfigService: AgentConfigService = mockk()
     private val intentionGenerator: AgentIntentionGenerator = mockk(relaxed = true)
     private val confirmationManager: ConfirmationManager = mockk(relaxed = true)
@@ -44,12 +47,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
-            toolRegistryService,
+            toolResolverService,
             aiModelService,
             aiProviderService,
             namespaceService,
             integrationConfigService,
             userService,
+            aiProviderReconciliationService,
             agentConfigService,
             intentionGenerator,
             confirmationManager,
@@ -107,10 +111,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolRegistryService.resolveToolsForNamespace(any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForNamespace(any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(any(), any(), any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
+        // reconciliation services are relaxed mocks — return the base entity unchanged (passthrough) by default
 
         // -------------------------------------------------------------------------
         // findAgentByName — AgentConfig-first resolution
@@ -316,12 +322,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val localService =
                 AgentServiceImpl(
                     chatClientProvider,
-                    toolRegistryService,
+                    toolResolverService,
                     aiModelService,
                     aiProviderService,
                     namespaceService,
                     localIntegrationService,
                     userService,
+                    aiProviderReconciliationService,
                     agentConfigService,
                     intentionGenerator,
                     confirmationManager,
@@ -428,7 +435,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+
             every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 
@@ -460,7 +469,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+
             every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
             every { chatClientProvider.getChatClient(model, provider) } returns chatClient
             every { userService.findById(userId) } returns user
 
@@ -493,7 +504,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // Tool filtering via agentConfig.integrations
         // -------------------------------------------------------------------------
 
-        "findAgentByName passes null integrations to ToolRegistryService when agentConfig has no integrations" {
+        "findAgentByName passes null integrations to ToolResolverService when agentConfig has no integrations" {
             val config = agentConfig(name = "my-agent", modelName = "sonnet")
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
@@ -506,10 +517,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolRegistryService.resolveToolsForNamespace(namespaceId, null) }
+            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, null) }
         }
 
-        "findAgentByName passes integrations map to ToolRegistryService when agentConfig has integrations" {
+        "findAgentByName passes integrations map to ToolResolverService when agentConfig has integrations" {
             val integrations = mapOf("FILES" to null, "JIRA_PROD" to listOf("GetIssue"))
             val config = agentConfig(name = "my-agent", modelName = "sonnet").copy(integrations = integrations)
             val model = modelConfig(alias = "sonnet")
@@ -523,7 +534,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolRegistryService.resolveToolsForNamespace(namespaceId, integrations) }
+            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations) }
         }
 
         // -------------------------------------------------------------------------

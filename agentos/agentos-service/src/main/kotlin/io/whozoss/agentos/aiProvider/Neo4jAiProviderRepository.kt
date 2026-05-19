@@ -50,12 +50,29 @@ open class Neo4jAiProviderRepository(
             .findActiveByUserId(userId.toString())
             .map { it.toDomain() }
 
-    override fun delete(id: UUID): Boolean =
+    override fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiProvider? =
+        neo4jRepository
+            .findActiveByTripleKey(AiProviderNode.computeTripleKey(namespaceId, userId, name))
+            ?.toDomain()
+
+    @Transactional
+    open override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
-                neo4jRepository.save(node.copy(removed = true))
+                // Tombstone the tripleKey at soft-delete so the unique slot is freed for
+                // immediate re-creation of `(ns, user, name)`. Cf. RFC §D11.
+                neo4jRepository.save(
+                    node.copy(
+                        removed = true,
+                        tripleKey = AiProviderNode.tombstoneTripleKey(node.id),
+                    ),
+                )
                 logger.debug { "[Neo4jAiProviderRepository] Soft-deleted AiProvider $id" }
                 true
             } ?: false
@@ -63,7 +80,9 @@ open class Neo4jAiProviderRepository(
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
-        neo4jRepository.saveAll(active.map { it.copy(removed = true) })
+        neo4jRepository.saveAll(
+            active.map { it.copy(removed = true, tripleKey = AiProviderNode.tombstoneTripleKey(it.id)) },
+        )
         logger.debug { "[Neo4jAiProviderRepository] Soft-deleted ${active.size} AiProviders under namespace $parentId" }
         return active.size
     }

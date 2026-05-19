@@ -42,7 +42,7 @@ export class AiModelFormComponent implements OnInit {
 
   /** All providers for this namespace — used to populate the provider select. */
   protected readonly providers = toSignal(
-    this.aiProviderController.listByParentAiProvider(this.namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
+    this.aiProviderController.listAiProvider(this.namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
     { initialValue: [] as AiProvider[] }
   )
 

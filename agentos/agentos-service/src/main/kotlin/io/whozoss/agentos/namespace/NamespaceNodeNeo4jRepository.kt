@@ -30,4 +30,38 @@ interface NamespaceNodeNeo4jRepository : Neo4jRepository<NamespaceNode, String> 
             """,
     )
     fun findActiveByExternalId(externalId: String): NamespaceNode?
+
+    @Query(
+        $$"""
+            MATCH (n:Namespace)
+            WHERE n.externalId IN $externalIds AND (n.removed IS NULL OR n.removed = false)
+            RETURN n
+            """,
+    )
+    fun findActiveByExternalIdIn(externalIds: Collection<String>): List<NamespaceNode>
+
+    @Query(
+        $$"""
+        UNWIND $agentIds AS agentId
+        MATCH (n:Namespace {id: $namespaceId})
+        MATCH (a:AgentConfig {id: agentId})
+        MERGE (a)-[:DEPLOYED_TO]->(n)
+        """,
+    )
+    fun deployAgents(
+        namespaceId: String,
+        agentIds: List<String>,
+    )
+
+    @Query(
+        $$"""
+        UNWIND $agentIds AS agentId
+        MATCH (a:AgentConfig {id: agentId})-[r:DEPLOYED_TO]->(n:Namespace {id: $namespaceId})
+        DELETE r
+        """,
+    )
+    fun undeployAgents(
+        namespaceId: String,
+        agentIds: List<String>,
+    )
 }

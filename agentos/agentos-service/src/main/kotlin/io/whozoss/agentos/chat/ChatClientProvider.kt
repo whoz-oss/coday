@@ -32,6 +32,7 @@ class ChatClientProvider(
                 modelName = modelConfig.apiModelName,
                 temperature = modelConfig.temperature,
                 maxTokens = modelConfig.maxTokens,
+                headers = providerConfig.headers,
             )
         return ChatClient.builder(chatModel).build()
     }

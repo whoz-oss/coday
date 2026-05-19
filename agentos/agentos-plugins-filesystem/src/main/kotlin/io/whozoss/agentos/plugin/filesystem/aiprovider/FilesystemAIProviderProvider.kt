@@ -76,6 +76,7 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
             apiType = AiApiType.valueOf(yamlModel.apiType),
             baseUrl = yamlModel.baseUrl,
             apiKey = yamlModel.apiKey,
+            headers = yamlModel.headers ?: emptyMap(),
         )
     }
 

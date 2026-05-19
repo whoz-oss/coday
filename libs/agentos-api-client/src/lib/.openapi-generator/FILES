@@ -23,6 +23,7 @@ git_push.sh
 index.ts
 model/actor.ts
 model/add-message-request.ts
+model/agent-config-search-request.ts
 model/agent-config.ts
 model/agent-finished-event.ts
 model/agent-running-event.ts
@@ -43,6 +44,7 @@ model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
 model/models.ts
+model/namespace-agent-deploy-request.ts
 model/namespace-list-item.ts
 model/namespace-user-list-item.ts
 model/namespace.ts
