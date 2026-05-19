@@ -1136,6 +1136,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/search:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: searchAgentConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfigSearchRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
   /api/agent-configs/by-ids:
     post:
       tags:
@@ -2351,6 +2371,18 @@ components:
       - namespaceId
       - timestamp
       - type
+    AgentConfigSearchRequest:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          minLength: 1
+        userExternalId:
+          type: string
+          minLength: 1
+      required:
+      - namespaceExternalId
+      - userExternalId
     PluginInfo:
       type: object
       properties:
