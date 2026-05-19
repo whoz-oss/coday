@@ -1,3 +1,13 @@
+## 0.151.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31607 smarter cleanup of deployed plugins ([#873](https://github.com/whoz-oss/coday/pull/873))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.150.0 (2026-05-19)
 
 ### 🚀 Features
