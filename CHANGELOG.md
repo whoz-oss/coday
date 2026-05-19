@@ -1,3 +1,16 @@
+## 0.152.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31611 add agent config external metadata ([17274bab](https://github.com/whoz-oss/coday/commit/17274bab))
+- #WZ-31611 add externalMetadataJson to AgentConfigNode ([cb67abb6](https://github.com/whoz-oss/coday/commit/cb67abb6))
+- #WZ-31611 update openapi to add externalMetadata to AgentConfig ([0d5de149](https://github.com/whoz-oss/coday/commit/0d5de149))
+- #WZ-31611 add agent config external metadata ([#879](https://github.com/whoz-oss/coday/pull/879))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.151.0 (2026-05-19)
 
 ### 🚀 Features
