@@ -1827,6 +1827,9 @@ components:
               type: string
         advancedExecution:
           type: boolean
+        externalMetadata:
+          type: object
+          additionalProperties: {}
       required:
       - name
       - namespaceId

@@ -56,4 +56,10 @@ data class AgentConfig(
      * Defaults to false so existing agents are unaffected.
      */
     val advancedExecution: Boolean = false,
+    /**
+     * Opaque metadata map for external consumers (e.g. Copilot).
+     * AgentOS persists this field as-is without interpreting its content.
+     * Each consumer is responsible for serializing/deserializing its own structure.
+     */
+    val externalMetadata: Map<String, Any?>? = null,
 ) : Entity
