@@ -37,11 +37,11 @@ open class Neo4jUserGroupRepository(
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
 
-    override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
+    override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> =
         querySearchResults(
-            whereClause = $$"ns.externalId = $externalId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
-            paramName = "externalId",
-            paramValue = externalId,
+            whereClause = $$"ns.id = $namespaceId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
+            paramName = "namespaceId",
+            paramValue = namespaceId.toString(),
         ).all().toList()
 
     override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
