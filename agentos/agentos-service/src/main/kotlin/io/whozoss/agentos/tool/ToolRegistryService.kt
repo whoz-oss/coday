@@ -32,7 +32,9 @@ class ToolRegistryService(
 ) {
     private val pluginsByType = ConcurrentHashMap<String, ToolPlugin>()
 
-    fun getPluginsByType(): Map<String, ToolPlugin> = pluginsByType
+    fun findPlugin(integrationType: String): ToolPlugin? = pluginsByType[integrationType]
+
+    fun findConfigLessPlugins(): List<ToolPlugin> = pluginsByType.values.filter { it.configSchema == null }
 
     @PostConstruct
     fun initialize() {

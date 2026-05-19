@@ -21,7 +21,6 @@ class ToolResolverService(
         agentIntegrations: Map<String, List<String>?>? = null,
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
-        val pluginsByType = toolRegistryService.getPluginsByType()
 
         val configs = integrationConfigService.findByParent(namespaceId)
         logger.info { "[ToolResolver] Resolving tools for namespace $namespaceId: ${configs.size} IntegrationConfig(s) found" }
@@ -31,7 +30,7 @@ class ToolResolverService(
                 logger.debug { "[ToolResolver] Skipping IntegrationConfig '${config.name}' (not in agent integrations filter)" }
                 return@forEach
             }
-            val plugin = pluginsByType[config.integrationType]
+            val plugin = toolRegistryService.findPlugin(config.integrationType)
             if (plugin == null) {
                 logger.warn { "[ToolResolver] No plugin found for integrationType='${config.integrationType}' (config id=${config.metadata.id}) — skipping" }
                 return@forEach
@@ -62,10 +61,8 @@ class ToolResolverService(
         agentIntegrations: Map<String, List<String>?>? = null,
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
-        val pluginsByType = toolRegistryService.getPluginsByType()
 
-        pluginsByType.values
-            .filter { it.configSchema == null }
+        toolRegistryService.findConfigLessPlugins()
             .forEach { plugin ->
                 try {
                     val tools = plugin.provideTools(null)
@@ -118,7 +115,7 @@ class ToolResolverService(
                 return@forEach
             }
 
-            val plugin = pluginsByType[resolvedConfig.integrationType] ?: run {
+            val plugin = toolRegistryService.findPlugin(resolvedConfig.integrationType) ?: run {
                 logger.warn { "[ToolResolver] No plugin for integrationType='${resolvedConfig.integrationType}' (name='$name')" }
                 return@forEach
             }
