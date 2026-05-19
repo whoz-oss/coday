@@ -182,6 +182,73 @@ class AgentAdvancedSpec :
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
         }
 
+        "generateParameters strips markdown code fences from LLM JSON response" {
+            // Claude at temperature 0.7 sometimes wraps JSON parameters in ```json fences
+            // despite the prompt forbidding it. The orchestrator must strip the fence
+            // before handing the JSON to Jackson, otherwise executeWithJson throws
+            // "Unexpected character ('`' (code 96))" and the tool call fails.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool = RedirectTool(
+                configName = "REDIRECT",
+                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            // Fenced response — what Claude actually emits sometimes.
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returns "```json\n{\"agentName\":\"TargetAgent\"}\n```"
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returns IntentionGeneratedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                intention = "Redirect to TargetAgent.",
+                toolName = "REDIRECT__redirect",
+            )
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = listOf(redirectTool),
+                instructions = null,
+                agentId = agentId,
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                maxIterations = 5,
+            )
+
+            val events = agent.run(
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("do the thing")),
+                    ),
+                ),
+            ).toList()
+
+            // If the fence wasn't stripped, Jackson would throw inside RedirectTool's
+            // executeWithJson and we'd see a WarnEvent (or no AgentSelectedEvent at all).
+            val selectedIndex = events.indexOfFirst { it is AgentSelectedEvent }
+            (selectedIndex >= 0) shouldBe true
+            (events[selectedIndex] as AgentSelectedEvent).agentName shouldBe "TargetAgent"
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+        }
+
 
         // -------------------------------------------------------------------------
         // Orchestration integration tests

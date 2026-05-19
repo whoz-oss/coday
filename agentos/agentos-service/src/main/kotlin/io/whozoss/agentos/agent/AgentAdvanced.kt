@@ -243,12 +243,13 @@ Intention: ${intentionEvent.intention}
 Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.
             """.trimIndent()
 
-        val parameters =
+        val rawParameters =
             context.chatClient
                 .prompt(Prompt(messages + UserMessage(parametersPrompt)))
                 .call()
                 .content()
                 ?.trim() ?: "{}"
+        val parameters = stripJsonFence(rawParameters)
 
         return ToolRequestEvent(
             namespaceId = namespaceId,
@@ -258,6 +259,9 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
             args = parameters,
         )
     }
+
+    private fun stripJsonFence(raw: String): String =
+        JSON_FENCE_REGEX.matchEntire(raw)?.groupValues?.get(1)?.trim() ?: raw
 
     private fun executeTool(
         toolRequest: ToolRequestEvent,
@@ -330,5 +334,11 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
 
     companion object : KLogging() {
         internal const val REPETITION_DETECTION_WINDOW = 3
+
+        private val JSON_FENCE_REGEX =
+            Regex(
+                """^```(?:json)?\s*(.*?)\s*```$""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
     }
 }
