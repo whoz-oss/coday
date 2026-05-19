@@ -73,7 +73,7 @@ let promptExecutionService: PromptExecutionService
 // Proxy /api/agentos/* → AgentOS Spring backend
 // Registered synchronously and BEFORE express.json() to avoid body-parser
 // consuming the request body before it can be forwarded.
-const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8123
+const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8124
 const AGENTOS_HOSTNAME = process.env.AGENTOS_HOSTNAME ?? 'localhost'
 const AGENTOS_URL = `http://${AGENTOS_HOSTNAME}:${AGENTOS_PORT}`
 app.use(
