@@ -66,7 +66,14 @@
     color: var(--color-text, #1d1d1f);
   }
 
+  &__field-hint {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+    line-height: 1.4;
+  }
+
   &__input,
+  &__select,
   &__textarea {
     width: 100%;
     padding: 0.625rem 0.875rem;
@@ -87,6 +94,11 @@
     &::placeholder {
       color: var(--color-text-secondary, #6e6e73);
     }
+  }
+
+  &__select {
+    cursor: pointer;
+    appearance: auto;
   }
 
   &__textarea {

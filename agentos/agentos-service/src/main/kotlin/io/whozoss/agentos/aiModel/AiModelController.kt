@@ -139,5 +139,41 @@ class AiModelController(
         @PathVariable namespaceId: UUID,
     ): List<AiModelResource> = aiModelService.findByNamespaceId(namespaceId).map { toResource(it) }
 
+    /**
+     * GET /aliases/by-namespaceId/{namespaceId} — list all distinct alias strings
+     * available in a namespace, sorted alphabetically.
+     *
+     * Only models with a non-null [AiModel.alias] contribute. Models without an alias
+     * (resolved only by [AiModel.apiModelName] fallback) are intentionally excluded —
+     * callers use this endpoint to populate a picker of stable contract names.
+     *
+     * Secured identically to [listByNamespaceId]: requires namespace READ permission.
+     */
+    @GetMapping("/aliases/by-namespaceId/{namespaceId}")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    @io.swagger.v3.oas.annotations.Operation(
+        summary = "List all AiModel aliases available in a namespace",
+        description = "Returns the distinct alias strings of all AiModel configs in the given namespace, sorted alphabetically. Only models with a non-null alias are included.",
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "Alias list (may be empty if no models have aliases)",
+        content = [io.swagger.v3.oas.annotations.media.Content(
+            mediaType = MediaType.APPLICATION_JSON_VALUE,
+            array = io.swagger.v3.oas.annotations.media.ArraySchema(
+                schema = io.swagger.v3.oas.annotations.media.Schema(type = "string"),
+            ),
+        )],
+    )
+    fun listAliasesByNamespaceId(
+        @PathVariable namespaceId: UUID,
+    ): List<String> =
+        aiModelService
+            .findByNamespaceId(namespaceId)
+            .mapNotNull { it.alias }
+            .distinct()
+            .sorted()
+
     companion object : KLogging()
 }

@@ -1553,6 +1553,31 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AiModel"
+  /api/ai-models/aliases/by-namespaceId/{namespaceId}:
+    get:
+      tags:
+      - ai-model-controller
+      summary: List all AiModel aliases available in a namespace
+      description: "Returns the distinct alias strings of all AiModel configs in the\
+        \ given namespace, sorted alphabetically. Only models with a non-null alias\
+        \ are included."
+      operationId: listAliasesByNamespaceIdAiModel
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: Alias list (may be empty if no models have aliases)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
   /api/agent-configs/by-parentId/{parentId}:
     get:
       tags:

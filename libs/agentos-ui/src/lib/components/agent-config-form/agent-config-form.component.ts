@@ -5,10 +5,11 @@ import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AiModelControllerService,
   IntegrationConfig,
   IntegrationConfigControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { forkJoin } from 'rxjs'
+import { catchError, forkJoin, of } from 'rxjs'
 
 /**
  * Tracks the per-integration state within the form:
@@ -30,6 +31,19 @@ interface IntegrationRow {
  *
  * The namespaceId is fixed at creation time and never exposed as an editable field.
  * On success or cancel, navigates back to /:namespaceId/agent-configs.
+ *
+ * ## LLM model field
+ *
+ * The `modelName` field is rendered as an optional dropdown populated from
+ * `GET /api/ai-models/aliases/by-namespaceId/{namespaceId}`. Selecting no alias
+ * (the empty “— default —” option) leaves the field null, letting the backend apply
+ * the namespace’s default alias. If the aliases endpoint is unavailable (e.g.
+ * backend not yet deployed), the dropdown degrades gracefully to an empty list
+ * showing only the default option.
+ *
+ * An existing agent whose `modelName` does not match any current alias is still
+ * displayed correctly — the value is preserved in the form control and submitted
+ * as-is if the user saves without changing the field.
  *
  * ## Integrations section
  *
@@ -55,6 +69,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
   private readonly integrationConfigController = inject(IntegrationConfigControllerService)
+  private readonly aiModelController = inject(AiModelControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -96,6 +111,12 @@ export class AgentConfigFormComponent implements OnInit {
   /** Integration rows built from the namespace's IntegrationConfig list. */
   protected readonly integrationRows = signal<IntegrationRow[]>([])
 
+  /**
+   * Available LLM model aliases for the namespace.
+   * An empty array means no aliases are configured — only the default option is shown.
+   */
+  protected readonly availableAliases = signal<string[]>([])
+
   /** Kept for the update payload (preserves server-side fields). */
   private existingConfig: AgentConfig | null = null
 
@@ -105,23 +126,26 @@ export class AgentConfigFormComponent implements OnInit {
       this.isEditMode.set(true)
       this.loadConfigAndIntegrations(agentConfigId)
     } else {
-      this.loadIntegrations(undefined)
+      this.loadIntegrationsAndAliases(undefined)
     }
   }
 
   /**
-   * In edit mode: load the agent config and the namespace integrations in parallel,
-   * then hydrate both the main form and the integration rows.
+   * In edit mode: load the agent config, namespace integrations, and available
+   * aliases in parallel, then hydrate the main form and integration rows.
    */
   private loadConfigAndIntegrations(agentConfigId: string): void {
     this.isLoading.set(true)
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
       integrations: this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId),
+      aliases: this.aiModelController
+        .listAliasesByNamespaceIdAiModel(this.namespaceId)
+        .pipe(catchError(() => of([] as string[]))),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ config, integrations }) => {
+        next: ({ config, integrations, aliases }) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
@@ -129,6 +153,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
           this.integrationRows.set(this.buildIntegrationRows(integrations, config.integrations ?? undefined))
+          this.availableAliases.set(aliases)
           this.isLoading.set(false)
         },
         error: () => {
@@ -138,14 +163,19 @@ export class AgentConfigFormComponent implements OnInit {
       })
   }
 
-  /** In create mode: only load the namespace integrations (undefined = no existing filter). */
-  private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
-    this.integrationConfigController
-      .listByParentIntegrationConfig(this.namespaceId)
+  /** In create mode: load namespace integrations and available aliases. */
+  private loadIntegrationsAndAliases(existingIntegrations: AgentConfig['integrations']): void {
+    forkJoin({
+      integrations: this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId),
+      aliases: this.aiModelController
+        .listAliasesByNamespaceIdAiModel(this.namespaceId)
+        .pipe(catchError(() => of([] as string[]))),
+    })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (integrations) => {
+        next: ({ integrations, aliases }) => {
           this.integrationRows.set(this.buildIntegrationRows(integrations, existingIntegrations ?? undefined))
+          this.availableAliases.set(aliases)
         },
       })
   }
@@ -202,7 +232,6 @@ export class AgentConfigFormComponent implements OnInit {
         // per integration to mean "all tools allowed". The spec does not yet express
         // this nullable value because springdoc does not emit nullable:true on Map
         // additionalProperties for Kotlin nullable generics. Cast is intentional.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result[name] = null as any
       } else {
         result[name] = rawTools
@@ -224,7 +253,7 @@ export class AgentConfigFormComponent implements OnInit {
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
       description: this.descriptionControl.value?.trim() || undefined,
-      modelName: this.modelNameControl.value?.trim() || undefined,
+      modelName: this.modelNameControl.value?.trim() ?? undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
