@@ -779,6 +779,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Namespace"
+  /api/namespaces/{namespaceId}/undeploy-agents:
+    post:
+      tags:
+      - namespace-controller
+      operationId: undeployAgentsNamespace
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+  /api/namespaces/{namespaceId}/deploy-agents:
+    post:
+      tags:
+      - namespace-controller
+      operationId: deployAgentsNamespace
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
   /api/namespaces/by-ids:
     post:
       tags:
@@ -1893,6 +1935,16 @@ components:
       required:
       - message
       - success
+    NamespaceAgentDeployRequest:
+      type: object
+      properties:
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - agentIds
     AddMessageRequest:
       type: object
       properties:

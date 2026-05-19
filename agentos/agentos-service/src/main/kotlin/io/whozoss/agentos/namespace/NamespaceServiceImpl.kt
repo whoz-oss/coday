@@ -1,6 +1,9 @@
 package io.whozoss.agentos.namespace
 
+import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -21,6 +24,7 @@ import java.util.UUID
 class NamespaceServiceImpl(
     private val namespaceRepository: NamespaceRepository,
     private val permissionService: PermissionService,
+    private val agentConfigRepository: AgentConfigRepository,
 ) : NamespaceService {
     @Transactional
     override fun create(entity: Namespace): Namespace = try {
@@ -62,6 +66,38 @@ class NamespaceServiceImpl(
                         null
                     }
             }
+
+    @Transactional
+    override fun deployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>) {
+        agentConfigIds.takeIf { it.isNotEmpty() }?.let { ids ->
+            findById(namespaceId)
+                ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
+            validateAgentsInNamespace(ids, namespaceId)
+            namespaceRepository.deployAgents(namespaceId, ids)
+        }
+    }
+
+    @Transactional
+    override fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>) {
+        agentConfigIds.takeIf { it.isNotEmpty() }?.let { ids ->
+            findById(namespaceId)
+                ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
+            namespaceRepository.undeployAgents(namespaceId, ids)
+        }
+    }
+
+    private fun validateAgentsInNamespace(agentConfigIds: Collection<UUID>, namespaceId: UUID) {
+        agentConfigIds
+            .takeIf { it.isNotEmpty() }
+            ?.let { ids ->
+                val found = agentConfigRepository.findByIds(ids)
+                val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
+                val invalidIds = ids.toSet() - validIds
+                if (invalidIds.isNotEmpty()) {
+                    throw UnprocessableEntityException("Agent configs not found in namespace $namespaceId: $invalidIds")
+                }
+            }
+    }
 
     companion object : KLogging()
 }

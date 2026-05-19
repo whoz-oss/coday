@@ -1,6 +1,6 @@
 @namespaceExternalId=123
-@agentId=98db9aae-40d2-4ecb-8f23-8dd737c0534b
-@userGroupId=64aa823a-259d-45a1-834b-dcd75cf63b56
+@agentId=2495be79-e5e7-49ce-a1b3-771897f9c44b
+@userGroupId=08577023-6fd2-4c1d-bc64-d48317c979f6
 
 ### List user groups
 GET {{apiBaseUrl}}/api/user-groups?namespaceExternalId={{namespaceExternalId}}

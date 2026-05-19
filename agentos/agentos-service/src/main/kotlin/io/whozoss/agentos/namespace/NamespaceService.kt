@@ -1,5 +1,6 @@
 package io.whozoss.agentos.namespace
 
+import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.Action
 import java.util.UUID
@@ -32,4 +33,19 @@ interface NamespaceService : EntityService<Namespace, String> {
     fun findByExternalIds(externalIds: Collection<String>): List<Namespace>
 
     fun findIdsVisibleTo(userId: String, action: Action): List<UUID>
+
+    /**
+     * Deploy [agentConfigIds] on namespace [namespaceId].
+     * Validates that the namespace exists and that all agents belong to that namespace.
+     * Throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the namespace is not found.
+     * Throws [io.whozoss.agentos.exception.UnprocessableEntityException] if any agent is invalid.
+     */
+    fun deployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>)
+
+    /**
+     * Undeploy [agentConfigIds] from namespace [namespaceId].
+     * Validates that the namespace exists.
+     * Throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the namespace is not found.
+     */
+    fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>)
 }

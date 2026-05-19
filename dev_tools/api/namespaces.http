@@ -1,4 +1,5 @@
-@namespaceExternalId=123
+@namespaceExternalId=6246fc02d9aa947b87cbf18b
+@namespaceId=4fbbbb65-6aaa-46d7-adf3-5b3fb62ddad3
 
 ### List namespaces
 GET {{apiBaseUrl}}/api/namespaces
@@ -12,4 +13,27 @@ Content-Type: application/json
 {
     "name": "Namespace",
     "externalId": "{{namespaceExternalId}}"
+}
+
+
+### Delete a namespace
+DELETE {{apiBaseUrl}}/api/namespaces/dd3e09d1-0279-4604-a47a-addfa2324524
+Content-Type: application/json
+
+
+### Deploy agents in a namesapce
+POST {{apiBaseUrl}}/api/namespaces/{{namespaceId}}/deploy-agents
+Content-Type: application/json
+
+{
+  "agentIds": ["af489efd-8c28-4a9c-b3a1-fb7096eb824d"]
+}
+
+
+### Undeploy agents from a namesapce
+POST {{apiBaseUrl}}/api/namespaces/{{namespaceId}}/undeploy-agents
+Content-Type: application/json
+
+{
+  "agentIds": ["af489efd-8c28-4a9c-b3a1-fb7096eb824d"]
 }
