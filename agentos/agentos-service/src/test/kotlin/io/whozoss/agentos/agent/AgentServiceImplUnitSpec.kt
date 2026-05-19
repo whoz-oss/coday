@@ -1,7 +1,9 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -37,6 +39,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val userService: UserService = mockk(relaxed = true)
     private val agentConfigService: AgentConfigService = mockk()
     private val intentionGenerator: AgentIntentionGenerator = mockk(relaxed = true)
+    private val confirmationManager: ConfirmationManager = mockk(relaxed = true)
+    private val objectMapper = jacksonObjectMapper()
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -48,6 +52,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
             userService,
             agentConfigService,
             intentionGenerator,
+            confirmationManager,
+            objectMapper,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -124,6 +130,31 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("my-agent", context)
 
             agent.name shouldBe "my-agent"
+        }
+
+        // WZ-31596: when advancedExecution=true, AgentAdvancedContext must receive the
+        // injected ConfirmationManager + ObjectMapper, otherwise tools opting into the
+        // confirmation flow throw IllegalStateException at runtime.
+        "findAgentByName with advancedExecution=true wires confirmationManager into AgentAdvancedContext" {
+            val config = agentConfig(name = "advanced-agent", modelName = "sonnet").copy(advancedExecution = true)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "advanced-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("advanced-agent", context) as AgentAdvanced
+
+            // Use reflection to read the private 'context' field — the wiring is the AC.
+            val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
+            val advancedCtx = contextField.get(agent) as AgentAdvancedContext
+            advancedCtx.confirmationManager.shouldNotBeNull()
+            advancedCtx.objectMapper.shouldNotBeNull()
+            advancedCtx.confirmationManager shouldBe confirmationManager
+            advancedCtx.objectMapper shouldBe objectMapper
         }
 
         "findAgentByName uses AgentConfig instructions as base of system prompt" {
@@ -293,6 +324,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     userService,
                     agentConfigService,
                     intentionGenerator,
+                    confirmationManager,
+                    objectMapper,
                 )
             val configs =
                 listOf(

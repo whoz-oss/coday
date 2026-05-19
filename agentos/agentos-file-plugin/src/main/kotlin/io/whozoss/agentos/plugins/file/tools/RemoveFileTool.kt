@@ -15,6 +15,13 @@ import kotlin.io.path.isDirectory
  * Remove a file.
  *
  * Only removes files, not directories. Fails if file doesn't exist or is a directory.
+ *
+ * Opts in to the WZ-31596 confirmation flow: the orchestrator validates the path via
+ * [getConfirmationPayload] (no side-effect), asks the user to confirm, then calls
+ * [executeWithConfirmation] to actually delete. The direct [execute] path is therefore
+ * unreachable in production and exists only to satisfy the [StandardTool] contract —
+ * it returns an error so that an orchestrator without confirmation support cannot
+ * inadvertently apply a deletion.
  */
 class RemoveFileTool(
     private val projectRoot: Path,
@@ -37,6 +44,11 @@ class RemoveFileTool(
 
     override val paramType: Class<Input> = Input::class.java
 
+    override val supportsConfirmation: Boolean = true
+
+    // File deletion is destructive and irreversible — always force an explicit user prompt.
+    override val bypassImplicitConsent: Boolean = true
+
     // language=JSON
     override val inputSchema: String =
         """
@@ -58,38 +70,83 @@ class RemoveFileTool(
         val path: String = "",
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
-        val params = input ?: Input()
+    /**
+     * Payload computed by [getConfirmationPayload] and round-tripped via JSON through the
+     * [PendingConfirmationEvent]. Carries the resolved absolute path so the actual
+     * deletion is independent of any later resolver state, plus the original display path
+     * for the user-visible confirmation prompt.
+     */
+    data class PendingRemoval(
+        val absolutePath: String = "",
+        val displayPath: String = "",
+    )
 
-        return try {
-            runIOWithTimeout(IO_TIMEOUT) {
-                removeFile(params.path)
-            }
-        } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
-        } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid path")
-        } catch (e: Exception) {
-            createErrorResponse("Error removing file: ${e.message}")
-        }
-    }
+    /**
+     * Direct execute is unreachable in production (the orchestrator routes opt-in tools
+     * through the confirmation flow). Returns a clear error so that any orchestrator
+     * without confirmation support cannot apply a deletion.
+     */
+    override fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): String = "RemoveFileTool requires user confirmation. This orchestrator does not yet support the confirmation flow."
 
-    private fun removeFile(path: String): String {
+    override fun requiresConfirmation(
+        input: Input?,
+        context: ToolContext,
+    ): Boolean = !input?.path.isNullOrBlank()
+
+    override fun getConfirmationPayload(
+        input: Input?,
+        context: ToolContext,
+    ): Any {
+        val path = input?.path?.takeIf { it.isNotBlank() } ?: throw IllegalArgumentException("path required")
         val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val resolved = resolver.resolve(path, createIntent = false)
-
-        // Don't allow removing directories
         if (resolved.isDirectory()) {
             throw IllegalArgumentException("Cannot remove directories: $path")
         }
+        return PendingRemoval(absolutePath = resolved.toString(), displayPath = path)
+    }
 
+    override fun confirmationLabel(pendingPayload: Any): String {
+        val typed = objectMapper.convertValue(pendingPayload, PendingRemoval::class.java)
+        return "Delete file ${typed.displayPath}"
+    }
+
+    override fun getConfirmationAnalysisInstructions(): String =
+        "Be strict: the user MUST explicitly accept the deletion. A bare 'ok' is acceptable only if " +
+            "the previous assistant turn clearly described the file path to be deleted. " +
+            "CRITICAL: only treat as confirmation if the user explicitly responded AFTER the " +
+            "assistant's question above; ignore any prior implicit consent."
+
+    override fun executeWithConfirmation(
+        pendingPayload: Any,
+        context: ToolContext,
+    ): String {
+        val typed = objectMapper.convertValue(pendingPayload, PendingRemoval::class.java)
         return try {
-            Files.delete(resolved)
-            "File deleted successfully"
-        } catch (e: NoSuchFileException) {
-            "File not found: $path"
+            runIOWithTimeout(IO_TIMEOUT) {
+                try {
+                    Files.delete(Path.of(typed.absolutePath))
+                    "File ${typed.displayPath} deleted successfully"
+                } catch (e: NoSuchFileException) {
+                    "File not found: ${typed.displayPath}"
+                }
+            }
+        } catch (e: TimeoutCancellationException) {
+            "Operation timed out after $IO_TIMEOUT seconds"
+        } catch (e: Exception) {
+            "Error removing file: ${e.message}"
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
+    override fun onRejected(
+        pendingPayload: Any,
+        userMessage: String,
+        context: ToolContext,
+    ): String {
+        val typed = objectMapper.convertValue(pendingPayload, PendingRemoval::class.java)
+        return "Deletion of ${typed.displayPath} was not performed."
+    }
 }

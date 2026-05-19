@@ -5,10 +5,7 @@
         <p>No messages yet.</p>
       </div>
     } @else {
-      @for (
-        item of timeline();
-        track item.kind === 'message' ? item.event.id : item.kind === 'tool' ? item.call.requestId : 'streaming'
-      ) {
+      @for (item of timeline(); track trackTimelineItem($index, item)) {
         @if (item.kind === 'message') {
           <div
             class="case-chat__message"
@@ -18,6 +15,12 @@
             <span class="case-chat__message-author">{{ item.event.actor.displayName }}</span>
             <p class="case-chat__message-text">{{ extractText(item.event) }}</p>
           </div>
+        } @else if (item.kind === 'question') {
+          <agentos-case-question
+            [event]="item.event"
+            [respondedAnswer]="item.respondedAnswer"
+            (answer)="onQuestionAnswer($event)"
+          />
         } @else if (item.kind === 'streaming') {
           <div class="case-chat__message case-chat__message--agent case-chat__message--streaming">
             <span class="case-chat__message-author">{{ agentDisplayName() }}</span>

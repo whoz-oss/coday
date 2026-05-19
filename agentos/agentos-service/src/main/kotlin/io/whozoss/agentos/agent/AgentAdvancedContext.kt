@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -16,6 +17,8 @@ data class AgentAdvancedContext(
     val tools: List<StandardTool<*>>,
     val instructions: String?,
     val agentId: UUID,
+    val confirmationManager: ConfirmationManager? = null,
+    val objectMapper: ObjectMapper? = null,
 )
 
 /**

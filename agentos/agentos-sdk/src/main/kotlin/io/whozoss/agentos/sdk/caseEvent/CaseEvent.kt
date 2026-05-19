@@ -35,6 +35,8 @@ enum class CaseEventType(
     INTENTION_GENERATED("IntentionGeneratedEvent"),
     TOOL_SELECTED("ToolSelectedEvent"),
     TEXT_CHUNK("TextChunkEvent"),
+    PENDING_CONFIRMATION("PendingConfirmationEvent"),
+    CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
     ;
 
     companion object {
@@ -72,6 +74,8 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = IntentionGeneratedEvent::class, name = "IntentionGeneratedEvent"),
     JsonSubTypes.Type(value = ToolSelectedEvent::class, name = "ToolSelectedEvent"),
     JsonSubTypes.Type(value = TextChunkEvent::class, name = "TextChunkEvent"),
+    JsonSubTypes.Type(value = PendingConfirmationEvent::class, name = "PendingConfirmationEvent"),
+    JsonSubTypes.Type(value = ConfirmationResolvedEvent::class, name = "ConfirmationResolvedEvent"),
 )
 sealed interface CaseEvent : Entity {
     val namespaceId: UUID
@@ -311,4 +315,77 @@ data class TextChunkEvent(
     val chunk: String,
 ) : CaseEvent, TransientCaseEvent {
     override val type: CaseEventType = CaseEventType.TEXT_CHUNK
+}
+
+/**
+ * Emitted when a tool execution was deferred awaiting explicit user confirmation.
+ *
+ * Carries the payload [getConfirmationPayload] computed and a sanitized human-readable
+ * label. The pairing with [ConfirmationResolvedEvent] (matched on
+ * [ConfirmationResolvedEvent.pendingEventId]) is what `AgentSimple` uses to detect
+ * unresolved confirmations on case re-entry — including after a server restart
+ * (WZ-31596 CA6).
+ *
+ * @param toolRequestId The id of the [ToolRequestEvent] that triggered this pending
+ *   (kept for traceability with the LLM-visible tool-call cycle).
+ * @param toolName The qualified tool name (e.g. `FILES__remove`).
+ * @param pendingPayloadJson The payload, serialized as JSON. Stored as a String to
+ *   stay classloader-safe across plugin/service boundaries (no `Class.forName`).
+ *   The owning tool re-converts to its typed payload inside its plugin classloader.
+ * @param confirmationLabel A short, sanitized label suitable for inclusion in an
+ *   LLM prompt and a UI message (whitelist + 200-char cap applied at emission).
+ * @param analysisInstructions Optional tool-supplied instructions appended to the
+ *   `analyzeConfirmation` prompt.
+ */
+data class PendingConfirmationEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val toolRequestId: String,
+    val toolName: String,
+    val pendingPayloadJson: String,
+    val confirmationLabel: String,
+    val analysisInstructions: String = "",
+    /**
+     * WZ-31596: id of the paired [QuestionEvent] used to prompt the user out-of-LLM-channel.
+     * Nullable for backward compat with legacy pendings created without a QuestionEvent.
+     */
+    val questionId: UUID? = null,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.PENDING_CONFIRMATION
+}
+
+/**
+ * Marker that closes a [PendingConfirmationEvent].
+ *
+ * Carries the resolution outcome and a back-reference to the pending event id, so the
+ * orchestrator can detect "all confirmations for this case are resolved" without
+ * scanning tool-call ids.
+ *
+ * Note (WZ-31596 F4): the [ToolResponseEvent] emitted post-resolution and paired on
+ * the originating [PendingConfirmationEvent.toolRequestId] is a synthetic re-emission.
+ * The original [ToolRequestEvent] never produced a native tool response at its turn;
+ * this synthetic response exists solely to feed `lastToolResponse` for
+ * `AgentIntentionGenerator` on the next intention turn. Audit / replay consumers that
+ * pair `ToolRequestEvent ↔ ToolResponseEvent` via `toolRequestId` will see an
+ * artificially coherent pair — the actual side-effect happened during confirmation
+ * resolution, not at the original tool-call turn.
+ */
+data class ConfirmationResolvedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val pendingEventId: UUID,
+    val confirmed: Boolean,
+    /**
+     * WZ-31596: textual result of [StandardTool.executeWithConfirmation] (when confirmed)
+     * or [StandardTool.onRejected] (when rejected). Stored on the marker so that
+     * `convertEventsToMessages` can inject a synthetic tool_result for the LLM without
+     * having to re-execute the tool.
+     */
+    val resultText: String = "",
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.CONFIRMATION_RESOLVED
 }
