@@ -193,6 +193,29 @@ class AgentSimpleUnitSpec :
             otherAgentMsg.text shouldContain "</agent>"
         }
 
+        "should strip conversation tags hallucinated by the LLM in its response" {
+            // If the LLM mimics the context format and wraps its own response in <agent=...>
+            // or <user name="..."> tags, those must be stripped from the stored MessageEvent.
+            // TextChunkEvents are left as-is (tags split across chunks are invisible in markdown).
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            // LLM wraps its own answer in an agent tag
+            every { mockStreamSpec.content() } returns Flux.just("<agent=SimpleAgent>", "Hello!", "</agent>")
+
+            val agent = makeAgent(agentId, mockChatClient, name = "SimpleAgent")
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "Hi"))).toList()
+
+            val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
+            messageEvent shouldNotBe null
+            // Tags must be stripped from the stored message
+            messageEvent!!.content.filterIsInstance<MessageContent.Text>().first().content shouldBe "Hello!"
+        }
+
         "should wrap user messages with XML user tag" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()

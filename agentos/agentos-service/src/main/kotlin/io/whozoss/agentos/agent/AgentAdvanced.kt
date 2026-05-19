@@ -157,7 +157,7 @@ class AgentAdvanced(
                             contentBuilder.append(chunk)
                             emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
                         }
-                    val content = contentBuilder.toString()
+                    val content = contentBuilder.toString().stripConversationTags()
                     if (content.isNotEmpty()) {
                         val msg =
                             MessageEvent(

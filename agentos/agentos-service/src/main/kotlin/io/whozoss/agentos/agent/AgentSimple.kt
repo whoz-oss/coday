@@ -177,7 +177,11 @@ class AgentSimple(
                     )
                 }
 
-                val content = contentBuilder.toString()
+                // Strip any conversation tags the LLM may have hallucinated in its response.
+                // TextChunkEvents are left as-is (tags split across chunks are harmless noise
+                // in the stream and render invisibly in markdown). Only the stored MessageEvent
+                // needs to be clean.
+                val content = contentBuilder.toString().stripConversationTags()
 
                 // Close tool event channel and emit remaining events
                 toolEventChannel.close()

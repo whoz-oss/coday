@@ -8,6 +8,23 @@ import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
 
 /**
+ * Regex patterns for the XML conversation tags injected by [MessageEvent.toSpringAiMessage].
+ * Used to strip any tags the LLM may have hallucinated in its own response text.
+ */
+private val AGENT_TAG_REGEX = Regex("""<agent=[^>]+>(.*?)</agent>""", RegexOption.DOT_MATCHES_ALL)
+private val USER_TAG_REGEX = Regex("""<user name="[^"]*">(.*?)</user>""", RegexOption.DOT_MATCHES_ALL)
+
+/**
+ * Strip any conversation tags ([AGENT_TAG_REGEX], [USER_TAG_REGEX]) from a string.
+ *
+ * Called on the final LLM response text before emitting the [MessageEvent] so that
+ * tags the LLM hallucinated in its own output are not stored or displayed.
+ */
+internal fun String.stripConversationTags(): String =
+    AGENT_TAG_REGEX.replace(this, "$1")
+        .let { USER_TAG_REGEX.replace(it, "$1") }
+
+/**
  * Convert a [MessageEvent] to a Spring AI [Message], as seen from the perspective of [currentAgentId].
  *
  * Role assignment:
