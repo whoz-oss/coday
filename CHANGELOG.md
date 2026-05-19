@@ -1,3 +1,13 @@
+## 0.153.0 (2026-05-19)
+
+### 🚀 Features
+
+- user-level overlays for Tools + LLM (#wz-31189) ([#837](https://github.com/whoz-oss/coday/pull/837), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.152.0 (2026-05-19)
 
 ### 🚀 Features
