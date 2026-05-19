@@ -25,13 +25,12 @@ tasks.named("build") {
 // Plugin deployment
 // ========================================
 
-val pluginBuilds = listOf(
-    "agentos-plugins-filesystem",
-    "agentos-datetime-plugin",
-    "agentos-tmux-plugin",
-    "agentos-bash-plugin",
-    "agentos-file-plugin"
-)
+// Plugin builds are identified by convention: their name must contain "plugin".
+// This is more robust than a blacklist approach, which requires manual updates
+// whenever a non-plugin included build is added.
+val pluginBuilds: List<String> = gradle.includedBuilds
+    .map { it.name }
+    .filter { it.contains("plugin") }
 
 // Resolve all paths at configuration time into plain File values
 // so that doLast closures are configuration-cache compatible.
@@ -54,6 +53,10 @@ tasks.register("jarPlugins") {
 /**
  * Cleans all plugin builds, rebuilds their JARs, and copies them into the plugins/ directory.
  *
+ * Only the most recently built JAR from each plugin's build/libs/ is copied.
+ * Stale JARs from previous builds with a different version that may linger in
+ * build/libs/ are ignored, preventing PF4J duplicate pluginId errors at startup.
+ *
  * Usage:
  *   ./gradlew deployPlugins
  */
@@ -65,7 +68,7 @@ tasks.register("deployPlugins") {
     // then build the JAR. The cleanPlugins task runs first, jarPlugins depends on it.
     dependsOn("jarPlugins")
 
-    // Capture as local vals — doLast must not reference project or gradle objects
+    // Capture as local vals -- doLast must not reference project or gradle objects
     val dest = pluginsDestDir
     val libsDirs = pluginLibsDirs
 
@@ -77,16 +80,26 @@ tasks.register("deployPlugins") {
         }
         dest.mkdirs()
 
-        libsDirs.forEach { buildDir ->
-            val jars = buildDir.listFiles { f -> f.extension == "jar" && !f.name.endsWith("-plain.jar") }
-                ?: emptyArray()
+        libsDirs.forEach { buildLibsDir ->
+            // The :jar task always produces exactly one non-plain JAR.
+            // If build/libs/ contains multiple JARs (stale versions from prior builds),
+            // pick only the most recently modified one -- that is the one :jar just produced.
+            val jars = buildLibsDir
+                .listFiles { f -> f.extension == "jar" && !f.name.endsWith("-plain.jar") }
+                ?.sortedByDescending { it.lastModified() }
+                ?: emptyList()
 
             if (jars.isEmpty()) {
-                logger.warn("No JAR found in $buildDir")
+                logger.warn("No JAR found in $buildLibsDir")
             } else {
-                jars.forEach { jar ->
-                    jar.copyTo(dest.resolve(jar.name), overwrite = true)
-                    logger.lifecycle("Deployed: ${jar.name} → plugins/")
+                val jar = jars.first()
+                jar.copyTo(dest.resolve(jar.name), overwrite = true)
+                logger.lifecycle("Deployed: ${jar.name} -> plugins/")
+                if (jars.size > 1) {
+                    logger.warn(
+                        "${jars.size - 1} stale JAR(s) ignored in $buildLibsDir: " +
+                            jars.drop(1).joinToString { it.name }
+                    )
                 }
             }
         }
@@ -98,4 +111,3 @@ allprojects {
         plugin("dev.nx.gradle.project-graph")
     }
 }
-

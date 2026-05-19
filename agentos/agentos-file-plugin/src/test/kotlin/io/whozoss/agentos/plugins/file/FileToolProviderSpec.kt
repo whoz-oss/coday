@@ -32,7 +32,8 @@ class FileToolProviderSpec : StringSpec() {
         }
 
         "read-write config produces 6 tools" {
-            val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}""")
+            val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}"""
+            )
             val tools = FileToolProvider().provideTools(config, "TEST")
             tools.size shouldBe 6
             tools.map { it.name } shouldContainAll listOf(
@@ -59,10 +60,8 @@ class FileToolProviderSpec : StringSpec() {
         }
 
         "readMaxSizeMb propagation to ReadFileTool" {
-            // Create a file > 1 MB but < 10 MB, configure readMaxSizeMb = 1
-            // Verify that ReadFileTool rejects the file
             val bigFile = tempDir.resolve("big.txt")
-            bigFile.writeText("x".repeat(2 * 1024 * 1024)) // 2 MB
+            bigFile.writeText("x".repeat(2 * 1024 * 1024))
 
             val config = jacksonObjectMapper().readTree(
                 """{"rootPath": "${tempDir.pathString}", "readMaxSizeMb": 1}""",
@@ -70,13 +69,11 @@ class FileToolProviderSpec : StringSpec() {
             val tools = FileToolProvider().provideTools(config, "TEST")
             val readTool = tools.first { it.name.contains("readFile") }
 
-            val result = (readTool as StandardTool<*>).executeWithJson("""{"filePath": "big.txt"}""", ctx)
+            val result = readTool.executeWithJson("""{"filePath": "big.txt"}""", ctx)
             result shouldContain "exceeds maximum size"
         }
 
         "extraDenyPatterns propagation to tools" {
-            // Create a .custom-secret file, configure extraDenyPatterns = ["*.custom-secret"]
-            // Verify ReadFileTool denies access
             val secretFile = tempDir.resolve("data.custom-secret")
             secretFile.writeText("secret data")
 
@@ -86,7 +83,7 @@ class FileToolProviderSpec : StringSpec() {
             val tools = FileToolProvider().provideTools(config, "TEST")
             val readTool = tools.first { it.name.contains("readFile") }
 
-            val result = (readTool as StandardTool<*>).executeWithJson("""{"filePath": "data.custom-secret"}""", ctx)
+            val result = readTool.executeWithJson("""{"filePath": "data.custom-secret"}""", ctx)
             result shouldContain "Access denied"
         }
 
@@ -95,7 +92,7 @@ class FileToolProviderSpec : StringSpec() {
                 """{"rootPath": "${tempDir.pathString}", "extraDenyPatterns": null}""",
             )
             val tools = FileToolProvider().provideTools(config, "TEST")
-            tools.size shouldBe 6 // All tools created successfully
+            tools.size shouldBe 6
         }
     }
 }
