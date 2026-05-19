@@ -237,5 +237,35 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
         }
+
+        // -------------------------------------------------------------------------
+        // POST /api/agent-configs/search
+        // -------------------------------------------------------------------------
+
+        "POST /api/agent-configs/search with blank namespaceExternalId returns 400" {
+            mockMvc.perform(
+                post("/api/agent-configs/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "", "userExternalId": "alice@example.com" }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /api/agent-configs/search with blank userExternalId returns 400" {
+            mockMvc.perform(
+                post("/api/agent-configs/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "ext-ns", "userExternalId": "" }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /api/agent-configs/search with unknown namespace and user returns 200 with empty list" {
+            mockMvc.perform(
+                post("/api/agent-configs/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "unknown-ns", "userExternalId": "ghost@example.com" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
     }
 }
