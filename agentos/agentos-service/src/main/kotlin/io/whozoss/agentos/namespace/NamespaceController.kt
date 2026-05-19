@@ -184,7 +184,10 @@ class NamespaceController(
                 val found = namespaceService.findByExternalIds(ids)
                 val currentUser = userService.getCurrentUser()
                 when {
-                    currentUser.isAdmin -> found
+                    currentUser.isAdmin -> {
+                        found
+                    }
+
                     else -> {
                         val readableIds = namespaceService.findIdsVisibleTo(currentUser.id.toString(), Action.READ).toSet()
                         found.filter { it.metadata.id in readableIds }
@@ -234,7 +237,7 @@ class NamespaceController(
      */
     @PostMapping("/{namespaceId}/deploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun deployAgents(
         @PathVariable namespaceId: UUID,
         @RequestBody request: NamespaceAgentDeployRequest,
@@ -250,7 +253,7 @@ class NamespaceController(
      */
     @PostMapping("/{namespaceId}/undeploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun undeployAgents(
         @PathVariable namespaceId: UUID,
         @RequestBody request: NamespaceAgentDeployRequest,
@@ -278,5 +281,4 @@ class NamespaceController(
         private const val ADMIN = "ADMIN"
         private const val MEMBER = "MEMBER"
     }
-
 }
