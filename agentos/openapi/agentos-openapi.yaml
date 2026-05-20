@@ -569,6 +569,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/users/by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: listByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
   /api/user-groups:
     get:
       tags:
@@ -1294,6 +1316,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NamespaceUserListItem"
+  /api/namespaces/roles-for-user/{userId}:
+    get:
+      tags:
+      - namespace-permission-endpoints
+      operationId: listNamespaceRolesForUser
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NamespaceRole"
   /api/namespaces/by-parentId/{parentId}:
     get:
       tags:
@@ -1386,7 +1429,7 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: live
+      - name: includePreviousEvents
         in: query
         required: false
         schema:
@@ -2442,6 +2485,24 @@ components:
       - email
       - externalId
       - id
+      - role
+    NamespaceRole:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+        namespaceName:
+          type: string
+        role:
+          type: string
+          description: The user's direct role on this namespace
+          enum:
+          - ADMIN
+          - MEMBER
+      required:
+      - namespaceId
+      - namespaceName
       - role
     IntegrationTypeDescriptor:
       type: object
