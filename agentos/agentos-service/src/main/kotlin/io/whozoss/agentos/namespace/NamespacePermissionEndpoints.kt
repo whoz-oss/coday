@@ -1,6 +1,8 @@
 package io.whozoss.agentos.namespace
 
+import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -18,6 +20,20 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
+
+/**
+ * One entry in the response of [NamespacePermissionEndpoints.listNamespaceRolesForUser].
+ *
+ * Carries the namespace id, its name, and the highest direct role the user holds
+ * on it (ADMIN takes precedence over MEMBER when both relations exist).
+ */
+@Schema(name = "NamespaceRole")
+data class NamespaceRole(
+    val namespaceId: UUID,
+    val namespaceName: String,
+    @Schema(description = "The user's direct role on this namespace", allowableValues = ["ADMIN", "MEMBER"])
+    val role: String,
+)
 
 /**
  * Dedicated endpoints for managing namespace ADMIN/MEMBER permissions (/2.3).
@@ -116,7 +132,63 @@ class NamespacePermissionEndpoints(
     fun listNamespaceUsers(@PathVariable namespaceId: UUID): List<NamespaceUserListItem> {
         namespaceService.findById(namespaceId)
             ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
+        return resolveNamespaceUsers(namespaceId)
+    }
 
+    /**
+     * GET /api/namespaces/roles-for-user/{userId} — all namespace roles for a given user.
+     *
+     * Returns one [NamespaceRole] per namespace on which [userId] holds a direct
+     * ADMIN or MEMBER relation. When a user holds both on the same namespace,
+     * ADMIN takes precedence. Namespaces on which the user has no direct relation
+     * are omitted (super-admin bypass is not reflected here — this endpoint
+     * surfaces explicit grants only).
+     *
+     * Authorization: SUPER_ADMIN only.
+     */
+    @GetMapping("/roles-for-user/{userId}")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun listNamespaceRolesForUser(
+        @PathVariable userId: UUID,
+    ): List<NamespaceRole> {
+        userService.findById(userId)
+            ?: throw ResourceNotFoundException("User not found: $userId")
+
+        val userIdString = userId.toString()
+        // WRITE permission → ADMIN relation; READ permission → ADMIN or MEMBER relation.
+        // Namespaces are root-level so there is no transitive path — these calls
+        // return only direct grants.
+        val adminIds = permissionService
+            .listEntitiesForUser(userIdString, EntityType.NAMESPACE, Action.WRITE)
+            .toSet()
+        val readIds = permissionService
+            .listEntitiesForUser(userIdString, EntityType.NAMESPACE, Action.READ)
+            .toSet()
+        // memberIds = has READ but not WRITE (i.e. MEMBER only, not ADMIN)
+        val memberIds = readIds - adminIds
+
+        val allIds = (adminIds + memberIds).mapNotNull { raw ->
+            runCatching { UUID.fromString(raw) }.getOrNull()
+                ?: run {
+                    logger.warn { "Dropping malformed namespace id for user $userId: '$raw'" }
+                    null
+                }
+        }
+        if (allIds.isEmpty()) return emptyList()
+
+        val namespaces = namespaceService.findByIds(allIds)
+        return namespaces.map { ns ->
+            val role = if (ns.metadata.id.toString() in adminIds) ADMIN else MEMBER
+            NamespaceRole(
+                namespaceId = ns.metadata.id,
+                namespaceName = ns.name,
+                role = role,
+            )
+        }
+    }
+
+    private fun resolveNamespaceUsers(namespaceId: UUID): List<NamespaceUserListItem> {
         val namespaceIdString = namespaceId.toString()
         val adminUserIds = permissionService
             .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.ADMIN)
@@ -130,9 +202,7 @@ class NamespacePermissionEndpoints(
         val uuids = allUserIds.mapNotNull { raw ->
             runCatching { UUID.fromString(raw) }.getOrNull()
                 ?: run {
-                    logger.warn {
-                        "Dropping malformed user id from permission listing on namespace $namespaceId: '$raw'"
-                    }
+                    logger.warn { "Dropping malformed user id from permission listing on namespace $namespaceId: '$raw'" }
                     null
                 }
         }

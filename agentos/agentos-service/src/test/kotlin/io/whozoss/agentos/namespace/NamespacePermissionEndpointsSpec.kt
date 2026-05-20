@@ -10,6 +10,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -259,5 +260,75 @@ class NamespacePermissionEndpointsSpec : StringSpec({
         every { namespaceService.findById(namespaceId) } returns null
 
         shouldThrow<ResourceNotFoundException> { controller.listNamespaceUsers(namespaceId) }
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /roles-for-user/{userId}
+    // -------------------------------------------------------------------------
+
+    "listNamespaceRolesForUser returns 404 when user not found" {
+        every { userService.findById(targetUserId) } returns null
+
+        shouldThrow<ResourceNotFoundException> { controller.listNamespaceRolesForUser(targetUserId) }
+    }
+
+    "listNamespaceRolesForUser returns empty list when user has no namespace grants" {
+        every { userService.findById(targetUserId) } returns target
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns emptyList()
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns emptyList()
+
+        controller.listNamespaceRolesForUser(targetUserId) shouldBe emptyList()
+    }
+
+    "listNamespaceRolesForUser returns ADMIN role for namespace where user has WRITE permission" {
+        every { userService.findById(targetUserId) } returns target
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns listOf(namespaceId.toString())
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns listOf(namespaceId.toString())
+        every { namespaceService.findByIds(listOf(namespaceId)) } returns listOf(namespace)
+
+        val result = controller.listNamespaceRolesForUser(targetUserId)
+
+        result.size shouldBe 1
+        result[0].namespaceId shouldBe namespaceId
+        result[0].namespaceName shouldBe namespace.name
+        result[0].role shouldBe "ADMIN"
+    }
+
+    "listNamespaceRolesForUser returns MEMBER role for namespace where user has READ but not WRITE permission" {
+        every { userService.findById(targetUserId) } returns target
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns emptyList()
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns listOf(namespaceId.toString())
+        every { namespaceService.findByIds(listOf(namespaceId)) } returns listOf(namespace)
+
+        val result = controller.listNamespaceRolesForUser(targetUserId)
+
+        result.size shouldBe 1
+        result[0].role shouldBe "MEMBER"
+    }
+
+    "listNamespaceRolesForUser returns ADMIN and MEMBER entries for different namespaces" {
+        val ns2Id = UUID.randomUUID()
+        val ns2 = Namespace(metadata = EntityMetadata(id = ns2Id), name = "frontend")
+        every { userService.findById(targetUserId) } returns target
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns listOf(namespaceId.toString())
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns listOf(namespaceId.toString(), ns2Id.toString())
+        every { namespaceService.findByIds(match { it.containsAll(listOf(namespaceId, ns2Id)) }) } returns listOf(namespace, ns2)
+
+        val result = controller.listNamespaceRolesForUser(targetUserId).associateBy { it.namespaceId }
+
+        result[namespaceId]?.role shouldBe "ADMIN"
+        result[ns2Id]?.role shouldBe "MEMBER"
+    }
+
+    "listNamespaceRolesForUser assigns ADMIN when user has both WRITE and READ on same namespace" {
+        every { userService.findById(targetUserId) } returns target
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns listOf(namespaceId.toString())
+        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns listOf(namespaceId.toString())
+        every { namespaceService.findByIds(listOf(namespaceId)) } returns listOf(namespace)
+
+        val result = controller.listNamespaceRolesForUser(targetUserId)
+
+        result.size shouldBe 1
+        result[0].role shouldBe "ADMIN"
     }
 })
