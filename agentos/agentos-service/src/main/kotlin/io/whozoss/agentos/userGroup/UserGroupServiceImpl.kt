@@ -43,16 +43,15 @@ class UserGroupServiceImpl(
     @Transactional
     override fun deleteByParent(parentId: UUID): Int = userGroupRepository.deleteByParent(parentId)
 
-    override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
-        userGroupRepository.findByNamespaceExternalId(externalId)
+    override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> =
+        userGroupRepository.findByNamespaceId(namespaceId)
 
     override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? = userGroupRepository.findByIdWithDetails(id)
 
     @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
         val namespace =
-            namespaceService.findByExternalId(request.namespaceExternalId)
-                ?: throw UnprocessableEntityException("Namespace not found for externalId: ${request.namespaceExternalId}")
+            namespaceService.getById(request.namespaceId)
 
         validateAgentsInNamespace(request.agentIds, namespace.id)
 

@@ -573,13 +573,14 @@ paths:
     get:
       tags:
       - user-group-controller
-      operationId: searchByNamespaceExternalIdUserGroup
+      operationId: searchByNamespaceIdUserGroup
       parameters:
-      - name: namespaceExternalId
+      - name: namespaceId
         in: query
         required: true
         schema:
           type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -1867,8 +1868,9 @@ components:
     UserGroupCreateRequest:
       type: object
       properties:
-        namespaceExternalId:
+        namespaceId:
           type: string
+          format: uuid
           minLength: 1
         name:
           type: string
@@ -1892,7 +1894,7 @@ components:
       required:
       - agentIds
       - name
-      - namespaceExternalId
+      - namespaceId
       - userExternalIdsToAdd
     UserGroupSearchResult:
       type: object
@@ -2397,14 +2399,14 @@ components:
     AgentConfigSearchRequest:
       type: object
       properties:
-        namespaceExternalId:
+        namespaceId:
           type: string
-          minLength: 1
+          format: uuid
         userExternalId:
           type: string
           minLength: 1
       required:
-      - namespaceExternalId
+      - namespaceId
       - userExternalId
     PluginInfo:
       type: object
