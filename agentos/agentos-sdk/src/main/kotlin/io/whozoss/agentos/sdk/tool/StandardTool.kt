@@ -17,10 +17,11 @@ interface StandardTool<T> {
     /**
      * Parse the raw JSON the LLM produced into the tool's typed input.
      *
-     * Runs in the plugin classloader, so [paramType] is always resolvable. Exposed as a
-     * separate method (rather than buried inside [executeWithJson]) so the orchestrator
-     * can read the typed input — for example to evaluate [requiresConfirmation] — without
-     * having to re-implement deserialization in the service classloader.
+     * Runs in the plugin classloader, so [paramType] is always resolvable. Helper utility
+     * for tools that need the typed input inside a hook implementation (e.g. to read a
+     * field from a `requiresConfirmation` body). Not called by the orchestrator in the
+     * standard flow — the orchestrator stays string-based and lets the tool parse on its
+     * own terms via [executeWithJson] or by calling this method explicitly.
      */
     fun parseInput(json: String?): T? {
         val type = paramType
@@ -53,7 +54,7 @@ interface StandardTool<T> {
     // A tool opts in to the confirmation flow by overriding [requiresConfirmation] to
     // return `true` for the inputs that need explicit user validation. The orchestrator
     // then routes via the [PendingConfirmationEvent] persistence cycle and calls
-    // [executeWithConfirmation] (post-confirmation) or [onRejected] (post-refusal).
+    // [executeWithJson] (post-confirmation) or [onRejected] (post-refusal).
     //
     // When [requiresConfirmation] returns `false` (the default), the tool runs through
     // its standard [execute] path — same as a tool that never opted in.
@@ -70,9 +71,13 @@ interface StandardTool<T> {
      * Returns `true` if this specific call requires explicit user confirmation before any
      * side-effect is applied. Single opt-in for the confirmation flow — a tool that never
      * overrides this method behaves as a non-confirmation tool.
+     *
+     * The orchestrator passes the raw JSON args produced by the LLM. Tools that need a
+     * contextual check on the parsed input can call `this.parseInput(argsJson)` locally;
+     * most tools that opt in are destructive enough to simply return `true`.
      */
     fun requiresConfirmation(
-        input: T?,
+        argsJson: String?,
         context: ToolContext,
     ): Boolean = false
 
@@ -84,25 +89,6 @@ interface StandardTool<T> {
      * MUST NOT include user-controlled strings here.
      */
     fun getConfirmationInstructions(): String = ""
-
-    /**
-     * Applies the actual side-effect after the user confirmed. Receives the same typed
-     * [input] that [requiresConfirmation] saw — the input is JSON-round-tripped via the
-     * [PendingConfirmationEvent.inputJson] so the call is replay-safe across server
-     * restarts.
-     *
-     * Default delegates to [execute] — suitable for tools whose only difference between
-     * "with confirmation" and "without" is the orchestrator's gating step. Override when
-     * the post-confirmation path must differ (e.g. freeze a resolved snapshot, skip
-     * permission checks already done, etc.).
-     *
-     * Idempotence note: implementations SHOULD be safe to re-invoke on the same input
-     * (the orchestrator guards with `shouldContinue()`, but cancellation can race).
-     */
-    fun executeWithConfirmation(
-        input: T?,
-        context: ToolContext,
-    ): String = execute(input, context)
 
     /**
      * Called when the user rejected the action. Default returns a generic cancellation

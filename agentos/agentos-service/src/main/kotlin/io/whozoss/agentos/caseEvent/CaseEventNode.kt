@@ -287,7 +287,7 @@ class ConfirmationResolvedEventNode(
     timestamp: Instant,
     val pendingEventId: String,
     val confirmed: Boolean,
-    /** Textual result of executeWithConfirmation / onRejected, injected into the LLM history. */
+    /** Textual result of executeWithJson / onRejected, injected into the LLM history. */
     val resultText: String = "",
     created: Instant = Instant.now(),
     createdBy: String? = null,

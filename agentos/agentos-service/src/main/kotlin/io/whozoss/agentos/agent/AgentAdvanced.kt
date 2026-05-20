@@ -17,7 +17,6 @@ import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -228,28 +227,10 @@ class AgentAdvanced(
 
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
         if (tool != null) {
-            @Suppress("UNCHECKED_CAST")
-            val typed = tool as StandardTool<Any?>
             val toolCtx = buildToolContext(tool.name, namespaceId)
-            val parsedInput =
-                try {
-                    typed.parseInput(parameters.args)
-                } catch (e: Exception) {
-                    val errResponse =
-                        ToolResponseEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = toolRequestId,
-                            toolName = parameters.toolName,
-                            output = MessageContent.Text("Error parsing tool input: ${e.message}"),
-                            success = false,
-                        )
-                    emitEvent(errResponse)
-                    accumulatedEvents.add(errResponse)
-                    return false
-                }
+            val argsJson = parameters.args
 
-            if (typed.requiresConfirmation(parsedInput, toolCtx)) {
+            if (tool.requiresConfirmation(argsJson, toolCtx)) {
                 val confirmationManager =
                     context.confirmationManager
                         ?: throw ConfirmationConfigurationException(
@@ -263,13 +244,13 @@ class AgentAdvanced(
                             chatClient = context.chatClient,
                             history = history,
                             actionLabel = "Tool ${tool.name}",
-                            proposedData = parsedInput ?: emptyMap<String, Any>(),
+                            proposedData = argsJson ?: "{}",
                         )
                 if (!needsExplicit) {
                     // User already implicitly confirmed — fall through to direct execution.
                     val resultText =
                         try {
-                            typed.executeWithConfirmation(parsedInput, toolCtx)
+                            tool.executeWithJson(argsJson, toolCtx)
                         } catch (e: Exception) {
                             "Error executing tool: ${e.message}"
                         }
@@ -292,7 +273,7 @@ class AgentAdvanced(
                         chatClient = context.chatClient,
                         history = history,
                         fallbackLabel = tool.name,
-                        pendingData = parsedInput ?: emptyMap<String, Any>(),
+                        pendingData = argsJson ?: "{}",
                     )
                 emitEvent(
                     PendingConfirmationEvent(
@@ -300,8 +281,8 @@ class AgentAdvanced(
                         caseId = caseId,
                         toolRequestId = toolRequestId,
                         toolName = parameters.toolName,
-                        inputJson = parameters.args ?: "{}",
-                        analysisInstructions = typed.getConfirmationInstructions(),
+                        inputJson = argsJson ?: "{}",
+                        analysisInstructions = tool.getConfirmationInstructions(),
                     ),
                 )
                 // IN-CHANNEL: emit a MessageEvent so the LLM sees the pause naturally
@@ -392,17 +373,6 @@ class AgentAdvanced(
             context.tools.firstOrNull { it.name == pending.toolName }
                 ?: return closePendingWithError("tool '${pending.toolName}' not available in this agent.")
 
-        @Suppress("UNCHECKED_CAST")
-        val typed = tool as StandardTool<Any?>
-
-        val parsedInput =
-            try {
-                typed.parseInput(pending.inputJson)
-            } catch (e: Exception) {
-                logger.warn(e) { "[AgentAdvanced] failed to parse pending input for ${pending.toolName}" }
-                return closePendingWithError("input deserialization failed (${e.message}).")
-            }
-
         // CRITICAL (AC7): only events strictly AFTER the pending count as a reply.
         // Use index comparison (deterministic regardless of timestamp ordering).
         val pendingIndex = events.indexOfFirst { it.metadata.id == pending.metadata.id }
@@ -433,17 +403,29 @@ class AgentAdvanced(
                 confirmationManager.analyzeConfirmation(
                     chatClient = context.chatClient,
                     history = historyFromPending,
-                    pendingPayload = parsedInput ?: emptyMap<String, Any>(),
+                    pendingPayload = pending.inputJson,
                     specificInstructions = pending.analysisInstructions,
                 )
             } catch (e: AmbiguousConfirmationException) {
-                emitEvent(
-                    WarnEvent(
+                // LLM-generated re-ask in the conversation's language, IN-CHANNEL — same
+                // mechanism as the initial confirmation prompt. Pending stays open so the
+                // next user reply re-runs analyzeConfirmation against this new clarification.
+                val clarificationQuestion =
+                    confirmationManager.formulateQuestion(
+                        chatClient = context.chatClient,
+                        history = historyFromPending,
+                        fallbackLabel = pending.toolName,
+                        pendingData = pending.inputJson,
+                    )
+                val clarification =
+                    MessageEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
-                        message = "Could not interpret your reply. Please confirm or reject explicitly.",
-                    ),
-                )
+                        actor = Actor(id.toString(), name, ActorRole.AGENT),
+                        content = listOf(MessageContent.Text(clarificationQuestion)),
+                    )
+                emitEvent(clarification)
+                appendTo += clarification
                 return false
             }
 
@@ -454,7 +436,7 @@ class AgentAdvanced(
         var executionFailed = false
         val resultText: String =
             try {
-                if (confirmed) typed.executeWithConfirmation(parsedInput, toolCtx) else typed.onRejected()
+                if (confirmed) tool.executeWithJson(pending.inputJson, toolCtx) else tool.onRejected()
             } catch (e: Exception) {
                 logger.warn(e) { "[AgentAdvanced] tool execution failed during confirmation resolution for ${pending.toolName}" }
                 executionFailed = true

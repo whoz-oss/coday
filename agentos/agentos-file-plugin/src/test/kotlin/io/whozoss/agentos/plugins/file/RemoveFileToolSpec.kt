@@ -13,8 +13,8 @@ import kotlin.io.path.writeText
 /**
  * RemoveFileTool exposes two paths:
  *  - `execute(input, ctx)` — direct, used by AgentSimple (Spring AI native tool_use)
- *  - `executeWithConfirmation(input, ctx)` — used by AgentAdvanced post-confirmation;
- *    default delegates to `execute` so the deletion logic is shared.
+ *  - `executeWithJson(argsJson, ctx)` — used by AgentAdvanced both for the standard
+ *    path and post-confirmation; the default impl parses then calls `execute`.
  *
  * The orchestrator gating is asserted in `AgentAdvancedSpec` — here we only validate the
  * tool's own behaviour (validation, error handling, requiresConfirmation flag).
@@ -60,22 +60,22 @@ class RemoveFileToolSpec :
             result shouldContain "Cannot remove directories"
         }
 
-        "removing file via executeWithConfirmation succeeds (default delegates to execute)" {
+        "removing file via executeWithJson succeeds (parses JSON then delegates to execute)" {
             val tool = RemoveFileTool(tempDir)
             val file = tempDir.resolve("file.txt").also { it.writeText("content") }
 
-            val result = tool.executeWithConfirmation(RemoveFileTool.Input("file.txt"), ctx)
+            val result = tool.executeWithJson("""{"path":"file.txt"}""", ctx)
 
             result shouldBe "File deleted successfully"
             file.exists() shouldBe false
         }
 
-        "removing nested file via executeWithConfirmation works" {
+        "removing nested file via executeWithJson works" {
             val tool = RemoveFileTool(tempDir)
             Files.createDirectories(tempDir.resolve("a/b/c"))
             val file = tempDir.resolve("a/b/c/file.txt").also { it.writeText("content") }
 
-            val result = tool.executeWithConfirmation(RemoveFileTool.Input("a/b/c/file.txt"), ctx)
+            val result = tool.executeWithJson("""{"path":"a/b/c/file.txt"}""", ctx)
 
             result shouldBe "File deleted successfully"
             file.exists() shouldBe false
@@ -87,7 +87,7 @@ class RemoveFileToolSpec :
             val linkFile = tempDir.resolve("link.txt")
             Files.createSymbolicLink(linkFile, targetFile)
 
-            val result = tool.executeWithConfirmation(RemoveFileTool.Input("link.txt"), ctx)
+            val result = tool.executeWithJson("""{"path":"link.txt"}""", ctx)
 
             result shouldBe "File deleted successfully"
             linkFile.exists() shouldBe false
@@ -111,11 +111,11 @@ class RemoveFileToolSpec :
             file.exists() shouldBe true
         }
 
-        "requiresConfirmation depends on path presence; bypassImplicitConsent is true" {
+        "requiresConfirmation is unconditionally true; bypassImplicitConsent is true" {
             val tool = RemoveFileTool(tempDir)
             tool.bypassImplicitConsent shouldBe true
-            tool.requiresConfirmation(RemoveFileTool.Input("file.txt"), ctx) shouldBe true
-            tool.requiresConfirmation(RemoveFileTool.Input(""), ctx) shouldBe false
-            tool.requiresConfirmation(null, ctx) shouldBe false
+            tool.requiresConfirmation("""{"path":"file.txt"}""", ctx) shouldBe true
+            tool.requiresConfirmation("""{"path":""}""", ctx) shouldBe true
+            tool.requiresConfirmation(null, ctx) shouldBe true
         }
     })

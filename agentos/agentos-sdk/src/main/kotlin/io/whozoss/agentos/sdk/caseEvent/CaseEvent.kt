@@ -329,7 +329,8 @@ data class TextChunkEvent(
  * @param toolName The qualified tool name (e.g. `FILES__remove`).
  * @param inputJson The tool input, serialized as JSON. Stored as a String to stay
  *   classloader-safe across plugin/service boundaries (no `Class.forName`). The owning
- *   tool re-converts to its typed input via `StandardTool.parseInput`.
+ *   tool receives it as-is via `StandardTool.executeWithJson(argsJson, ctx)` and
+ *   parses on its own terms inside the plugin classloader.
  * @param analysisInstructions Optional tool-supplied instructions appended to the
  *   `ConfirmationManager.analyzeConfirmation` prompt.
  */
@@ -370,8 +371,8 @@ data class ConfirmationResolvedEvent(
     val pendingEventId: UUID,
     val confirmed: Boolean,
     /**
-     * WZ-31596: textual result of [StandardTool.executeWithConfirmation] (when confirmed)
-     * or [StandardTool.onRejected] (when rejected). Stored on the marker so that
+     * WZ-31596: textual result of [StandardTool.executeWithJson] (when confirmed) or
+     * [StandardTool.onRejected] (when rejected). Stored on the marker so that
      * `convertEventsToMessages` can inject a synthetic tool_result for the LLM without
      * having to re-execute the tool.
      */

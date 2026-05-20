@@ -27,8 +27,9 @@ import kotlin.io.path.writeText
 
 /**
  * Test-only confirmation-aware tool that mimics the shape of RemoveFileTool. Deletes a
- * file path under [rootDir] when invoked. `execute` and `executeWithConfirmation` share
- * the same body (the default delegation pattern).
+ * file path under [rootDir] when invoked. The orchestrator calls `executeWithJson`
+ * (default impl parses then delegates to `execute`) for both standard and post-
+ * confirmation paths.
  */
 internal class TestRemoveTool(
     private val rootDir: java.nio.file.Path,
@@ -54,15 +55,15 @@ internal class TestRemoveTool(
     }
 
     override fun requiresConfirmation(
-        input: Input?,
+        argsJson: String?,
         context: ToolContext,
-    ): Boolean = !input?.path.isNullOrBlank()
+    ): Boolean = true
 
     override fun getConfirmationInstructions(): String =
         "Be strict: explicit confirmation only after the assistant's question."
 
-    // executeWithConfirmation: default delegates to execute() — verifies the SDK default works.
-    // onRejected: default returns "Action cancelled." — no override needed.
+    // The orchestrator invokes executeWithJson (default impl: parseInput → execute) for the
+    // post-confirmation path. onRejected: default returns "Action cancelled.".
 }
 
 class AgentAdvancedSpec :
@@ -696,7 +697,7 @@ class AgentAdvancedSpec :
             target.exists() shouldBe true
         }
 
-        "AC5: ambiguous free-form reply emits WarnEvent and keeps pending alive" {
+        "AC5: ambiguous free-form reply emits an LLM-generated IN-CHANNEL re-ask and keeps pending alive" {
             val tempDir = Files.createTempDirectory("agentadvanced-ac5-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("old.txt").also { it.writeText("data") }
             val namespaceId = UUID.randomUUID()
@@ -721,6 +722,8 @@ class AgentAdvancedSpec :
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } throws
                 AmbiguousConfirmationException("ambiguous")
+            val clarificationText = "Pour être sûr — veux-tu vraiment supprimer old.txt ? Oui ou non."
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any()) } returns clarificationText
             val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
@@ -734,8 +737,11 @@ class AgentAdvancedSpec :
 
             events.filterIsInstance<ConfirmationResolvedEvent>() shouldHaveSize 0
             events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
-            val warn = events.filterIsInstance<WarnEvent>().single()
-            warn.message shouldContain "Could not interpret your reply"
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            val agentMessages =
+                events.filterIsInstance<MessageEvent>().filter { it.actor.role == ActorRole.AGENT }
+            val reAsk = agentMessages.single()
+            (reAsk.content.first() as MessageContent.Text).content shouldBe clarificationText
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
             target.exists() shouldBe true
         }
@@ -823,24 +829,24 @@ class AgentAdvancedSpec :
             target.exists() shouldBe true
         }
 
-        "executeWithConfirmation throws after user confirms: success=false, MessageEvent says declined" {
+        "executeWithJson throws after user confirms: success=false, MessageEvent says declined" {
             // Blocker #1 from review: even if the user said yes, if the tool execution
             // throws then the synthetic ToolResponseEvent.success must be false and the
             // IN-CHANNEL MessageEvent must NOT claim "User confirmed." (the action did not apply).
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            // Tool whose executeWithConfirmation throws.
+            // Tool whose executeWithJson throws (the path AgentAdvanced invokes post-confirmation).
             val tool = object : StandardTool<Map<String, Any>> {
                 override val name = "FAILING__remove"
-                override val description = "always throws on executeWithConfirmation"
+                override val description = "always throws on executeWithJson"
                 override val inputSchema = "{}"
                 override val version = "1.0.0"
                 override val paramType = null
                 override val bypassImplicitConsent = true
                 override fun execute(input: Map<String, Any>?, context: ToolContext): String = "ok"
-                override fun requiresConfirmation(input: Map<String, Any>?, context: ToolContext) = true
-                override fun executeWithConfirmation(input: Map<String, Any>?, context: ToolContext): String {
+                override fun requiresConfirmation(argsJson: String?, context: ToolContext) = true
+                override fun executeWithJson(json: String?, context: ToolContext): String {
                     throw RuntimeException("disk full")
                 }
             }

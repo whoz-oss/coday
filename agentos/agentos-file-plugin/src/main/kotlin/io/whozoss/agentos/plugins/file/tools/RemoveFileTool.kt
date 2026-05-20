@@ -16,10 +16,10 @@ import kotlin.io.path.isDirectory
  * Only removes files, not directories. Fails if file doesn't exist or is a directory.
  *
  * Opts in to the WZ-31596 confirmation flow by overriding [requiresConfirmation] to
- * return true whenever a path is provided. AgentAdvanced gates the call: validates,
- * asks the user, then calls [executeWithConfirmation] post-confirmation (default
- * delegates to [execute] — same validation + delete path). AgentSimple invokes
- * [execute] directly (no confirmation gate, preserves rétrocompat).
+ * always return `true` — file deletion is unconditionally destructive. AgentAdvanced
+ * gates the call (asks the user, then on confirmation calls [executeWithJson] →
+ * [execute] — same validation + delete path; on refusal calls [onRejected]).
+ * AgentSimple invokes [execute] directly (no confirmation gate, preserves rétrocompat).
  */
 class RemoveFileTool(
     private val projectRoot: Path,
@@ -103,10 +103,12 @@ class RemoveFileTool(
 
     private fun createErrorResponse(message: String): String = message
 
+    // File deletion is always destructive — always confirm. The path is `required` by the
+    // inputSchema and re-validated inside execute(); we don't gate on payload shape here.
     override fun requiresConfirmation(
-        input: Input?,
+        argsJson: String?,
         context: ToolContext,
-    ): Boolean = !input?.path.isNullOrBlank()
+    ): Boolean = true
 
     override fun getConfirmationInstructions(): String =
         "Be strict: the user MUST explicitly accept the deletion. A bare 'ok' is acceptable only if " +
@@ -114,6 +116,6 @@ class RemoveFileTool(
             "CRITICAL: only treat as confirmation if the user explicitly responded AFTER the " +
             "assistant's question above; ignore any prior implicit consent."
 
-    // executeWithConfirmation: default delegates to execute() — same validation + delete logic.
+    // Post-confirmation: AgentAdvanced invokes executeWithJson → execute() directly.
     // onRejected: default returns "Action cancelled." — no override needed.
 }
