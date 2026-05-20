@@ -183,7 +183,7 @@ class CaseRuntime(
         }
 
         storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
-        val userId = resolveUserId(eventList.getAll())
+        val userId = runCatching { UUID.fromString(actor.id) }.getOrNull()
         selectAgent(content, eventList.getAll(), userId).forEach { storeAndEmitEvent(it) }
     }
 
