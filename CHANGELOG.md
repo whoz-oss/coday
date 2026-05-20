@@ -1,3 +1,13 @@
+## 0.154.0 (2026-05-20)
+
+### 🚀 Features
+
+- wz-31610: change param name of live ([#886](https://github.com/whoz-oss/coday/pull/886))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.153.1 (2026-05-20)
 
 ### 🚀 Features
