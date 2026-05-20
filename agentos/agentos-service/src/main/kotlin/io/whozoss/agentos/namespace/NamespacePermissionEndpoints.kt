@@ -8,6 +8,9 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
+import jakarta.validation.Valid
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -15,11 +18,27 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
+
+/**
+ * One triplet in the [NamespacePermissionEndpoints.updateRolesByExternalId] request and response.
+ *
+ * [namespaceExternalId] and [userExternalId] identify entities by their federation keys.
+ * [role] must be exactly `"ADMIN"` or `"MEMBER"`.
+ */
+@Schema(name = "NamespaceRoleAssignment")
+data class NamespaceRoleAssignment(
+    @field:NotBlank val namespaceExternalId: String,
+    @field:NotBlank val userExternalId: String,
+    @field:Pattern(regexp = "ADMIN|MEMBER", message = "role must be ADMIN or MEMBER")
+    val role: String,
+)
 
 /**
  * One entry in the response of [NamespacePermissionEndpoints.listNamespaceRolesForUser].
@@ -58,45 +77,53 @@ class NamespacePermissionEndpoints(
     private val userService: UserService,
     private val permissionService: PermissionService,
 ) {
-
     @PutMapping("/{namespaceId}/admins/{targetUserId}")
     @ResponseStatus(HttpStatus.OK)
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun grantAdmin(
         @PathVariable namespaceId: UUID,
         @PathVariable targetUserId: UUID,
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.grantPermission(
-            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
+            targetUserId.toString(),
+            EntityType.NAMESPACE,
+            namespaceId.toString(),
+            PermissionRelation.ADMIN,
         )
         logger.info { "User ${currentUserId()} granted ADMIN on namespace $namespaceId to user $targetUserId" }
     }
 
     @DeleteMapping("/{namespaceId}/admins/{targetUserId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun revokeAdmin(
         @PathVariable namespaceId: UUID,
         @PathVariable targetUserId: UUID,
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.revokePermission(
-            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
+            targetUserId.toString(),
+            EntityType.NAMESPACE,
+            namespaceId.toString(),
+            PermissionRelation.ADMIN,
         )
         logger.info { "User ${currentUserId()} revoked ADMIN on namespace $namespaceId from user $targetUserId" }
     }
 
     @PutMapping("/{namespaceId}/members/{targetUserId}")
     @ResponseStatus(HttpStatus.OK)
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun grantMember(
         @PathVariable namespaceId: UUID,
         @PathVariable targetUserId: UUID,
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.grantPermission(
-            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER,
+            targetUserId.toString(),
+            EntityType.NAMESPACE,
+            namespaceId.toString(),
+            PermissionRelation.MEMBER,
         )
         logger.info { "User ${currentUserId()} granted MEMBER on namespace $namespaceId to user $targetUserId" }
     }
@@ -107,14 +134,17 @@ class NamespacePermissionEndpoints(
      */
     @DeleteMapping("/{namespaceId}/members/{targetUserId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun revokeMember(
         @PathVariable namespaceId: UUID,
         @PathVariable targetUserId: UUID,
     ) {
         requireExists(namespaceId, targetUserId)
         permissionService.revokePermission(
-            targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER,
+            targetUserId.toString(),
+            EntityType.NAMESPACE,
+            namespaceId.toString(),
+            PermissionRelation.MEMBER,
         )
         logger.info { "User ${currentUserId()} revoked MEMBER on namespace $namespaceId from user $targetUserId" }
     }
@@ -129,7 +159,9 @@ class NamespacePermissionEndpoints(
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     @HideOnAccessDenied
-    fun listNamespaceUsers(@PathVariable namespaceId: UUID): List<NamespaceUserListItem> {
+    fun listNamespaceUsers(
+        @PathVariable namespaceId: UUID,
+    ): List<NamespaceUserListItem> {
         namespaceService.findById(namespaceId)
             ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
         return resolveNamespaceUsers(namespaceId)
@@ -148,7 +180,7 @@ class NamespacePermissionEndpoints(
      */
     @GetMapping("/roles-for-user/{userId}")
     @ResponseStatus(HttpStatus.OK)
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
     fun listNamespaceRolesForUser(
         @PathVariable userId: UUID,
     ): List<NamespaceRole> {
@@ -159,22 +191,25 @@ class NamespacePermissionEndpoints(
         // WRITE permission → ADMIN relation; READ permission → ADMIN or MEMBER relation.
         // Namespaces are root-level so there is no transitive path — these calls
         // return only direct grants.
-        val adminIds = permissionService
-            .listEntitiesForUser(userIdString, EntityType.NAMESPACE, Action.WRITE)
-            .toSet()
-        val readIds = permissionService
-            .listEntitiesForUser(userIdString, EntityType.NAMESPACE, Action.READ)
-            .toSet()
+        val adminIds =
+            permissionService
+                .listEntitiesForUser(userIdString, EntityType.NAMESPACE, Action.WRITE)
+                .toSet()
+        val readIds =
+            permissionService
+                .listEntitiesForUser(userIdString, EntityType.NAMESPACE, Action.READ)
+                .toSet()
         // memberIds = has READ but not WRITE (i.e. MEMBER only, not ADMIN)
         val memberIds = readIds - adminIds
 
-        val allIds = (adminIds + memberIds).mapNotNull { raw ->
-            runCatching { UUID.fromString(raw) }.getOrNull()
-                ?: run {
-                    logger.warn { "Dropping malformed namespace id for user $userId: '$raw'" }
-                    null
-                }
-        }
+        val allIds =
+            (adminIds + memberIds).mapNotNull { raw ->
+                runCatching { UUID.fromString(raw) }.getOrNull()
+                    ?: run {
+                        logger.warn { "Dropping malformed namespace id for user $userId: '$raw'" }
+                        null
+                    }
+            }
         if (allIds.isEmpty()) return emptyList()
 
         val namespaces = namespaceService.findByIds(allIds)
@@ -188,24 +223,129 @@ class NamespacePermissionEndpoints(
         }
     }
 
+    /**
+     * POST /api/namespaces/update-roles-by-external-id — idempotent bulk role assignment.
+     *
+     * For each [NamespaceRoleAssignment]:
+     * 1. Resolves namespace and user by external id — 404 if either is unknown.
+     *    All entities are resolved before any graph mutation (fail-fast).
+     * 2. Reads the current ADMIN/MEMBER relations for the user on that namespace.
+     * 3. Applies only the delta required to reach the desired role:
+     *    - Already correct → no-op.
+     *    - Role change (e.g. MEMBER → ADMIN) → revoke old relation, grant new one.
+     *    - No relation yet → grant the desired relation.
+     * 4. Returns the input triplets verbatim as confirmation.
+     *
+     * Authorization: SUPER_ADMIN only.
+     */
+    @PostMapping("/update-roles-by-external-id", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun updateRolesByExternalId(
+        @Valid @RequestBody assignments: List<@Valid NamespaceRoleAssignment>,
+    ): List<NamespaceRoleAssignment> {
+        if (assignments.isEmpty()) return emptyList()
+
+        // Resolve all entities upfront — fail before touching the graph.
+        val namespacesByExternalId =
+            assignments
+                .map { it.namespaceExternalId }
+                .distinct()
+                .associateWith { externalId ->
+                    namespaceService.findByExternalId(externalId)
+                        ?: throw ResourceNotFoundException("Namespace not found: $externalId")
+                }
+        val usersByExternalId =
+            assignments
+                .map { it.userExternalId }
+                .distinct()
+                .associateWith { externalId ->
+                    userService.findByExternalId(externalId)
+                        ?: throw ResourceNotFoundException("User not found: $externalId")
+                }
+
+        assignments.forEach { assignment ->
+            val namespace = namespacesByExternalId.getValue(assignment.namespaceExternalId)
+            val user = usersByExternalId.getValue(assignment.userExternalId)
+            val namespaceIdStr = namespace.metadata.id.toString()
+            val userIdStr = user.metadata.id.toString()
+
+            val hasAdmin =
+                permissionService
+                    .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.ADMIN)
+                    .contains(userIdStr)
+            val hasMember =
+                permissionService
+                    .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.MEMBER)
+                    .contains(userIdStr)
+
+            val currentRole =
+                when {
+                    hasAdmin -> ADMIN
+                    hasMember -> MEMBER
+                    else -> null
+                }
+
+            if (currentRole == assignment.role) {
+                logger.debug {
+                    "Role ${assignment.role} on namespace ${assignment.namespaceExternalId} " +
+                        "for user ${assignment.userExternalId} already correct — no-op"
+                }
+                return@forEach
+            }
+
+            // Revoke any stale relation before granting the desired one.
+            if (hasAdmin) {
+                permissionService.revokePermission(
+                    userIdStr,
+                    EntityType.NAMESPACE,
+                    namespaceIdStr,
+                    PermissionRelation.ADMIN,
+                )
+            }
+            if (hasMember) {
+                permissionService.revokePermission(
+                    userIdStr,
+                    EntityType.NAMESPACE,
+                    namespaceIdStr,
+                    PermissionRelation.MEMBER,
+                )
+            }
+
+            val desired = if (assignment.role == ADMIN) PermissionRelation.ADMIN else PermissionRelation.MEMBER
+            permissionService.grantPermission(userIdStr, EntityType.NAMESPACE, namespaceIdStr, desired)
+
+            logger.info {
+                "User ${currentUserId()} set role ${assignment.role} on namespace " +
+                    "${assignment.namespaceExternalId} for user ${assignment.userExternalId} " +
+                    "(was: ${currentRole ?: "none"})"
+            }
+        }
+
+        return assignments
+    }
+
     private fun resolveNamespaceUsers(namespaceId: UUID): List<NamespaceUserListItem> {
         val namespaceIdString = namespaceId.toString()
-        val adminUserIds = permissionService
-            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.ADMIN)
-            .toSet()
-        val memberUserIds = permissionService
-            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.MEMBER)
-            .toSet()
+        val adminUserIds =
+            permissionService
+                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.ADMIN)
+                .toSet()
+        val memberUserIds =
+            permissionService
+                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.MEMBER)
+                .toSet()
         val allUserIds = adminUserIds + memberUserIds
         if (allUserIds.isEmpty()) return emptyList()
 
-        val uuids = allUserIds.mapNotNull { raw ->
-            runCatching { UUID.fromString(raw) }.getOrNull()
-                ?: run {
-                    logger.warn { "Dropping malformed user id from permission listing on namespace $namespaceId: '$raw'" }
-                    null
-                }
-        }
+        val uuids =
+            allUserIds.mapNotNull { raw ->
+                runCatching { UUID.fromString(raw) }.getOrNull()
+                    ?: run {
+                        logger.warn { "Dropping malformed user id from permission listing on namespace $namespaceId: '$raw'" }
+                        null
+                    }
+            }
         val users = userService.findByIds(uuids)
 
         val missingCount = uuids.size - users.size
@@ -230,7 +370,10 @@ class NamespacePermissionEndpoints(
         }
     }
 
-    private fun requireExists(namespaceId: UUID, targetUserId: UUID) {
+    private fun requireExists(
+        namespaceId: UUID,
+        targetUserId: UUID,
+    ) {
         namespaceService.findById(namespaceId)
             ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
         userService.findById(targetUserId)

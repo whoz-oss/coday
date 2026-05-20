@@ -61,6 +61,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
     val namespace = Namespace(
         metadata = EntityMetadata(id = namespaceId),
         name = "engineering",
+        externalId = "ns-ext-engineering",
     )
 
     fun stubExistence() {
@@ -260,6 +261,128 @@ class NamespacePermissionEndpointsSpec : StringSpec({
         every { namespaceService.findById(namespaceId) } returns null
 
         shouldThrow<ResourceNotFoundException> { controller.listNamespaceUsers(namespaceId) }
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /update-roles-by-external-id
+    // -------------------------------------------------------------------------
+
+    "updateRolesByExternalId returns empty list immediately when input is empty" {
+        controller.updateRolesByExternalId(emptyList()) shouldBe emptyList()
+    }
+
+    "updateRolesByExternalId returns 404 when namespace external id is unknown" {
+        every { namespaceService.findByExternalId("unknown-ns") } returns null
+
+        shouldThrow<ResourceNotFoundException> {
+            controller.updateRolesByExternalId(
+                listOf(NamespaceRoleAssignment("unknown-ns", target.externalId, "ADMIN")),
+            )
+        }
+        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
+    }
+
+    "updateRolesByExternalId returns 404 when user external id is unknown" {
+        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
+        every { userService.findByExternalId("unknown-user") } returns null
+
+        shouldThrow<ResourceNotFoundException> {
+            controller.updateRolesByExternalId(
+                listOf(NamespaceRoleAssignment(namespace.externalId!!, "unknown-user", "MEMBER")),
+            )
+        }
+        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
+    }
+
+    "updateRolesByExternalId grants ADMIN when user has no current relation" {
+        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
+        every { userService.findByExternalId(target.externalId) } returns target
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns emptyList()
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+        val result = controller.updateRolesByExternalId(
+            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN")),
+        )
+
+        result shouldBe listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN"))
+        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+    }
+
+    "updateRolesByExternalId is a no-op when role is already correct" {
+        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
+        every { userService.findByExternalId(target.externalId) } returns target
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns listOf(targetUserId.toString())
+
+        val result = controller.updateRolesByExternalId(
+            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "MEMBER")),
+        )
+
+        result shouldBe listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "MEMBER"))
+        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+    }
+
+    "updateRolesByExternalId revokes MEMBER and grants ADMIN on role upgrade" {
+        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
+        every { userService.findByExternalId(target.externalId) } returns target
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns listOf(targetUserId.toString())
+        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+        controller.updateRolesByExternalId(
+            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN")),
+        )
+
+        verify(exactly = 1) { permissionService.revokePermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) }
+        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
+    }
+
+    "updateRolesByExternalId revokes ADMIN and grants MEMBER on role downgrade" {
+        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
+        every { userService.findByExternalId(target.externalId) } returns target
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns listOf(targetUserId.toString())
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns emptyList()
+        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+        controller.updateRolesByExternalId(
+            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "MEMBER")),
+        )
+
+        verify(exactly = 1) { permissionService.revokePermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
+        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) }
+    }
+
+    "updateRolesByExternalId handles multiple assignments in one call" {
+        val ns2ExternalId = "ns-ext-2"
+        val ns2Id = UUID.randomUUID()
+        val ns2 = Namespace(metadata = EntityMetadata(id = ns2Id), name = "frontend", externalId = ns2ExternalId)
+        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
+        every { namespaceService.findByExternalId(ns2ExternalId) } returns ns2
+        every { userService.findByExternalId(target.externalId) } returns target
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns emptyList()
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, ns2Id.toString(), PermissionRelation.ADMIN) } returns emptyList()
+        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, ns2Id.toString(), PermissionRelation.MEMBER) } returns emptyList()
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+        val input = listOf(
+            NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN"),
+            NamespaceRoleAssignment(ns2ExternalId, target.externalId, "MEMBER"),
+        )
+        val result = controller.updateRolesByExternalId(input)
+
+        result shouldBe input
+        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
+        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, ns2Id.toString(), PermissionRelation.MEMBER) }
     }
 
     // -------------------------------------------------------------------------
