@@ -34,14 +34,12 @@ data class AgentAdvancedContext(
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
             selectDetailedToolRequestIds(events, maxDetailedToolCalls, maxDetailedMessagesWithSteps)
-        val detailCutoffIndex = computeDetailCutoffIndex(events, detailedRequestIds)
-        val hasToolCalls = events.any { it is ToolRequestEvent }
 
-        return events.flatMapIndexed { index, event ->
+        return events.flatMap { event ->
             when (event) {
                 is MessageEvent -> listOf(toMessage(event))
                 is ToolRequestEvent -> toToolMessages(event, detailedRequestIds, responsesByRequestId)
-                is IntentionGeneratedEvent -> toIntentionMessage(event, index, detailCutoffIndex, hasToolCalls)
+                is IntentionGeneratedEvent -> toIntentionMessage(event)
                 else -> emptyList()
             }
         }
@@ -80,19 +78,6 @@ data class AgentAdvancedContext(
             }
         }
         return result
-    }
-
-    private fun computeDetailCutoffIndex(
-        events: List<CaseEvent>,
-        detailedRequestIds: Set<String>,
-    ): Int {
-        val firstDetailedIndex =
-            events.indexOfFirst { it is ToolRequestEvent && it.toolRequestId in detailedRequestIds }
-        if (firstDetailedIndex < 0) return events.size
-
-        return generateSequence(firstDetailedIndex) { idx ->
-            (idx - 1).takeIf { it >= 0 && events[it] is IntentionGeneratedEvent }
-        }.last()
     }
 
     private fun AgentAdvancedContext.toMessage(event: MessageEvent): Message {
@@ -158,19 +143,8 @@ data class AgentAdvancedContext(
         return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status")
     }
 
-    private fun toIntentionMessage(
-        event: IntentionGeneratedEvent,
-        index: Int,
-        detailCutoffIndex: Int,
-        hasToolCalls: Boolean,
-    ): List<Message> {
-        val isInDetailWindow = !hasToolCalls || index >= detailCutoffIndex
-        return if (isInDetailWindow) {
-            listOf(AssistantMessage("[Intention] ${event.intention}\n[Selected tool] ${event.toolName}"))
-        } else {
-            emptyList()
-        }
-    }
+    private fun toIntentionMessage(event: IntentionGeneratedEvent): List<Message> =
+        listOf(AssistantMessage("[Intention] ${event.intention}\n[Selected tool] ${event.toolName}"))
 
     private fun normalizeArgs(args: String?): String = args?.takeIf { it.isNotBlank() } ?: "{}"
 

@@ -360,7 +360,7 @@ class AgentAdvancedContextSpec :
             summaries[0].text shouldContain "Failed"
         }
 
-        "compression omits old IntentionGeneratedEvents but keeps recent ones" {
+        "compression keeps all IntentionGeneratedEvents" {
             val events =
                 listOf(
                     userMessage("go"),
@@ -377,9 +377,10 @@ class AgentAdvancedContextSpec :
                 messages.filterIsInstance<AssistantMessage>().filter {
                     it.text?.contains("[Intention]") == true
                 }
-            // Only the recent intention should be present
-            intentionMessages shouldHaveSize 1
-            intentionMessages[0].text shouldContain "recent plan"
+
+            intentionMessages shouldHaveSize 2
+            intentionMessages[0].text shouldContain "old plan"
+            intentionMessages[1].text shouldContain "recent plan"
         }
 
         // -------------------------------------------------------------------------
