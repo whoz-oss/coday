@@ -201,7 +201,7 @@ class NamespaceController(
     fun listByExternalIds(
         @RequestBody externalIds: List<String>,
     ): List<NamespaceResource> {
-        logger.info { "listByExternalIds called with $externalIds external id(s)" }
+        logger.debug { "listByExternalIds called with $externalIds external id(s)" }
         return externalIds
             .takeIf { it.isNotEmpty() }
             ?.let { ids ->

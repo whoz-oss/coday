@@ -15,5 +15,10 @@ enum class PermissionRelation {
      * Member relationship - grants limited access (READ only) to the entity
      * and its child entities through transitive permissions.
      */
-    MEMBER
+    MEMBER,
+
+    /**
+     * Represents lack of relationship. Help algorithm
+     */
+    NONE,
 }

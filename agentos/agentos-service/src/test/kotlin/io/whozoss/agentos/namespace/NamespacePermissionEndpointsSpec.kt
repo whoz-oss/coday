@@ -22,25 +22,20 @@ import java.util.UUID
 /**
  * Unit tests for [NamespacePermissionEndpoints].
  *
- * Authorization is declarative (`@PreAuthorize`) and only fires through Spring AOP.
- * Pure unit tests bypass the proxy — only the body's existence-check + delegation
- * to [PermissionService] is exercised here. The full 403/404 contract is covered
- * by [io.whozoss.agentos.security.declarative.MethodSecurityIntegrationSpec] and
- * the MVC integration spec.
- *
- * What this spec covers:
- * - grant/revoke ADMIN delegate to [PermissionService] with the right arguments
- * - grant/revoke MEMBER delegate symmetrically
- * - existence gates: 404 when namespace or target user not found
- * - idempotence: repeated grants/revokes still call through (Neo4j MERGE/DELETE handle it)
- * - listNamespaceUsers: dedup, role precedence, empty case
+ * Covers HTTP-layer concerns only: existence gates, delegation to collaborators,
+ * and idempotency of individual grant/revoke endpoints.
+ * Business logic for [NamespacePermissionEndpoints.updateRolesByExternalId] is
+ * tested in [NamespacePermissionServiceImplSpec].
  */
 class NamespacePermissionEndpointsSpec : StringSpec({
 
     val namespaceService = mockk<NamespaceService>()
     val userService = mockk<UserService>()
     val permissionService = mockk<PermissionService>()
-    val controller = NamespacePermissionEndpoints(namespaceService, userService, permissionService)
+    val namespacePermissionService = mockk<NamespacePermissionService>()
+    val controller = NamespacePermissionEndpoints(
+        namespaceService, userService, permissionService, namespacePermissionService,
+    )
 
     val namespaceId = UUID.randomUUID()
     val targetUserId = UUID.randomUUID()
@@ -174,7 +169,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
     // DELETE — revoke MEMBER (does NOT touch ADMIN)
     // -------------------------------------------------------------------------
 
-    "revokeMember does NOT revoke ADMIN relation (Preserves higher privilege)" {
+    "revokeMember does NOT revoke ADMIN relation" {
         stubExistence()
         every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
 
@@ -264,125 +259,26 @@ class NamespacePermissionEndpointsSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // POST /update-roles-by-external-id
+    // POST /update-roles-by-external-id — delegation only
     // -------------------------------------------------------------------------
 
-    "updateRolesByExternalId returns empty list immediately when input is empty" {
-        controller.updateRolesByExternalId(emptyList()) shouldBe emptyList()
-    }
-
-    "updateRolesByExternalId returns 404 when namespace external id is unknown" {
-        every { namespaceService.findByExternalId("unknown-ns") } returns null
-
-        shouldThrow<ResourceNotFoundException> {
-            controller.updateRolesByExternalId(
-                listOf(NamespaceRoleAssignment("unknown-ns", target.externalId, "ADMIN")),
-            )
-        }
-        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
-    }
-
-    "updateRolesByExternalId returns 404 when user external id is unknown" {
-        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
-        every { userService.findByExternalId("unknown-user") } returns null
-
-        shouldThrow<ResourceNotFoundException> {
-            controller.updateRolesByExternalId(
-                listOf(NamespaceRoleAssignment(namespace.externalId!!, "unknown-user", "MEMBER")),
-            )
-        }
-        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
-    }
-
-    "updateRolesByExternalId grants ADMIN when user has no current relation" {
-        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
-        every { userService.findByExternalId(target.externalId) } returns target
-        every { userService.getCurrentUser() } returns caller
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns emptyList()
-        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
-
-        val result = controller.updateRolesByExternalId(
-            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN")),
+    "updateRolesByExternalId delegates to namespacePermissionService and returns request" {
+        val request = SyncUserRolesRequest(
+            target.externalId,
+            listOf(NamespaceRoleEntry(namespace.externalId!!, "ADMIN")),
         )
+        every { namespacePermissionService.syncUserRoles(request) } just Runs
 
-        result shouldBe listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN"))
-        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
-        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+        controller.updateRolesByExternalId(request) shouldBe request
+        verify(exactly = 1) { namespacePermissionService.syncUserRoles(request) }
     }
 
-    "updateRolesByExternalId is a no-op when role is already correct" {
-        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
-        every { userService.findByExternalId(target.externalId) } returns target
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns listOf(targetUserId.toString())
+    "updateRolesByExternalId propagates exceptions thrown by the service" {
+        val request = SyncUserRolesRequest("unknown", emptyList())
+        every { namespacePermissionService.syncUserRoles(request) } throws
+            ResourceNotFoundException("User not found: unknown")
 
-        val result = controller.updateRolesByExternalId(
-            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "MEMBER")),
-        )
-
-        result shouldBe listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "MEMBER"))
-        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
-        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
-    }
-
-    "updateRolesByExternalId revokes MEMBER and grants ADMIN on role upgrade" {
-        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
-        every { userService.findByExternalId(target.externalId) } returns target
-        every { userService.getCurrentUser() } returns caller
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns listOf(targetUserId.toString())
-        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
-        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
-
-        controller.updateRolesByExternalId(
-            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN")),
-        )
-
-        verify(exactly = 1) { permissionService.revokePermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) }
-        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
-    }
-
-    "updateRolesByExternalId revokes ADMIN and grants MEMBER on role downgrade" {
-        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
-        every { userService.findByExternalId(target.externalId) } returns target
-        every { userService.getCurrentUser() } returns caller
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns listOf(targetUserId.toString())
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns emptyList()
-        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
-        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
-
-        controller.updateRolesByExternalId(
-            listOf(NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "MEMBER")),
-        )
-
-        verify(exactly = 1) { permissionService.revokePermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
-        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) }
-    }
-
-    "updateRolesByExternalId handles multiple assignments in one call" {
-        val ns2ExternalId = "ns-ext-2"
-        val ns2Id = UUID.randomUUID()
-        val ns2 = Namespace(metadata = EntityMetadata(id = ns2Id), name = "frontend", externalId = ns2ExternalId)
-        every { namespaceService.findByExternalId(namespace.externalId!!) } returns namespace
-        every { namespaceService.findByExternalId(ns2ExternalId) } returns ns2
-        every { userService.findByExternalId(target.externalId) } returns target
-        every { userService.getCurrentUser() } returns caller
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) } returns emptyList()
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER) } returns emptyList()
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, ns2Id.toString(), PermissionRelation.ADMIN) } returns emptyList()
-        every { permissionService.listUsersWithPermission(EntityType.NAMESPACE, ns2Id.toString(), PermissionRelation.MEMBER) } returns emptyList()
-        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
-
-        val input = listOf(
-            NamespaceRoleAssignment(namespace.externalId!!, target.externalId, "ADMIN"),
-            NamespaceRoleAssignment(ns2ExternalId, target.externalId, "MEMBER"),
-        )
-        val result = controller.updateRolesByExternalId(input)
-
-        result shouldBe input
-        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
-        verify(exactly = 1) { permissionService.grantPermission(targetUserId.toString(), EntityType.NAMESPACE, ns2Id.toString(), PermissionRelation.MEMBER) }
+        shouldThrow<ResourceNotFoundException> { controller.updateRolesByExternalId(request) }
     }
 
     // -------------------------------------------------------------------------
@@ -403,7 +299,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
         controller.listNamespaceRolesForUser(targetUserId) shouldBe emptyList()
     }
 
-    "listNamespaceRolesForUser returns ADMIN role for namespace where user has WRITE permission" {
+    "listNamespaceRolesForUser returns ADMIN for namespace where user has WRITE permission" {
         every { userService.findById(targetUserId) } returns target
         every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns listOf(namespaceId.toString())
         every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns listOf(namespaceId.toString())
@@ -417,7 +313,7 @@ class NamespacePermissionEndpointsSpec : StringSpec({
         result[0].role shouldBe "ADMIN"
     }
 
-    "listNamespaceRolesForUser returns MEMBER role for namespace where user has READ but not WRITE permission" {
+    "listNamespaceRolesForUser returns MEMBER for namespace where user has READ but not WRITE" {
         every { userService.findById(targetUserId) } returns target
         every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns emptyList()
         every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns listOf(namespaceId.toString())
@@ -441,17 +337,5 @@ class NamespacePermissionEndpointsSpec : StringSpec({
 
         result[namespaceId]?.role shouldBe "ADMIN"
         result[ns2Id]?.role shouldBe "MEMBER"
-    }
-
-    "listNamespaceRolesForUser assigns ADMIN when user has both WRITE and READ on same namespace" {
-        every { userService.findById(targetUserId) } returns target
-        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.WRITE) } returns listOf(namespaceId.toString())
-        every { permissionService.listEntitiesForUser(targetUserId.toString(), EntityType.NAMESPACE, Action.READ) } returns listOf(namespaceId.toString())
-        every { namespaceService.findByIds(listOf(namespaceId)) } returns listOf(namespace)
-
-        val result = controller.listNamespaceRolesForUser(targetUserId)
-
-        result.size shouldBe 1
-        result[0].role shouldBe "ADMIN"
     }
 })
