@@ -16,9 +16,4 @@ enum class PermissionRelation {
      * and its child entities through transitive permissions.
      */
     MEMBER,
-
-    /**
-     * Represents lack of relationship. Help algorithm
-     */
-    NONE,
 }
