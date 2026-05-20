@@ -1,3 +1,27 @@
+## 0.155.1 (2026-05-20)
+
+### 🩹 Fixes
+
+- #WZ-31424 Fix user group unique indices creation ([1356dc40](https://github.com/whoz-oss/coday/commit/1356dc40))
+- #WZ-31424 Fix user group unique indices creation ([#888](https://github.com/whoz-oss/coday/pull/888))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.155.0 (2026-05-20)
+
+### 🚀 Features
+
+- #wz-31644 implement permission in user group apis ([17e9d14c](https://github.com/whoz-oss/coday/commit/17e9d14c))
+- #wz-31644 implement permission in user group apis ([#884](https://github.com/whoz-oss/coday/pull/884))
+
+### ❤️ Thank You
+
+- AlanMenantWhoz @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+
 ## 0.154.0 (2026-05-20)
 
 ### 🚀 Features
