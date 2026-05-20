@@ -50,8 +50,8 @@ eurekaClientJersey3 = "2.0.4"
 logstashLogbackEncoder = "8.1"
 
 # AgentOS modules versions
-agentosSdk = "0.154.0"
-agentosService = "0.154.0"
+agentosSdk = "0.155.0"
+agentosService = "0.155.0"
 
 [libraries]
 # Kotlin

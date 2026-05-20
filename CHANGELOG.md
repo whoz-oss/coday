@@ -1,3 +1,15 @@
+## 0.155.0 (2026-05-20)
+
+### 🚀 Features
+
+- #wz-31644 implement permission in user group apis ([17e9d14c](https://github.com/whoz-oss/coday/commit/17e9d14c))
+- #wz-31644 implement permission in user group apis ([#884](https://github.com/whoz-oss/coday/pull/884))
+
+### ❤️ Thank You
+
+- AlanMenantWhoz @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+
 ## 0.154.0 (2026-05-20)
 
 ### 🚀 Features
