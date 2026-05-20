@@ -48,6 +48,10 @@ class RecordingRunAgent(
  * A simple recording wrapper for the selectAgent callback, avoiding MockK entirely.
  * MockK global state can bleed between specs when stubs from one spec are still
  * registered when the next spec runs. A plain wrapper has no such risk.
+ *
+ * The [userId] parameter mirrors the [CaseRuntime] callback signature: it carries
+ * the UUID of the user who sent the message (resolved from the event history) so
+ * that agent selection can apply per-user access rules.
  */
 class RecordingSelectAgent(
     private val delegate: (List<MessageContent>, List<CaseEvent>) -> List<CaseEvent>,
@@ -55,7 +59,7 @@ class RecordingSelectAgent(
     private val _calls = mutableListOf<List<MessageContent>>()
     val callCount: Int get() = _calls.size
 
-    val asCallback: (List<MessageContent>, List<CaseEvent>) -> List<CaseEvent> = { content, pastEvents ->
+    val asCallback: (List<MessageContent>, List<CaseEvent>, UUID?) -> List<CaseEvent> = { content, pastEvents, _ ->
         _calls += content
         delegate(content, pastEvents)
     }
@@ -232,7 +236,7 @@ class CaseRuntimeSpec : StringSpec() {
                         savedEvents.add(event)
                         event
                     },
-                    selectAgent = { _, _ ->
+                    selectAgent = { _, _, _ ->
                         listOf(
                             WarnEvent(
                                 namespaceId = namespaceId,
@@ -298,7 +302,7 @@ class CaseRuntimeSpec : StringSpec() {
                         if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
                         event
                     },
-                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
+                    selectAgent = { _, _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
                     runAgent = { _, events, _, _, _ ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
@@ -338,7 +342,7 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
-                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    selectAgent = { _, _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                         // Simulate a long-running agent: don't push AgentFinishedEvent
@@ -372,7 +376,7 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
-                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    selectAgent = { _, _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                     },
@@ -405,7 +409,7 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
-                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    selectAgent = { _, _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     runAgent = { _, _, _, _, shouldContinue ->
                         // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
                         // still false at this point, so shouldContinue() must return true.
@@ -555,7 +559,7 @@ class CaseRuntimeSpec : StringSpec() {
                         savedEvents.add(event)
                         event
                     },
-                    selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                    selectAgent = { _, _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
                     runAgent = recorder.asCallback,
                 )
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))

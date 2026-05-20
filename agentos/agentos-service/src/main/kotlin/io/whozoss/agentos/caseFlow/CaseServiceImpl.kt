@@ -125,7 +125,7 @@ class CaseServiceImpl(
             namespaceId = case.namespaceId,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
-            selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
+            selectAgent = { content, pastEvents, userId -> selectAgent(content, pastEvents, userId, case.namespaceId, case.id) },
             runAgent = { agentName, events, eventsProvider, userId, shouldContinue -> runAgent(agentName, case.id, events, eventsProvider, userId, shouldContinue) },
             inputEvents = inputEvents,
         )
@@ -171,6 +171,7 @@ class CaseServiceImpl(
     private fun selectAgent(
         content: List<MessageContent>,
         pastEvents: List<CaseEvent>,
+        userId: UUID?,
         namespaceId: UUID,
         caseId: UUID,
     ): List<CaseEvent> {
@@ -192,21 +193,21 @@ class CaseServiceImpl(
 
         return when {
             mentionedName != null -> {
-                val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
+                val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId, userId)
                 when {
                     resolvedName != null -> {
                         logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
                         listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
                     }
                     else -> {
-                        logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
+                        logger.warn { "[CaseService] Agent '@$mentionedName' not found or not accessible, falling back to default" }
                         listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")) +
-                            selectDefaultAgent(namespaceId, caseId)
+                            selectDefaultAgent(namespaceId, caseId, userId)
                     }
                 }
             }
             lastSelectedName != null -> {
-                val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
+                val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId, userId) != null
                 when {
                     stillAvailable -> {
                         logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
@@ -215,11 +216,11 @@ class CaseServiceImpl(
                     else -> {
                         logger.warn { "[CaseService] Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
                         listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$lastSelectedName' is no longer available")) +
-                            selectDefaultAgent(namespaceId, caseId)
+                            selectDefaultAgent(namespaceId, caseId, userId)
                     }
                 }
             }
-            else -> selectDefaultAgent(namespaceId, caseId)
+            else -> selectDefaultAgent(namespaceId, caseId, userId)
         }
     }
 
@@ -237,6 +238,7 @@ class CaseServiceImpl(
     private fun selectDefaultAgent(
         namespaceId: UUID,
         caseId: UUID,
+        userId: UUID?,
     ): List<CaseEvent> {
         val defaultAgentName = namespaceService.findById(namespaceId)?.defaultAgentName
         return if (defaultAgentName == null) {
@@ -249,7 +251,7 @@ class CaseServiceImpl(
                 ),
             )
         } else {
-            val resolvedName = agentService.resolveAgentName(defaultAgentName, namespaceId)
+            val resolvedName = agentService.resolveAgentName(defaultAgentName, namespaceId, userId)
             if (resolvedName == null) {
                 logger.warn { "[CaseService] Default agent '$defaultAgentName' is not available in namespace $namespaceId" }
                 listOf(

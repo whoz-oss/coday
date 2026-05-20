@@ -147,7 +147,7 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { resolveAgentName(any(), any()) } returns agentName
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
@@ -264,7 +264,7 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { resolveAgentName(any(), any()) } returns agentName
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
@@ -468,7 +468,7 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { resolveAgentName(agentName, namespaceId) } returns agentName
+                    every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
@@ -608,13 +608,13 @@ class CaseServiceImplSpec :
             //   turn 2, default resolution: resolveAgentName(agentName) -> agentName (found)
             val resolveCallCount = java.util.concurrent.atomic.AtomicInteger(0)
             val agentService = mockk<AgentService> {
-                every { resolveAgentName(unavailableAgentName, namespaceId) } answers {
+                every { resolveAgentName(unavailableAgentName, namespaceId, any()) } answers {
                     when (resolveCallCount.incrementAndGet()) {
                         1 -> unavailableAgentName  // turn 1: @mention resolves
                         else -> null              // turn 2: sticky-agent check fails
                     }
                 }
-                every { resolveAgentName(agentName, namespaceId) } returns agentName
+                every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
                 every { findAgentByName(any(), any()) } returns finishingAgent()
             }
             val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
@@ -700,7 +700,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     // @selected-agent resolves to selectedAgentName
-                    every { resolveAgentName(selectedAgentName, any()) } returns selectedAgentName
+                    every { resolveAgentName(selectedAgentName, any(), any()) } returns selectedAgentName
                     // no other mention resolution needed
                     every { findAgentByName(selectedAgentName, any()) } returns selectedAgent
                 }
