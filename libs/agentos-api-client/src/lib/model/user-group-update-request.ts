@@ -10,7 +10,7 @@
 
 export interface UserGroupUpdateRequest {
   name: string
-  addedUserExternalIds: Set<string>
-  removedUserExternalIds: Set<string>
+  userExternalIdsToAdd: Set<string>
+  userExternalIdsToRemove: Set<string>
   agentIds: Set<string>
 }

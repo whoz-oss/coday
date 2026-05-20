@@ -1,6 +1,7 @@
 package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -38,6 +39,18 @@ data class AiProviderNode(
     val namespaceId: String? = null,
     val userId: String? = null,
     val name: String,
+    /**
+     * Denormalised discriminator for the unique business triple `(namespaceId, userId,
+     * name)`. Backed by a UNIQUE CONSTRAINT (cf. `AiProviderSchemaInitializer`). Same
+     * pattern as [io.whozoss.agentos.integrationConfig.IntegrationConfigNode.tripleKey] —
+     * see [OverlayKeyEncoding] and the RFC §D11 for rationale.
+     *
+     * Soft-deleted rows carry a per-id `tombstone:<uuid>` value so the unique slot is
+     * freed for re-creation immediately after a delete.
+     *
+     * Backfilled at startup for pre-existing rows by the schema initializer.
+     */
+    val tripleKey: String,
     val description: String? = null,
     val apiType: String,
     val baseUrl: String? = null,
@@ -77,12 +90,27 @@ data class AiProviderNode(
         private val MAPPER = jacksonObjectMapper()
         private val HEADERS_TYPE = object : TypeReference<Map<String, String>>() {}
 
-        fun fromDomain(config: AiProvider): AiProviderNode =
-            AiProviderNode(
-                id = config.id.toString(),
+        fun computeTripleKey(
+            namespaceId: UUID?,
+            userId: UUID?,
+            name: String,
+        ): String = OverlayKeyEncoding.activeKey(namespaceId, userId, name)
+
+        fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
+
+        fun fromDomain(config: AiProvider): AiProviderNode {
+            val idString = config.id.toString()
+            val tripleKey =
+                when {
+                    config.metadata.removed -> tombstoneTripleKey(idString)
+                    else -> computeTripleKey(config.namespaceId, config.userId, config.name)
+                }
+            return AiProviderNode(
+                id = idString,
                 namespaceId = config.namespaceId?.toString(),
                 userId = config.userId?.toString(),
                 name = config.name,
+                tripleKey = tripleKey,
                 description = config.description,
                 apiType = config.apiType.name,
                 baseUrl = config.baseUrl,
@@ -94,5 +122,6 @@ data class AiProviderNode(
                 modifiedBy = config.metadata.modifiedBy,
                 removed = config.metadata.removed.takeIf { it },
             )
+        }
     }
 }

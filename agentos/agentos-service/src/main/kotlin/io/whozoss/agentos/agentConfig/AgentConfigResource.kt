@@ -32,4 +32,9 @@ data class AgentConfigResource(
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     val advancedExecution: Boolean? = null,
+    /**
+     * Opaque metadata map for external consumers (e.g. Copilot).
+     * AgentOS persists this field as-is without interpreting its content.
+     */
+    val externalMetadata: Map<String, Any?>? = null,
 )

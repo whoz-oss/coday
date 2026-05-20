@@ -10,7 +10,8 @@
 
 export interface IntegrationConfig {
   id?: string
-  namespaceId: string
+  namespaceId?: string | null
+  userId?: string | null
   name: string
   integrationType: string
   description?: string

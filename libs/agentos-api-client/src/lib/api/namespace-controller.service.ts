@@ -16,6 +16,8 @@ import { Observable } from 'rxjs'
 // @ts-ignore
 import { Namespace } from '../model/namespace'
 // @ts-ignore
+import { NamespaceAgentDeployRequest } from '../model/namespace-agent-deploy-request'
+// @ts-ignore
 import { NamespaceListItem } from '../model/namespace-list-item'
 
 // @ts-ignore
@@ -172,6 +174,93 @@ export class NamespaceControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param namespaceId
+   * @param namespaceAgentDeployRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public deployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public deployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public deployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public deployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling deployAgentsNamespace.')
+    }
+    if (namespaceAgentDeployRequest === null || namespaceAgentDeployRequest === undefined) {
+      throw new Error(
+        'Required parameter namespaceAgentDeployRequest was null or undefined when calling deployAgentsNamespace.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/deploy-agents`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: namespaceAgentDeployRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -524,6 +613,93 @@ export class NamespaceControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<Namespace>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param namespaceId
+   * @param namespaceAgentDeployRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public undeployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any>
+  public undeployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<any>>
+  public undeployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<any>>
+  public undeployAgentsNamespace(
+    namespaceId: string,
+    namespaceAgentDeployRequest: NamespaceAgentDeployRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling undeployAgentsNamespace.')
+    }
+    if (namespaceAgentDeployRequest === null || namespaceAgentDeployRequest === undefined) {
+      throw new Error(
+        'Required parameter namespaceAgentDeployRequest was null or undefined when calling undeployAgentsNamespace.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/undeploy-agents`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<any>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: namespaceAgentDeployRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

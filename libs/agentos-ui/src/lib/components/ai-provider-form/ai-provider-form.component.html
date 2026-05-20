@@ -11,6 +11,21 @@
     <p class="ai-provider-form__loading">Loading&hellip;</p>
   } @else {
     <form class="ai-provider-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <fieldset class="ai-provider-form__scope" [disabled]="isEditMode()">
+        <legend class="ai-provider-form__label">Portée de la configuration</legend>
+        @for (opt of scopeOptions; track trackByScope($index, opt)) {
+          <label class="ai-provider-form__scope-option">
+            <input
+              type="radio"
+              [formControl]="scopeControl"
+              [value]="opt.value"
+              [disabled]="opt.value === 'namespace' && !isAdmin()"
+            />
+            <span>{{ opt.label }}</span>
+          </label>
+        }
+      </fieldset>
+
       <div class="ai-provider-form__field">
         <label class="ai-provider-form__label" for="llm-api-type">API type <span aria-hidden="true">*</span></label>
         <select id="llm-api-type" class="ai-provider-form__select" [formControl]="apiTypeControl">

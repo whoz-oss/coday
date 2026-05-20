@@ -18,9 +18,18 @@ class InMemoryAiProviderRepository : AiProviderRepository {
     override fun deleteByParent(parentId: UUID): Int =
         findByNamespaceId(parentId).count { delegate.delete(it.metadata.id) }
     override fun findByNamespaceId(namespaceId: UUID): List<AiProvider> =
-        delegate.findAll().filter { it.namespaceId == namespaceId }
+        delegate.findAll().filter { it.namespaceId == namespaceId && it.userId == null }
     override fun findByUserId(userId: UUID): List<AiProvider> =
         delegate.findAll().filter { it.userId == userId }
+
+    override fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiProvider? =
+        delegate.findAll().firstOrNull {
+            it.namespaceId == namespaceId && it.userId == userId && it.name == name
+        }
 
     companion object { private const val ALL_KEY = "all" }
 }

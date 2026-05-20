@@ -1,3 +1,68 @@
+## 0.154.0 (2026-05-20)
+
+### 🚀 Features
+
+- wz-31610: change param name of live ([#886](https://github.com/whoz-oss/coday/pull/886))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.153.1 (2026-05-20)
+
+### 🚀 Features
+
+- **agentos:** enhance security filter (WZ-31881) ([#881](https://github.com/whoz-oss/coday/pull/881))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.153.0 (2026-05-19)
+
+### 🚀 Features
+
+- user-level overlays for Tools + LLM (#wz-31189) ([#837](https://github.com/whoz-oss/coday/pull/837), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.152.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31611 add agent config external metadata ([17274bab](https://github.com/whoz-oss/coday/commit/17274bab))
+- #WZ-31611 add externalMetadataJson to AgentConfigNode ([cb67abb6](https://github.com/whoz-oss/coday/commit/cb67abb6))
+- #WZ-31611 update openapi to add externalMetadata to AgentConfig ([0d5de149](https://github.com/whoz-oss/coday/commit/0d5de149))
+- #WZ-31611 add agent config external metadata ([#879](https://github.com/whoz-oss/coday/pull/879))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.151.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31607 smarter cleanup of deployed plugins ([#873](https://github.com/whoz-oss/coday/pull/873))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.150.0 (2026-05-19)
+
+### 🚀 Features
+
+- #wz-31876 list available agents for user external id ([8b5bd437](https://github.com/whoz-oss/coday/commit/8b5bd437))
+- #wz-31876 list available agents for user external id ([ce0d1084](https://github.com/whoz-oss/coday/commit/ce0d1084))
+- #wz-31876 update openapi spec ([1c536505](https://github.com/whoz-oss/coday/commit/1c536505))
+
+### ❤️ Thank You
+
+- mbarroux @mickael-barroux-whoz
+
 ## 0.149.0 (2026-05-19)
 
 ### 🚀 Features

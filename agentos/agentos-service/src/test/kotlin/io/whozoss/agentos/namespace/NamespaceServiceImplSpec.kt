@@ -34,8 +34,9 @@ class NamespaceServiceImplSpec :
     StringSpec({
         val namespaceRepository = mockk<NamespaceRepository>(relaxed = true)
         val permissionService = mockk<PermissionService>()
+        val userGroupRepository = mockk<io.whozoss.agentos.userGroup.UserGroupRepository>(relaxed = true)
         val agentConfigRepository = mockk<AgentConfigRepository>(relaxed = true)
-        val service = NamespaceServiceImpl(namespaceRepository, permissionService, agentConfigRepository)
+        val service = NamespaceServiceImpl(namespaceRepository, permissionService, userGroupRepository, agentConfigRepository)
 
         val userId = randomUUID().toString()
 

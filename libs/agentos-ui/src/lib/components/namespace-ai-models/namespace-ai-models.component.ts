@@ -2,9 +2,14 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AiModel, AiProviderControllerService, AiModelControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AiModel,
+  AiProvider,
+  AiProviderControllerService,
+  AiModelControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, combineLatest, map, switchMap } from 'rxjs'
+import { BehaviorSubject, combineLatest, Observable, switchMap, map } from 'rxjs'
 import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 
 /**
@@ -44,11 +49,11 @@ export class NamespaceAiModelsComponent {
    * Raw models, kept for delete lookups.
    * Loaded in parallel with providers to resolve group labels without sequential calls.
    */
-  private readonly data$ = this.refresh$.pipe(
+  private readonly data$: Observable<[AiModel[], AiProvider[]]> = this.refresh$.pipe(
     switchMap(() =>
       combineLatest([
         this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
-        this.aiProviderController.listByParentAiProvider(this.namespaceId),
+        this.aiProviderController.listAiProvider(this.namespaceId),
       ])
     )
   )
@@ -56,9 +61,9 @@ export class NamespaceAiModelsComponent {
   /** Mapped to EntityListItem[] with groupKey/groupLabel for ds-entity-list grouping. */
   protected readonly modelItems$ = this.data$.pipe(
     map(([models, providers]) => {
-      const providerNames = new Map(providers.map((p) => [p.id ?? '', p.name]))
+      const providerNames = new Map(providers.map((p: AiProvider) => [p.id ?? '', p.name]))
       return models.map(
-        (m): EntityListItem => ({
+        (m: AiModel): EntityListItem => ({
           id: m.id ?? '',
           name: m.alias ?? m.apiModelName,
           description: m.apiModelName,
@@ -74,7 +79,7 @@ export class NamespaceAiModelsComponent {
 
   constructor() {
     this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(([models]) => {
-      this.modelsById = new Map(models.map((m) => [m.id ?? '', m]))
+      this.modelsById = new Map(models.map((m: AiModel) => [m.id ?? '', m]))
     })
   }
 

@@ -1,14 +1,23 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   IntegrationConfig,
-  IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
 } from '@whoz-oss/agentos-api-client'
 import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
+import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
+import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
+
+const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
+
+const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
+  namespace: 'Configuration du namespace',
+  userOnNs: 'Pour moi sur ce namespace',
+  userGlobal: 'Pour moi globalement',
+})
 
 /**
  * IntegrationFormComponent — full-page create / edit form for an integration config.
@@ -16,6 +25,14 @@ import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-syst
  * Mode is determined by the presence of `:integrationId` in the route params:
  * - `/:namespaceId/integrations/new`                       → create mode
  * - `/:namespaceId/integrations/:integrationId/edit`       → edit mode
+ *
+ * The active scope is driven by the `?scope=` query param (story 6.5):
+ *   - `namespace`  (default) → submits to `IntegrationConfigController`
+ *   - `userOnNs`             → submits to the unified `IntegrationConfigController` for the current NS
+ *   - `userGlobal`           → submits to the unified `IntegrationConfigController` cross-namespace
+ *
+ * In create mode, an optional `?template=<configId>` query param hydrates the form from the
+ * referenced NS-shared config — used by the "Override for me" cross-link from the list page.
  *
  * On success or cancel, navigates back to /:namespaceId/integrations.
  */
@@ -31,10 +48,23 @@ export class IntegrationFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly integrationConfigController = inject(IntegrationConfigControllerService)
+  private readonly state = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
+  private readonly namespaceRole = inject(NamespaceRoleStateService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  /**
+   * Whether the current user can write at namespace scope (super-admin OR namespace ADMIN
+   * by Neo4j relation, resolved by [NamespaceRoleStateService]). Drives the namespace radio
+   * option's disabled state — non-admins cannot pick `scope='namespace'` because the backend
+   * would reject the create/update with 403. Defaults to `false` until the lookup resolves;
+   * during that window the namespace option stays disabled (safe default — flickers admin
+   * options on once the role lands, but never lets a non-admin slip through).
+   */
+  protected readonly isAdmin = toSignal(this.namespaceRole.isAdminOfNamespace$(this.namespaceId), {
+    initialValue: false,
+  })
 
   protected readonly form = new FormGroup({
     name: new FormControl<string>('', {
@@ -46,6 +76,7 @@ export class IntegrationFormComponent implements OnInit {
       nonNullable: true,
       validators: [Validators.required],
     }),
+    scope: new FormControl<IntegrationScope>('namespace', { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -57,10 +88,19 @@ export class IntegrationFormComponent implements OnInit {
   protected get typeControl() {
     return this.form.controls.type
   }
+  protected get scopeControl() {
+    return this.form.controls.scope
+  }
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
+
+  protected readonly scopeOptions: ReadonlyArray<{ value: IntegrationScope; label: string }> = [
+    { value: 'namespace', label: SCOPE_LABEL.namespace },
+    { value: 'userOnNs', label: SCOPE_LABEL.userOnNs },
+    { value: 'userGlobal', label: SCOPE_LABEL.userGlobal },
+  ]
 
   /** Parsed parameters value from ds-json-schema-form */
   protected readonly paramsValue = signal<Record<string, unknown> | null>(null)
@@ -86,37 +126,124 @@ export class IntegrationFormComponent implements OnInit {
     return (descriptor?.configSchema as JsonSchemaObject) ?? null
   })
 
-  /** Kept for the update payload (preserves server-side fields) */
+  /** Kept for the update payload (preserves server-side fields like userId). */
   private existingConfig: IntegrationConfig | null = null
 
+  constructor() {
+    // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
+    // default, or via a hand-crafted URL), bounce the radio to `userOnNs` once the role
+    // lookup resolves. We watch `isAdmin` reactively rather than reading it once at mount
+    // because the service is async — at mount time the signal is still at its `false`
+    // initial value and we cannot tell admin from not-yet-resolved.
+    effect(() => {
+      const admin = this.isAdmin()
+      if (admin || this.isEditMode()) return
+      if (this.scopeControl.value === 'namespace') {
+        this.scopeControl.setValue('userOnNs')
+      }
+    })
+  }
+
   ngOnInit(): void {
-    const integrationId = this.route.snapshot.paramMap.get('integrationId')
+    this.state.setNamespace(this.namespaceId)
+    const params = this.route.snapshot.paramMap
+    const queryParams = this.route.snapshot.queryParamMap
+
+    const integrationId = params.get('integrationId')
+    const hintedScope = this.parseScope(queryParams.get('scope'))
+
     if (integrationId) {
       this.isEditMode.set(true)
+      // Edit-mode: scope is immutable — disable the radio so the user cannot change it.
+      this.scopeControl.disable()
       this.loadConfig(integrationId)
+      return
     }
+
+    this.scopeControl.setValue(hintedScope)
+    const templateId = queryParams.get('template')
+    if (templateId) {
+      this.hydrateFromTemplate(templateId)
+    }
+  }
+
+  private parseScope(raw: string | null): IntegrationScope {
+    return raw && VALID_SCOPES.has(raw as IntegrationScope) ? (raw as IntegrationScope) : 'namespace'
+  }
+
+  /**
+   * In edit-mode, the scope is **derived from the loaded resource**, not from the URL —
+   * a forged `?scope=` would otherwise route the update to the wrong controller. The
+   * unified controller returns the entity regardless of scope ; we read `(userId,
+   * namespaceId)` to determine which radio option to select.
+   */
+  private deriveScopeFromConfig(config: IntegrationConfig): IntegrationScope {
+    const isUserScope = !!config.userId
+    if (!isUserScope) return 'namespace'
+    return config.namespaceId ? 'userOnNs' : 'userGlobal'
   }
 
   private loadConfig(id: string): void {
     this.isLoading.set(true)
-    this.integrationConfigController
-      .getByIdIntegrationConfig(id)
+    // The unified `GET /api/integration-configs/{id}` returns the row regardless of scope
+    // (Decision 19 ownership branch). The actual scope is derived from the loaded resource
+    // so the radio reflects truth, not the URL hint.
+    this.state
+      .getById(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
           this.existingConfig = config
-          this.nameControl.setValue(config.name)
-          this.descriptionControl.setValue(config.description ?? null)
-          this.typeControl.setValue(config.integrationType)
-          this.initialParams.set(config.parameters as Record<string, unknown> | null)
-          this.paramsValue.set(config.parameters as Record<string, unknown> | null)
+          this.scopeControl.setValue(this.deriveScopeFromConfig(config))
+          this.applyConfigToForm(config)
           this.isLoading.set(false)
         },
         error: () => {
           this.isLoading.set(false)
+          console.warn(`[IntegrationForm] Could not load config '${id}' — navigating back`)
           this.navigateBack()
         },
       })
+  }
+
+  private hydrateFromTemplate(templateId: string): void {
+    this.isLoading.set(true)
+    this.state
+      .getById(templateId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (config) => {
+          this.applyConfigToForm(config)
+          this.isLoading.set(false)
+          // Strip the template param from the URL so a refresh doesn't re-hydrate over user edits.
+          this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { template: null, templateScope: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          })
+        },
+        error: (err) => {
+          // Template inaccessible (deleted, 403, network) — drop the loading flag, drop the
+          // template param, and stay on a blank create form so the user can still proceed.
+          console.warn(`[IntegrationForm] Could not hydrate from template ${templateId}:`, err)
+          this.isLoading.set(false)
+          this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { template: null, templateScope: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          })
+        },
+      })
+  }
+
+  private applyConfigToForm(config: IntegrationConfig): void {
+    this.nameControl.setValue(config.name)
+    this.descriptionControl.setValue(config.description ?? null)
+    this.typeControl.setValue(config.integrationType)
+    this.initialParams.set(config.parameters as Record<string, unknown> | null)
+    this.paramsValue.set(config.parameters as Record<string, unknown> | null)
   }
 
   protected onParamsChange(value: Record<string, unknown> | null): void {
@@ -126,23 +253,37 @@ export class IntegrationFormComponent implements OnInit {
   protected submit(): void {
     if (this.nameControl.invalid || this.typeControl.invalid || this.isSubmitting()) return
 
-    this.isSubmitting.set(true)
+    // Edit-mode without a loaded existingConfig.id is a corrupt state (load failed, or
+    // the id was stripped). Bailing out is safer than firing a PUT on an empty path.
+    if (this.isEditMode() && !this.existingConfig?.id) {
+      this.navigateBack()
+      return
+    }
 
-    const call$ = this.isEditMode()
-      ? this.integrationConfigController.updateIntegrationConfig(this.existingConfig!.id ?? '', {
-          ...this.existingConfig!,
-          name: this.nameControl.value.trim(),
-          description: this.descriptionControl.value?.trim() || undefined,
-          integrationType: this.typeControl.value,
-          parameters: this.paramsValue(),
-        })
-      : this.integrationConfigController.createIntegrationConfig({
-          name: this.nameControl.value.trim(),
-          description: this.descriptionControl.value?.trim() || undefined,
-          integrationType: this.typeControl.value,
-          namespaceId: this.namespaceId,
-          parameters: this.paramsValue(),
-        } as IntegrationConfig)
+    this.isSubmitting.set(true)
+    const trimmedDescription = this.descriptionControl.value?.trim()
+    // Round-trip masking guard (review IG-5): in edit-mode, if the user did not touch
+    // the JSON form, omit `parameters` from the payload entirely so the backend keeps
+    // the persisted value. Without this, the form would re-post the response payload
+    // verbatim — including any masked secret (e.g. `bearerToken: "***"`) — and the
+    // backend would write the mask over the real credential. Sending `undefined` here
+    // is what we want: JSON.stringify drops undefined fields, so the key is absent
+    // from the wire payload (≠ null which would clear the field server-side).
+    const parametersUnchanged = this.isEditMode() && this.paramsAreEqual(this.initialParams(), this.paramsValue())
+    const draft = {
+      name: this.nameControl.value.trim(),
+      // Send null (not undefined) when the user cleared the field so the backend clears it.
+      description: trimmedDescription ? trimmedDescription : null,
+      integrationType: this.typeControl.value,
+      parameters: parametersUnchanged ? undefined : this.paramsValue(),
+    }
+    // getRawValue() includes the scope control even when disabled in edit mode.
+    const scope = this.form.getRawValue().scope
+
+    const call$ =
+      this.isEditMode() && this.existingConfig?.id
+        ? this.state.update(this.existingConfig.id, draft, scope, this.existingConfig)
+        : this.state.create(draft, scope, this.namespaceId)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
@@ -160,5 +301,22 @@ export class IntegrationFormComponent implements OnInit {
 
   protected trackByType(_index: number, descriptor: IntegrationTypeDescriptor): string {
     return descriptor.type
+  }
+
+  protected trackByScope(_index: number, opt: { value: IntegrationScope }): string {
+    return opt.value
+  }
+
+  /**
+   * Structural equality check on the `parameters` JSON used to detect untouched payloads
+   * at submit time. Relies on `JSON.stringify` key-order being insertion-stable (true on
+   * V8 / SpiderMonkey / WebKit for non-numeric keys); both `initialParams` and
+   * `paramsValue` emanate from the same `ds-json-schema-form` schema seed so insertion
+   * order is consistent between the loaded payload and the user-edited one.
+   */
+  private paramsAreEqual(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
+    if (a === b) return true
+    if (a === null || b === null) return false
+    return JSON.stringify(a) === JSON.stringify(b)
   }
 }

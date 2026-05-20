@@ -2,7 +2,9 @@
 # Activates Cloud Config import and Eureka service registration so that
 # the agentos service is discoverable by the rest of the Whoz backend platform.
 # This file is only active when --spring.profiles.active includes 'whoz'.
-
+agentos:
+  security:
+    mode: auth
 spring:
   application:
     name: agentos

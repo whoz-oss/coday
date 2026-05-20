@@ -117,7 +117,7 @@ export class AgentConfigFormComponent implements OnInit {
     this.isLoading.set(true)
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
-      integrations: this.integrationConfigController.listByParentIntegrationConfig(this.namespaceId),
+      integrations: this.integrationConfigController.listIntegrationConfig(this.namespaceId),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -141,10 +141,10 @@ export class AgentConfigFormComponent implements OnInit {
   /** In create mode: only load the namespace integrations (undefined = no existing filter). */
   private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
     this.integrationConfigController
-      .listByParentIntegrationConfig(this.namespaceId)
+      .listIntegrationConfig(this.namespaceId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (integrations) => {
+        next: (integrations: IntegrationConfig[]) => {
           this.integrationRows.set(this.buildIntegrationRows(integrations, existingIntegrations ?? undefined))
         },
       })

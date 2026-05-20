@@ -66,7 +66,7 @@ class CaseEventSseController(
     @HideOnAccessDenied
     fun streamEvents(
         @PathVariable caseId: UUID,
-        @RequestParam(required = false) live: Boolean? = false,
+        @RequestParam includePreviousEvents: Boolean? = true,
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
@@ -86,7 +86,7 @@ class CaseEventSseController(
         val collectorJob =
             scope.launch {
                 try {
-                    if (live != true) {
+                    if (includePreviousEvents == true) {
                         // Replay persisted history first so clients connecting mid-run
                         // or reconnecting after a disconnect receive the full sequence.
                         caseEventService.findByParent(caseId).forEach { sendEvent(it) }
