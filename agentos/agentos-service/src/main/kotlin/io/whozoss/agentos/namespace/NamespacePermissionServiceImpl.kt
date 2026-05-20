@@ -8,6 +8,7 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 /**
  * Sync-algorithm-local role states.
@@ -37,6 +38,7 @@ class NamespacePermissionServiceImpl(
     private val permissionService: PermissionService,
 ) : NamespacePermissionService {
 
+    @Transactional
     override fun syncUserRoles(request: SyncUserRolesRequest) {
         val user = userService.findByExternalId(request.userExternalId)
             ?: throw ResourceNotFoundException("User not found: ${request.userExternalId}")
