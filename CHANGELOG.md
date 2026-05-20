@@ -1,3 +1,15 @@
+## 0.155.1 (2026-05-20)
+
+### 🩹 Fixes
+
+- #WZ-31424 Fix user group unique indices creation ([1356dc40](https://github.com/whoz-oss/coday/commit/1356dc40))
+- #WZ-31424 Fix user group unique indices creation ([#888](https://github.com/whoz-oss/coday/pull/888))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.155.0 (2026-05-20)
 
 ### 🚀 Features
