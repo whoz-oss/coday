@@ -1,3 +1,13 @@
+## 0.153.1 (2026-05-20)
+
+### 🚀 Features
+
+- **agentos:** enhance security filter (WZ-31881) ([#881](https://github.com/whoz-oss/coday/pull/881))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.153.0 (2026-05-19)
 
 ### 🚀 Features
