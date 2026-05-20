@@ -154,7 +154,7 @@ class AiProviderServiceImplSpec : StringSpec() {
             service.create(config(namespaceId = null, userId = userId, name = "anthropic"))
             service.create(config(namespaceId = nsA, userId = userId, name = "anthropic"))
 
-            service.findByNamespaceId(nsA) shouldHaveSize 2 // namespace-only + namespace+user
+            service.findByNamespaceId(nsA) shouldHaveSize 1 // namespace-shared only (userId IS NULL filter per AC14)
             service.findByNamespaceId(nsB) shouldHaveSize 1
             service.findByUserId(userId) shouldHaveSize 2 // user-only + namespace+user
         }
@@ -219,6 +219,83 @@ class AiProviderServiceImplSpec : StringSpec() {
 
             shouldThrow<ResponseStatusException> {
                 service.update(toUpdate.copy(name = "openai"))
+            }.statusCode.value() shouldBe 409
+        }
+
+        // -------------------------------------------------------------------------
+        // Cross-layer apiType consistency (IG-3 equivalent)
+        //
+        // The 3-tier reconciliation merges layers param-by-param assuming all layers share the
+        // same `apiType`. If they diverge, the merged provider silently switches the chat client
+        // at runtime — failing opaquely deep in the agent run.
+        // -------------------------------------------------------------------------
+
+        "create user×ns rejects when NS-shared layer has same name with different apiType" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = null, name = "primary", apiType = AiApiType.Anthropic))
+
+            shouldThrow<ResponseStatusException> {
+                service.create(config(namespaceId = nsId, userId = userId, name = "primary", apiType = AiApiType.OpenAI))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "create user-global rejects when same-user user×ns layer has same name with different apiType" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = userId, name = "primary", apiType = AiApiType.Anthropic))
+
+            shouldThrow<ResponseStatusException> {
+                service.create(config(namespaceId = null, userId = userId, name = "primary", apiType = AiApiType.OpenAI))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "create user×ns rejects when same-user user-global layer has same name with different apiType" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = null, userId = userId, name = "primary", apiType = AiApiType.Anthropic))
+
+            shouldThrow<ResponseStatusException> {
+                service.create(config(namespaceId = nsId, userId = userId, name = "primary", apiType = AiApiType.OpenAI))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "create allows same name across layers when apiType matches" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+
+            service.create(config(namespaceId = nsId, userId = null, name = "primary", apiType = AiApiType.Anthropic))
+            // Same apiType — should merge cleanly at reconciliation, no 409.
+            service.create(config(namespaceId = null, userId = userId, name = "primary", apiType = AiApiType.Anthropic))
+            service.create(config(namespaceId = nsId, userId = userId, name = "primary", apiType = AiApiType.Anthropic))
+
+            service.findByUserId(userId) shouldHaveSize 2
+        }
+
+        "create user-global allows same name as another user's user-global with different apiType (cross-user is by-design)" {
+            val service = newService()
+            val userA = UUID.randomUUID()
+            val userB = UUID.randomUUID()
+            service.create(config(namespaceId = null, userId = userA, name = "primary", apiType = AiApiType.Anthropic))
+
+            // Different user → no overlap at reconciliation, no conflict.
+            val saved = service.create(config(namespaceId = null, userId = userB, name = "primary", apiType = AiApiType.OpenAI))
+            saved.shouldNotBeNull()
+        }
+
+        "update rejects when renaming would collide with a different-apiType layer" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = null, name = "primary", apiType = AiApiType.Anthropic))
+            val mine = service.create(config(namespaceId = nsId, userId = userId, name = "secondary", apiType = AiApiType.OpenAI))
+
+            shouldThrow<ResponseStatusException> {
+                service.update(mine.copy(name = "primary"))
             }.statusCode.value() shouldBe 409
         }
     }

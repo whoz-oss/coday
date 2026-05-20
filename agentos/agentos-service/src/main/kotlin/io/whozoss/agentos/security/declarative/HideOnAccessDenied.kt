@@ -6,10 +6,19 @@ package io.whozoss.agentos.security.declarative
  * HTTP 404 (`ResourceNotFoundException`) by [AccessDeniedExceptionHandler]
  * instead of the default HTTP 403.
  *
- * Use on `@PreAuthorize`-annotated GET endpoints where leaking the existence
- * of a resource is a security concern (IG1 pattern). Do NOT use on write
- * operations — the caller already submitted an id, so 403 is the correct
- * REST semantics.
+ * Use on `@PreAuthorize`-annotated endpoints — `GET`, `PUT` and `DELETE` — where
+ * leaking the existence of a resource is a security concern (IG1 pattern, FR21,
+ * NFR-SEC-2). The unified Epic 6 controllers ([io.whozoss.agentos.aiProvider.AiProviderController],
+ * [io.whozoss.agentos.integrationConfig.IntegrationConfigController]) apply it
+ * uniformly across read **and** write verbs to keep cross-user probes
+ * indistinguishable from unknown ids — a non-owner cannot tell apart "row exists,
+ * I cannot touch it" from "row does not exist". The 404-on-write convention is a
+ * deliberate trade-off : strict REST semantics would prefer 403, but an existence
+ * oracle on write is a worse leak than the violated convention.
+ *
+ * Skip the annotation only on writes that *must* surface a 403 (bulk operations
+ * over already-known ids, admin tooling, or audit-style endpoints where the
+ * caller is expected to have proven existence elsewhere).
  *
  * Example:
  * ```
