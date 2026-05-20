@@ -32,10 +32,12 @@ interface AgentService {
      * Resolve the canonical name for [namePart] within [namespaceId] by
      * [io.whozoss.agentos.agentConfig.AgentConfig] name matching,
      * without instantiating a full Agent.
-     * Returns null if no [io.whozoss.agentos.agentConfig.AgentConfig] matches.
+     *
+     * Returns null if no matching [io.whozoss.agentos.agentConfig.AgentConfig] is found.
      */
     fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
+        userId: UUID? = null,
     ): String?
 }

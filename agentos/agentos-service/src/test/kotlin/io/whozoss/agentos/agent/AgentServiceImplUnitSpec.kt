@@ -502,10 +502,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // resolveAgentName
+        // resolveAgentName — anonymous path (userId == null)
         // -------------------------------------------------------------------------
 
-        "resolveAgentName returns AgentConfig name when one matches" {
+        "resolveAgentName returns AgentConfig name when one matches (no userId)" {
             val config = agentConfig(name = "my-agent")
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
 
@@ -514,10 +514,45 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 0) { aiModelService.findAiModel(any(), any()) }
         }
 
-        "resolveAgentName returns null when no AgentConfig matches" {
+        "resolveAgentName returns null when no AgentConfig matches (no userId)" {
             every { agentConfigService.findByName(namespaceId, "unknown") } returns null
 
             agentService.resolveAgentName("unknown", namespaceId) shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // resolveAgentName — user-scoped path (userId != null)
+        // -------------------------------------------------------------------------
+
+        "resolveAgentName with userId delegates to findAvailableByUserIdAndName" {
+            val userId = UUID.randomUUID()
+            val config = agentConfig(name = "my-agent")
+            every { agentConfigService.findAvailableByUserIdAndName(namespaceId, userId, "my-agent") } returns config
+
+            agentService.resolveAgentName("my-agent", namespaceId, userId) shouldBe "my-agent"
+
+            verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
+        }
+
+        "resolveAgentName with userId returns null when agent is not accessible to the user" {
+            val userId = UUID.randomUUID()
+            every { agentConfigService.findAvailableByUserIdAndName(namespaceId, userId, "restricted") } returns null
+
+            agentService.resolveAgentName("restricted", namespaceId, userId) shouldBe null
+
+            verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
+        }
+
+        "resolveAgentName with userId does not fall back to findByName" {
+            // Ensures the user-scoped path is strictly gated by Neo4j rights:
+            // an agent that exists in the namespace but is not deployed to the user
+            // must return null, not fall through to the namespace-wide lookup.
+            val userId = UUID.randomUUID()
+            every { agentConfigService.findAvailableByUserIdAndName(namespaceId, userId, "my-agent") } returns null
+
+            agentService.resolveAgentName("my-agent", namespaceId, userId) shouldBe null
+
+            verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
         }
     }
 }

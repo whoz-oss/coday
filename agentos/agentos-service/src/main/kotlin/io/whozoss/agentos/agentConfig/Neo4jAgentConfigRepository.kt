@@ -44,11 +44,16 @@ open class Neo4jAgentConfigRepository(
                 true
             } ?: false
 
-    override fun findAvailableByUserExternalId(namespaceExternalId: String, userExternalId: String): List<AgentConfig> {
-        return neo4jRepository
+    override fun findAvailableByUserExternalId(namespaceExternalId: String, userExternalId: String): List<AgentConfig> =
+        neo4jRepository
             .findAvailableByUserExternalId(namespaceExternalId, userExternalId)
             .map { it.toDomain() }
-    }
+
+    override fun findAvailableByUserIdAndName(namespaceId: UUID, userId: UUID, name: String): AgentConfig? =
+        neo4jRepository
+            .findAvailableByUserIdAndName(namespaceId.toString(), userId.toString(), name)
+            .firstOrNull()
+            ?.toDomain()
 
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {

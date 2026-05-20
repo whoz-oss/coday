@@ -52,4 +52,42 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             """,
     )
     fun findAvailableByUserExternalId(namespaceExternalId: String, userExternalId: String): List<AgentConfigNode>
+
+    /**
+     * Returns the first [AgentConfigNode] accessible to the user (matched by internal [userId])
+     * in the namespace (matched by internal [namespaceId]) whose name matches [name]
+     * case-insensitively.
+     *
+     * Applies the same graph rules as [findAvailableByUserExternalId] (UserGroup membership
+     * and direct Namespace MEMBER/ADMIN relations) with the name filter pushed into Cypher
+     * to avoid fetching the full agent list.
+     *
+     * Used by [io.whozoss.agentos.agent.AgentServiceImpl.resolveAgentName] during
+     * conversation runtime where only internal UUIDs are available.
+     */
+    @Query(
+        $$"""
+            MATCH (u:User {id: $userId})
+              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (ns:Namespace {id: $namespaceId})
+              WHERE ns.removed IS NULL OR ns.removed = false
+            MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+              WHERE g.removed IS NULL OR g.removed = false
+            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
+              WHERE a.removed IS NULL OR a.removed = false
+              AND toLower(a.name) = toLower($name)
+            RETURN a
+            UNION
+            MATCH (u:User {id: $userId})
+              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (ns:Namespace {id: $namespaceId})
+              WHERE ns.removed IS NULL OR ns.removed = false
+            MATCH (u)-[:MEMBER|ADMIN]->(ns)
+            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
+              WHERE a.removed IS NULL OR a.removed = false
+              AND toLower(a.name) = toLower($name)
+            RETURN a
+            """,
+    )
+    fun findAvailableByUserIdAndName(namespaceId: String, userId: String, name: String): List<AgentConfigNode>
 }
