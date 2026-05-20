@@ -12,7 +12,6 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.ToolResponseMessage
-import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import java.util.UUID
 
@@ -21,76 +20,163 @@ data class AgentAdvancedContext(
     val tools: List<StandardTool<*>>,
     val instructions: String?,
     val agentId: UUID,
-)
-
-/**
- * Build the full message list for an LLM call, prepending system instructions when present.
- */
-internal fun AgentAdvancedContext.buildMessages(events: List<CaseEvent>): List<Message> {
-    val history = convertEventsToMessages(events)
-    return if (instructions != null) listOf(SystemMessage(instructions)) + history else history
-}
-
-/**
- * Convert CaseEvents to Spring AI Messages for LLM context.
- * Handles MessageEvent, ToolRequestEvent, ToolResponseEvent, and IntentionGeneratedEvent.
- * Converts other agents' messages to user role for LLM compatibility.
- */
-internal fun AgentAdvancedContext.convertEventsToMessages(events: List<CaseEvent>): List<Message> {
-    val messages = mutableListOf<Message>()
-    val pendingToolCalls = mutableListOf<AssistantMessage.ToolCall>()
-    val toolResponses = mutableMapOf<String, ToolResponseEvent>()
-
-    events.filterIsInstance<ToolResponseEvent>().forEach { toolResponses[it.toolRequestId] = it }
-
-    fun flushPendingToolCalls() {
-        if (pendingToolCalls.isEmpty()) return
-        messages.add(AssistantMessage.builder().toolCalls(pendingToolCalls.toList()).build())
-        val responses = pendingToolCalls.mapNotNull { toolCall ->
-            toolResponses[toolCall.id()]?.let { response ->
-                val output = when (val content = response.output) {
-                    is MessageContent.Text -> content.content
-                    else -> content.toString()
-                }
-                ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-            }
-        }
-        if (responses.isNotEmpty()) {
-            messages.add(ToolResponseMessage.builder().responses(responses).build())
-        }
-        pendingToolCalls.clear()
+) {
+    internal fun buildMessages(events: List<CaseEvent>): List<Message> {
+        val history = convertEventsToMessages(events)
+        return if (instructions != null) history + listOf(UserMessage(instructions)) else history
     }
 
-    for (event in events) {
-        when (event) {
-            is MessageEvent -> {
-                flushPendingToolCalls()
-                val textContent = event.content
-                    .filterIsInstance<MessageContent.Text>()
-                    .joinToString("\n") { it.content }
-                when (event.actor.role) {
-                    ActorRole.USER -> messages.add(UserMessage(textContent))
-                    ActorRole.AGENT -> {
-                        if (event.actor.id == agentId.toString()) {
-                            messages.add(AssistantMessage(textContent))
-                        } else {
-                            messages.add(UserMessage("[${event.actor.displayName}]: $textContent"))
-                        }
+    internal fun convertEventsToMessages(
+        events: List<CaseEvent>,
+        maxDetailedToolCalls: Int = 6,
+        maxDetailedMessagesWithSteps: Int = 3,
+    ): List<Message> {
+        val responsesByRequestId = indexToolResponses(events)
+        val detailedRequestIds =
+            selectDetailedToolRequestIds(events, maxDetailedToolCalls, maxDetailedMessagesWithSteps)
+        val detailCutoffIndex = computeDetailCutoffIndex(events, detailedRequestIds)
+        val hasToolCalls = events.any { it is ToolRequestEvent }
+
+        return events.flatMapIndexed { index, event ->
+            when (event) {
+                is MessageEvent -> listOf(toMessage(event))
+                is ToolRequestEvent -> toToolMessages(event, detailedRequestIds, responsesByRequestId)
+                is IntentionGeneratedEvent -> toIntentionMessage(event, index, detailCutoffIndex, hasToolCalls)
+                else -> emptyList()
+            }
+        }
+    }
+
+    private fun indexToolResponses(events: List<CaseEvent>): Map<String, ToolResponseEvent> =
+        events.filterIsInstance<ToolResponseEvent>().associateBy { it.toolRequestId }
+
+    private fun selectDetailedToolRequestIds(
+        events: List<CaseEvent>,
+        maxPairs: Int,
+        maxTurns: Int,
+    ): Set<String> {
+        val result = mutableSetOf<String>()
+        var pairsCollected = 0
+        var turnsCollected = 0
+        var inTurn = false
+
+        for (event in events.reversed()) {
+            if (pairsCollected >= maxPairs || turnsCollected >= maxTurns) break
+            when (event) {
+                is ToolRequestEvent -> {
+                    if (!inTurn) {
+                        turnsCollected++
+                        inTurn = true
                     }
+                    result.add(event.toolRequestId)
+                    pairsCollected++
                 }
+
+                is MessageEvent, is IntentionGeneratedEvent -> {
+                    inTurn = false
+                }
+
+                else -> {}
             }
-            is ToolRequestEvent -> {
-                val safeArgs = event.args?.takeIf { it.isNotBlank() } ?: "{}"
-                pendingToolCalls.add(AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, safeArgs))
-            }
-            is IntentionGeneratedEvent -> {
-                flushPendingToolCalls()
-                messages.add(AssistantMessage("[Intention] ${event.intention}\n[Selected tool] ${event.toolName}"))
-            }
-            else -> {}
+        }
+        return result
+    }
+
+    private fun computeDetailCutoffIndex(
+        events: List<CaseEvent>,
+        detailedRequestIds: Set<String>,
+    ): Int {
+        val firstDetailedIndex =
+            events.indexOfFirst { it is ToolRequestEvent && it.toolRequestId in detailedRequestIds }
+        if (firstDetailedIndex < 0) return events.size
+
+        return generateSequence(firstDetailedIndex) { idx ->
+            (idx - 1).takeIf { it >= 0 && events[it] is IntentionGeneratedEvent }
+        }.last()
+    }
+
+    private fun AgentAdvancedContext.toMessage(event: MessageEvent): Message {
+        val textContent =
+            event.content
+                .filterIsInstance<MessageContent.Text>()
+                .joinToString("\n") { it.content }
+
+        return when {
+            event.actor.role == ActorRole.USER -> UserMessage(textContent)
+            event.actor.id == agentId.toString() -> AssistantMessage(textContent)
+            else -> UserMessage("[${event.actor.displayName}]: $textContent")
         }
     }
 
-    flushPendingToolCalls()
-    return messages
+    private fun toToolMessages(
+        event: ToolRequestEvent,
+        detailedRequestIds: Set<String>,
+        responsesByRequestId: Map<String, ToolResponseEvent>,
+    ): List<Message> =
+        if (event.toolRequestId in detailedRequestIds) {
+            toDetailedToolMessages(event, responsesByRequestId)
+        } else {
+            listOf(toToolSummaryMessage(event, responsesByRequestId))
+        }
+
+    private fun toDetailedToolMessages(
+        event: ToolRequestEvent,
+        responsesByRequestId: Map<String, ToolResponseEvent>,
+    ): List<Message> {
+        val toolCall =
+            AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, normalizeArgs(event.args))
+        val messages = mutableListOf<Message>(AssistantMessage.builder().toolCalls(listOf(toolCall)).build())
+
+        responsesByRequestId[event.toolRequestId]?.let { response ->
+            messages.add(
+                ToolResponseMessage
+                    .builder()
+                    .responses(
+                        listOf(
+                            ToolResponseMessage.ToolResponse(
+                                event.toolRequestId,
+                                event.toolName,
+                                extractText(response.output),
+                            ),
+                        ),
+                    ).build(),
+            )
+        }
+        return messages
+    }
+
+    private fun toToolSummaryMessage(
+        event: ToolRequestEvent,
+        responsesByRequestId: Map<String, ToolResponseEvent>,
+    ): Message {
+        val response = responsesByRequestId[event.toolRequestId]
+        val status =
+            when {
+                response == null || response.success -> "Success"
+                else -> "Failed: ${extractText(response.output)}"
+            }
+        return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status")
+    }
+
+    private fun toIntentionMessage(
+        event: IntentionGeneratedEvent,
+        index: Int,
+        detailCutoffIndex: Int,
+        hasToolCalls: Boolean,
+    ): List<Message> {
+        val isInDetailWindow = !hasToolCalls || index >= detailCutoffIndex
+        return if (isInDetailWindow) {
+            listOf(AssistantMessage("[Intention] ${event.intention}\n[Selected tool] ${event.toolName}"))
+        } else {
+            emptyList()
+        }
+    }
+
+    private fun normalizeArgs(args: String?): String = args?.takeIf { it.isNotBlank() } ?: "{}"
+
+    private fun extractText(content: MessageContent): String =
+        when (content) {
+            is MessageContent.Text -> content.content
+            else -> content.toString()
+        }
 }
