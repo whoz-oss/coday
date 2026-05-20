@@ -1480,7 +1480,7 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: live
+      - name: includePreviousEvents
         in: query
         required: false
         schema:
