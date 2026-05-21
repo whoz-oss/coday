@@ -1,3 +1,13 @@
+## 0.159.0 (2026-05-21)
+
+### 🚀 Features
+
+- wz-31608: add endpoints for role provisioning ([#890](https://github.com/whoz-oss/coday/pull/890))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.158.0 (2026-05-21)
 
 ### 🚀 Features
