@@ -1,3 +1,20 @@
+## 0.159.4 (2026-05-21)
+
+### 🚀 Features
+
+- **agentos:** extract AgentIntentionGenerator.kt from AgentAdvanced (WZ-31597) ([#862](https://github.com/whoz-oss/coday/pull/862))
+
+### 🩹 Fixes
+
+- remove NPM_CONFIG_PROVENANCE ([b5c4503a](https://github.com/whoz-oss/coday/commit/b5c4503a))
+- remove NPM_CONFIG_PROVENANCE ([#896](https://github.com/whoz-oss/coday/pull/896))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.159.3 (2026-05-21)
 
 ### 🩹 Fixes
