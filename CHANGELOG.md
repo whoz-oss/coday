@@ -1,3 +1,13 @@
+## 0.159.2 (2026-05-21)
+
+### 🩹 Fixes
+
+- wz-32042: fix mapping of defaultAgent in namespace resource to d… ([#892](https://github.com/whoz-oss/coday/pull/892))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.159.1 (2026-05-21)
 
 ### 🩹 Fixes
