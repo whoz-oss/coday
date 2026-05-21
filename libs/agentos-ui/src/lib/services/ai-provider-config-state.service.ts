@@ -41,6 +41,11 @@ export interface AiProviderDraft {
   description: string | null
   baseUrl: string | null
   apiKey: string | null
+  /**
+   * Custom HTTP headers forwarded to the provider's API.
+   * `null` means no headers (omitted from payload). Empty object clears all headers.
+   */
+  headers: Record<string, string> | null
 }
 
 /** Sentinel accepted by the backend's `?namespaceId=` to filter on `namespaceId IS NULL`. */
@@ -156,6 +161,7 @@ export class AiProviderConfigStateService {
         description: draft.description as string | undefined,
         baseUrl: draft.baseUrl as string | undefined,
         apiKey: draft.apiKey as string | undefined,
+        headers: draft.headers ?? undefined,
         namespaceId,
       }
       return this.nsController.createAiProvider(payload).pipe(tap(() => this.refresh()))
@@ -174,6 +180,7 @@ export class AiProviderConfigStateService {
       description: draft.description as string | undefined,
       baseUrl: draft.baseUrl as string | undefined,
       apiKey: draft.apiKey as string | undefined,
+      headers: draft.headers ?? undefined,
       userId: myId,
       namespaceId: scope === 'userOnNs' ? (namespaceId as string) : undefined,
     }
@@ -198,6 +205,7 @@ export class AiProviderConfigStateService {
       apiType: draft.apiType,
       description: draft.description as string | undefined,
       baseUrl: draft.baseUrl as string | undefined,
+      headers: draft.headers ?? undefined,
       namespaceId: existing.namespaceId,
       userId: existing.userId,
       ...apiKeyField,
