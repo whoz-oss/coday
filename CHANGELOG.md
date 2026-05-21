@@ -1,3 +1,15 @@
+## 0.159.1 (2026-05-21)
+
+### 🩹 Fixes
+
+- #WZ-31424 Register UserGroup in permissions ([2573acf2](https://github.com/whoz-oss/coday/commit/2573acf2))
+- #WZ-31424 Register UserGroup in permissions ([#891](https://github.com/whoz-oss/coday/pull/891))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.159.0 (2026-05-21)
 
 ### 🚀 Features
