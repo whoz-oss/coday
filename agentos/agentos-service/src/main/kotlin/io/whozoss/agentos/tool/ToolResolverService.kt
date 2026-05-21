@@ -5,6 +5,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -37,8 +38,11 @@ class ToolResolverService(
             }
             try {
                 val allowedToolNames = agentIntegrations?.get(config.name)
-                val providedTools = plugin.provideTools(config.parameters, config.name)
-                    .filter { tool -> isToolAllowed(tool.name, config.name, allowedToolNames) }
+                val providedTools = plugin.provideTools(
+                    config.parameters,
+                    config.name,
+                    ToolContext(namespaceId = namespaceId, userId = null, userExternalId = null, caseEvents = emptyList()),
+                ).filter { tool -> isToolAllowed(tool.name, config.name, allowedToolNames) }
                 providedTools.forEach { tool ->
                     if (resolved.containsKey(tool.name)) {
                         logger.warn { "[ToolResolver] Tool name conflict: '${tool.name}' from integrationType='${config.integrationType}' overrides an existing entry" }
@@ -107,8 +111,11 @@ class ToolResolverService(
 
             try {
                 val allowedToolNames = agentIntegrations?.get(resolvedConfig.name)
-                val tools = plugin.provideTools(resolvedConfig.parameters, resolvedConfig.name)
-                    .filter { tool -> isToolAllowed(tool.name, resolvedConfig.name, allowedToolNames) }
+                val tools = plugin.provideTools(
+                    resolvedConfig.parameters,
+                    resolvedConfig.name,
+                    ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList()),
+                ).filter { tool -> isToolAllowed(tool.name, resolvedConfig.name, allowedToolNames) }
                 tools.forEach { tool ->
                     if (resolved.containsKey(tool.name)) {
                         logger.warn { "[ToolResolver] Tool name conflict: '${tool.name}' from integrationType='${resolvedConfig.integrationType}'" }
