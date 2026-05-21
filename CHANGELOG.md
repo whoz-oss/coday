@@ -1,3 +1,13 @@
+## 0.156.0 (2026-05-21)
+
+### 🚀 Features
+
+- #31893 environment-level default agent fallback ([#874](https://github.com/whoz-oss/coday/pull/874), [#31893](https://github.com/whoz-oss/coday/issues/31893))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.155.1 (2026-05-20)
 
 ### 🩹 Fixes
