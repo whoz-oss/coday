@@ -853,9 +853,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                $ref: "#/components/schemas/NamespaceRoleAssignment"
+              $ref: "#/components/schemas/SyncUserRolesRequest"
         required: true
       responses:
         "200":
@@ -863,9 +861,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NamespaceRoleAssignment"
+                $ref: "#/components/schemas/SyncUserRolesRequest"
   /api/namespaces/by-ids:
     post:
       tags:
@@ -1455,27 +1451,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NamespaceUserListItem"
-  /api/namespaces/roles-for-user/{userId}:
-    get:
-      tags:
-      - namespace-permission-endpoints
-      operationId: listNamespaceRolesForUser
-      parameters:
-      - name: userId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NamespaceRole"
   /api/namespaces/by-parentId/{parentId}:
     get:
       tags:
@@ -1810,6 +1785,9 @@ components:
           - ERROR
         title:
           type: string
+        created:
+          type: string
+          format: date-time
       required:
       - namespaceId
       - status
@@ -2055,13 +2033,10 @@ components:
             format: uuid
       required:
       - agentIds
-    NamespaceRoleAssignment:
+    NamespaceRoleEntry:
       type: object
       properties:
         namespaceExternalId:
-          type: string
-          minLength: 1
-        userExternalId:
           type: string
           minLength: 1
         role:
@@ -2070,6 +2045,18 @@ components:
       required:
       - namespaceExternalId
       - role
+    SyncUserRolesRequest:
+      type: object
+      properties:
+        userExternalId:
+          type: string
+          minLength: 1
+        namespaceRoles:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamespaceRoleEntry"
+      required:
+      - namespaceRoles
       - userExternalId
     AddMessageRequest:
       type: object
@@ -2580,24 +2567,6 @@ components:
       - email
       - externalId
       - id
-      - role
-    NamespaceRole:
-      type: object
-      properties:
-        namespaceId:
-          type: string
-          format: uuid
-        namespaceName:
-          type: string
-        role:
-          type: string
-          description: The user's direct role on this namespace
-          enum:
-          - ADMIN
-          - MEMBER
-      required:
-      - namespaceId
-      - namespaceName
       - role
     IntegrationTypeDescriptor:
       type: object
