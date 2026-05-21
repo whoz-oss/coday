@@ -39,6 +39,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val aiProviderReconciliationService: ConfigMergeService<AiProvider> =
         mockk(relaxed = true)
     private val agentConfigService: AgentConfigService = mockk()
+    private val intentionGenerator: AgentIntentionGenerator = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -50,6 +51,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             userService,
             aiProviderReconciliationService,
             agentConfigService,
+            intentionGenerator,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -297,6 +299,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     userService,
                     aiProviderReconciliationService,
                     agentConfigService,
+                    intentionGenerator,
                 )
             val configs =
                 listOf(

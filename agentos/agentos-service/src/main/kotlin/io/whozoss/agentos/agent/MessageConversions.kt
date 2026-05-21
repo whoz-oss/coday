@@ -11,7 +11,7 @@ import org.springframework.ai.chat.messages.UserMessage
  * Regex patterns for the XML conversation tags injected by [MessageEvent.toSpringAiMessage].
  * Used to strip any tags the LLM may have hallucinated in its own response text.
  */
-private val AGENT_TAG_REGEX = Regex("""<agent=[^>]+>(.*?)</agent>""", RegexOption.DOT_MATCHES_ALL)
+private val AGENT_TAG_REGEX = Regex("""<agent name="[^"]*">(.*?)</agent>""", RegexOption.DOT_MATCHES_ALL)
 private val USER_TAG_REGEX = Regex("""<user name="[^"]*">(.*?)</user>""", RegexOption.DOT_MATCHES_ALL)
 
 /**
@@ -21,7 +21,8 @@ private val USER_TAG_REGEX = Regex("""<user name="[^"]*">(.*?)</user>""", RegexO
  * tags the LLM hallucinated in its own output are not stored or displayed.
  */
 internal fun String.stripConversationTags(): String =
-    AGENT_TAG_REGEX.replace(this, "$1")
+    AGENT_TAG_REGEX
+        .replace(this, "$1")
         .let { USER_TAG_REGEX.replace(it, "$1") }
 
 /**
@@ -45,14 +46,16 @@ internal fun MessageEvent.toSpringAiMessage(currentAgentId: String): Message {
             .joinToString("\n") { it.content }
 
     return when (actor.role) {
-        ActorRole.USER ->
-            UserMessage("<user name=\"${actor.displayName}\">$textContent</user>")
+        ActorRole.USER -> {
+            UserMessage("""<user name="${actor.displayName}">$textContent</user>""")
+        }
 
-        ActorRole.AGENT ->
+        ActorRole.AGENT -> {
             if (actor.id == currentAgentId) {
                 AssistantMessage(textContent)
             } else {
-                UserMessage("<agent=${actor.displayName}>$textContent</agent>")
+                UserMessage("""<agent name="${actor.displayName}">$textContent</agent>""")
             }
+        }
     }
 }
