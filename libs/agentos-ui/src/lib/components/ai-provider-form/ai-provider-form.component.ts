@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AiProvider, AiProviderApiTypeEnum } from '@whoz-oss/agentos-api-client'
 import { AiProviderConfigStateService, AiProviderScope } from '../../services/ai-provider-config-state.service'
@@ -83,6 +83,7 @@ export class AiProviderFormComponent implements OnInit {
     baseUrl: new FormControl<string>('', { nonNullable: true }),
     apiKey: new FormControl<string>('', { nonNullable: true }),
     scope: new FormControl<AiProviderScope>('namespace', { nonNullable: true }),
+    headers: new FormArray<FormGroup<{ key: FormControl<string>; value: FormControl<string> }>>([], { validators: [] }),
   })
 
   protected get nameControl() {
@@ -102,6 +103,23 @@ export class AiProviderFormComponent implements OnInit {
   }
   protected get scopeControl() {
     return this.form.controls.scope
+  }
+
+  protected get headersArray() {
+    return this.form.controls.headers
+  }
+
+  protected addHeader(): void {
+    this.headersArray.push(
+      new FormGroup({
+        key: new FormControl<string>('', { nonNullable: true, validators: [Validators.required] }),
+        value: new FormControl<string>('', { nonNullable: true }),
+      })
+    )
+  }
+
+  protected removeHeader(index: number): void {
+    this.headersArray.removeAt(index)
   }
 
   protected readonly isEditMode = signal(false)
@@ -238,6 +256,16 @@ export class AiProviderFormComponent implements OnInit {
     const loadedApiKey = config.apiKey ?? ''
     this.apiKeyControl.setValue(loadedApiKey)
     this.initialApiKey = loadedApiKey
+    // Hydrate headers from the loaded config
+    this.headersArray.clear()
+    for (const [key, value] of Object.entries(config.headers ?? {})) {
+      this.headersArray.push(
+        new FormGroup({
+          key: new FormControl<string>(key, { nonNullable: true, validators: [Validators.required] }),
+          value: new FormControl<string>(value, { nonNullable: true }),
+        })
+      )
+    }
   }
 
   protected submit(): void {
@@ -257,12 +285,18 @@ export class AiProviderFormComponent implements OnInit {
     // means "no key" (sent as null too — backend accepts no apiKey on create).
     const apiKey = this.isEditMode() && currentApiKey === this.initialApiKey ? null : currentApiKey
 
+    const headerEntries = this.headersArray.controls
+      .filter((g) => g.controls.key.value.trim())
+      .map((g) => [g.controls.key.value.trim(), g.controls.value.value] as [string, string])
+    const headers = headerEntries.length > 0 ? Object.fromEntries(headerEntries) : null
+
     const draft = {
       name: this.nameControl.value.trim(),
       apiType: this.apiTypeControl.value,
       description: trimmedDescription ? trimmedDescription : null,
       baseUrl: baseUrl ? baseUrl : null,
       apiKey,
+      headers,
     }
     const scope = this.form.getRawValue().scope
 

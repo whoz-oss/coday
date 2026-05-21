@@ -83,6 +83,40 @@
         />
       </div>
 
+      <div class="ai-provider-form__headers" [formArrayName]="'headers'">
+        <div class="ai-provider-form__headers-title">
+          <span class="ai-provider-form__label">Custom headers</span>
+          <button class="ai-provider-form__headers-add" type="button" (click)="addHeader()">+ Add header</button>
+        </div>
+        @for (headerGroup of headersArray.controls; track $index) {
+          <div class="ai-provider-form__header-row" [formGroupName]="$index">
+            <input
+              class="ai-provider-form__input"
+              type="text"
+              placeholder="Header name"
+              formControlName="key"
+              autocomplete="off"
+            />
+            <input
+              class="ai-provider-form__input"
+              type="text"
+              placeholder="Value"
+              formControlName="value"
+              autocomplete="off"
+            />
+            <button
+              class="ai-provider-form__header-remove"
+              type="button"
+              (click)="removeHeader($index)"
+              title="Remove header"
+              aria-label="Remove header"
+            >
+              &times;
+            </button>
+          </div>
+        }
+      </div>
+
       <div class="ai-provider-form__actions">
         <button
           class="ai-provider-form__btn ai-provider-form__btn--primary"
