@@ -362,6 +362,42 @@ class UserControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // listByExternalIds
+    // -------------------------------------------------------------------------
+
+    "listByExternalIds returns empty list immediately when input is empty" {
+        controller.listByExternalIds(emptyList()) shouldBe emptyList()
+    }
+
+    "listByExternalIds returns all matching users mapped to UserResource" {
+        val u1 = user(email = "alice@example.com", externalId = "alice@example.com")
+        val u2 = user(email = "bob@example.com", externalId = "bob@example.com")
+        every { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) } returns listOf(u1, u2)
+
+        val result = controller.listByExternalIds(listOf("alice@example.com", "bob@example.com"))
+
+        result shouldBe listOf(controller.toResource(u1), controller.toResource(u2))
+        verify(exactly = 1) { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) }
+    }
+
+    "listByExternalIds silently omits external ids that match no user" {
+        every { userService.findByExternalIds(setOf("ghost@example.com")) } returns emptyList()
+
+        controller.listByExternalIds(listOf("ghost@example.com")) shouldBe emptyList()
+    }
+
+    "listByExternalIds deduplicates repeated external ids before querying" {
+        val u = user(email = "alice@example.com", externalId = "alice@example.com")
+        every { userService.findByExternalIds(setOf("alice@example.com")) } returns listOf(u)
+
+        val result = controller.listByExternalIds(listOf("alice@example.com", "alice@example.com"))
+
+        result shouldBe listOf(controller.toResource(u))
+        // The Set conversion means the service is called with a deduplicated set
+        verify(exactly = 1) { userService.findByExternalIds(setOf("alice@example.com")) }
+    }
+
+    // -------------------------------------------------------------------------
     // delete (inherited from EntityController)
     // -------------------------------------------------------------------------
 

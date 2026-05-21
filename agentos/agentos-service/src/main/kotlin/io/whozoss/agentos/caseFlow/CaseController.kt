@@ -58,6 +58,7 @@ class CaseController(
             namespaceId = entity.namespaceId,
             status = entity.status,
             title = entity.title,
+            created = entity.metadata.created,
         )
 
     override fun toDomain(resource: CaseResource): Case {

@@ -2,6 +2,7 @@ package io.whozoss.agentos.security
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.security.AuthSecurityService.Companion.CF_AUTHORIZATION_HEADER
+import io.whozoss.agentos.security.AuthSecurityService.Companion.X_EXTERNAL_USER_ID_HEADER
 import io.whozoss.agentos.security.AuthSecurityService.Companion.X_FORWARDED_EMAIL_HEADER
 import mu.KLogging
 import org.springframework.http.HttpStatus
@@ -13,18 +14,18 @@ import java.util.Base64
 /**
  * Auth-mode implementation of [SecurityService].
  *
- * Resolves the caller's identity (email address) from a Cloudflare Access JWT carried
- * in [CF_AUTHORIZATION_HEADER]. Cloudflare validates the signature at the edge before
- * the request reaches AgentOS, so this implementation only decodes the payload to
- * extract the `email` claim — no signature verification needed.
+ * Resolves the caller's identity using the following priority chain:
  *
- * Falls back to [X_FORWARDED_EMAIL_HEADER] when the CF header is absent (matches Coday
- * Express behaviour for non-CF deployments).
+ * 1. [X_EXTERNAL_USER_ID_HEADER] — set by an upstream gateway after authentication
+ *    (e.g. the Whoz Express proxy). Trusted unconditionally when present.
+ * 2. [CF_AUTHORIZATION_HEADER] — Cloudflare Access JWT. Cloudflare validates the
+ *    signature at the edge; this implementation only decodes the payload to extract
+ *    the `email` claim. No signature verification needed.
+ * 3. `Authorization: Bearer <jwt>` — extracts `preferred_username` from the JWT payload.
+ * 4. [X_FORWARDED_EMAIL_HEADER] — plain email header, fallback for non-CF deployments
+ *    (matches Coday Express behaviour).
  *
- * The current request is read from [RequestContextHolder] — no
- * [jakarta.servlet.http.HttpServletRequest] parameter needed at the callsite.
- *
- * Throws 401 when no identity can be resolved.
+ * Throws 401 when no identity can be resolved from any header.
  *
  * User persistence (lookup / auto-create) is handled upstream by
  * [io.whozoss.agentos.user.UserService.resolveOrCreateByExternalId].
@@ -35,35 +36,46 @@ class AuthSecurityService(
     override fun resolveCurrentIdentity(): String {
         val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
 
+        val externalUserIdHeader = request.getHeader(X_EXTERNAL_USER_ID_HEADER)
         val cfHeader = request.getHeader(CF_AUTHORIZATION_HEADER)
         val authHeader = request.getHeader(AUTHORIZATION_HEADER)
         val emailHeader = request.getHeader(X_FORWARDED_EMAIL_HEADER)
         logger.info {
-            "[Security/auth] Resolving identity — $CF_AUTHORIZATION_HEADER present=${!cfHeader.isNullOrBlank()}, $AUTHORIZATION_HEADER present=${!authHeader
-                .isNullOrBlank()}, $X_FORWARDED_EMAIL_HEADER='$emailHeader'"
+            "[Security/auth] Resolving identity — " +
+                "$X_EXTERNAL_USER_ID_HEADER present=${!externalUserIdHeader.isNullOrBlank()}, " +
+                "$CF_AUTHORIZATION_HEADER present=${!cfHeader.isNullOrBlank()}, " +
+                "$AUTHORIZATION_HEADER present=${!authHeader.isNullOrBlank()}, " +
+                "$X_FORWARDED_EMAIL_HEADER='$emailHeader'"
         }
 
-        return resolveEmail(
-            authHeader = authHeader,
+        return resolveIdentity(
+            externalUserIdHeader = externalUserIdHeader,
             cfHeader = cfHeader,
+            authHeader = authHeader,
             emailHeader = emailHeader,
-        )
-            ?: run {
-                logger.warn { "[Security/auth] No identity header found — returning 401" }
-                throw ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED,
-                    "No identity header found. Expected '$CF_AUTHORIZATION_HEADER' or '$X_FORWARDED_EMAIL_HEADER'.",
-                )
-            }
+        ) ?: run {
+            logger.warn { "[Security/auth] No identity header found — returning 401" }
+            throw ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "No identity header found. Expected '$X_EXTERNAL_USER_ID_HEADER', " +
+                    "'$CF_AUTHORIZATION_HEADER' or '$X_FORWARDED_EMAIL_HEADER'.",
+            )
+        }
     }
 
-    private fun resolveEmail(
-        authHeader: String?,
+    private fun resolveIdentity(
+        externalUserIdHeader: String?,
         cfHeader: String?,
+        authHeader: String?,
         emailHeader: String?,
     ): String? {
-        val emailFromToken =
+        val identityFromToken =
             when {
+                !externalUserIdHeader.isNullOrBlank() -> {
+                    logger.debug { "[Security/auth] Resolved identity from $X_EXTERNAL_USER_ID_HEADER: $externalUserIdHeader" }
+                    externalUserIdHeader
+                }
+
                 !cfHeader.isNullOrBlank() -> {
                     extractEmailFromJwt(cfHeader)
                 }
@@ -76,8 +88,9 @@ class AuthSecurityService(
                     null
                 }
             }
-        return emailFromToken ?: if (!emailHeader.isNullOrBlank()) {
-            logger.info { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $emailHeader" }
+
+        return identityFromToken ?: if (!emailHeader.isNullOrBlank()) {
+            logger.debug { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $emailHeader" }
             emailHeader
         } else {
             null
@@ -112,7 +125,7 @@ class AuthSecurityService(
             headerValue
                 .split(".")
                 .getOrNull(1)
-                ?.let { encodedPayload: String ->
+                ?.let { encodedPayload ->
                     val decoded = Base64.getUrlDecoder().decode(encodedPayload)
                     @Suppress("UNCHECKED_CAST")
                     objectMapper.readValue(decoded, Map::class.java) as Map<String, Any?>?
@@ -142,6 +155,7 @@ class AuthSecurityService(
         }
 
     companion object : KLogging() {
+        const val X_EXTERNAL_USER_ID_HEADER = "X-External-User-Id"
         const val CF_AUTHORIZATION_HEADER = "CF_Authorization"
         const val X_FORWARDED_EMAIL_HEADER = "x-forwarded-email"
         const val AUTHORIZATION_HEADER = "Authorization"

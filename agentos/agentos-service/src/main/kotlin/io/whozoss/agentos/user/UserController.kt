@@ -187,6 +187,23 @@ class UserController(
     @Operation(summary = "Get the current user's profile")
     fun getMe(): UserResource = toResource(userService.getCurrentUser())
 
+    /**
+     * POST /api/users/by-external-ids — look up users by a list of external identity-provider keys.
+     *
+     * External ids that match no active user are silently omitted from the result.
+     * The order of results is not guaranteed to match the order of the input ids.
+     * Super-admin only — same authorization policy as [listAll] and [getByIds].
+     */
+    @PostMapping("/by-external-ids")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun listByExternalIds(
+        @RequestBody externalIds: List<String>,
+    ): List<UserResource> {
+        if (externalIds.isEmpty()) return emptyList()
+        return userService.findByExternalIds(externalIds.toSet()).map(::toResource)
+    }
+
     /** POST /api/users/groups-by-external-ids — return groups per user. Super-admin only. */
     @PostMapping("/groups-by-external-ids")
     @ResponseStatus(HttpStatus.OK)
