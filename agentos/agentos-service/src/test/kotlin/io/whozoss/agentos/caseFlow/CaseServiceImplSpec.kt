@@ -8,6 +8,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.namespace.Namespace
@@ -134,12 +136,26 @@ class CaseServiceImplSpec :
                 }
             }
 
+        /**
+         * [AgentConfigService] mock that authorizes any agent name — Neo4j not available in unit tests.
+         * Returns a list containing every agent name used across this spec so that
+         * [isAgentAuthorized] always passes regardless of which agent is targeted.
+         */
+        fun allowAllAgentConfigService(): AgentConfigService = mockk {
+            every { findAvailableByUserIdAndName(any(), any(), any()) } answers {
+                val ns = firstArg<UUID>()
+                val name = thirdArg<String>()
+                listOf(AgentConfig(namespaceId = ns, name = name))
+            }
+        }
+
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
             agent: Agent = finishingAgent(),
             userService: UserService = mockk { every { findById(userId) } returns activeUser },
             defaultAgentName: String? = agentName,
             environmentAgentName: String? = null,
+            agentConfigService: AgentConfigService = allowAllAgentConfigService(),
         ): CaseServiceImpl {
             val namespace = Namespace(
                 metadata = EntityMetadata(id = namespaceId),
@@ -156,6 +172,7 @@ class CaseServiceImplSpec :
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             return CaseServiceImpl(
                 agentService,
+                agentConfigService,
                 AgentConfigProperties(agentName = environmentAgentName),
                 caseRepository,
                 caseEventService,
@@ -279,6 +296,7 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
                 agentService,
+                allowAllAgentConfigService(),
                 AgentConfigProperties(),
                 InMemoryCaseRepository(),
                 caseEventService,
@@ -488,7 +506,7 @@ class CaseServiceImplSpec :
                     every { findAgentByName(agentName, any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, AgentConfigProperties(), InMemoryCaseRepository(), caseEventService, userService, namespaceService)
+            val service = CaseServiceImpl(agentService, allowAllAgentConfigService(), AgentConfigProperties(), InMemoryCaseRepository(), caseEventService, userService, namespaceService)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
 
@@ -567,6 +585,7 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
                 agentService,
+                allowAllAgentConfigService(),
                 AgentConfigProperties(agentName = agentName),  // environment-level default
                 InMemoryCaseRepository(),
                 caseEventService,
@@ -619,6 +638,7 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
                 agentService,
+                allowAllAgentConfigService(),
                 AgentConfigProperties(agentName = environmentDefaultName),
                 InMemoryCaseRepository(),
                 caseEventService,
@@ -655,6 +675,7 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
                 agentService,
+                allowAllAgentConfigService(),
                 AgentConfigProperties(agentName = null),  // no environment default either
                 InMemoryCaseRepository(),
                 caseEventService,
@@ -714,6 +735,7 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
                 agentService,
+                allowAllAgentConfigService(),
                 AgentConfigProperties(),
                 InMemoryCaseRepository(),
                 caseEventService,
@@ -768,6 +790,7 @@ class CaseServiceImplSpec :
             val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
                 agentService,
+                allowAllAgentConfigService(),
                 AgentConfigProperties(),
                 InMemoryCaseRepository(),
                 caseEventService,
@@ -856,7 +879,7 @@ class CaseServiceImplSpec :
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, AgentConfigProperties(), caseRepository, caseEventService, userService, namespaceService)
+            val service = CaseServiceImpl(agentService, allowAllAgentConfigService(), AgentConfigProperties(), caseRepository, caseEventService, userService, namespaceService)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)

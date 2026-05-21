@@ -36,12 +36,19 @@ import java.util.UUID
  * that run. Agents that do not exist in the namespace are silently excluded — the LLM
  * never receives a stale or inaccessible name.
  *
+ * ## Authorization
+ *
+ * When [ToolContext.userId] is available, [agentResolver] applies the same Neo4j graph
+ * rules as the /search endpoint (DEPLOYED_TO + MEMBER/ADMIN): only agents accessible
+ * to the requesting user are eligible for redirection. When [userId] is null (anonymous
+ * or system call), all namespace agents matching the patterns are eligible.
+ *
  * @param agentResolver Lambda injected by [io.whozoss.agentos.redirect.RedirectConfiguration]
- *   to avoid a circular Spring dependency. Given a namespace UUID and a list of glob
- *   patterns, returns the matching [AgentConfig]s from that namespace.
+ *   to avoid a circular Spring dependency. Given a namespace UUID, an optional user UUID,
+ *   and a list of glob patterns, returns the matching [AgentConfig]s accessible to that user.
  */
 class RedirectToolPlugin(
-    private val agentResolver: (namespaceId: UUID, patterns: List<String>) -> List<AgentConfig>,
+    private val agentResolver: (namespaceId: UUID, userId: UUID?, patterns: List<String>) -> List<AgentConfig>,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
 
@@ -66,7 +73,8 @@ class RedirectToolPlugin(
             ?.takeIf { it.isNotEmpty() }
             ?: listOf("*")
 
-        val eligibleAgents = agentResolver(namespaceId, patterns)
+        val userId = context?.userId
+        val eligibleAgents = agentResolver(namespaceId, userId, patterns)
             .map { RedirectTool.EligibleAgent(name = it.name, description = it.description) }
 
         if (eligibleAgents.isEmpty()) {

@@ -35,10 +35,13 @@ class RedirectConfiguration(
      */
     @Bean
     fun redirectToolPlugin(): ToolPlugin =
-        RedirectToolPlugin { namespaceId, patterns ->
+        RedirectToolPlugin { namespaceId, userId, patterns ->
             val regexes = patterns.map { globToRegex(it) }
-            agentConfigService
-                .findByParent(namespaceId)
-                .filter { config -> regexes.any { it.matches(config.name) } }
+            val candidates = if (userId != null) {
+                agentConfigService.findAvailableByUserId(namespaceId, userId)
+            } else {
+                agentConfigService.findByParent(namespaceId)
+            }
+            candidates.filter { config -> regexes.any { it.matches(config.name) } }
         }
 }

@@ -52,4 +52,61 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             """,
     )
     fun findAvailableByUserExternalId(namespaceId: String, userExternalId: String): List<AgentConfigNode>
+
+    /**
+     * Same graph rules as [findAvailableByUserExternalId] but matched by internal
+     * [userId] (UUID) rather than [externalId]. Used at runtime where only the
+     * internal UUID is available.
+     */
+    @Query(
+        $$"""
+            MATCH (u:User {id: $userId})
+              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (ns:Namespace {id: $namespaceId})
+              WHERE ns.removed IS NULL OR ns.removed = false
+            MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+              WHERE g.removed IS NULL OR g.removed = false
+            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
+              WHERE a.removed IS NULL OR a.removed = false
+            RETURN a
+            UNION
+            MATCH (u:User {id: $userId})
+              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (ns:Namespace {id: $namespaceId})
+              WHERE ns.removed IS NULL OR ns.removed = false
+            MATCH (u)-[:MEMBER|ADMIN]->(ns)
+            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
+              WHERE a.removed IS NULL OR a.removed = false
+            RETURN a
+            """,
+    )
+    fun findAvailableByUserId(namespaceId: String, userId: String): List<AgentConfigNode>
+
+    /**
+     * Same as [findAvailableByUserId] but filters by agent name (case-insensitive)
+     * directly in Cypher, avoiding a full list fetch when only existence matters.
+     */
+    @Query(
+        $$"""
+            MATCH (u:User {id: $userId})
+              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (ns:Namespace {id: $namespaceId})
+              WHERE ns.removed IS NULL OR ns.removed = false
+            MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+              WHERE g.removed IS NULL OR g.removed = false
+            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
+              WHERE (a.removed IS NULL OR a.removed = false) AND toLower(a.name) = toLower($agentName)
+            RETURN a
+            UNION
+            MATCH (u:User {id: $userId})
+              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (ns:Namespace {id: $namespaceId})
+              WHERE ns.removed IS NULL OR ns.removed = false
+            MATCH (u)-[:MEMBER|ADMIN]->(ns)
+            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
+              WHERE (a.removed IS NULL OR a.removed = false) AND toLower(a.name) = toLower($agentName)
+            RETURN a
+            """,
+    )
+    fun findAvailableByUserIdAndName(namespaceId: String, userId: String, agentName: String): List<AgentConfigNode>
 }

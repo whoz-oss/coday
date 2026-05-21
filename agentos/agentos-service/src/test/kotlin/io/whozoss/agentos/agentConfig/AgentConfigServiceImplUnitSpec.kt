@@ -17,8 +17,11 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
                 parentIdExtractor = { it.namespaceId },
                 comparator = compareBy { it.name },
             ) {
-            // findAvailableByUserExternalId is a Neo4j-only query; not exercised in unit tests.
+            // findAvailableByUserExternalId and findAvailableByUserId are Neo4j-only queries; not exercised in unit tests.
             override fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig> =
+                throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
+
+            override fun findAvailableByUserId(namespaceId: UUID, userId: UUID): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
         }
 
