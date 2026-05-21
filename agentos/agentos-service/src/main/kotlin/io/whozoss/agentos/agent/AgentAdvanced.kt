@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
-import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -158,7 +157,7 @@ class AgentAdvanced(
                             contentBuilder.append(chunk)
                             emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
                         }
-                    val content = contentBuilder.toString()
+                    val content = contentBuilder.toString().stripConversationTags()
                     if (content.isNotEmpty()) {
                         val msg =
                             MessageEvent(
@@ -475,32 +474,12 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
     /**
      * Convert CaseEvents to Spring AI Messages for LLM context.
      * Masks tool calls/responses and keeps only user-agent exchanges.
-     * Converts other agents to "user" role for LLM compatibility.
+     * Other agents' messages are wrapped with XML tags via [MessageEvent.toSpringAiMessage].
      */
     private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> =
         events
             .filterIsInstance<MessageEvent>()
-            .map { messageEvent ->
-                val textContent =
-                    messageEvent.content
-                        .filterIsInstance<MessageContent.Text>()
-                        .joinToString("\n") { it.content }
-
-                when (messageEvent.actor.role) {
-                    ActorRole.USER -> {
-                        UserMessage(textContent)
-                    }
-
-                    ActorRole.AGENT -> {
-                        if (messageEvent.actor.id == id.toString()) {
-                            AssistantMessage(textContent)
-                        } else {
-                            // Convert other agents to user messages for LLM compatibility
-                            UserMessage("[${messageEvent.actor.displayName}]: $textContent")
-                        }
-                    }
-                }
-            }
+            .map { it.toSpringAiMessage(id.toString()) }
 
     internal class IntentionParsingException(
         message: String,
