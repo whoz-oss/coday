@@ -348,8 +348,5 @@ class CaseRuntime(
             ?.id
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
-    companion object : KLogging() {
-        /** Authorization check that grants access to all agents — for use in tests only. */
-        val ALLOW_ALL: (String, UUID?) -> Boolean = { _, _ -> true }
-    }
+    companion object : KLogging()
 }
