@@ -1,3 +1,17 @@
+## 0.159.8 (2026-05-21)
+
+### 🩹 Fixes
+
+- install latest npm for trusted publishing ([c53680cd](https://github.com/whoz-oss/coday/commit/c53680cd))
+- bump node 24 everywhere ([0cf89ef0](https://github.com/whoz-oss/coday/commit/0cf89ef0))
+- bump node 24 everywhere ([1a8e3c44](https://github.com/whoz-oss/coday/commit/1a8e3c44))
+- install latest npm for trusted publishing ([#901](https://github.com/whoz-oss/coday/pull/901))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.159.7 (2026-05-21)
 
 ### 🩹 Fixes
