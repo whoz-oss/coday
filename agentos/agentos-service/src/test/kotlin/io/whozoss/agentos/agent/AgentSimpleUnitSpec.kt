@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -150,15 +151,16 @@ class AgentSimpleUnitSpec :
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
 
-        "should convert other agents to user messages" {
+        "should convert other agents to user messages with XML agent tag" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
             val otherAgentId = UUID.randomUUID()
 
+            val capturedPrompt = slot<Prompt>()
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("Response considering ", "other agent's input")
 
             val agent = makeAgent(agentId, mockChatClient)
@@ -180,6 +182,63 @@ class AgentSimpleUnitSpec :
 
             events shouldHaveAtLeastSize 4
             events.last() as? AgentFinishedEvent shouldNotBe null
+
+            // The other agent's message must be wrapped with <agent=Name> XML tag
+            // so the current agent's LLM knows who said what in a multi-agent conversation.
+            val promptMessages = capturedPrompt.captured.instructions
+            val userMessages = promptMessages.filterIsInstance<org.springframework.ai.chat.messages.UserMessage>()
+            val otherAgentMsg = userMessages.firstOrNull { it.text.contains("<agent=OtherAgent>") }
+            otherAgentMsg shouldNotBe null
+            otherAgentMsg!!.text shouldContain "Other agent's response"
+            otherAgentMsg.text shouldContain "</agent>"
+        }
+
+        "should strip conversation tags hallucinated by the LLM in its response" {
+            // If the LLM mimics the context format and wraps its own response in <agent=...>
+            // or <user name="..."> tags, those must be stripped from the stored MessageEvent.
+            // TextChunkEvents are left as-is (tags split across chunks are invisible in markdown).
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            // LLM wraps its own answer in an agent tag
+            every { mockStreamSpec.content() } returns Flux.just("<agent=SimpleAgent>", "Hello!", "</agent>")
+
+            val agent = makeAgent(agentId, mockChatClient, name = "SimpleAgent")
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "Hi"))).toList()
+
+            val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
+            messageEvent shouldNotBe null
+            // Tags must be stripped from the stored message
+            messageEvent!!.content.filterIsInstance<MessageContent.Text>().first().content shouldBe "Hello!"
+        }
+
+        "should wrap user messages with XML user tag" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val capturedPrompt = slot<Prompt>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Hello!")
+
+            val agent = makeAgent(agentId, mockChatClient)
+
+            agent.run(listOf(userMessage(namespaceId, caseId, "Hello, can you help me?"))).toList()
+
+            val promptMessages = capturedPrompt.captured.instructions
+            val userMessages = promptMessages.filterIsInstance<org.springframework.ai.chat.messages.UserMessage>()
+            userMessages shouldHaveAtLeastSize 1
+            // User messages must be tagged with <user name="..."> so the LLM can distinguish
+            // them from agent messages in multi-agent conversations.
+            userMessages.first().text shouldContain "<user name=\"User One\">"
+            userMessages.first().text shouldContain "Hello, can you help me?"
+            userMessages.first().text shouldContain "</user>"
         }
 
         // -------------------------------------------------------------------------

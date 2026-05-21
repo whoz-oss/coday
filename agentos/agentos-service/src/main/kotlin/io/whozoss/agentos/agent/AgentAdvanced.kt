@@ -203,7 +203,7 @@ class AgentAdvanced(
                 contentBuilder.append(chunk)
                 emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
             }
-        val content = contentBuilder.toString()
+        val content = contentBuilder.toString().stripConversationTags()
         if (content.isNotEmpty()) {
             val msg =
                 MessageEvent(
@@ -263,7 +263,7 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
         )
     }
 
-    private fun executeTool(
+    private suspend fun executeTool(
         toolRequest: ToolRequestEvent,
         namespaceId: UUID,
         caseId: UUID,

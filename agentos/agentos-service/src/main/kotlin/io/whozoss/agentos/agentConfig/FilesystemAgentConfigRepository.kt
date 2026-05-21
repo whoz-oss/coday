@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
@@ -35,7 +35,7 @@ import java.util.UUID
  */
 class FilesystemAgentConfigRepository(
     private val delegate: AgentConfigRepository,
-    private val namespaceService: NamespaceService,
+    private val namespaceRepository: NamespaceRepository,
     ttl: Duration = Duration.ofMinutes(5),
 ) : AgentConfigRepository by delegate {
 
@@ -51,7 +51,7 @@ class FilesystemAgentConfigRepository(
     override fun findByParent(parentId: UUID): List<AgentConfig> {
         val persisted = delegate.findByParent(parentId)
 
-        val configPath = namespaceService.findById(parentId)?.configPath
+        val configPath = namespaceRepository.findByIds(listOf(parentId)).firstOrNull()?.configPath
             ?: return persisted
 
         val directory = Path.of(configPath, AGENTS_SUBDIR)

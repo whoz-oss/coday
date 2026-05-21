@@ -25,13 +25,14 @@ tasks.named("build") {
 // Plugin deployment
 // ========================================
 
-val pluginBuilds = listOf(
-    "agentos-plugins-filesystem",
-    "agentos-datetime-plugin",
-    "agentos-tmux-plugin",
-    "agentos-bash-plugin",
-    "agentos-file-plugin"
-)
+val pluginBuilds =
+    listOf(
+        "agentos-plugins-filesystem",
+        "agentos-datetime-plugin",
+        "agentos-tmux-plugin",
+        "agentos-bash-plugin",
+        "agentos-file-plugin",
+    )
 
 // Resolve all paths at configuration time into plain File values
 // so that doLast closures are configuration-cache compatible.
@@ -51,12 +52,6 @@ tasks.register("jarPlugins") {
     dependsOn(pluginBuilds.map { gradle.includedBuild(it).task(":jar") })
 }
 
-/**
- * Cleans all plugin builds, rebuilds their JARs, and copies them into the plugins/ directory.
- *
- * Usage:
- *   ./gradlew deployPlugins
- */
 tasks.register("deployPlugins") {
     group = "plugins"
     description = "Builds all plugins and copies their JARs into the plugins/ directory."
@@ -70,25 +65,41 @@ tasks.register("deployPlugins") {
     val libsDirs = pluginLibsDirs
 
     doLast {
-        // Clean the plugins directory before deploying to avoid stale JARs
-        // from previous builds (e.g. after a branch switch with a different version).
-        if (dest.exists()) {
-            dest.listFiles { f -> f.extension == "jar" }?.forEach { it.delete() }
-        }
         dest.mkdirs()
 
-        libsDirs.forEach { buildDir ->
-            val jars = buildDir.listFiles { f -> f.extension == "jar" && !f.name.endsWith("-plain.jar") }
-                ?: emptyArray()
+        // Collect JARs to deploy (excluding *-plain.jar) from each plugin build dir.
+        val jarsToDeploy: List<File> =
+            libsDirs.flatMap { buildDir ->
+                buildDir.listFiles { f -> f.extension == "jar" && !f.name.endsWith("-plain.jar") }?.toList()
+                    ?: emptyList<File>().also { logger.warn("No JAR found in $buildDir") }
+            }
 
-            if (jars.isEmpty()) {
-                logger.warn("No JAR found in $buildDir")
-            } else {
-                jars.forEach { jar ->
-                    jar.copyTo(dest.resolve(jar.name), overwrite = true)
-                    logger.lifecycle("Deployed: ${jar.name} → plugins/")
+        // Derive the base name (artifact id without version) of each JAR we are about to deploy.
+        // Convention: "<artifactId>-<version>.jar" — the artifact id never contains a digit
+        // immediately after a hyphen, so we split on the first "-<digit>" boundary.
+        // This lets us remove any previously deployed version of the same artifact
+        // without touching JARs that were placed in plugins/ from an external source.
+        val baseNames: Set<String> =
+            jarsToDeploy
+                .map { jar ->
+                    jar.nameWithoutExtension.replace(Regex("-\\d.*$"), "")
+                }.toSet()
+
+        // Remove only JARs in the destination that belong to one of our plugin artifacts
+        // (version-insensitive match). External JARs are left untouched.
+        if (dest.exists()) {
+            dest.listFiles { f -> f.extension == "jar" }?.forEach { existing ->
+                val existingBase = existing.nameWithoutExtension.replace(Regex("-\\d.*$"), "")
+                if (existingBase in baseNames) {
+                    existing.delete()
+                    logger.lifecycle("Removed stale: ${existing.name}")
                 }
             }
+        }
+
+        jarsToDeploy.forEach { jar ->
+            jar.copyTo(dest.resolve(jar.name), overwrite = true)
+            logger.lifecycle("Deployed: ${jar.name} → plugins/")
         }
     }
 }
@@ -98,4 +109,3 @@ allprojects {
         plugin("dev.nx.gradle.project-graph")
     }
 }
-

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -9,6 +10,8 @@ import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
 import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.util.UUID
 
 /**
@@ -36,10 +39,23 @@ data class AiProviderNode(
     val namespaceId: String? = null,
     val userId: String? = null,
     val name: String,
+    /**
+     * Denormalised discriminator for the unique business triple `(namespaceId, userId,
+     * name)`. Backed by a UNIQUE CONSTRAINT (cf. `AiProviderSchemaInitializer`). Same
+     * pattern as [io.whozoss.agentos.integrationConfig.IntegrationConfigNode.tripleKey] —
+     * see [OverlayKeyEncoding] and the RFC §D11 for rationale.
+     *
+     * Soft-deleted rows carry a per-id `tombstone:<uuid>` value so the unique slot is
+     * freed for re-creation immediately after a delete.
+     *
+     * Backfilled at startup for pre-existing rows by the schema initializer.
+     */
+    val tripleKey: String,
     val description: String? = null,
     val apiType: String,
     val baseUrl: String? = null,
     val apiKey: String? = null,
+    val headersJson: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -67,24 +83,45 @@ data class AiProviderNode(
             apiType = AiApiType.valueOf(apiType),
             baseUrl = baseUrl,
             apiKey = apiKey,
+            headers = headersJson?.let { MAPPER.readValue(it, HEADERS_TYPE) } ?: emptyMap(),
         )
 
     companion object {
-        fun fromDomain(config: AiProvider): AiProviderNode =
-            AiProviderNode(
-                id = config.id.toString(),
+        private val MAPPER = jacksonObjectMapper()
+        private val HEADERS_TYPE = object : TypeReference<Map<String, String>>() {}
+
+        fun computeTripleKey(
+            namespaceId: UUID?,
+            userId: UUID?,
+            name: String,
+        ): String = OverlayKeyEncoding.activeKey(namespaceId, userId, name)
+
+        fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
+
+        fun fromDomain(config: AiProvider): AiProviderNode {
+            val idString = config.id.toString()
+            val tripleKey =
+                when {
+                    config.metadata.removed -> tombstoneTripleKey(idString)
+                    else -> computeTripleKey(config.namespaceId, config.userId, config.name)
+                }
+            return AiProviderNode(
+                id = idString,
                 namespaceId = config.namespaceId?.toString(),
                 userId = config.userId?.toString(),
                 name = config.name,
+                tripleKey = tripleKey,
                 description = config.description,
                 apiType = config.apiType.name,
                 baseUrl = config.baseUrl,
                 apiKey = config.apiKey,
+                headersJson = config.headers.takeIf { it.isNotEmpty() }?.let { MAPPER.writeValueAsString(it) },
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,
                 modifiedBy = config.metadata.modifiedBy,
                 removed = config.metadata.removed.takeIf { it },
             )
+        }
     }
 }

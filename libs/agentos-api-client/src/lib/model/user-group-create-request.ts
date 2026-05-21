@@ -11,6 +11,6 @@
 export interface UserGroupCreateRequest {
   namespaceExternalId: string
   name: string
-  userExternalIds: Set<string>
+  userExternalIdsToAdd: Set<string>
   agentIds: Set<string>
 }

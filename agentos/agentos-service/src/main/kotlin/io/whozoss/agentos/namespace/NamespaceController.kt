@@ -6,25 +6,16 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.access.prepost.PostFilter
 import org.springframework.security.access.prepost.PreAuthorize
-import org.springframework.web.bind.annotation.DeleteMapping
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.PutMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.ResponseStatus
-import org.springframework.web.bind.annotation.RestController
-import java.util.UUID
+import org.springframework.web.bind.annotation.*
+import java.util.*
 
 /**
  * REST API for managing Namespaces.
@@ -48,7 +39,6 @@ class NamespaceController(
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<Namespace, String, NamespaceResource>(namespaceService, userService, permissionService) {
-
     override val entityType = EntityType.NAMESPACE
 
     override fun toResource(entity: Namespace): NamespaceResource =
@@ -71,10 +61,31 @@ class NamespaceController(
             defaultAgentName = resource.defaultAgentName?.takeIf { it.isNotBlank() },
         )
 
+    /**
+     * `externalId` is the federation identifier — it links the namespace to an upstream IdP /
+     * federation entry. Allowing PUT to mutate it would let any namespace ADMIN hijack/spoof
+     * the federation identity of a namespace, breaking the trust relationship with the IdP.
+     * It is therefore preserved from the existing row on update; setting it is only allowed
+     * at create time (SUPER_ADMIN). To change a namespace's `externalId` deliberately,
+     * delete + recreate.
+     */
+    private fun toDomainForUpdate(
+        resource: NamespaceResource,
+        existing: Namespace,
+    ): Namespace =
+        existing.copy(
+            name = resource.name,
+            description = resource.description,
+            configPath = resource.configPath?.takeIf { it.isNotBlank() },
+            // externalId intentionally preserved — see KDoc above.
+        )
+
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Namespace', 'READ')")
     @HideOnAccessDenied
-    override fun getById(@PathVariable id: UUID): NamespaceResource = super.getById(id)
+    override fun getById(
+        @PathVariable id: UUID,
+    ): NamespaceResource = super.getById(id)
 
     // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
 
@@ -84,12 +95,19 @@ class NamespaceController(
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    override fun create(@Valid @RequestBody resource: NamespaceResource): NamespaceResource {
+    override fun create(
+        @Valid @RequestBody resource: NamespaceResource,
+    ): NamespaceResource {
         val created = super.create(resource)
         val namespaceId = created.id ?: error("Created namespace must have an id")
         val userId = userService.getCurrentUser().id.toString()
         runCatching {
-            permissionService.grantPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+            permissionService.grantPermission(
+                userId,
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                PermissionRelation.ADMIN,
+            )
             logger.info { "Super-admin $userId created namespace $namespaceId with auto-ADMIN grant" }
         }.onFailure { e ->
             logger.warn(e) {
@@ -104,7 +122,10 @@ class NamespaceController(
     override fun update(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: NamespaceResource,
-    ): NamespaceResource = super.update(id, resource)
+    ): NamespaceResource {
+        val existing = service.findById(id) ?: throw ResourceNotFoundException("Entity not found: $id")
+        return toResource(service.update(toDomainForUpdate(resource, existing)))
+    }
 
     /**
      * DELETE /api/namespaces/{id} — SUPER_ADMIN only (FR2). Cascade-revokes all
@@ -114,7 +135,9 @@ class NamespaceController(
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    override fun delete(@PathVariable id: UUID) {
+    override fun delete(
+        @PathVariable id: UUID,
+    ) {
         service.findById(id) ?: throw ResourceNotFoundException("Entity not found: $id")
         val cascadedCount = cascadeRevokeNamespacePermissions(id)
         if (!service.delete(id)) {
@@ -128,14 +151,20 @@ class NamespaceController(
 
     private fun cascadeRevokeNamespacePermissions(namespaceId: UUID): Int {
         val namespaceIdString = namespaceId.toString()
-        val affectedUserIds = permissionService
-            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, null)
-            .distinct()
+        val affectedUserIds =
+            permissionService
+                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, null)
+                .distinct()
         var revoked = 0
         affectedUserIds.forEach { affectedUserId ->
             listOf(PermissionRelation.ADMIN, PermissionRelation.MEMBER).forEach { relation ->
                 runCatching {
-                    permissionService.revokePermission(affectedUserId, EntityType.NAMESPACE, namespaceIdString, relation)
+                    permissionService.revokePermission(
+                        affectedUserId,
+                        EntityType.NAMESPACE,
+                        namespaceIdString,
+                        relation,
+                    )
                     revoked++
                 }.onFailure { e ->
                     logger.warn(e) {
@@ -146,6 +175,39 @@ class NamespaceController(
         }
         return revoked
     }
+
+    /**
+     * POST /api/namespaces/by-external-ids — look up namespaces by a list of external
+     * identifiers (e.g. federation ids from an external system), filtered to those the
+     * caller has at least READ on.
+     *
+     * Super-admins receive all matching namespaces. Regular users receive only the
+     * subset they can read (intersection with [NamespaceService.findIdsVisibleTo]).
+     * External ids that match no active namespace are silently omitted from the result.
+     */
+    @PostMapping("/by-external-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("isAuthenticated()")
+    fun listByExternalIds(
+        @RequestBody externalIds: List<String>,
+    ): List<NamespaceResource> =
+        externalIds
+            .takeIf { it.isNotEmpty() }
+            ?.let { ids ->
+                val found = namespaceService.findByExternalIds(ids)
+                val currentUser = userService.getCurrentUser()
+                when {
+                    currentUser.isAdmin -> {
+                        found
+                    }
+
+                    else -> {
+                        val readableIds = namespaceService.findIdsVisibleTo(currentUser.id.toString(), Action.READ).toSet()
+                        found.filter { it.metadata.id in readableIds }
+                    }
+                }.map { toResource(it) }
+            }
+            ?: emptyList()
 
     /**
      * GET /api/namespaces — list namespaces filtered by the caller's permissions.
@@ -162,7 +224,8 @@ class NamespaceController(
         val currentUser = userService.getCurrentUser()
 
         if (currentUser.isAdmin) {
-            return namespaceService.findAll()
+            return namespaceService
+                .findAll()
                 .filter { it.metadata.removed != true }
                 .map { toListItem(it, SUPER_ADMIN) }
         }
@@ -180,7 +243,42 @@ class NamespaceController(
         }
     }
 
-    private fun toListItem(entity: Namespace, role: String): NamespaceListItem =
+    /**
+     * POST /api/namespaces/{namespaceId}/deploy-agents
+     *
+     * Deploys the given agents on the namespace by creating a DEPLOYED_TO relation.
+     */
+    @PostMapping("/{namespaceId}/deploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun deployAgents(
+        @PathVariable namespaceId: UUID,
+        @RequestBody request: NamespaceAgentDeployRequest,
+    ) {
+        logger.info { "Deploying ${request.agentIds.size} agent(s) on namespace $namespaceId" }
+        namespaceService.deployAgents(namespaceId, request.agentIds)
+    }
+
+    /**
+     * POST /api/namespaces/{namespaceId}/undeploy-agents
+     *
+     * Removes the DEPLOYED_TO relation between the given agents and the namespace.
+     */
+    @PostMapping("/{namespaceId}/undeploy-agents", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun undeployAgents(
+        @PathVariable namespaceId: UUID,
+        @RequestBody request: NamespaceAgentDeployRequest,
+    ) {
+        logger.info { "Undeploying ${request.agentIds.size} agent(s) from namespace $namespaceId" }
+        namespaceService.undeployAgents(namespaceId, request.agentIds)
+    }
+
+    private fun toListItem(
+        entity: Namespace,
+        role: String,
+    ): NamespaceListItem =
         NamespaceListItem(
             id = entity.metadata.id,
             name = entity.name,

@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.tmux
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.delay
 
 private const val MAX_WAIT_SECONDS = 30
 
@@ -65,12 +66,12 @@ class WaitTool(
         val seconds: Int,
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): String {
         if (input == null) return createErrorResponse("Input is required")
         if (input.seconds < 1 || input.seconds > MAX_WAIT_SECONDS) {
             return createErrorResponse("seconds must be between 1 and $MAX_WAIT_SECONDS, got ${input.seconds}")
         }
-        Thread.sleep(input.seconds * 1000L)
+        delay(input.seconds * 1000L)
         return createSuccessResponse("Waited ${input.seconds} second${if (input.seconds == 1) "" else "s"}")
     }
 

@@ -1,0 +1,28 @@
+<ds-entity-list
+  title="Integrations"
+  [items]="(listItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No integrations available."
+  cardMinWidth="400px"
+  [itemTemplate]="integrationItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
+</ds-entity-list>
+
+<!-- Item template: synthetic '__empty__*' rows are rendered as a placeholder line; everything else
+     is delegated to IntegrationConfigItemComponent. -->
+<ng-template #integrationItemTpl let-item>
+  @if (isEmptyPlaceholder(item.id)) {
+    <p class="integrations-all-scopes__empty">{{ item.name }}</p>
+  } @else if (resolve(item.id); as resolved) {
+    <agentos-integration-config-item
+      [config]="resolved.config"
+      [scope]="resolved.scope"
+      [readOnly]="resolved.scope === 'namespace' && !isAdmin()"
+      (editRequested)="onEdit(resolved)"
+      (deleteRequested)="onDelete(resolved)"
+      (duplicateRequested)="onDuplicate(resolved)"
+    />
+  }
+</ng-template>

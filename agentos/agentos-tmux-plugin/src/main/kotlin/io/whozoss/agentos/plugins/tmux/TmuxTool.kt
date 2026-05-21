@@ -285,7 +285,7 @@ class TmuxTool(
         }
     }
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): String {
         val validationError =
             when {
                 input == null -> "Input is required"

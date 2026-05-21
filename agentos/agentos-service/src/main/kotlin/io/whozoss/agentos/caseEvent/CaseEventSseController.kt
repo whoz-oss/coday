@@ -6,17 +6,18 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.UUID
@@ -65,6 +66,7 @@ class CaseEventSseController(
     @HideOnAccessDenied
     fun streamEvents(
         @PathVariable caseId: UUID,
+        @RequestParam includePreviousEvents: Boolean? = true,
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
@@ -84,9 +86,11 @@ class CaseEventSseController(
         val collectorJob =
             scope.launch {
                 try {
-                    // Replay persisted history first so clients connecting mid-run
-                    // or reconnecting after a disconnect receive the full sequence.
-                    caseEventService.findByParent(caseId).forEach { sendEvent(it) }
+                    if (includePreviousEvents == true) {
+                        // Replay persisted history first so clients connecting mid-run
+                        // or reconnecting after a disconnect receive the full sequence.
+                        caseEventService.findByParent(caseId).forEach { sendEvent(it) }
+                    }
 
                     // If the case is still active, subscribe to the live flow.
                     // findActiveRuntime never rehydrates — safe for observation only.

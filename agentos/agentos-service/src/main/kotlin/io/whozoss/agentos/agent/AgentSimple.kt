@@ -20,13 +20,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
-import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
@@ -178,7 +179,11 @@ class AgentSimple(
                     )
                 }
 
-                val content = contentBuilder.toString()
+                // Strip any conversation tags the LLM may have hallucinated in its response.
+                // TextChunkEvents are left as-is (tags split across chunks are harmless noise
+                // in the stream and render invisibly in markdown). Only the stored MessageEvent
+                // needs to be clean.
+                val content = contentBuilder.toString().stripConversationTags()
 
                 // Close tool event channel and emit remaining events
                 toolEventChannel.close()
@@ -289,26 +294,7 @@ class AgentSimple(
                         toolCallsForCurrentMessage.clear()
                     }
 
-                    // Add the message event
-                    val textContent =
-                        event.content
-                            .filterIsInstance<MessageContent.Text>()
-                            .joinToString("\n") { it.content }
-
-                    when (event.actor.role) {
-                        ActorRole.USER -> {
-                            messages.add(UserMessage(textContent))
-                        }
-
-                        ActorRole.AGENT -> {
-                            if (event.actor.id == id.toString()) {
-                                messages.add(AssistantMessage(textContent))
-                            } else {
-                                // Convert other agents to user messages for LLM compatibility
-                                messages.add(UserMessage("[${event.actor.displayName}]: $textContent"))
-                            }
-                        }
-                    }
+                    messages.add(event.toSpringAiMessage(id.toString()))
                 }
 
                 is ToolRequestEvent -> {
@@ -460,7 +446,7 @@ class AgentSimple(
                     measureTime {
                         result =
                             try {
-                                tool.executeWithJson(toolInput, context)
+                                runBlocking(Dispatchers.IO) { tool.executeWithJson(toolInput, context) }
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.

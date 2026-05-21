@@ -7,6 +7,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.namespace.Namespace
@@ -46,9 +47,26 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
         integrationType: String = "JIRA",
         description: String? = null,
         parametersJson: String? = null,
+    ) = config(
+        namespaceId = namespaceId as UUID?,
+        userId = null,
+        name = name,
+        integrationType = integrationType,
+        description = description,
+        parametersJson = parametersJson,
+    )
+
+    fun config(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String = "JIRA",
+        integrationType: String = "JIRA",
+        description: String? = null,
+        parametersJson: String? = null,
     ) = IntegrationConfig(
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
+        userId = userId,
         name = name,
         integrationType = integrationType,
         description = description,
@@ -180,6 +198,41 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
             assert(params == null || params.isNull) {
                 "Expected parameters to be null or NullNode, but was: $params"
             }
+        }
+
+        "findByTriple ignore les rows soft-deleted" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = repo.save(config(ns.id, name = "JIRA"))
+            repo.delete(saved.id).shouldBeTrue()
+            repo.findByTriple(ns.id, null, "JIRA") shouldBe null
+        }
+
+        "findByUserId ignore les rows soft-deleted" {
+            val userId = UUID.randomUUID()
+            val saved = repo.save(config(namespaceId = null, userId = userId, name = "JIRA"))
+            repo.delete(saved.id).shouldBeTrue()
+            repo.findByUserId(userId).shouldBeEmpty()
+        }
+
+        "save apres soft-delete sur le meme triple succeed (le tombstone ne bloque pas la recreation)" {
+            val ns = namespaceRepo.save(namespace())
+            val first = repo.save(config(ns.id, name = "JIRA"))
+            repo.delete(first.id).shouldBeTrue()
+            val second = repo.save(config(ns.id, name = "JIRA"))
+            second.id shouldNotBe first.id
+            repo.findByTriple(ns.id, null, "JIRA")?.id shouldBe second.id
+        }
+
+        "findByTriple matche distinctement les 3 modes (ns-only, user-only, ns x user)" {
+            val ns = namespaceRepo.save(namespace())
+            val userId = UUID.randomUUID()
+            val nsOnly = repo.save(config(namespaceId = ns.id, userId = null, name = "JIRA"))
+            val userOnly = repo.save(config(namespaceId = null, userId = userId, name = "JIRA"))
+            val nsAndUser = repo.save(config(namespaceId = ns.id, userId = userId, name = "JIRA"))
+
+            repo.findByTriple(ns.id, null, "JIRA")?.id shouldBe nsOnly.id
+            repo.findByTriple(null, userId, "JIRA")?.id shouldBe userOnly.id
+            repo.findByTriple(ns.id, userId, "JIRA")?.id shouldBe nsAndUser.id
         }
     }
 }

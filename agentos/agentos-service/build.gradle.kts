@@ -349,7 +349,7 @@ openApi {
     waitTimeInSeconds.set(60)
     // Activate the openapi profile so the app starts without real AI API keys
     customBootRun {
-        args.set(listOf("--spring.profiles.active=openapi", "--server.port=$agentosPort"))
+        args.set(listOf("--spring.profiles.active=openapi,embedded-neo4j", "--server.port=$agentosPort"))
     }
 }
 

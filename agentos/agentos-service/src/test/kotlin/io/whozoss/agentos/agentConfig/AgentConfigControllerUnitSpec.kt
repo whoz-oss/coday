@@ -60,6 +60,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         description: String? = "An agent",
         instructions: String? = "Be helpful.",
         modelName: String? = "BIG",
+        externalMetadata: Map<String, Any?>? = null,
     ) = AgentConfig(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -67,6 +68,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         description = description,
         instructions = instructions,
         modelName = modelName,
+        externalMetadata = externalMetadata,
     )
 
     fun resource(
@@ -76,6 +78,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         description: String? = "An agent",
         instructions: String? = "Be helpful.",
         modelName: String? = "BIG",
+        externalMetadata: Map<String, Any?>? = null,
     ) = AgentConfigResource(
         id = id,
         namespaceId = nsId,
@@ -83,6 +86,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         description = description,
         instructions = instructions,
         modelName = modelName,
+        externalMetadata = externalMetadata,
     )
 
     beforeTest { clearAllMocks() }
@@ -137,6 +141,23 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val result = controller.toResource(c)
 
         result.advancedExecution shouldBe true
+    }
+
+    "toResource maps externalMetadata when present" {
+        val metadata = mapOf("theme" to "TALENT", "starters" to listOf("hello"))
+        val c = config(externalMetadata = metadata)
+
+        val result = controller.toResource(c)
+
+        result.externalMetadata shouldBe metadata
+    }
+
+    "toResource preserves null externalMetadata" {
+        val c = config(externalMetadata = null)
+
+        val result = controller.toResource(c)
+
+        result.externalMetadata shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -195,6 +216,23 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val result = controller.toDomain(r)
 
         result.advancedExecution shouldBe true
+    }
+
+    "toDomain maps externalMetadata when present" {
+        val metadata = mapOf("theme" to "TALENT", "photo" to null)
+        val r = resource(externalMetadata = metadata)
+
+        val result = controller.toDomain(r)
+
+        result.externalMetadata shouldBe metadata
+    }
+
+    "toDomain preserves null externalMetadata" {
+        val r = resource(externalMetadata = null)
+
+        val result = controller.toDomain(r)
+
+        result.externalMetadata shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -333,6 +371,62 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { service.findById(id) } returns null
 
         shouldThrow<ResourceNotFoundException> { controller.update(id, resource(id = id)) }
+    }
+
+    "update preserves externalMetadata from the request payload" {
+        val metadata = mapOf("theme" to "OPERATIONS", "starters" to emptyList<String>())
+        val c = config()
+        val payload = resource(id = c.id, externalMetadata = metadata)
+        every { service.findById(c.id) } returns c
+        every { service.update(any()) } answers {
+            val saved = firstArg<AgentConfig>()
+            saved.externalMetadata shouldBe metadata
+            saved
+        }
+
+        controller.update(c.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update clears externalMetadata when not provided in payload" {
+        val existingMetadata = mapOf("theme" to "TALENT")
+        val c = config(externalMetadata = existingMetadata)
+        val payload = resource(id = c.id, externalMetadata = null)
+        every { service.findById(c.id) } returns c
+        every { service.update(any()) } answers {
+            val saved = firstArg<AgentConfig>()
+            saved.externalMetadata shouldBe null
+            saved
+        }
+
+        controller.update(c.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // availableAgents
+    // -------------------------------------------------------------------------
+
+    "search returns mapped resources for given namespaceId and userExternalId" {
+        val c1 = config(name = "agent-a")
+        val c2 = config(name = "agent-b")
+        val namespaceId = UUID.randomUUID()
+        val request = AgentConfigSearchRequest(namespaceId = namespaceId, userExternalId = "alice@example.com")
+        every { service.findAvailableByUserExternalId(namespaceId, "alice@example.com") } returns listOf(c1, c2)
+
+        val result = controller.search(request)
+
+        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+        verify(exactly = 1) { service.findAvailableByUserExternalId(namespaceId, "alice@example.com") }
+    }
+
+    "search returns empty list when service returns no agents" {
+        val request = AgentConfigSearchRequest(namespaceId = namespaceId, userExternalId = "ghost@example.com")
+        every { service.findAvailableByUserExternalId(namespaceId, "ghost@example.com") } returns emptyList()
+
+        controller.search(request) shouldBe emptyList()
     }
 
     // -------------------------------------------------------------------------

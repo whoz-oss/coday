@@ -1,8 +1,10 @@
 package io.whozoss.agentos.userGroup
 
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -21,14 +23,17 @@ class UserGroupController(
     private val userGroupService: UserGroupService,
 ) {
     @GetMapping
-    fun searchByNamespaceExternalId(
-        @RequestParam namespaceExternalId: String,
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    fun searchByNamespaceId(
+        @RequestParam namespaceId: UUID,
     ): List<UserGroupSearchResultResource> =
         userGroupService
-            .findByNamespaceExternalId(namespaceExternalId)
+            .findByNamespaceId(namespaceId)
             .map { it.toResource() }
 
     @GetMapping("/{userGroupId}")
+    @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'READ')")
+    @HideOnAccessDenied
     fun getById(
         @PathVariable userGroupId: UUID,
     ): UserGroupSearchResultResource =
@@ -37,12 +42,14 @@ class UserGroupController(
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
     fun create(
         @Valid @RequestBody request: UserGroupCreateRequest,
     ): UserGroupSearchResultResource =
         userGroupService.createFromRequest(request).toResource()
 
     @PostMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'WRITE')")
     fun update(
         @PathVariable userGroupId: UUID,
         @Valid @RequestBody request: UserGroupUpdateRequest,
@@ -51,6 +58,7 @@ class UserGroupController(
 
     @DeleteMapping("/{userGroupId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'DELETE')")
     fun delete(
         @PathVariable userGroupId: UUID,
     ) {

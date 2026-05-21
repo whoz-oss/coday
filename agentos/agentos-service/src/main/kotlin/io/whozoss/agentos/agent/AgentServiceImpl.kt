@@ -7,11 +7,12 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -33,12 +34,13 @@ import java.util.UUID
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
-    private val toolRegistryService: ToolRegistryService,
+    private val toolResolverService: ToolResolverService,
     private val aiModelService: AiModelService,
     private val aiProviderService: AiProviderService,
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
+    private val aiProviderReconciliationService: ConfigMergeService<AiProvider>,
     private val agentConfigService: AgentConfigService,
     private val intentionGenerator: AgentIntentionGenerator,
 ) : AgentService {
@@ -76,23 +78,14 @@ class AgentServiceImpl(
         config: AgentConfig,
         context: AgentExecutionContext,
     ): Agent {
-        val modelLookupName = config.modelName
-        val (modelConfig, providerConfig) =
-            when {
-                modelLookupName != null -> {
-                    resolveModelPair(modelLookupName, context.namespaceId)
-                }
-
-                else -> {
-                    val defaultModel =
-                        findDefaultModelConfig(context.namespaceId)
-                            ?: throw IllegalArgumentException(
-                                "AgentConfig '${config.name}' has no modelName and no default AiModel is configured " +
-                                    "for namespace ${context.namespaceId}.",
-                            )
-                    defaultModel to aiProviderService.getById(defaultModel.aiProviderId)
-                }
-            }
+        val baseModel =
+            config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
+                ?: findDefaultModelConfig(context.namespaceId)
+                ?: throw IllegalArgumentException(
+                    "AgentConfig '${config.name}' could not resolve an AiModel " +
+                        "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
+                )
+        val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId)
         return createAgentInstance(
             config.name,
             config.instructions,
@@ -105,33 +98,28 @@ class AgentServiceImpl(
     }
 
     /**
-     * Resolve a [AiModel] + [AiProvider] pair for [name] within [namespaceId].
-     *
-     * Delegates resolution to [AiModelService.findAiModel] (alias first,
-     * then apiName, highest priority wins within each group).
-     * Throws [IllegalArgumentException] if no match is found.
+     * Resolve the [AiProvider] for a pre-resolved [baseModel]. When [userId] is non-null,
+     * applies 3-tier reconciliation on the provider. When null, falls back to direct
+     * repository lookup — preserves Epic 4 behaviour exactly.
      */
-    private fun resolveModelPair(
-        name: String,
+    private fun applyOverlaysToModel(
+        baseModel: AiModel,
         namespaceId: UUID,
+        userId: UUID?,
     ): Pair<AiModel, AiProvider> {
-        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId" }
-
-        val modelConfig =
-            aiModelService.findAiModel(namespaceId, name)
-                ?: throw IllegalArgumentException(
-                    "No AiModel found for name '$name' in namespace $namespaceId. " +
-                        "Configure an AiModel with alias or apiName matching '$name'.",
-                )
-
-        logger.info {
-            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiModelName}' " +
-                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, aiProviderId=${modelConfig.aiProviderId})"
+        val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
+        val providerConfig = if (userId != null) {
+            aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+        } else {
+            baseProvider
         }
 
-        val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
-        logger.debug { "[AgentService] Provider resolved: name='${providerConfig.name}' apiType=${providerConfig.apiType}" }
-        return modelConfig to providerConfig
+        logger.info {
+            "[AgentService] Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
+                "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
+                "provider='${providerConfig.name}', userId=$userId)"
+        }
+        return baseModel to providerConfig
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
@@ -147,6 +135,11 @@ class AgentServiceImpl(
      * [baseInstructions] are the agent-level instructions from [AgentConfig], if any.
      * [agentIntegrations] is the optional tool-access filter from [AgentConfig.integrations].
      * The namespace description, integrations, and user context are always appended.
+     *
+     * When [context.userId] is non-null, uses [ToolResolverService.resolveToolsForRun] to apply
+     * 3-tier tool reconciliation while still honoring [agentIntegrations]. Falls back to
+     * [ToolResolverService.resolveToolsForNamespace] for anonymous/system runs
+     * (userId == null, legacy path, AC11).
      */
     private fun createAgentInstance(
         agentName: String,
@@ -157,9 +150,14 @@ class AgentServiceImpl(
         providerConfig: AiProvider,
         context: AgentExecutionContext,
     ): Agent {
-        logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId}" }
+        logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
 
-        val tools = toolRegistryService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
+        val tools =
+            if (context.userId != null) {
+                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, agentIntegrations)
+            } else {
+                toolResolverService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
+            }
         logger.info {
             "[AgentService] Loaded ${tools.size} tool(s) " +
                 "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"

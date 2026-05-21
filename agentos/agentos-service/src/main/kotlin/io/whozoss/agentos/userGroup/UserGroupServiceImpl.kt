@@ -43,16 +43,15 @@ class UserGroupServiceImpl(
     @Transactional
     override fun deleteByParent(parentId: UUID): Int = userGroupRepository.deleteByParent(parentId)
 
-    override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
-        userGroupRepository.findByNamespaceExternalId(externalId)
+    override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> =
+        userGroupRepository.findByNamespaceId(namespaceId)
 
     override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? = userGroupRepository.findByIdWithDetails(id)
 
     @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
         val namespace =
-            namespaceService.findByExternalId(request.namespaceExternalId)
-                ?: throw UnprocessableEntityException("Namespace not found for externalId: ${request.namespaceExternalId}")
+            namespaceService.getById(request.namespaceId)
 
         validateAgentsInNamespace(request.agentIds, namespace.id)
 
@@ -68,11 +67,11 @@ class UserGroupServiceImpl(
             userGroupRepository.addAgents(group.id, request.agentIds)
         }
 
-        if (request.userExternalIds.isNotEmpty()) {
-            val existingIds = userService.findByExternalIds(request.userExternalIds).map { it.externalId }.toSet()
-            val missingIds = request.userExternalIds - existingIds
+        if (request.userExternalIdsToAdd.isNotEmpty()) {
+            val existingIds = userService.findByExternalIds(request.userExternalIdsToAdd).map { it.externalId }.toSet()
+            val missingIds = request.userExternalIdsToAdd - existingIds
             missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
-            userGroupRepository.addUsers(group.id, request.userExternalIds)
+            userGroupRepository.addUsers(group.id, request.userExternalIdsToAdd)
         }
 
         return userGroupRepository.findByIdWithDetails(group.id)
@@ -84,7 +83,7 @@ class UserGroupServiceImpl(
         userGroupId: UUID,
         request: UserGroupUpdateRequest,
     ): UserGroupSearchResult {
-        val intersection = request.addedUserExternalIds.toSet() intersect request.removedUserExternalIds.toSet()
+        val intersection = request.userExternalIdsToAdd.toSet() intersect request.userExternalIdsToRemove.toSet()
         if (intersection.isNotEmpty()) {
             throw UnprocessableEntityException(
                 "User external IDs cannot appear in both addedUserExternalIds and removedUserExternalIds: $intersection",
@@ -102,15 +101,15 @@ class UserGroupServiceImpl(
             userGroupRepository.addAgents(userGroupId, request.agentIds)
         }
 
-        if (request.addedUserExternalIds.isNotEmpty()) {
-            val existingIds = userService.findByExternalIds(request.addedUserExternalIds).map { it.externalId }.toSet()
-            val missingIds = request.addedUserExternalIds - existingIds
+        if (request.userExternalIdsToAdd.isNotEmpty()) {
+            val existingIds = userService.findByExternalIds(request.userExternalIdsToAdd).map { it.externalId }.toSet()
+            val missingIds = request.userExternalIdsToAdd - existingIds
             missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
-            userGroupRepository.addUsers(userGroupId, request.addedUserExternalIds)
+            userGroupRepository.addUsers(userGroupId, request.userExternalIdsToAdd)
         }
 
-        if (request.removedUserExternalIds.isNotEmpty()) {
-            userGroupRepository.removeUsers(userGroupId, request.removedUserExternalIds)
+        if (request.userExternalIdsToRemove.isNotEmpty()) {
+            userGroupRepository.removeUsers(userGroupId, request.userExternalIdsToRemove)
         }
 
         return userGroupRepository.findByIdWithDetails(userGroupId)

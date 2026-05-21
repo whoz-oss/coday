@@ -33,6 +33,7 @@ data class AgentConfigNode(
     val instructions: String? = null,
     val modelName: String? = null,
     val integrationsJson: String? = null,
+    val externalMetadataJson: String? = null,
     val advancedExecution: Boolean = false,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
@@ -61,11 +62,13 @@ data class AgentConfigNode(
             modelName = modelName,
             integrations = integrationsJson?.let { MAPPER.readValue(it, INTEGRATIONS_TYPE) },
             advancedExecution = advancedExecution,
+            externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
         )
 
     companion object {
         private val MAPPER = jacksonObjectMapper()
         private val INTEGRATIONS_TYPE = object : TypeReference<Map<String, List<String>?>>() {}
+        private val EXTERNAL_METADATA_TYPE = object : TypeReference<Map<String, Any?>>() {}
 
         fun fromDomain(config: AgentConfig): AgentConfigNode =
             AgentConfigNode(
@@ -76,6 +79,7 @@ data class AgentConfigNode(
                 instructions = config.instructions,
                 modelName = config.modelName,
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
+                externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
                 advancedExecution = config.advancedExecution,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,

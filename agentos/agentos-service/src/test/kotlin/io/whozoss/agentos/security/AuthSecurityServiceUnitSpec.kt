@@ -73,6 +73,74 @@ class AuthSecurityServiceUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // resolveCurrentIdentity — Authorization header (Bearer JWT)
+    // -------------------------------------------------------------------------
+
+    "resolveCurrentIdentity returns preferred_username from Authorization Bearer JWT" {
+        val username = "dave@example.com"
+        val jwt = buildJwt(mapOf("preferred_username" to username, "sub" to "user456"))
+
+        setRequest { addHeader(AuthSecurityService.AUTHORIZATION_HEADER, "Bearer $jwt") }
+
+        val service = AuthSecurityService(objectMapper)
+        service.resolveCurrentIdentity() shouldBe username
+    }
+
+    "resolveCurrentIdentity prefers CF_Authorization over Authorization header" {
+        val cfEmail = "cf@example.com"
+        val authUsername = "auth@example.com"
+        val cfJwt = buildJwt(mapOf("email" to cfEmail))
+        val authJwt = buildJwt(mapOf("preferred_username" to authUsername))
+
+        setRequest {
+            addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, cfJwt)
+            addHeader(AuthSecurityService.AUTHORIZATION_HEADER, "Bearer $authJwt")
+        }
+
+        val service = AuthSecurityService(objectMapper)
+        service.resolveCurrentIdentity() shouldBe cfEmail
+    }
+
+    "resolveCurrentIdentity prefers Authorization over x-forwarded-email" {
+        val authUsername = "auth@example.com"
+        val forwardedEmail = "forwarded@example.com"
+        val authJwt = buildJwt(mapOf("preferred_username" to authUsername))
+
+        setRequest {
+            addHeader(AuthSecurityService.AUTHORIZATION_HEADER, "Bearer $authJwt")
+            addHeader(AuthSecurityService.X_FORWARDED_EMAIL_HEADER, forwardedEmail)
+        }
+
+        val service = AuthSecurityService(objectMapper)
+        service.resolveCurrentIdentity() shouldBe authUsername
+    }
+
+    "resolveCurrentIdentity falls through Authorization to x-forwarded-email when preferred_username claim is absent" {
+        val forwardedEmail = "fallback@example.com"
+        val jwtWithoutUsername = buildJwt(mapOf("sub" to "user789"))
+
+        setRequest {
+            addHeader(AuthSecurityService.AUTHORIZATION_HEADER, "Bearer $jwtWithoutUsername")
+            addHeader(AuthSecurityService.X_FORWARDED_EMAIL_HEADER, forwardedEmail)
+        }
+
+        val service = AuthSecurityService(objectMapper)
+        service.resolveCurrentIdentity() shouldBe forwardedEmail
+    }
+
+    "resolveCurrentIdentity falls through Authorization with malformed JWT to x-forwarded-email" {
+        val forwardedEmail = "fallback@example.com"
+
+        setRequest {
+            addHeader(AuthSecurityService.AUTHORIZATION_HEADER, "Bearer not.a.valid.jwt.at.all")
+            addHeader(AuthSecurityService.X_FORWARDED_EMAIL_HEADER, forwardedEmail)
+        }
+
+        val service = AuthSecurityService(objectMapper)
+        service.resolveCurrentIdentity() shouldBe forwardedEmail
+    }
+
+    // -------------------------------------------------------------------------
     // resolveCurrentIdentity — x-forwarded-email fallback
     // -------------------------------------------------------------------------
 

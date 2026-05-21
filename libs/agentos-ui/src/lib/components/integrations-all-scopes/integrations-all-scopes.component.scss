@@ -1,0 +1,8 @@
+// Layout fully delegated to ds-entity-list. Only the synthetic empty-row placeholder lives here.
+.integrations-all-scopes__empty {
+  margin: 0;
+  padding: 0.65rem 1rem;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--color-text-secondary);
+}

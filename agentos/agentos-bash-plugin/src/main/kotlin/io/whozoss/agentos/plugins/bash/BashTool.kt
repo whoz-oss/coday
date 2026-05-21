@@ -78,7 +78,7 @@ class BashTool(
         private val objectMapper = jacksonObjectMapper()
     }
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): String {
         val resolvedCommand =
             resolveCommand(input)
                 ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"
