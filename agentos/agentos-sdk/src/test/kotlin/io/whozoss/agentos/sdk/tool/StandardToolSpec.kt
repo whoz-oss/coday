@@ -34,7 +34,7 @@ class StandardToolSpec : StringSpec() {
             override val paramType: Class<TimezoneInput> = TimezoneInput::class.java
             override val inputSchema = "{}"
 
-            override fun execute(input: TimezoneInput?, context: ToolContext): String = input?.timezone ?: "null-input"
+            override suspend fun execute(input: TimezoneInput?, context: ToolContext): String = input?.timezone ?: "null-input"
         }
 
     init {

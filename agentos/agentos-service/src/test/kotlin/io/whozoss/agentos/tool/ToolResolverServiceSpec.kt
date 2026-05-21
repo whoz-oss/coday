@@ -30,7 +30,7 @@ class ToolResolverServiceSpec : StringSpec({
             override val inputSchema = """{"type":"object"}"""
             override val version = "1.0.0"
             override val paramType: Class<Nothing>? = null
-            override fun execute(input: Nothing?, context: ToolContext): String = name
+            override suspend fun execute(input: Nothing?, context: ToolContext): String = name
         }
 
     fun makeConfigLessPlugin(integrationType: String, vararg toolNames: String): ToolPlugin =
