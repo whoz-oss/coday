@@ -27,16 +27,10 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
     fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig>
 
     /**
-     * Returns all [AgentConfig]s accessible to [userId] in [namespaceId].
-     * Called once per user message to build the authorized agent set used
-     * for routing and redirect enforcement.
+     * Returns [AgentConfig]s accessible to [userId] in [namespaceId].
+     * When [agentName] is non-null, further filters to configs whose name matches
+     * [agentName] case-insensitively. The comparison is pushed to Neo4j via
+     * `toLower()` — no Kotlin-side filtering needed.
      */
-    fun findAvailableByUserId(namespaceId: UUID, userId: UUID): List<AgentConfig>
-
-    /**
-     * Returns [AgentConfig]s accessible to [userId] in [namespaceId] whose name
-     * matches [agentName] case-insensitively. The comparison is pushed to Neo4j
-     * via `toLower()` — no Kotlin-side filtering needed.
-     */
-    fun findAvailableByNamespaceIdAndUserIdAndName(namespaceId: UUID, userId: UUID, agentName: String): List<AgentConfig>
+    fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String? = null): List<AgentConfig>
 }

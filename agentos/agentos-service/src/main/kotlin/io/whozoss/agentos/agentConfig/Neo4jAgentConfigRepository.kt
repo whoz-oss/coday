@@ -49,14 +49,9 @@ open class Neo4jAgentConfigRepository(
             .findAvailableByUserExternalId(namespaceId.toString(), userExternalId)
             .map { it.toDomain() }
 
-    override fun findAvailableByUserId(namespaceId: UUID, userId: UUID): List<AgentConfig> =
+    override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
         neo4jRepository
-            .findAvailableByUserId(namespaceId.toString(), userId.toString())
-            .map { it.toDomain() }
-
-    override fun findAvailableByNamespaceIdAndUserIdAndName(namespaceId: UUID, userId: UUID, agentName: String): List<AgentConfig> =
-        neo4jRepository
-            .findAvailableByUserIdAndName(namespaceId.toString(), userId.toString(), agentName)
+            .findAvailableByNamespaceIdAndUserId(namespaceId.toString(), userId.toString(), agentName)
             .map { it.toDomain() }
 
     @Transactional

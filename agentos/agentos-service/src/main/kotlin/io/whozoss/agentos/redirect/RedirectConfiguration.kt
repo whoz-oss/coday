@@ -38,7 +38,7 @@ class RedirectConfiguration(
         RedirectToolPlugin { namespaceId, userId, patterns ->
             val regexes = patterns.map { globToRegex(it) }
             val candidates = if (userId != null) {
-                agentConfigService.findAvailableByUserId(namespaceId, userId)
+                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId)
             } else {
                 agentConfigService.findByParent(namespaceId)
             }

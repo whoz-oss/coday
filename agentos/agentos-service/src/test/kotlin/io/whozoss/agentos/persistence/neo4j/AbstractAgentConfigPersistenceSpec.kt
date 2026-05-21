@@ -248,5 +248,116 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
             agentConfigRepo.findAvailableByUserExternalId(ns.id, "alice@example.com").shouldBeEmpty()
         }
+
+        // -------------------------------------------------------------------------
+        // findAvailableByNamespaceIdAndUserId — agentName = null (all accessible)
+        // -------------------------------------------------------------------------
+
+        "findAvailableByNamespaceIdAndUserId with null agentName returns all accessible agents via group path" {
+            val ns = namespaceRepo.save(namespace())
+            val user = userRepo.save(user("alice@example.com"))
+            val agentA = agentConfigRepo.save(agentConfig(ns.id, "agent-a"))
+            val agentB = agentConfigRepo.save(agentConfig(ns.id, "agent-b"))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            userGroupRepo.addAgents(group.id, listOf(agentA.id, agentB.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("agent-a", "agent-b")
+        }
+
+        "findAvailableByNamespaceIdAndUserId with null agentName returns all accessible agents via namespace path" {
+            val ns = namespaceRepo.save(namespace())
+            val user = userRepo.save(user("alice@example.com"))
+            val agentA = agentConfigRepo.save(agentConfig(ns.id, "agent-a"))
+            val agentB = agentConfigRepo.save(agentConfig(ns.id, "agent-b"))
+            namespaceRepo.deployAgents(ns.id, listOf(agentA.id, agentB.id))
+            grantMember("alice@example.com", ns.id.toString())
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("agent-a", "agent-b")
+        }
+
+        "findAvailableByNamespaceIdAndUserId with null agentName returns union of group and namespace paths" {
+            val ns = namespaceRepo.save(namespace())
+            val user = userRepo.save(user("alice@example.com"))
+            val groupAgent = agentConfigRepo.save(agentConfig(ns.id, "group-agent"))
+            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent"))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            userGroupRepo.addAgents(group.id, listOf(groupAgent.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            namespaceRepo.deployAgents(ns.id, listOf(nsAgent.id))
+            grantMember("alice@example.com", ns.id.toString())
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("group-agent", "ns-agent")
+        }
+
+        // -------------------------------------------------------------------------
+        // findAvailableByNamespaceIdAndUserId — agentName filter (exact, case-insensitive)
+        // -------------------------------------------------------------------------
+
+        "findAvailableByNamespaceIdAndUserId with agentName returns only the matching agent" {
+            val ns = namespaceRepo.save(namespace())
+            val user = userRepo.save(user("alice@example.com"))
+            val agentA = agentConfigRepo.save(agentConfig(ns.id, "my-agent"))
+            val agentB = agentConfigRepo.save(agentConfig(ns.id, "other-agent"))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            userGroupRepo.addAgents(group.id, listOf(agentA.id, agentB.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "my-agent")
+
+            result shouldHaveSize 1
+            result.first().name shouldBe "my-agent"
+        }
+
+        "findAvailableByNamespaceIdAndUserId with agentName is case-insensitive" {
+            val ns = namespaceRepo.save(namespace())
+            val user = userRepo.save(user("alice@example.com"))
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "My-Agent"))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            userGroupRepo.addAgents(group.id, listOf(agent.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "MY-AGENT")
+
+            result shouldHaveSize 1
+            result.first().name shouldBe "My-Agent"
+        }
+
+        "findAvailableByNamespaceIdAndUserId with nonexistent agentName returns empty list" {
+            val ns = namespaceRepo.save(namespace())
+            val user = userRepo.save(user("alice@example.com"))
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "real-agent"))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            userGroupRepo.addAgents(group.id, listOf(agent.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "nonexistent")
+
+            result.shouldBeEmpty()
+        }
+
+        "findAvailableByNamespaceIdAndUserId with agentName matches across both group and namespace paths" {
+            val ns = namespaceRepo.save(namespace())
+            val user = userRepo.save(user("alice@example.com"))
+            val targetAgent = agentConfigRepo.save(agentConfig(ns.id, "target-agent"))
+            val otherAgent = agentConfigRepo.save(agentConfig(ns.id, "other-agent"))
+            // target-agent reachable via group; other-agent reachable via namespace
+            val group = userGroupRepo.save(userGroup(ns.id))
+            userGroupRepo.addAgents(group.id, listOf(targetAgent.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            namespaceRepo.deployAgents(ns.id, listOf(otherAgent.id))
+            grantMember("alice@example.com", ns.id.toString())
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "target-agent")
+
+            result shouldHaveSize 1
+            result.first().name shouldBe "target-agent"
+        }
     }
 }

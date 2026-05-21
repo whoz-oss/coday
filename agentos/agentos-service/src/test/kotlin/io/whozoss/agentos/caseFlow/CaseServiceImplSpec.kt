@@ -142,10 +142,10 @@ class CaseServiceImplSpec :
          * [isAgentAuthorized] always passes regardless of which agent is targeted.
          */
         fun allowAllAgentConfigService(): AgentConfigService = mockk {
-            every { findAvailableByNamespaceIdAndUserIdAndName(any(), any(), any()) } answers {
+            every { findAvailableByNamespaceIdAndUserId(any(), any(), any()) } answers {
                 val ns = firstArg<UUID>()
-                val name = thirdArg<String>()
-                listOf(AgentConfig(namespaceId = ns, name = name))
+                val name = thirdArg<String?>()
+                if (name != null) listOf(AgentConfig(namespaceId = ns, name = name)) else emptyList()
             }
         }
 
