@@ -14,8 +14,11 @@ import io.whozoss.agentos.sdk.tool.ToolContext
  *
  * ## Execution contract
  *
- * [execute] always throws [AgentInterrupt.Redirect] after recording the intent.
- * The exception is a control-flow signal, not an error:
+ * [execute] returns a human-readable error string when the requested agent is unknown
+ * or the input is null. The LLM receives this string and can surface it as a plain
+ * message to the user (e.g. "This agent does not exist.").
+ *
+ * On the happy path, [execute] throws [AgentInterrupt.Redirect] — a control-flow signal:
  * - The [io.whozoss.agentos.agent.AgentSimple] wrapper emits [ToolRequestEvent] and
  *   [ToolResponseEvent] (success=true) **before** calling [execute], so traces are
  *   always complete regardless of the exception.
@@ -74,16 +77,25 @@ class RedirectTool(
     override val paramType: Class<Input> = Input::class.java
 
     /**
-     * Always throws [AgentInterrupt.Redirect] — this is the intended behaviour.
+     * Validates the requested agent and throws [AgentInterrupt.Redirect] to hand off.
      *
-     * The caller ([io.whozoss.agentos.agent.AgentSimple]'s tool callback wrapper) emits
-     * [io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent] and
+     * Returns a human-readable error string when [input] is null or when the requested
+     * agent name is not in [eligibleAgents]. The LLM receives this string as the
+     * [io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent] content and can surface it
+     * as a plain-language message to the user (e.g. "This agent does not exist.").
+     *
+     * Throws [AgentInterrupt.Redirect] on the happy path — this is a control-flow signal,
+     * not an error. The caller ([io.whozoss.agentos.agent.AgentSimple]'s tool callback
+     * wrapper) emits [io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent] and
      * [io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent] before invoking [executeWithJson],
      * so traces are complete before the exception propagates.
      */
     override suspend fun execute(input: Input?, context: ToolContext): String {
         val target = input?.agentName
-            ?: error("RedirectTool: agentName is required but was not provided by the LLM")
+            ?: return "Agent name is required."
+        if (eligibleAgents.none { it.name == target }) {
+            return "Agent does not exist."
+        }
         throw AgentInterrupt.Redirect(target)
     }
 }
