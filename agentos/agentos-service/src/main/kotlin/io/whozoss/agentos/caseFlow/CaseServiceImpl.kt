@@ -149,7 +149,7 @@ class CaseServiceImpl(
             return
         }
         val authorizedAgents = agentConfigService.findAvailableByUserId(runtime.namespaceId, userId)
-            .map { config -> config.name }
+            .map { config -> config.name.lowercase() }
             .toSet()
         runtime.addUserMessage(actor, content, answerToEventId, authorizedAgents)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
@@ -241,7 +241,7 @@ class CaseServiceImpl(
     private fun resolveFromAuthorized(
         name: String,
         authorizedAgents: Set<String>,
-    ): String? = authorizedAgents.firstOrNull { it.lowercase() == name.lowercase() }
+    ): String? = authorizedAgents.firstOrNull { it == name.lowercase() }
 
     /**
      * Resolves the namespace default agent by name from [Namespace.defaultAgentName].
@@ -325,7 +325,6 @@ class CaseServiceImpl(
             caseId = caseId,
             userId = userId,
             caseEventsProvider = eventsProvider,
-            authorizedAgentNames = runtime.getAuthorizedAgentNames(),
         )
         agentService
             .findAgentByName(agentName, context)

@@ -262,18 +262,7 @@ class AgentServiceImpl(
                 }
             }
 
-        val agentsBlock = context.authorizedAgentNames
-            .takeIf { it.isNotEmpty() }
-            ?.let { names ->
-                buildString {
-                    appendLine()
-                    appendLine("## Available agents")
-                    appendLine("You may redirect to the following agents by name:")
-                    names.sorted().forEach { appendLine("- $it") }
-                }.trimEnd()
-            }
-
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, namespaceBlock, integrationsBlock, userBlock, agentsBlock)
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, namespaceBlock, integrationsBlock, userBlock)
             .joinToString("\n")
     }
 

@@ -20,5 +20,4 @@ data class AgentExecutionContext(
     val caseId: UUID,
     val userId: UUID? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
-    val authorizedAgentNames: Set<String> = emptySet(),
 )
