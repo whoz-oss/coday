@@ -1,3 +1,13 @@
+## 0.159.3 (2026-05-21)
+
+### 🩹 Fixes
+
+- #WZ-32044 pass ToolContext with namespaceId to provideTools in ToolResolverService ([#894](https://github.com/whoz-oss/coday/pull/894))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.159.2 (2026-05-21)
 
 ### 🩹 Fixes
