@@ -1,3 +1,15 @@
+## 0.159.5 (2026-05-21)
+
+### 🩹 Fixes
+
+- remove registry-url from release.yml ([c8889f27](https://github.com/whoz-oss/coday/commit/c8889f27))
+- remove registry-url from release.yml ([#898](https://github.com/whoz-oss/coday/pull/898))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.159.4 (2026-05-21)
 
 ### 🚀 Features
