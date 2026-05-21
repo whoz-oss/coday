@@ -1,3 +1,15 @@
+## 0.159.7 (2026-05-21)
+
+### 🩹 Fixes
+
+- add NPM_TOKEN to release.yml (Run nx release) ([be4c0f59](https://github.com/whoz-oss/coday/commit/be4c0f59))
+- add NPM_TOKEN to release.yml (Run nx release) ([#900](https://github.com/whoz-oss/coday/pull/900))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.159.6 (2026-05-21)
 
 ### 🩹 Fixes
