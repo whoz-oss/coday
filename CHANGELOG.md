@@ -1,3 +1,15 @@
+## 0.159.6 (2026-05-21)
+
+### 🩹 Fixes
+
+- restore registry url in release.yml and add public access arg to releasePublish ([bbe935dc](https://github.com/whoz-oss/coday/commit/bbe935dc))
+- restore registry url in release.yml and add public access arg to releasePublish ([#899](https://github.com/whoz-oss/coday/pull/899))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.159.5 (2026-05-21)
 
 ### 🩹 Fixes
