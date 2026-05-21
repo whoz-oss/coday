@@ -48,20 +48,16 @@ class RecordingRunAgent(
  * A simple recording wrapper for the selectAgent callback, avoiding MockK entirely.
  * MockK global state can bleed between specs when stubs from one spec are still
  * registered when the next spec runs. A plain wrapper has no such risk.
- *
- * The [userId] parameter mirrors the [CaseRuntime] callback signature: it carries
- * the UUID of the user who sent the message (resolved from the event history) so
- * that agent selection can apply per-user access rules.
  */
 class RecordingSelectAgent(
-    private val delegate: (List<MessageContent>, List<CaseEvent>) -> List<CaseEvent>,
+    private val delegate: (List<MessageContent>, List<CaseEvent>, Set<String>) -> List<CaseEvent>,
 ) {
     private val _calls = mutableListOf<List<MessageContent>>()
     val callCount: Int get() = _calls.size
 
-    val asCallback: (List<MessageContent>, List<CaseEvent>, UUID?) -> List<CaseEvent> = { content, pastEvents, _ ->
+    val asCallback: (List<MessageContent>, List<CaseEvent>, Set<String>) -> List<CaseEvent> = { content, pastEvents, authorizedAgents ->
         _calls += content
-        delegate(content, pastEvents)
+        delegate(content, pastEvents, authorizedAgents)
     }
 }
 
@@ -131,7 +127,7 @@ class CaseRuntimeSpec : StringSpec() {
         val savedEvents = mutableListOf<CaseEvent>()
         val runtimeId = UUID.randomUUID()
 
-        val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) }
+        val selectAgent = RecordingSelectAgent { _, _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) }
 
         lateinit var runtime: CaseRuntime
         val runAgent =
@@ -483,7 +479,7 @@ class CaseRuntimeSpec : StringSpec() {
                 }
             }
 
-            val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentA)) }
+            val selectAgent = RecordingSelectAgent { _, _, _ -> listOf(agentSelectedEvent(runtimeId, agentA)) }
 
             val runAgent = RecordingRunAgent { name, events ->
                 runOrder += name

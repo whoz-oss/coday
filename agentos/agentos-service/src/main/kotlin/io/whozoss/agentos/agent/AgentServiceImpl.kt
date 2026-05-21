@@ -55,17 +55,6 @@ class AgentServiceImpl(
         return createAgentFromConfig(agentConfig, context)
     }
 
-    override fun resolveAgentName(
-        namePart: String,
-        namespaceId: UUID,
-        userId: UUID?,
-    ): String? =
-        if (userId != null) {
-            agentConfigService.findAvailableByUserIdAndName(namespaceId, userId, namePart)?.name
-        } else {
-            agentConfigService.findByName(namespaceId, namePart)?.name
-        }
-
     // -------------------------------------------------------------------------
     // Resolution helpers
     // -------------------------------------------------------------------------

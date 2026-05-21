@@ -27,10 +27,9 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
     fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig>
 
     /**
-     * Returns the first [AgentConfig] accessible to [userId] in [namespaceId] whose
-     * name matches [name] case-insensitively, or null if none is found.
-     *
-     * The name filter is applied in Neo4j — no in-memory scan.
+     * Returns all [AgentConfig]s accessible to [userId] in [namespaceId].
+     * Called once per user message to build the authorized agent set used
+     * for routing and redirect enforcement.
      */
-    fun findAvailableByUserIdAndName(namespaceId: UUID, userId: UUID, name: String): AgentConfig?
+    fun findAvailableByUserId(namespaceId: UUID, userId: UUID): List<AgentConfig>
 }

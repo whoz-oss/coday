@@ -7,6 +7,8 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.namespace.Namespace
@@ -147,12 +149,17 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { resolveAgentName(any(), any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns agent
                 }
+            val agentConfigService = mockk<AgentConfigService> {
+                every { findAvailableByUserId(any(), any()) } returns listOf(
+                    AgentConfig(namespaceId = namespaceId, name = agentName)
+                )
+                every { findByName(any(), any()) } returns AgentConfig(namespaceId = namespaceId, name = agentName)
+            }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            return CaseServiceImpl(agentService, caseRepository, caseEventService, userService, namespaceService)
+            return CaseServiceImpl(agentService, agentConfigService, caseRepository, caseEventService, userService, namespaceService)
         }
 
         // -------------------------------------------------------------------------
@@ -264,11 +271,13 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { resolveAgentName(any(), any(), any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService, namespaceService)
+            val agentConfigService = mockk<AgentConfigService> {
+                every { findAvailableByUserId(any(), any()) } returns listOf(AgentConfig(namespaceId = namespaceId, name = agentName))
+            }
+            val service = CaseServiceImpl(agentService, agentConfigService, InMemoryCaseRepository(), caseEventService, userService, namespaceService)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
@@ -468,11 +477,13 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
                     every { findAgentByName(agentName, any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService, userService, namespaceService)
+            val agentConfigService = mockk<AgentConfigService> {
+                every { findAvailableByUserId(any(), any()) } returns listOf(AgentConfig(namespaceId = namespaceId, name = agentName))
+            }
+            val service = CaseServiceImpl(agentService, agentConfigService, InMemoryCaseRepository(), caseEventService, userService, namespaceService)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
 
@@ -565,8 +576,12 @@ class CaseServiceImplSpec :
             // resolveAgentName is never reached because selectDefaultAgent short-circuits on null
             val agentService = mockk<AgentService>(relaxed = true)
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val agentConfigService = mockk<AgentConfigService> {
+                every { findAvailableByUserId(any(), any()) } returns emptyList<AgentConfig>()
+            }
             val service = CaseServiceImpl(
                 agentService,
+                agentConfigService,
                 InMemoryCaseRepository(),
                 caseEventService,
                 userService,
@@ -602,24 +617,24 @@ class CaseServiceImplSpec :
                 defaultAgentName = agentName,
             )
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
-            // resolveAgentName call sequence:
-            //   turn 1, @mention path: resolveAgentName(unavailableAgentName) -> unavailableAgentName (found)
-            //   turn 2, sticky-agent availability check: resolveAgentName(unavailableAgentName) -> null (gone)
-            //   turn 2, default resolution: resolveAgentName(agentName) -> agentName (found)
-            val resolveCallCount = java.util.concurrent.atomic.AtomicInteger(0)
+            // Turn 1: unavailableAgent is in the authorized set → @mention resolves
+            // Turn 2: unavailableAgent is gone from the authorized set → sticky-agent check fails, fallback to default
+            val callCount = java.util.concurrent.atomic.AtomicInteger(0)
             val agentService = mockk<AgentService> {
-                every { resolveAgentName(unavailableAgentName, namespaceId, any()) } answers {
-                    when (resolveCallCount.incrementAndGet()) {
-                        1 -> unavailableAgentName  // turn 1: @mention resolves
-                        else -> null              // turn 2: sticky-agent check fails
+                every { findAgentByName(any(), any()) } returns finishingAgent()
+            }
+            val agentConfigService = mockk<AgentConfigService> {
+                every { findAvailableByUserId(any(), any()) } answers {
+                    when (callCount.incrementAndGet()) {
+                        1 -> listOf(AgentConfig(namespaceId = namespaceId, name = unavailableAgentName))
+                        else -> listOf(AgentConfig(namespaceId = namespaceId, name = agentName))
                     }
                 }
-                every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                every { findAgentByName(any(), any()) } returns finishingAgent()
             }
             val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
                 agentService,
+                agentConfigService,
                 InMemoryCaseRepository(),
                 caseEventService,
                 userServiceMock,
@@ -699,15 +714,17 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService =
                 mockk<AgentService> {
-                    // @selected-agent resolves to selectedAgentName
-                    every { resolveAgentName(selectedAgentName, any(), any()) } returns selectedAgentName
-                    // no other mention resolution needed
                     every { findAgentByName(selectedAgentName, any()) } returns selectedAgent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
-            val service = CaseServiceImpl(agentService, caseRepository, caseEventService, userService, namespaceService)
+            val agentConfigService = mockk<AgentConfigService> {
+                every { findAvailableByUserId(any(), any()) } returns listOf(
+                    AgentConfig(namespaceId = namespaceId, name = selectedAgentName)
+                )
+            }
+            val service = CaseServiceImpl(agentService, agentConfigService, caseRepository, caseEventService, userService, namespaceService)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)

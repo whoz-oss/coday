@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.agent.Agent
 import java.util.UUID
 
+
 /**
  * Service for managing agent runtime instances.
  *
@@ -28,21 +29,5 @@ interface AgentService {
         context: AgentExecutionContext,
     ): Agent
 
-    /**
-     * Resolve the canonical name for [namePart] within [namespaceId] by
-     * [io.whozoss.agentos.agentConfig.AgentConfig] name matching,
-     * without instantiating a full Agent.
-     *
-     * When [userId] is provided, only agents accessible to that user are considered
-     * (same Neo4j graph rules as the /search endpoint: UserGroup membership and
-     * direct Namespace MEMBER/ADMIN relations). When [userId] is null, falls back
-     * to a namespace-wide lookup (legacy/anonymous path).
-     *
-     * Returns null if no matching [io.whozoss.agentos.agentConfig.AgentConfig] is found.
-     */
-    fun resolveAgentName(
-        namePart: String,
-        namespaceId: UUID,
-        userId: UUID? = null,
-    ): String?
+
 }

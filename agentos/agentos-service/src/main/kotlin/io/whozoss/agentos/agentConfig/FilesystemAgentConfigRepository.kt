@@ -48,8 +48,8 @@ class FilesystemAgentConfigRepository(
             ttl = ttl,
         )
 
-    override fun findAvailableByUserIdAndName(namespaceId: UUID, userId: UUID, name: String): AgentConfig? =
-        delegate.findAvailableByUserIdAndName(namespaceId, userId, name)
+    override fun findAvailableByUserId(namespaceId: UUID, userId: UUID): List<AgentConfig> =
+        delegate.findAvailableByUserId(namespaceId, userId)
 
     override fun findByParent(parentId: UUID): List<AgentConfig> {
         val persisted = delegate.findByParent(parentId)

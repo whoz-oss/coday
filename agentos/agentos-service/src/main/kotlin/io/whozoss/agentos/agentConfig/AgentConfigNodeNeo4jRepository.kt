@@ -54,12 +54,13 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     fun findAvailableByUserExternalId(namespaceId: String, userExternalId: String): List<AgentConfigNode>
 
     /**
-     * Returns the first [AgentConfigNode] accessible to the user (matched by internal [userId])
-     * in the namespace (matched by internal [namespaceId]) whose name matches [name]
-     * case-insensitively.
+     * Returns all [AgentConfigNode]s accessible to the user (matched by internal [userId])
+     * in the namespace (matched by internal [namespaceId]).
      *
-     * Used by [io.whozoss.agentos.agent.AgentServiceImpl.resolveAgentName] during
-     * conversation runtime where only internal UUIDs are available.
+     * Same graph rules as [findAvailableByUserExternalId] but matched by internal [userId]
+     * rather than [externalId]. Returns the full authorized set without name filtering.
+     * Called once per user message to build the authorized agent set used
+     * for routing and redirect enforcement.
      */
     @Query(
         $$"""
@@ -71,7 +72,6 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
               WHERE g.removed IS NULL OR g.removed = false
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
               WHERE a.removed IS NULL OR a.removed = false
-              AND toLower(a.name) = toLower($name)
             RETURN a
             UNION
             MATCH (u:User {id: $userId})
@@ -81,9 +81,8 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             MATCH (u)-[:MEMBER|ADMIN]->(ns)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
               WHERE a.removed IS NULL OR a.removed = false
-              AND toLower(a.name) = toLower($name)
             RETURN a
             """,
     )
-    fun findAvailableByUserIdAndName(namespaceId: String, userId: String, name: String): List<AgentConfigNode>
+    fun findAvailableByUserId(namespaceId: String, userId: String): List<AgentConfigNode>
 }

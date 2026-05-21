@@ -29,12 +29,15 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   The runtime then adds it to its list and emits it on the SSE flow itself —
  *   no reference to the runtime is ever passed outward.
  * @param selectAgent resolves which agent should handle the current message.
- *   Receives the message content, the full current event history, and the [UUID] of
- *   the user who sent the message (resolved from the event history, may be null for
- *   system messages), and returns an ordered list of events to store+emit (e.g. an
- *   optional [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an
- *   [AgentSelectedEvent], or just an [AgentSelectedEvent] for the default agent).
+ *   Receives the message content, the full current event history, and the pre-computed
+ *   set of authorized agent names for the current user (empty = anonymous/system).
+ *   Returns an ordered list of events to store+emit (e.g. an optional
+ *   [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an [AgentSelectedEvent],
+ *   or just an [AgentSelectedEvent] for the default agent).
  *   Returns an empty list when no agent is configured and the loop should stop.
+ * @param authorizedAgentNames the set of agent names the current user is authorized
+ *   to interact with, computed once at conversation start from the Neo4j graph.
+ *   Used to validate agent-to-agent redirects without additional Neo4j round-trips.
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. Error handling is the
  *   responsibility of the service implementation.
@@ -44,11 +47,18 @@ class CaseRuntime(
     val namespaceId: UUID,
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
-    private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>, userId: UUID?) -> List<CaseEvent>,
+    private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>, authorizedAgents: Set<String>) -> List<CaseEvent>,
     private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
+
+    /**
+     * Authorized agent names for the current turn, computed once per user message
+     * from the Neo4j graph by [CaseService]. Empty set means no restriction (anonymous
+     * or system turn).
+     */
+    private var authorizedAgentNames: Set<String> = emptySet()
 
     /**
      * Set by [processNextStep] when it finds an [AgentFinishedEvent] for the current
@@ -148,7 +158,9 @@ class CaseRuntime(
         actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
+        authorizedAgents: Set<String> = emptySet(),
     ) {
+        authorizedAgentNames = authorizedAgents
         logger.info {
             "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
                 "content: ${content.size} part(s), answerTo: $answerToEventId"
@@ -183,8 +195,7 @@ class CaseRuntime(
         }
 
         storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
-        val userId = runCatching { UUID.fromString(actor.id) }.getOrNull()
-        selectAgent(content, eventList.getAll(), userId).forEach { storeAndEmitEvent(it) }
+        selectAgent(content, eventList.getAll(), authorizedAgentNames).forEach { storeAndEmitEvent(it) }
     }
 
     // -------------------------------------------------------------------------
@@ -293,6 +304,22 @@ class CaseRuntime(
                     logger.info {
                         "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, " +
                             "transitioning to running"
+                    }
+                    val authorized = authorizedAgentNames
+                    if (authorized.isNotEmpty() && event.agentName.lowercase() !in authorized) {
+                        logger.warn {
+                            "[CaseRuntime $id] Agent '${event.agentName}' is not in the authorized " +
+                                "agent set — redirect blocked"
+                        }
+                        storeAndEmitEvent(
+                            io.whozoss.agentos.sdk.caseEvent.WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = id,
+                                message = "Agent '${event.agentName}' is not accessible to the current user",
+                            ),
+                        )
+                        interruptRequested.set(true)
+                        return
                     }
                     storeAndEmitEvent(
                         AgentRunningEvent(

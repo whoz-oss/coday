@@ -501,44 +501,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations) }
         }
 
-        // -------------------------------------------------------------------------
-        // resolveAgentName
-        // -------------------------------------------------------------------------
 
-        // userId == null: falls back to namespace-wide findByName
-        "resolveAgentName returns AgentConfig name when one matches (no userId)" {
-            val config = agentConfig(name = "my-agent")
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-
-            agentService.resolveAgentName("my-agent", namespaceId) shouldBe "my-agent"
-
-            verify(exactly = 0) { aiModelService.findAiModel(any(), any()) }
-        }
-
-        "resolveAgentName returns null when no AgentConfig matches (no userId)" {
-            every { agentConfigService.findByName(namespaceId, "unknown") } returns null
-
-            agentService.resolveAgentName("unknown", namespaceId) shouldBe null
-        }
-
-        // userId != null: delegates to findAvailableByUserIdAndName (Neo4j graph rules)
-        "resolveAgentName with userId returns name when agent is accessible" {
-            val userId = UUID.randomUUID()
-            val config = agentConfig(name = "my-agent")
-            every { agentConfigService.findAvailableByUserIdAndName(namespaceId, userId, "my-agent") } returns config
-
-            agentService.resolveAgentName("my-agent", namespaceId, userId) shouldBe "my-agent"
-
-            verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
-        }
-
-        "resolveAgentName with userId returns null when agent is not accessible" {
-            val userId = UUID.randomUUID()
-            every { agentConfigService.findAvailableByUserIdAndName(namespaceId, userId, "restricted") } returns null
-
-            agentService.resolveAgentName("restricted", namespaceId, userId) shouldBe null
-
-            verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
-        }
     }
 }
