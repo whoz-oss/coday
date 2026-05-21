@@ -1,3 +1,13 @@
+## 0.158.0 (2026-05-21)
+
+### 🚀 Features
+
+- #31898 tag agent and user messages with XML in LLM context ([#883](https://github.com/whoz-oss/coday/pull/883), [#31898](https://github.com/whoz-oss/coday/issues/31898))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.157.0 (2026-05-21)
 
 ### 🚀 Features
