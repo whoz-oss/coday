@@ -220,7 +220,13 @@ class AgentAdvanced(
     ): Boolean {
         if (!shouldContinue()) return false
         val toolRequestId = UUID.randomUUID().toString()
-        val parameters = generateParameters(accumulatedEvents, intention, namespaceId, caseId, toolRequestId)
+        val parameters =
+            generateParameters(
+                intentionEvent = intention,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = toolRequestId,
+            )
         emitEvent(parameters)
         accumulatedEvents.add(parameters)
         if (!shouldContinue()) return false
@@ -582,13 +588,11 @@ class AgentAdvanced(
     }
 
     private fun generateParameters(
-        events: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         namespaceId: UUID,
         caseId: UUID,
         toolRequestId: String,
     ): ToolRequestEvent {
-        val messages = context.buildMessages(events)
         val tool =
             context.tools.firstOrNull { it.name == intentionEvent.toolName }
                 ?: throw IllegalStateException("Tool not found: ${intentionEvent.toolName}")
@@ -606,7 +610,7 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
 
         val rawParameters =
             context.chatClient
-                .prompt(Prompt(messages + UserMessage(parametersPrompt)))
+                .prompt(Prompt(UserMessage(parametersPrompt)))
                 .call()
                 .content()
                 ?.trim() ?: "{}"
