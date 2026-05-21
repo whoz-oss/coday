@@ -73,7 +73,7 @@ class RedirectToolPlugin(
             ?.takeIf { it.isNotEmpty() }
             ?: listOf("*")
 
-        val userId = context?.userId
+        val userId = context.userId
         val eligibleAgents = agentResolver(namespaceId, userId, patterns)
             .map { RedirectTool.EligibleAgent(name = it.name, description = it.description) }
 
