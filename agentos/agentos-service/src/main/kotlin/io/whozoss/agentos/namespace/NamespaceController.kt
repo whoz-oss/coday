@@ -81,11 +81,8 @@ class NamespaceController(
         resource: NamespaceResource,
         existing: Namespace,
     ): Namespace =
-        existing.copy(
-            name = resource.name,
-            description = resource.description,
-            configPath = resource.configPath?.takeIf { it.isNotBlank() },
-            // externalId intentionally preserved — see KDoc above.
+        toDomain(resource).copy(
+            externalId = existing.externalId, // externalId intentionally preserved — see KDoc above.)
         )
 
     @GetMapping("/{id}")
