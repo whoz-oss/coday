@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
@@ -461,7 +462,7 @@ class AgentSimple(
                     measureTime {
                         result =
                             try {
-                                runBlocking { tool.executeWithJson(toolInput, context) }
+                                runBlocking(Dispatchers.IO) { tool.executeWithJson(toolInput, context) }
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.
