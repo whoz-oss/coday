@@ -86,6 +86,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
+          registry-url: 'https://${{ vars.NPM_REGISTRY }}'
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4

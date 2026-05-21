@@ -67,6 +67,7 @@ async function main(): Promise<void> {
 
   // Step 4: Publish packages — JVM projects are skipped via no-op nx-release-publish targets (published via Gradle in CI)
   const publishResults = await releasePublish({
+    access: 'public',
     dryRun,
     releaseGraph,
     verbose: false,

@@ -47,7 +47,7 @@ export interface TimeSeriesPointDto {
 export interface TokenUsageSeriesDto {
   from: string | null
   to: string | null
-  // true when any event in the period had missing token counts
+  /** true when any event in the period had missing token counts */
   tokenDataPartial: boolean
   points: TimeSeriesPointDto[]
 }
