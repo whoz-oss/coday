@@ -1,3 +1,13 @@
+## 0.157.0 (2026-05-21)
+
+### 🚀 Features
+
+- #31607 make StandardTool.execute and executeWithJson suspend ([#882](https://github.com/whoz-oss/coday/pull/882), [#31607](https://github.com/whoz-oss/coday/issues/31607))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.156.0 (2026-05-21)
 
 ### 🚀 Features
