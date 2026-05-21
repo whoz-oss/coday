@@ -484,6 +484,47 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, null) }
         }
 
+        // -------------------------------------------------------------------------
+        // Available agents block injection into instructions
+        // -------------------------------------------------------------------------
+
+        "findAgentByName appends available agents block when authorizedAgentNames is non-empty" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val contextWithAgents = AgentExecutionContext(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                authorizedAgentNames = setOf("AgentA", "AgentB"),
+            )
+            val agent = agentService.findAgentByName("my-agent", contextWithAgents) as AgentSimple
+
+            agent.instructions shouldContain "## Available agents"
+            agent.instructions shouldContain "- AgentA"
+            agent.instructions shouldContain "- AgentB"
+        }
+
+        "findAgentByName omits available agents block when authorizedAgentNames is empty" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions shouldNotContain "## Available agents"
+        }
+
         "findAgentByName passes integrations map to ToolResolverService when agentConfig has integrations" {
             val integrations = mapOf("FILES" to null, "JIRA_PROD" to listOf("GetIssue"))
             val config = agentConfig(name = "my-agent", modelName = "sonnet").copy(integrations = integrations)

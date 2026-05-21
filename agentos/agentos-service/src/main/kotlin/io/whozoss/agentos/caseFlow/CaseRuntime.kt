@@ -119,6 +119,8 @@ class CaseRuntime(
 
     fun isRunning(): Boolean = runInFlight.get()
 
+    fun getAuthorizedAgentNames(): Set<String> = authorizedAgentNames
+
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
     }
@@ -306,7 +308,7 @@ class CaseRuntime(
                             "transitioning to running"
                     }
                     val authorized = authorizedAgentNames
-                    if (authorized.isNotEmpty() && event.agentName.lowercase() !in authorized) {
+                    if (authorized.isNotEmpty() && authorized.none { it.lowercase() == event.agentName.lowercase() }) {
                         logger.warn {
                             "[CaseRuntime $id] Agent '${event.agentName}' is not in the authorized " +
                                 "agent set — redirect blocked"
