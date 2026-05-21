@@ -1,6 +1,5 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -37,7 +36,7 @@ data class AgentAdvancedContext(
 
         return events.flatMap { event ->
             when (event) {
-                is MessageEvent -> listOf(toMessage(event))
+                is MessageEvent -> listOf(event.toSpringAiMessage(this.agentId.toString()))
                 is ToolRequestEvent -> toToolMessages(event, detailedRequestIds, responsesByRequestId)
                 is IntentionGeneratedEvent -> toIntentionMessage(event)
                 else -> emptyList()
@@ -78,19 +77,6 @@ data class AgentAdvancedContext(
             }
         }
         return result
-    }
-
-    private fun AgentAdvancedContext.toMessage(event: MessageEvent): Message {
-        val textContent =
-            event.content
-                .filterIsInstance<MessageContent.Text>()
-                .joinToString("\n") { it.content }
-
-        return when {
-            event.actor.role == ActorRole.USER -> UserMessage(textContent)
-            event.actor.id == agentId.toString() -> AssistantMessage(textContent)
-            else -> UserMessage("[${event.actor.displayName}]: $textContent")
-        }
     }
 
     private fun toToolMessages(
@@ -144,7 +130,9 @@ data class AgentAdvancedContext(
     }
 
     private fun toIntentionMessage(event: IntentionGeneratedEvent): List<Message> =
-        listOf(AssistantMessage("[Intention] ${event.intention}\n[Selected tool] ${event.toolName}"))
+        listOf(
+            AssistantMessage("INTERNAL STEP: Tool Call: ${event.toolName}\nIntention: ${event.intention}"),
+        )
 
     private fun normalizeArgs(args: String?): String = args?.takeIf { it.isNotBlank() } ?: "{}"
 

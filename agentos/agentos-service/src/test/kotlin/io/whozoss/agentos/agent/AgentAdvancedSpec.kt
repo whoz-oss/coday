@@ -64,10 +64,11 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val redirectTool = RedirectTool(
-                configName = "REDIRECT",
-                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
-            )
+            val redirectTool =
+                RedirectTool(
+                    configName = "REDIRECT",
+                    eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+                )
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -81,38 +82,43 @@ class AgentAdvancedSpec :
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
                 mockGenerator.generate(any(), any(), any(), any(), any())
-            } returns IntentionGeneratedEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                agentId = agentId,
-                intention = "Redirect to TargetAgent.",
-                toolName = "REDIRECT__redirect",
-            )
+            } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "Redirect to TargetAgent.",
+                    toolName = "REDIRECT__redirect",
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(redirectTool),
-                instructions = null,
-                agentId = agentId,
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "TestAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(redirectTool),
+                    instructions = null,
+                    agentId = agentId,
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    maxIterations = 5,
+                )
 
-            val events = agent.run(
-                listOf(
-                    MessageEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        actor = Actor("user1", "User One", ActorRole.USER),
-                        content = listOf(MessageContent.Text("do the thing")),
-                    ),
-                ),
-            ).toList()
+            val events =
+                agent
+                    .run(
+                        listOf(
+                            MessageEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                actor = Actor("user1", "User One", ActorRole.USER),
+                                content = listOf(MessageContent.Text("do the thing")),
+                            ),
+                        ),
+                    ).toList()
 
             val finishedIndex = events.indexOfFirst { it is AgentFinishedEvent }
             val selectedIndex = events.indexOfFirst { it is AgentSelectedEvent }
@@ -130,10 +136,11 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val redirectTool = RedirectTool(
-                configName = "REDIRECT",
-                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
-            )
+            val redirectTool =
+                RedirectTool(
+                    configName = "REDIRECT",
+                    eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+                )
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -147,42 +154,46 @@ class AgentAdvancedSpec :
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
                 mockGenerator.generate(any(), any(), any(), any(), any())
-            } returns IntentionGeneratedEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                agentId = agentId,
-                intention = "Redirect to TargetAgent.",
-                toolName = "REDIRECT__redirect",
-            )
+            } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "Redirect to TargetAgent.",
+                    toolName = "REDIRECT__redirect",
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(redirectTool),
-                instructions = null,
-                agentId = agentId,
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "TestAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(redirectTool),
+                    instructions = null,
+                    agentId = agentId,
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    maxIterations = 5,
+                )
 
-            val events = agent.run(
-                listOf(
-                    MessageEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        actor = Actor("user1", "User One", ActorRole.USER),
-                        content = listOf(MessageContent.Text("do the thing")),
-                    ),
-                ),
-            ).toList()
+            val events =
+                agent
+                    .run(
+                        listOf(
+                            MessageEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                actor = Actor("user1", "User One", ActorRole.USER),
+                                content = listOf(MessageContent.Text("do the thing")),
+                            ),
+                        ),
+                    ).toList()
 
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
         }
-
 
         // -------------------------------------------------------------------------
         // Orchestration integration tests
@@ -276,7 +287,7 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "Read a file"
             every { mockTool.inputSchema } returns "{}"
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.executeWithJson(any(), any()) } returns "file content"
+            coEvery { mockTool.executeWithJson(any(), any()) } returns "file content"
 
             // The generator returns FILES__ReadFile 3 times, then Answer on the 4th call
             val mockGenerator = mockk<AgentIntentionGenerator>()

@@ -105,7 +105,7 @@ class AgentAdvancedContextSpec :
 
             messages shouldHaveSize 2
             messages[0].shouldBeInstanceOf<UserMessage>()
-            (messages[0] as UserMessage).text shouldBe "hello"
+            (messages[0] as UserMessage).text shouldBe """<user name="User">hello</user>"""
             messages[1].shouldBeInstanceOf<AssistantMessage>()
             (messages[1] as AssistantMessage).text shouldBe "hi there"
         }
@@ -117,7 +117,7 @@ class AgentAdvancedContextSpec :
 
             messages shouldHaveSize 1
             messages[0].shouldBeInstanceOf<UserMessage>()
-            (messages[0] as UserMessage).text shouldBe "[OtherBot]: hello"
+            (messages[0] as UserMessage).text shouldBe """<agent name="OtherBot">hello</agent>"""
         }
 
         // -------------------------------------------------------------------------
@@ -168,8 +168,8 @@ class AgentAdvancedContextSpec :
             messages shouldHaveSize 1
             messages[0].shouldBeInstanceOf<AssistantMessage>()
             val text = (messages[0] as AssistantMessage).text
-            text shouldContain "[Intention] Analyzing the file"
-            text shouldContain "[Selected tool] FILES__read"
+            text shouldContain "INTERNAL STEP: Tool Call: FILES__read\n" +
+                "Intention: Analyzing the file"
         }
 
         // -------------------------------------------------------------------------
@@ -244,12 +244,15 @@ class AgentAdvancedContextSpec :
             messages shouldHaveSize 6
             messages[0].shouldBeInstanceOf<UserMessage>()
             messages[1].shouldBeInstanceOf<AssistantMessage>() // intention
-            (messages[1] as AssistantMessage).text shouldContain "[Intention]"
+            (messages[1] as AssistantMessage).text shouldContain
+                "INTERNAL STEP: Tool Call: FILES__read\n" +
+                "Intention: I will read a file"
             messages[2].shouldBeInstanceOf<AssistantMessage>() // tool call
             (messages[2] as AssistantMessage).toolCalls shouldHaveSize 1
             messages[3].shouldBeInstanceOf<ToolResponseMessage>()
             messages[4].shouldBeInstanceOf<AssistantMessage>() // intention Answer
-            (messages[4] as AssistantMessage).text shouldContain "[Intention]"
+            (messages[4] as AssistantMessage).text shouldContain "INTERNAL STEP: Tool Call: Answer\n" +
+                "Intention: Answer"
             messages[5].shouldBeInstanceOf<AssistantMessage>() // final answer
             (messages[5] as AssistantMessage).text shouldBe "final answer"
         }
@@ -316,8 +319,8 @@ class AgentAdvancedContextSpec :
 
             val userMessages = messages.filterIsInstance<UserMessage>()
             userMessages shouldHaveSize 2
-            userMessages[0].text shouldBe "first"
-            userMessages[1].text shouldBe "second"
+            userMessages[0].text shouldBe """<user name="User">first</user>"""
+            userMessages[1].text shouldBe """<user name="User">second</user>"""
         }
 
         "compression with all tool calls within window produces no summaries" {
@@ -375,7 +378,7 @@ class AgentAdvancedContextSpec :
 
             val intentionMessages =
                 messages.filterIsInstance<AssistantMessage>().filter {
-                    it.text?.contains("[Intention]") == true
+                    it.text?.lowercase()?.contains("intention") == true
                 }
 
             intentionMessages shouldHaveSize 2
