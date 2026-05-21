@@ -49,7 +49,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     beforeTest { clearAllMocks() }
 
     // -------------------------------------------------------------------------
-    // 404 guards
+    // Guard: unknown user
     // -------------------------------------------------------------------------
 
     "syncUserRoles throws 404 when user external id is unknown" {
@@ -61,16 +61,50 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
     }
 
-    "syncUserRoles throws 404 when a namespace external id is unknown" {
+    // -------------------------------------------------------------------------
+    // Unknown namespace external id — skip behaviour
+    // -------------------------------------------------------------------------
+
+    "syncUserRoles silently skips a fully unknown namespace external id" {
         every { userService.findByExternalId(user.externalId) } returns user
         every { namespaceService.findByExternalIds(listOf("unknown-ns")) } returns emptyList()
+        stubCurrentRoles()
 
-        shouldThrow<ResourceNotFoundException> {
-            service.syncUserRoles(
-                SyncUserRolesRequest(user.externalId, listOf(NamespaceRoleEntry("unknown-ns", "ADMIN"))),
+        service.syncUserRoles(
+            SyncUserRolesRequest(user.externalId, listOf(NamespaceRoleEntry("unknown-ns", "ADMIN"))),
+        )
+
+        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+    }
+
+    "syncUserRoles processes known namespaces and skips unknown ones in the same request" {
+        every { userService.findByExternalId(user.externalId) } returns user
+        every {
+            namespaceService.findByExternalIds(match { it.containsAll(listOf(namespace.externalId!!, "ghost-ns")) })
+        } returns listOf(namespace) // ghost-ns not found
+        stubCurrentRoles()
+        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+        service.syncUserRoles(
+            SyncUserRolesRequest(
+                user.externalId,
+                listOf(
+                    NamespaceRoleEntry(namespace.externalId!!, "ADMIN"),
+                    NamespaceRoleEntry("ghost-ns", "MEMBER"),
+                ),
+            ),
+        )
+
+        // known namespace is processed normally
+        verify(exactly = 1) {
+            permissionService.grantPermission(
+                userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN,
             )
         }
-        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
+        // ghost-ns produces no side-effects
+        verify(exactly = 1) { permissionService.grantPermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------
