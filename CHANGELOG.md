@@ -1,3 +1,16 @@
+## 0.160.0 (2026-05-21)
+
+### 🚀 Features
+
+- #wz-32045 add headers editing to ai-provider form ([#895](https://github.com/whoz-oss/coday/pull/895))
+- markdown rendering and technical events toggle in case-chat ([#902](https://github.com/whoz-oss/coday/pull/902))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.159.8 (2026-05-21)
 
 ### 🩹 Fixes
