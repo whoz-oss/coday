@@ -24,7 +24,7 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
             override fun findAvailableByUserId(namespaceId: UUID, userId: UUID): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
 
-            override fun findAvailableByUserIdAndName(namespaceId: UUID, userId: UUID, agentName: String): List<AgentConfig> =
+            override fun findAvailableByNamespaceIdAndUserIdAndName(namespaceId: UUID, userId: UUID, agentName: String): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
         }
 

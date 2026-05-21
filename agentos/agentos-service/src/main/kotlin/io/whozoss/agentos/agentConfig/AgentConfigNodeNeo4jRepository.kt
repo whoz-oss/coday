@@ -85,6 +85,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     /**
      * Same as [findAvailableByUserId] but filters by agent name (case-insensitive)
      * directly in Cypher, avoiding a full list fetch when only existence matters.
+     * Called via [findAvailableByNamespaceIdAndUserIdAndName] in the repository layer.
      */
     @Query(
         $$"""

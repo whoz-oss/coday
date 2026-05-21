@@ -132,7 +132,7 @@ class CaseServiceImpl(
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
             isAgentAuthorized = { agentName, userId ->
                 userId == null || agentConfigService
-                    .findAvailableByUserIdAndName(case.namespaceId, userId, agentName)
+                    .findAvailableByNamespaceIdAndUserIdAndName(case.namespaceId, userId, agentName)
                     .isNotEmpty()
             },
             runAgent = { agentName, events, eventsProvider, userId, shouldContinue -> runAgent(agentName, case.id, events, eventsProvider, userId, shouldContinue) },
