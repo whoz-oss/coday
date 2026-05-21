@@ -155,7 +155,6 @@ class CaseServiceImplSpec :
                 every { findAvailableByUserId(any(), any()) } returns listOf(
                     AgentConfig(namespaceId = namespaceId, name = agentName)
                 )
-                every { findByName(any(), any()) } returns AgentConfig(namespaceId = namespaceId, name = agentName)
             }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())

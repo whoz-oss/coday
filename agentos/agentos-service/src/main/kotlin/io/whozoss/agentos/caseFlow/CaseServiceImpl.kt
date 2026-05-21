@@ -143,12 +143,14 @@ class CaseServiceImpl(
         answerToEventId: UUID?,
     ) {
         val runtime = getCaseRuntime(caseId)
-        val userId = runCatching { UUID.fromString(actor.id) }.getOrNull()
-        val authorizedAgents = userId?.let {
-            agentConfigService.findAvailableByUserId(runtime.namespaceId, it)
-                .map { config -> config.name.lowercase() }
-                .toSet()
-        } ?: emptySet()
+        val userId = runCatching { UUID.fromString(actor.id) }.getOrElse {
+            logger.error { "[CaseService] Invalid actor id '${actor.id}' for case $caseId — cannot resolve user" }
+            handleStatusChange(caseId, CaseStatus.ERROR)
+            return
+        }
+        val authorizedAgents = agentConfigService.findAvailableByUserId(runtime.namespaceId, userId)
+            .map { config -> config.name.lowercase() }
+            .toSet()
         runtime.addUserMessage(actor, content, answerToEventId, authorizedAgents)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
@@ -201,7 +203,7 @@ class CaseServiceImpl(
 
         return when {
             mentionedName != null -> {
-                val resolvedName = resolveFromAuthorized(mentionedName, authorizedAgents, namespaceId)
+                val resolvedName = resolveFromAuthorized(mentionedName, authorizedAgents)
                 when {
                     resolvedName != null -> {
                         logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
@@ -215,7 +217,7 @@ class CaseServiceImpl(
                 }
             }
             lastSelectedName != null -> {
-                val stillAvailable = resolveFromAuthorized(lastSelectedName, authorizedAgents, namespaceId) != null
+                val stillAvailable = resolveFromAuthorized(lastSelectedName, authorizedAgents) != null
                 when {
                     stillAvailable -> {
                         logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
@@ -234,21 +236,12 @@ class CaseServiceImpl(
 
     /**
      * Resolves a canonical agent name from the pre-computed [authorizedAgents] set.
-     *
-     * When the set is non-empty (authenticated user), performs a case-insensitive
-     * lookup against authorized names only. When empty (anonymous/system), falls
-     * back to a namespace-wide lookup via [AgentConfigService.findByName].
+     * Returns null if the name is not in the set — no fallback to namespace-wide lookup.
      */
     private fun resolveFromAuthorized(
         name: String,
         authorizedAgents: Set<String>,
-        namespaceId: UUID,
-    ): String? =
-        if (authorizedAgents.isNotEmpty()) {
-            authorizedAgents.firstOrNull { it == name.lowercase() }
-        } else {
-            agentConfigService.findByName(namespaceId, name)?.name
-        }
+    ): String? = authorizedAgents.firstOrNull { it == name.lowercase() }
 
     /**
      * Resolves the namespace default agent by name from [Namespace.defaultAgentName].
@@ -277,7 +270,7 @@ class CaseServiceImpl(
                 ),
             )
         } else {
-            val resolvedName = resolveFromAuthorized(defaultAgentName, authorizedAgents, namespaceId)
+            val resolvedName = resolveFromAuthorized(defaultAgentName, authorizedAgents)
             if (resolvedName == null) {
                 logger.warn { "[CaseService] Default agent '$defaultAgentName' is not available in namespace $namespaceId" }
                 listOf(
