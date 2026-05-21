@@ -11,18 +11,18 @@ import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
 
 /**
- * Thrown by [ConfirmationManager.analyzeConfirmation] when the LLM response cannot be
- * interpreted as a clear yes/no. The orchestrator handles this as a third state: keep
- * the [io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent] alive and emit a
- * [io.whozoss.agentos.sdk.caseEvent.WarnEvent] asking the user to rephrase.
+ * Outcome of [ConfirmationManager.analyzeConfirmation]. Distinguishes the three states
+ * the LLM judge can land in:
+ *  - [CONFIRMED]: the user clearly authorised the pending action.
+ *  - [REJECTED]: the user clearly refused.
+ *  - [AMBIGUOUS]: the user reply could not be interpreted as a clear yes/no, OR the LLM
+ *    call itself failed. The orchestrator handles both identically: re-ask the user via
+ *    [ConfirmationManager.formulateQuestion] IN-CHANNEL and keep the pending alive.
  *
  * Auto-rejecting silently would be poor UX (user re-types "yes" indefinitely);
  * auto-confirming would be unsafe on destructive actions.
  */
-class AmbiguousConfirmationException(
-    message: String,
-    cause: Throwable? = null,
-) : RuntimeException(message, cause)
+enum class ConfirmationDecision { CONFIRMED, REJECTED, AMBIGUOUS }
 
 /**
  * Backs the WZ-31596 confirmation flow ported from the Whoz Copilot back.
@@ -36,8 +36,8 @@ class AmbiguousConfirmationException(
  *   Fail-safe on any error = `true` (force confirmation).
  *
  * - [analyzeConfirmation] interprets the last user message against the
- *   [PendingConfirmationEvent]. Returns `true`/`false` for confirm/reject, throws
- *   [AmbiguousConfirmationException] when neither is clearly identifiable.
+ *   [PendingConfirmationEvent]. Returns a [ConfirmationDecision] (CONFIRMED / REJECTED /
+ *   AMBIGUOUS — the third state covers undecodable replies AND LLM call failures).
  *
  * Both methods use the same Spring AI [ChatClient] the agent is using for the main
  * turn, so the analysis runs on the same model.
@@ -87,6 +87,8 @@ class ConfirmationManager(
                 - The assistant proposed a general suggestion without details and the user just agreed to the general suggestion but hasn't seen the specific details yet
                 - There is any ambiguity about whether the user wants to proceed
                 - The data content includes changes beyond what the user explicitly and specifically requested or beyond what the assistant has proposed to the user
+                - The user's request matched multiple possible targets (e.g. several files match the user's description, a partial name, or a glob/wildcard) and the assistant had to pick one specific target — even a reasonable pick is NOT implicit authorisation, the user must explicitly confirm WHICH target
+                - The action is irreversible or destructive (deletion, overwrite, irreversible state change) and the user's last explicit confirmation in the conversation does not name the EXACT same target as the proposed data
 
                 Else return "$CHOICE_YES"
 
@@ -113,15 +115,15 @@ class ConfirmationManager(
      * @param pendingPayload The payload that was emitted with the [PendingConfirmationEvent].
      * @param specificInstructions Optional tool-supplied analysis instructions
      *   (e.g. "Be strict: bare 'ok' is not enough for destructive actions").
-     * @return `true` if confirmed, `false` if rejected.
-     * @throws AmbiguousConfirmationException when the LLM reply cannot be decoded.
+     * @return [ConfirmationDecision] — CONFIRMED on a clear yes, REJECTED on a clear no,
+     *   AMBIGUOUS otherwise (undecodable LLM reply OR LLM call failure).
      */
     fun analyzeConfirmation(
         chatClient: ChatClient,
         history: List<Message>,
         pendingPayload: Any,
         specificInstructions: String,
-    ): Boolean {
+    ): ConfirmationDecision {
         val specificBlock =
             if (specificInstructions.isNotBlank()) {
                 """
@@ -145,7 +147,10 @@ class ConfirmationManager(
             And especially based on the last user message, I need to identify if the user confirms the validation (without any modification) or not.
             $specificBlock
 
-            If the user confirms without requiring any modification, I'll put yes between <$TAG_DECISION></$TAG_DECISION> tags, if not then no:
+            Decide between three outcomes and put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between <$TAG_DECISION></$TAG_DECISION> tags:
+            - "$CHOICE_YES" — the user clearly confirms the validation without modification.
+            - "$CHOICE_NO" — the user clearly refuses.
+            - "$CHOICE_UNCLEAR" — the reply is genuinely ambiguous (off-topic, sarcastic, evasive, or an idiomatic expression that could plausibly be read as either yes or no). Use this when you have to guess.
 
             <$TAG_DECISION>
             """.trimIndent()
@@ -154,14 +159,19 @@ class ConfirmationManager(
             try {
                 callDecision(chatClient, prompt)
             } catch (e: Exception) {
-                throw AmbiguousConfirmationException("Failed to interpret confirmation reply: ${e.message}", e)
+                logger.warn(e) {
+                    "[ConfirmationManager] analyzeConfirmation LLM call failed — treating as AMBIGUOUS"
+                }
+                return ConfirmationDecision.AMBIGUOUS
             }
         // Lenient matching — the LLM often emits "yes.", "yes please", "no, cancel", etc.
-        // Matches the back Copilot which uses startsWith(CHOICE_YES).
+        // `unclear` lands the user reply in AMBIGUOUS (re-ask via formulateQuestion). The
+        // `else` catch-all also maps to AMBIGUOUS for gibberish / no-tag responses.
         return when {
-            decision.startsWith(CHOICE_YES) -> true
-            decision.startsWith(CHOICE_NO) -> false
-            else -> throw AmbiguousConfirmationException("LLM returned ambiguous decision: '$decision'")
+            decision.startsWith(CHOICE_YES) -> ConfirmationDecision.CONFIRMED
+            decision.startsWith(CHOICE_NO) -> ConfirmationDecision.REJECTED
+            decision.startsWith(CHOICE_UNCLEAR) -> ConfirmationDecision.AMBIGUOUS
+            else -> ConfirmationDecision.AMBIGUOUS
         }
     }
 
@@ -242,7 +252,13 @@ class ConfirmationManager(
         return match?.groupValues?.get(1) ?: raw
     }
 
-    private fun sanitizeQuestion(s: String): String = s.replace(Regex("\\p{Cntrl}"), "").trim().take(300)
+    private fun sanitizeQuestion(s: String): String =
+        s
+            // Strip orphan opening / closing question tags that leak when the LLM omits one side.
+            .replace(Regex("</?$TAG_QUESTION>"), "")
+            .replace(Regex("\\p{Cntrl}"), "")
+            .trim()
+            .take(300)
 
     private fun serializeSafely(data: Any): String =
         try {
@@ -287,6 +303,7 @@ class ConfirmationManager(
         private const val TAG_QUESTION = "question"
         private const val CHOICE_YES = "yes"
         private const val CHOICE_NO = "no"
+        private const val CHOICE_UNCLEAR = "unclear"
         private val DECISION_TAG_REGEX = Regex("<decision>(.*?)</decision>", RegexOption.DOT_MATCHES_ALL)
         private val QUESTION_TAG_REGEX = Regex("<question>(.*?)</question>", RegexOption.DOT_MATCHES_ALL)
     }

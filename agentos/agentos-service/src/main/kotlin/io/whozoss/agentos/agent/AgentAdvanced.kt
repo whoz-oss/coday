@@ -27,6 +27,32 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
 
+/**
+ * Outcome of [AgentAdvanced.handleConfirmationResolution].
+ *
+ * Discriminates four runtime situations so that [AgentAdvanced.run] can route each
+ * to the correct post-resolution behaviour: close the turn cleanly vs fall through
+ * to the normal intention loop.
+ *
+ * - [Unresolved]: the pending is still alive (no user reply yet, or an AMBIGUOUS
+ *   re-ask was just emitted, or the run was cancelled mid-flight). Close the turn.
+ * - [Applied]: the user confirmed AND the tool ran successfully. Fall through so
+ *   the LLM can comment naturally on the outcome.
+ * - [Rejected]: the user explicitly refused. Fall through so the LLM can produce
+ *   a clarifying follow-up (e.g. "alors quel fichier veux-tu supprimer ?"). The
+ *   hardened `shouldConfirm` clauses prevent an autonomous retry of the same
+ *   destructive intention without a fresh explicit prompt.
+ * - [Aborted]: tool threw post-confirm OR the pending was orphan-closed (tool
+ *   missing, etc.). Action did not apply AND there's nothing meaningful to invite
+ *   the user to do next — close the turn cleanly.
+ */
+private sealed interface ConfirmationResolution {
+    data object Unresolved : ConfirmationResolution
+    data object Applied : ConfirmationResolution
+    data object Rejected : ConfirmationResolution
+    data object Aborted : ConfirmationResolution
+}
+
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
@@ -60,7 +86,7 @@ class AgentAdvanced(
             // before entering the intention loop. Mirrors Copilote.handlePendingConfirmation.
             val unresolvedPending = findUnresolvedPendingConfirmation(accumulatedEvents)
             if (unresolvedPending != null) {
-                val resolved = handleConfirmationResolution(
+                val resolution = handleConfirmationResolution(
                     events = accumulatedEvents,
                     pending = unresolvedPending,
                     namespaceId = namespaceId,
@@ -69,20 +95,34 @@ class AgentAdvanced(
                     appendTo = accumulatedEvents,
                     emitEvent = { event -> emit(event) },
                 )
-                if (!resolved) {
-                    // Either no reply yet (reload session) or ambiguous (WarnEvent emitted).
-                    // Close the turn — user must reply (again) for the pending to be resolved.
-                    emit(
-                        AgentFinishedEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            agentId = id,
-                            agentName = name,
-                        ),
-                    )
-                    return@flow
+                when (resolution) {
+                    ConfirmationResolution.Unresolved,
+                    ConfirmationResolution.Aborted -> {
+                        // Unresolved: no reply yet / AMBIGUOUS re-ask in flight / run cancelled.
+                        // Aborted:    tool threw post-confirm or orphan-closed pending.
+                        // Both cases: no actionable continuation — close the turn cleanly.
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = id,
+                                agentName = name,
+                            ),
+                        )
+                        return@flow
+                    }
+                    ConfirmationResolution.Rejected -> {
+                        // User explicitly refused. Fall through to the intention loop so the LLM
+                        // can produce a natural conversational follow-up (e.g. "alors quel
+                        // fichier veux-tu supprimer ?"). The hardened shouldConfirm clauses
+                        // (target ambiguity, destructive-exact-match) act as the safety net
+                        // against an autonomous retry of the just-refused destructive action.
+                    }
+                    ConfirmationResolution.Applied -> {
+                        // Confirmed and the tool applied — fall through so the LLM can comment
+                        // naturally (e.g. "OK, deleted") and continue conversationally.
+                    }
                 }
-                // Resolved (confirmed or rejected): fall through to the normal intention loop.
             }
 
             var iteration = 0
@@ -254,10 +294,17 @@ class AgentAdvanced(
                         )
                 if (!needsExplicit) {
                     // User already implicitly confirmed — fall through to direct execution.
+                    // success reflects whether the tool actually applied (mirror executeTool
+                    // and the post-confirmation path's executionFailed pattern).
+                    var executionFailed = false
                     val resultText =
                         try {
                             tool.executeWithJson(argsJson, toolCtx)
                         } catch (e: Exception) {
+                            logger.warn(e) {
+                                "[AgentAdvanced] implicit-consent tool execution failed for ${tool.name}"
+                            }
+                            executionFailed = true
                             "Error executing tool: ${e.message}"
                         }
                     val response =
@@ -267,7 +314,7 @@ class AgentAdvanced(
                             toolRequestId = toolRequestId,
                             toolName = parameters.toolName,
                             output = MessageContent.Text(resultText),
-                            success = true,
+                            success = !executionFailed,
                         )
                     emitEvent(response)
                     accumulatedEvents.add(response)
@@ -331,6 +378,13 @@ class AgentAdvanced(
             .lastOrNull { it.metadata.id !in resolvedIds }
     }
 
+    /**
+     * Resolves an unresolved [PendingConfirmationEvent].
+     *
+     * @return one of the [ConfirmationResolution] sealed cases — see the type's KDoc for
+     *   the routing semantics. The caller closes the turn on [Unresolved]/[Aborted] and
+     *   falls through to the normal intention loop on [Applied]/[Rejected].
+     */
     private suspend fun handleConfirmationResolution(
         events: List<CaseEvent>,
         pending: PendingConfirmationEvent,
@@ -339,11 +393,11 @@ class AgentAdvanced(
         shouldContinue: () -> Boolean,
         appendTo: MutableList<CaseEvent>,
         emitEvent: suspend (CaseEvent) -> Unit,
-    ): Boolean {
+    ): ConfirmationResolution {
         // Helper: close orphan pending durably with an error so it is not re-detected on
         // every subsequent run when the tool is missing / input is malformed. Also emits
         // an IN-CHANNEL MessageEvent so the LLM stops re-questioning.
-        suspend fun closePendingWithError(reason: String): Boolean {
+        suspend fun closePendingWithError(reason: String): ConfirmationResolution {
             logger.warn { "[AgentAdvanced] closing orphan pending '${pending.toolName}': $reason" }
             val errorText = "Cannot resolve confirmation: $reason"
             val resolved =
@@ -372,7 +426,9 @@ class AgentAdvanced(
                     message = "Cannot resolve pending confirmation: $reason",
                 ),
             )
-            return true
+            // Orphan-closed: the pending is broken (tool missing / DI misconfigured), no
+            // natural conversational follow-up to invite — caller closes the turn cleanly.
+            return ConfirmationResolution.Aborted
         }
 
         val tool =
@@ -397,46 +453,46 @@ class AgentAdvanced(
                 ?.joinToString(" ") { it.content }
         if (freeFormText.isNullOrBlank()) {
             // AC7: reload session without user reply. No reply yet.
-            return false
+            return ConfirmationResolution.Unresolved
         }
 
         // Slice the history shown to analyzeConfirmation to events at-or-after the pending.
         // Prevents the LLM judge from picking up a "yes" from an unrelated earlier turn
         // (defense-in-depth for tools with bypassImplicitConsent=true).
         val historyFromPending = context.buildMessages(events.subList(pendingIndex, events.size))
-        val confirmed =
-            try {
-                confirmationManager.analyzeConfirmation(
+        val decision =
+            confirmationManager.analyzeConfirmation(
+                chatClient = context.chatClient,
+                history = historyFromPending,
+                pendingPayload = pending.inputJson,
+                specificInstructions = pending.analysisInstructions,
+            )
+        if (decision == ConfirmationDecision.AMBIGUOUS) {
+            // LLM-generated re-ask in the conversation's language, IN-CHANNEL — same
+            // mechanism as the initial confirmation prompt. Pending stays open so the
+            // next user reply re-runs analyzeConfirmation against this new clarification.
+            val clarificationQuestion =
+                confirmationManager.formulateQuestion(
                     chatClient = context.chatClient,
                     history = historyFromPending,
-                    pendingPayload = pending.inputJson,
-                    specificInstructions = pending.analysisInstructions,
+                    fallbackLabel = pending.toolName,
+                    pendingData = pending.inputJson,
                 )
-            } catch (e: AmbiguousConfirmationException) {
-                // LLM-generated re-ask in the conversation's language, IN-CHANNEL — same
-                // mechanism as the initial confirmation prompt. Pending stays open so the
-                // next user reply re-runs analyzeConfirmation against this new clarification.
-                val clarificationQuestion =
-                    confirmationManager.formulateQuestion(
-                        chatClient = context.chatClient,
-                        history = historyFromPending,
-                        fallbackLabel = pending.toolName,
-                        pendingData = pending.inputJson,
-                    )
-                val clarification =
-                    MessageEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        actor = Actor(id.toString(), name, ActorRole.AGENT),
-                        content = listOf(MessageContent.Text(clarificationQuestion)),
-                    )
-                emitEvent(clarification)
-                appendTo += clarification
-                return false
-            }
+            val clarification =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor(id.toString(), name, ActorRole.AGENT),
+                    content = listOf(MessageContent.Text(clarificationQuestion)),
+                )
+            emitEvent(clarification)
+            appendTo += clarification
+            return ConfirmationResolution.Unresolved
+        }
+        val confirmed = decision == ConfirmationDecision.CONFIRMED
 
         // Guard before destructive call — mitigate cancel mid-execution.
-        if (!shouldContinue()) return false
+        if (!shouldContinue()) return ConfirmationResolution.Unresolved
 
         val toolCtx = buildToolContext(pending.toolName, namespaceId)
         var executionFailed = false
@@ -492,7 +548,15 @@ class AgentAdvanced(
             )
         emitEvent(syntheticResponse)
         appendTo += syntheticResponse
-        return true
+        return when {
+            // User confirmed AND tool ran successfully → fall through, LLM can comment.
+            confirmed && !executionFailed -> ConfirmationResolution.Applied
+            // User explicitly refused → fall through, LLM can produce a natural follow-up.
+            !confirmed -> ConfirmationResolution.Rejected
+            // Confirmed but the tool threw (executionFailed=true) → no useful continuation;
+            // the user just got bitten by a real failure, don't push the LLM to retry.
+            else -> ConfirmationResolution.Aborted
+        }
     }
 
     private fun buildToolContext(
