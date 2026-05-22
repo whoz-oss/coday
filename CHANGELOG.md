@@ -1,3 +1,13 @@
+## 0.161.0 (2026-05-22)
+
+### 🚀 Features
+
+- #WZ-31894 return human-readable error instead of throwing on unknown agent ([#903](https://github.com/whoz-oss/coday/pull/903))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.160.3 (2026-05-22)
 
 ### 🩹 Fixes
