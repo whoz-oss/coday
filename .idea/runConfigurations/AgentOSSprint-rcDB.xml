@@ -1,0 +1,19 @@
+<component name="ProjectRunConfigurationManager">
+    <configuration default="false" name="AgentOSApplication - sprint-rc" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+        <envs>
+            <env name="AGENTOS_PERSISTENCE_MODE" value="neo4j" />
+            <env name="SPRING_DATA_NEO4J_DATABASE" value="agentos" />
+            <env name="SPRING_NEO4J_AUTHENTICATION_PASSWORD" value="toto" />
+            <env name="SPRING_NEO4J_AUTHENTICATION_USERNAME" value="agentos" />
+            <env name="SPRING_NEO4J_URI" value="bolt://neo4j-1.sprint-rc.whoz.lan" />
+
+        </envs>
+        <module name="agentos-service.main" />
+        <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
+        <option name="WORKING_DIRECTORY" value="file://agentos" />
+        <method v="2">
+            <option name="Gradle.BeforeRunTask" enabled="true" tasks="deployPlugins" externalProjectPath="$PROJECT_DIR$/agentos" vmOptions="" scriptParameters="" />
+            <option name="Make" enabled="true" />
+        </method>
+    </configuration>
+</component>
