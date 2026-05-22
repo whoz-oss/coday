@@ -34,9 +34,9 @@ class AgentConfigServiceImpl(
 
     override fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig> {
         val user = userService.findByExternalId(userExternalId) ?: return emptyList()
-        return agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId, user.id)
+        return agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = user.id)
     }
 
     override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
-        agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId, userId, agentName)
+        agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
 }
