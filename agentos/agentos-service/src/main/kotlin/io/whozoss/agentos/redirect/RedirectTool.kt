@@ -92,10 +92,10 @@ class RedirectTool(
      */
     override suspend fun execute(input: Input?, context: ToolContext): String {
         val target = input?.agentName
-            ?: return "Agent name is required."
-        if (eligibleAgents.none { it.name == target }) {
-            return "Agent does not exist."
+        return when {
+            target == null -> "Agent name is required."
+            eligibleAgents.none { it.name == target } -> "Agent does not exist."
+            else -> throw AgentInterrupt.Redirect(target)
         }
-        throw AgentInterrupt.Redirect(target)
     }
 }
