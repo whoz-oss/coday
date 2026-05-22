@@ -3,8 +3,10 @@ package io.whozoss.agentos.agentConfig
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.mockk
 import io.whozoss.agentos.entity.InMemoryEntityRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 class AgentConfigServiceImplUnitSpec : StringSpec({
@@ -17,15 +19,14 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
                 parentIdExtractor = { it.namespaceId },
                 comparator = compareBy { it.name },
             ) {
-            // findAvailableByUserExternalId and findAvailableByNamespaceIdAndUserId are Neo4j-only queries; not exercised in unit tests.
-            override fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig> =
-                throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
-
+            // findAvailableByNamespaceIdAndUserId is a Neo4j-only query; not exercised in unit tests.
             override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
         }
 
-    fun service(repo: AgentConfigRepository = repository()) = AgentConfigServiceImpl(repo)
+    val userService = mockk<UserService>(relaxed = true)
+
+    fun service(repo: AgentConfigRepository = repository()) = AgentConfigServiceImpl(repo, userService)
 
     val namespaceId: UUID = UUID.randomUUID()
 

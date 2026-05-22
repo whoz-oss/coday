@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -9,6 +10,7 @@ import java.util.UUID
 @Service
 class AgentConfigServiceImpl(
     private val agentConfigRepository: AgentConfigRepository,
+    private val userService: UserService,
 ) : AgentConfigService {
     override fun create(entity: AgentConfig): AgentConfig = agentConfigRepository.save(entity)
 
@@ -30,8 +32,10 @@ class AgentConfigServiceImpl(
             .findByParent(namespaceId)
             .firstOrNull { it.name.equals(name, ignoreCase = true) }
 
-    override fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig> =
-        agentConfigRepository.findAvailableByUserExternalId(namespaceId, userExternalId)
+    override fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig> {
+        val user = userService.findByExternalId(userExternalId) ?: return emptyList()
+        return agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId, user.id)
+    }
 
     override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
         agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId, userId, agentName)
