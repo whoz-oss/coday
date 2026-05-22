@@ -1,0 +1,10 @@
+spring:
+  ai:
+    chat:
+      observations:
+        log-prompt: true
+        log-completion: true
+        include-error-logging: true
+    tools:
+      observations:
+        include-content: true
