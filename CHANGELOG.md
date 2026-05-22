@@ -1,3 +1,13 @@
+## 0.160.2 (2026-05-22)
+
+### 🩹 Fixes
+
+- wz-31608: avoid error on role provisioning on unknown namespaces ([#897](https://github.com/whoz-oss/coday/pull/897))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.160.1 (2026-05-22)
 
 ### 🚀 Features
