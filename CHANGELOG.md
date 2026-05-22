@@ -1,3 +1,35 @@
+## 0.161.0 (2026-05-22)
+
+### 🚀 Features
+
+- #WZ-31894 return human-readable error instead of throwing on unknown agent ([#903](https://github.com/whoz-oss/coday/pull/903))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.160.3 (2026-05-22)
+
+### 🩹 Fixes
+
+- use npm trusted publishing ([f50403a4](https://github.com/whoz-oss/coday/commit/f50403a4))
+- use npm trusted publishing ([#906](https://github.com/whoz-oss/coday/pull/906))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.160.2 (2026-05-22)
+
+### 🩹 Fixes
+
+- wz-31608: avoid error on role provisioning on unknown namespaces ([#897](https://github.com/whoz-oss/coday/pull/897))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.160.1 (2026-05-22)
 
 ### 🚀 Features
