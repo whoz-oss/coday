@@ -1,3 +1,13 @@
+## 0.162.0 (2026-05-22)
+
+### 🚀 Features
+
+- #WZ-31982: enforce agent availability at runtime ([#893](https://github.com/whoz-oss/coday/pull/893))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.161.0 (2026-05-22)
 
 ### 🚀 Features
