@@ -1,3 +1,13 @@
+## 0.162.1 (2026-05-22)
+
+### 🩹 Fixes
+
+- **agentos:** fix issue on parameters generation and tools output (WZ-31964) ([#907](https://github.com/whoz-oss/coday/pull/907))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.162.0 (2026-05-22)
 
 ### 🚀 Features
