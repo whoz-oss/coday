@@ -60,7 +60,10 @@ class ListFilesTool(
         val relPath: String = "",
     )
 
-    override suspend fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): String {
         val params = input ?: Input()
 
         return try {
@@ -69,7 +72,7 @@ class ListFilesTool(
                     listDirectory(params.relPath)
                 }
 
-            entries.joinToString("\n")
+            objectMapper.writeValueAsString(entries.joinToString("\n"))
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
         } catch (e: IllegalArgumentException) {
@@ -93,19 +96,20 @@ class ListFilesTool(
         require(targetPath.isDirectory()) { "Path is not a directory: $relPath" }
 
         return Files.list(targetPath).use { stream ->
-            stream.map { path ->
-                try {
-                    // Check if the path is accessible (this will fail for broken symlinks)
-                    if (Files.isSymbolicLink(path) && !Files.exists(path)) {
+            stream
+                .map { path ->
+                    try {
+                        // Check if the path is accessible (this will fail for broken symlinks)
+                        if (Files.isSymbolicLink(path) && !Files.exists(path)) {
+                            "${path.name} (inaccessible)"
+                        } else {
+                            val name = path.name
+                            if (Files.isDirectory(path)) "$name/" else name
+                        }
+                    } catch (e: Exception) {
                         "${path.name} (inaccessible)"
-                    } else {
-                        val name = path.name
-                        if (Files.isDirectory(path)) "$name/" else name
                     }
-                } catch (e: Exception) {
-                    "${path.name} (inaccessible)"
-                }
-            }.toList()
+                }.toList()
         }
     }
 

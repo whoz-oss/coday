@@ -19,7 +19,9 @@ import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
 
 @Component
-class ChatModelFactory {
+class ChatModelFactory(
+    private val observationRegistry: ObservationRegistry,
+) {
     fun createChatModel(
         apiType: AiApiType,
         baseUrl: String?,
@@ -90,7 +92,7 @@ class ChatModelFactory {
                 .temperature(temp)
                 .model(model)
         if (maxTokens != null) {
-            optionsBuilder.maxTokens(maxTokens)
+            optionsBuilder.maxCompletionTokens(maxTokens)
         }
         val options = optionsBuilder.build()
 
@@ -99,7 +101,7 @@ class ChatModelFactory {
             options,
             DefaultToolCallingManager.builder().build(),
             RetryUtils.DEFAULT_RETRY_TEMPLATE,
-            ObservationRegistry.NOOP,
+            observationRegistry,
             DefaultToolExecutionEligibilityPredicate(),
         )
     }
@@ -136,7 +138,7 @@ class ChatModelFactory {
             options,
             DefaultToolCallingManager.builder().build(),
             RetryUtils.DEFAULT_RETRY_TEMPLATE,
-            ObservationRegistry.NOOP,
+            observationRegistry,
             DefaultToolExecutionEligibilityPredicate(),
         )
     }
@@ -166,7 +168,7 @@ class ChatModelFactory {
             options.build(),
             DefaultToolCallingManager.builder().build(),
             RetryUtils.DEFAULT_RETRY_TEMPLATE,
-            ObservationRegistry.NOOP,
+            observationRegistry,
         )
     }
 
@@ -193,7 +195,7 @@ class ChatModelFactory {
             options,
             DefaultToolCallingManager.builder().build(),
             RetryUtils.DEFAULT_RETRY_TEMPLATE,
-            ObservationRegistry.NOOP,
+            observationRegistry,
         )
     }
 

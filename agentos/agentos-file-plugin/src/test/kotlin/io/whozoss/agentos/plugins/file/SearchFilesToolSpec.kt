@@ -7,8 +7,8 @@ import io.kotest.matchers.string.shouldNotContain
 import io.whozoss.agentos.plugins.file.tools.SearchFilesTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
-import java.util.UUID
 import java.nio.file.Path
+import java.util.UUID
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 
@@ -70,7 +70,7 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "nonexistent"), ctx)
 
-            result shouldBe "No matching files found."
+            result shouldBe """"No matching files found.""""
         }
 
         "smart return - small total size should return content with headers" {
@@ -191,7 +191,7 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "test\u0000injection"), ctx)
 
-            result shouldBe "No matching files found."
+            result shouldBe """"No matching files found.""""
         }
 
         "pattern exceeding 1000 chars should fallback to NIO" {

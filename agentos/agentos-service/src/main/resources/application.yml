@@ -20,6 +20,11 @@ spring:
     chat:
       client:
         enabled: false
+      observations:
+        include-error-logging: true
+    tools:
+      observations:
+        include-content: false
     model:
       chat: none
       audio:

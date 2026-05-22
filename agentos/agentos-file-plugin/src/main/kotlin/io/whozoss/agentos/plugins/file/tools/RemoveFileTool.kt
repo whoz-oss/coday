@@ -58,12 +58,15 @@ class RemoveFileTool(
         val path: String = "",
     )
 
-    override suspend fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): String {
         val params = input ?: Input()
 
         return try {
             runIOWithTimeout(IO_TIMEOUT) {
-                removeFile(params.path)
+                objectMapper.writeValueAsString(removeFile(params.path))
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")

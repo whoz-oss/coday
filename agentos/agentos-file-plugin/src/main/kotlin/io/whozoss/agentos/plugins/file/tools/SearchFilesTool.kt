@@ -83,7 +83,10 @@ class SearchFilesTool(
         val fileTypes: List<String>? = null,
     )
 
-    override suspend fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): String {
         val params = input ?: Input()
 
         return try {
@@ -92,7 +95,7 @@ class SearchFilesTool(
             }
 
             runIOWithTimeout(IO_TIMEOUT) {
-                searchFiles(params)
+                objectMapper.writeValueAsString(searchFiles(params))
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Search timed out after ${IO_TIMEOUT} seconds")
@@ -136,31 +139,33 @@ class SearchFilesTool(
                 return null // Fallback to NIO
             }
 
-            val command = buildList {
-                add("rg")
-                add("--files-with-matches")
-                add("--fixed-strings")
-                add("--ignore-case")
-                add("--color=never")
-                params.fileName?.let {
-                    add("--iglob")
-                    add("*$it*")
+            val command =
+                buildList {
+                    add("rg")
+                    add("--files-with-matches")
+                    add("--fixed-strings")
+                    add("--ignore-case")
+                    add("--color=never")
+                    params.fileName?.let {
+                        add("--iglob")
+                        add("*$it*")
+                    }
+                    params.fileTypes?.forEach { ext ->
+                        add("--glob")
+                        add("*.$ext")
+                    }
+                    add("--")
+                    add(pattern)
+                    add(searchRoot.pathString)
                 }
-                params.fileTypes?.forEach { ext ->
-                    add("--glob")
-                    add("*.$ext")
-                }
-                add("--")
-                add(pattern)
-                add(searchRoot.pathString)
-            }
 
             process = ProcessBuilder(command).start()
 
             // Anti-deadlock pattern: read stdout asynchronously
-            val stdoutFuture = CompletableFuture.supplyAsync {
-                process!!.inputStream.bufferedReader().use { it.readLines() }
-            }
+            val stdoutFuture =
+                CompletableFuture.supplyAsync {
+                    process!!.inputStream.bufferedReader().use { it.readLines() }
+                }
 
             val completed = process.waitFor(IO_TIMEOUT, TimeUnit.SECONDS)
             if (!completed) {
@@ -231,18 +236,19 @@ class SearchFilesTool(
         }
 
         // Filter out denied files first
-        val allowedFiles = files.mapNotNull { file ->
-            val relPath = projectRoot.relativize(file).pathString
-            val fileName = file.name
+        val allowedFiles =
+            files.mapNotNull { file ->
+                val relPath = projectRoot.relativize(file).pathString
+                val fileName = file.name
 
-            // Check if filename matches any deny pattern
-            val isDenied = denyPatterns.any { pattern -> matchesPattern(fileName, pattern) }
-            if (isDenied) {
-                null // Skip denied files (e.g., .env, credentials.json)
-            } else {
-                file to relPath
+                // Check if filename matches any deny pattern
+                val isDenied = denyPatterns.any { pattern -> matchesPattern(fileName, pattern) }
+                if (isDenied) {
+                    null // Skip denied files (e.g., .env, credentials.json)
+                } else {
+                    file to relPath
+                }
             }
-        }
 
         if (allowedFiles.isEmpty()) {
             return "No matching files found."
@@ -277,5 +283,5 @@ class SearchFilesTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
+    private fun createErrorResponse(message: String): String = objectMapper.writeValueAsString(message)
 }

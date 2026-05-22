@@ -3,11 +3,10 @@ package io.whozoss.agentos.plugins.file.tools
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import io.whozoss.agentos.plugins.file.tools.MoveFileTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
-import java.util.UUID
 import java.nio.file.Path
+import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -32,7 +31,7 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "dest.txt"), ctx)
 
-            result shouldBe "File moved successfully"
+            result shouldBe """"File moved successfully""""
             source.exists() shouldBe false
             dest.exists() shouldBe true
             dest.readText() shouldBe "content"
@@ -62,7 +61,7 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "a/b/c/dest.txt"), ctx)
 
-            result shouldBe "File moved successfully"
+            result shouldBe """"File moved successfully""""
             tempDir.resolve("a/b/c/dest.txt").exists() shouldBe true
             tempDir.resolve("a/b/c/dest.txt").readText() shouldBe "content"
         }
@@ -73,7 +72,7 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "old-name.txt", to = "new-name.txt"), ctx)
 
-            result shouldBe "File moved successfully"
+            result shouldBe """"File moved successfully""""
             source.exists() shouldBe false
             tempDir.resolve("new-name.txt").exists() shouldBe true
         }
@@ -85,7 +84,7 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "file.txt", to = "subdir/file.txt"), ctx)
 
-            result shouldBe "File moved successfully"
+            result shouldBe """"File moved successfully""""
             tempDir.resolve("file.txt").exists() shouldBe false
             tempDir.resolve("subdir/file.txt").exists() shouldBe true
         }
@@ -97,7 +96,7 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "subdir/file.txt", to = "file.txt"), ctx)
 
-            result shouldBe "File moved successfully"
+            result shouldBe """"File moved successfully""""
             tempDir.resolve("subdir/file.txt").exists() shouldBe false
             tempDir.resolve("file.txt").exists() shouldBe true
         }
