@@ -62,14 +62,11 @@ class NamespacePermissionServiceImpl(
         // Map internal namespace id -> desired role, skipping any external ids that
         // were not found (already warned above).
         val targetRoleByNamespaceId =
-            request.namespaceRoles
-                .mapNotNull { entry ->
-                    namespacesByExternalId[entry.namespaceExternalId]
-                        ?.metadata
-                        ?.id
-                        ?.toString()
-                        ?.let { it to NamespaceRole.valueOf(entry.role) }
-                }.toMap()
+            request.namespaceRoles.mapNotNull { entry ->
+                namespacesByExternalId[entry.namespaceExternalId]
+                    ?.metadata?.id?.toString()
+                    ?.let { it to NamespaceRole.valueOf(entry.role) }
+            }.toMap()
 
         // Fetch the user's current relations across ALL namespaces.
         // WRITE corresponds to ADMIN; READ minus WRITE corresponds to MEMBER.

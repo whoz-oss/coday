@@ -1,3 +1,13 @@
+## 0.160.1 (2026-05-22)
+
+### 🚀 Features
+
+- **agentos:** add okhttp logging interceptor to enhance copilot plugin logs (WZ-31607) ([#905](https://github.com/whoz-oss/coday/pull/905))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.160.0 (2026-05-21)
 
 ### 🚀 Features
