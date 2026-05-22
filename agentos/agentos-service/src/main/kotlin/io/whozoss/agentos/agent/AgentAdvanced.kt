@@ -166,6 +166,7 @@ class AgentAdvanced(
         val toolRequestId = UUID.randomUUID().toString()
         val parameters =
             generateParameters(
+                accumulatedEvents = accumulatedEvents,
                 intentionEvent = intention,
                 namespaceId = namespaceId,
                 caseId = caseId,
@@ -227,6 +228,7 @@ class AgentAdvanced(
             ?.singleOrNull()
 
     private fun generateParameters(
+        accumulatedEvents: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         namespaceId: UUID,
         caseId: UUID,
@@ -238,18 +240,23 @@ class AgentAdvanced(
 
         val parametersPrompt =
             """
+Generate the parameters for the tool call below.
 Tool: ${tool.name}
 Description: ${tool.description}
-Input Schema: ${tool.inputSchema}
+Input Schema: 
+```
+${tool.inputSchema}
+```
 
 Intention: ${intentionEvent.intention}
 
-Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.
+**Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
             """.trimIndent()
-
+        val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
+        val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(parametersPrompt)
         val parameters =
             context.chatClient
-                .prompt(Prompt(UserMessage(parametersPrompt)))
+                .prompt(Prompt(messages))
                 .call()
                 .content()
                 ?.trim() ?: "{}"
