@@ -1,3 +1,15 @@
+## 0.160.3 (2026-05-22)
+
+### 🩹 Fixes
+
+- use npm trusted publishing ([f50403a4](https://github.com/whoz-oss/coday/commit/f50403a4))
+- use npm trusted publishing ([#906](https://github.com/whoz-oss/coday/pull/906))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.160.2 (2026-05-22)
 
 ### 🩹 Fixes
