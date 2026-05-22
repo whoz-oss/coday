@@ -61,16 +61,17 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
     }
 
-    "syncUserRoles throws 404 when a namespace external id is unknown" {
+    "syncUserRoles skips unknown namespace external ids without throwing" {
         every { userService.findByExternalId(user.externalId) } returns user
         every { namespaceService.findByExternalIds(listOf("unknown-ns")) } returns emptyList()
+        stubCurrentRoles()
 
-        shouldThrow<ResourceNotFoundException> {
-            service.syncUserRoles(
-                SyncUserRolesRequest(user.externalId, listOf(NamespaceRoleEntry("unknown-ns", "ADMIN"))),
-            )
-        }
+        service.syncUserRoles(
+            SyncUserRolesRequest(user.externalId, listOf(NamespaceRoleEntry("unknown-ns", "ADMIN"))),
+        )
+
         verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------
