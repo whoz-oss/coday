@@ -84,6 +84,11 @@ dependencies {
         exclude(group = "org.slf4j", module = "slf4j-reload4j")
         exclude(group = "org.slf4j", module = "slf4j-log4j12")
     }
+    // OkHttp — HTTP client + logging interceptor.
+    // Declared as a direct dependency so plugins (e.g. copilot) that depend on OkHttp
+    // are guaranteed to find it on the classpath regardless of which AI providers are enabled.
+    // Also used by Feign when the whoz profile activates feign.okhttp.enabled=true.
+    implementation(libs.bundles.okhttp)
 
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
