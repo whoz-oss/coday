@@ -213,6 +213,18 @@ class AgentAdvanced(
                         message = "Confirmation flow misconfigured: ${e.message}",
                     ),
                 )
+            } catch (e: ToolNotFoundException) {
+                // Tool registry desync OR LLM hallucinated a tool name — ops-relevant signal,
+                // log at error level so it surfaces in production monitoring. Still emit a
+                // WarnEvent so the per-case lifecycle terminates cleanly.
+                logger.error(e) { "AgentAdvanced received an intention referencing an unknown tool for case $caseId" }
+                emit(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "Unknown tool referenced: ${e.message}",
+                    ),
+                )
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -659,7 +671,7 @@ class AgentAdvanced(
     ): ToolRequestEvent {
         val tool =
             context.tools.firstOrNull { it.name == intentionEvent.toolName }
-                ?: throw IllegalStateException("Tool not found: ${intentionEvent.toolName}")
+                ?: throw ToolNotFoundException(intentionEvent.toolName)
 
         val parametersPrompt =
             """
