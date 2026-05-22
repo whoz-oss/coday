@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
@@ -32,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Service
 class CaseServiceImpl(
     private val agentService: AgentService,
+    private val agentConfigService: AgentConfigService,
     private val agentConfigProperties: AgentConfigProperties,
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
@@ -128,6 +130,11 @@ class CaseServiceImpl(
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
+            isAgentAuthorized = { agentName, userId ->
+                userId == null || agentConfigService
+                    .findAvailableByNamespaceIdAndUserId(namespaceId = case.namespaceId, userId = userId, agentName = agentName)
+                    .isNotEmpty()
+            },
             runAgent = { agentName, events, eventsProvider, userId, shouldContinue -> runAgent(agentName, case.id, events, eventsProvider, userId, shouldContinue) },
             inputEvents = inputEvents,
         )

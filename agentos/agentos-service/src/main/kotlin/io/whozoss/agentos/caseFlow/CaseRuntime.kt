@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import mu.KLogging
 import java.util.UUID
@@ -34,6 +35,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an [AgentSelectedEvent],
  *   or just an [AgentSelectedEvent] for the default agent).
  *   Returns an empty list when no agent is configured and the loop should stop.
+ * @param isAgentAuthorized defensive check called when [processNextStep] encounters an
+ *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
+ *   is accessible to the current user. Called at redirect time — not pre-computed.
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. Error handling is the
  *   responsibility of the service implementation.
@@ -44,6 +48,7 @@ class CaseRuntime(
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
+    private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
     private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
@@ -291,6 +296,22 @@ class CaseRuntime(
                     logger.info {
                         "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, " +
                             "transitioning to running"
+                    }
+                    val userId = resolveUserId(events)
+                    if (!isAgentAuthorized(event.agentName, userId)) {
+                        logger.warn {
+                            "[CaseRuntime $id] Agent '${event.agentName}' is not accessible " +
+                                "to user $userId — redirect blocked"
+                        }
+                        storeAndEmitEvent(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = id,
+                                message = "Agent '${event.agentName}' is not accessible to the current user",
+                            ),
+                        )
+                        interruptRequested.set(true)
+                        return
                     }
                     storeAndEmitEvent(
                         AgentRunningEvent(

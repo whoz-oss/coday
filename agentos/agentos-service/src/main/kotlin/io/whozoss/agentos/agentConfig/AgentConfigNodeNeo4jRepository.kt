@@ -13,7 +13,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     @Query(
         $$"""
             MATCH (a:AgentConfig)
-            WHERE a.namespaceId = $namespaceId AND (a.removed IS NULL OR a.removed = false)
+            WHERE a.namespaceId = $namespaceId AND NOT COALESCE(a.removed, false)
             RETURN a ORDER BY a.name ASC
             """,
     )
@@ -21,35 +21,36 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
 
 
     /**
-     * Returns the union of:
-     * - agents deployed on a [UserGroup] belonging to the target namespace, of which the user is a member
-     *   (no direct relation from user to namespace required)
-     * - agents deployed directly on the target namespace, for a user holding MEMBER or ADMIN on it
+     * Returns the union of [AgentConfigNode]s accessible to [userId] in [namespaceId]:
+     * - agents deployed on a [io.whozoss.agentos.userGroup.UserGroup] the user is a member of (within the namespace)
+     * - agents deployed directly on the namespace, for a user holding MEMBER or ADMIN
      *
-     * Each branch is fully self-contained (UNION branches share no variable bindings).
-     * The namespace scope is enforced in both branches via the namespace id.
+     * When [agentName] is non-null, the result is filtered to configs whose name
+     * matches case-insensitively. When null, all accessible configs are returned.
      */
     @Query(
         $$"""
-            MATCH (u:User {externalId: $userExternalId})
-              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (u:User {id: $userId})
+              WHERE NOT COALESCE(u.removed, false)
             MATCH (ns:Namespace {id: $namespaceId})
-              WHERE ns.removed IS NULL OR ns.removed = false
+              WHERE NOT COALESCE(ns.removed, false)
             MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns)
-              WHERE g.removed IS NULL OR g.removed = false
+              WHERE NOT COALESCE(g.removed, false)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-              WHERE a.removed IS NULL OR a.removed = false
-            RETURN a
+              WHERE NOT COALESCE(a.removed, false)
+                AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
+            RETURN DISTINCT a
             UNION
-            MATCH (u:User {externalId: $userExternalId})
-              WHERE u.removed IS NULL OR u.removed = false
+            MATCH (u:User {id: $userId})
+              WHERE NOT COALESCE(u.removed, false)
             MATCH (ns:Namespace {id: $namespaceId})
-              WHERE ns.removed IS NULL OR ns.removed = false
+              WHERE NOT COALESCE(ns.removed, false)
             MATCH (u)-[:MEMBER|ADMIN]->(ns)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
-              WHERE a.removed IS NULL OR a.removed = false
-            RETURN a
+              WHERE NOT COALESCE(a.removed, false)
+                AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
+            RETURN DISTINCT a
             """,
     )
-    fun findAvailableByUserExternalId(namespaceId: String, userExternalId: String): List<AgentConfigNode>
+    fun findAvailableByNamespaceIdAndUserId(namespaceId: String, userId: String, agentName: String?): List<AgentConfigNode>
 }

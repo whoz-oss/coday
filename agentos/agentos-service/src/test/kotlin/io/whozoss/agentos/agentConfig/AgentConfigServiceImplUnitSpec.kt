@@ -1,10 +1,15 @@
 package io.whozoss.agentos.agentConfig
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
 import io.whozoss.agentos.entity.InMemoryEntityRepository
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 class AgentConfigServiceImplUnitSpec : StringSpec({
@@ -17,12 +22,14 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
                 parentIdExtractor = { it.namespaceId },
                 comparator = compareBy { it.name },
             ) {
-            // findAvailableByUserExternalId is a Neo4j-only query; not exercised in unit tests.
-            override fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig> =
+            // findAvailableByNamespaceIdAndUserId is a Neo4j-only query; not exercised in unit tests.
+            override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
         }
 
-    fun service(repo: AgentConfigRepository = repository()) = AgentConfigServiceImpl(repo)
+    val userService = mockk<UserService>(relaxed = true)
+
+    fun service(repo: AgentConfigRepository = repository(), us: UserService = userService) = AgentConfigServiceImpl(repo, us)
 
     val namespaceId: UUID = UUID.randomUUID()
 
@@ -62,6 +69,19 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
         val svc = service()
 
         svc.findByName(namespaceId, "unknown").shouldBeNull()
+    }
+
+    // -------------------------------------------------------------------------
+    // findAvailableByUserExternalId
+    // -------------------------------------------------------------------------
+
+    "findAvailableByUserExternalId throws ResourceNotFoundException when user is not found" {
+        val us = mockk<UserService> { every { findByExternalId("ghost@example.com") } returns null }
+        val svc = service(us = us)
+
+        shouldThrow<ResourceNotFoundException> {
+            svc.findAvailableByUserExternalId(namespaceId, "ghost@example.com")
+        }
     }
 
     "findByName is scoped to the given namespace" {

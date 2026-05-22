@@ -258,14 +258,12 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
-        "POST /api/agent-configs/search with unknown namespace and user returns 200 with empty list" {
+        "POST /api/agent-configs/search with unknown user returns 404" {
             mockMvc.perform(
                 post("/api/agent-configs/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "namespaceId": "242c4c1b-a41f-4a90-9613-e13b2a51c377", "userExternalId": "ghost@example.com" }""")
-            )
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+            ).andExpect(status().isNotFound)
         }
     }
 }
