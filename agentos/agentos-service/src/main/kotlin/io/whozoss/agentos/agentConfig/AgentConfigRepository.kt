@@ -15,5 +15,5 @@ interface AgentConfigRepository : EntityRepository<AgentConfig, UUID> {
      * [agentName] case-insensitively. The comparison is pushed to Neo4j via
      * `toLower()` — no Kotlin-side filtering needed.
      */
-    fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String? = null): List<AgentConfig>
+    fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig>
 }
