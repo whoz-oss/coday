@@ -39,14 +39,14 @@ open class Neo4jUserGroupRepository(
 
     override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> =
         querySearchResults(
-            whereClause = $$"ns.id = $namespaceId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
+            whereClause = $$"ns.id = $namespaceId AND NOT COALESCE(g.removed, false) AND NOT COALESCE(ns.removed, false)",
             paramName = "namespaceId",
             paramValue = namespaceId.toString(),
         ).all().toList()
 
     override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
         querySearchResults(
-            whereClause = $$"g.id = $userGroupId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
+            whereClause = $$"g.id = $userGroupId AND NOT COALESCE(g.removed, false) AND NOT COALESCE(ns.removed, false)",
             paramName = "userGroupId",
             paramValue = id.toString(),
         ).one().orElse(null)
@@ -61,9 +61,9 @@ open class Neo4jUserGroupRepository(
                 MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
                 WHERE $whereClause
                 OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-                  WHERE a.removed IS NULL OR a.removed = false
+                  WHERE NOT COALESCE(a.removed, false)
                 OPTIONAL MATCH (u:User)-[:MEMBER]->(g)
-                  WHERE u.removed IS NULL OR u.removed = false
+                  WHERE NOT COALESCE(u.removed, false)
                 RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
                 ORDER BY g.name ASC
             """,
@@ -113,8 +113,8 @@ open class Neo4jUserGroupRepository(
                 $$"""
                     MATCH (u:User)-[:MEMBER]->(g:UserGroup)
                     WHERE u.externalId IN $externalIds
-                      AND (g.removed IS NULL OR g.removed = false)
-                      AND (u.removed IS NULL OR u.removed = false)
+                      AND NOT COALESCE(g.removed, false)
+                      AND NOT COALESCE(u.removed, false)
                     RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
                     ORDER BY u.externalId ASC, g.name ASC
                 """.trimIndent(),
