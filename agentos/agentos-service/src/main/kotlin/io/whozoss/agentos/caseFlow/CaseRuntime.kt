@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import mu.KLogging
 import java.util.UUID
@@ -303,7 +304,7 @@ class CaseRuntime(
                                 "to user $userId — redirect blocked"
                         }
                         storeAndEmitEvent(
-                            io.whozoss.agentos.sdk.caseEvent.WarnEvent(
+                            WarnEvent(
                                 namespaceId = namespaceId,
                                 caseId = id,
                                 message = "Agent '${event.agentName}' is not accessible to the current user",
