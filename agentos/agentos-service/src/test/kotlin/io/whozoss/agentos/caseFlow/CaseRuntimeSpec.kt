@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.flow
 import java.util.UUID
 
 /** Authorization check that grants access to all agents. */
-private val ALLOW_ALL_AGENTS: (String, UUID?) -> Boolean = { _, _ -> true }
+private val TRUE_FOR_ANY_AGENTS: (String, UUID?) -> Boolean = { _, _ -> true }
 
 /**
  * A simple recording wrapper for the runAgent callback.
@@ -152,7 +152,7 @@ class CaseRuntimeSpec : StringSpec() {
                     event
                 },
                 selectAgent = selectAgent.asCallback,
-                isAgentAuthorized = ALLOW_ALL_AGENTS,
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                 runAgent = runAgent.asCallback,
             )
 
@@ -246,7 +246,7 @@ class CaseRuntimeSpec : StringSpec() {
                             agentSelectedEvent(runtimeId, agentName),
                         )
                     },
-                    isAgentAuthorized = ALLOW_ALL_AGENTS,
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, events, _, _, _ ->
                         agent.run(events).collect { event ->
                             savedEvents.add(event)
@@ -304,7 +304,7 @@ class CaseRuntimeSpec : StringSpec() {
                         event
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
-                    isAgentAuthorized = ALLOW_ALL_AGENTS,
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, events, _, _, _ ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
@@ -345,7 +345,7 @@ class CaseRuntimeSpec : StringSpec() {
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    isAgentAuthorized = ALLOW_ALL_AGENTS,
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                         // Simulate a long-running agent: don't push AgentFinishedEvent
@@ -380,7 +380,7 @@ class CaseRuntimeSpec : StringSpec() {
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    isAgentAuthorized = ALLOW_ALL_AGENTS,
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                     },
@@ -414,7 +414,7 @@ class CaseRuntimeSpec : StringSpec() {
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    isAgentAuthorized = ALLOW_ALL_AGENTS,
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
                         // still false at this point, so shouldContinue() must return true.
@@ -506,7 +506,7 @@ class CaseRuntimeSpec : StringSpec() {
                 updateStatus = { _, _ -> },
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
-                isAgentAuthorized = ALLOW_ALL_AGENTS,
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                 runAgent = runAgent.asCallback,
             )
 
@@ -624,7 +624,7 @@ class CaseRuntimeSpec : StringSpec() {
                         event
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
-                    isAgentAuthorized = ALLOW_ALL_AGENTS,
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = recorder.asCallback,
                 )
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))
