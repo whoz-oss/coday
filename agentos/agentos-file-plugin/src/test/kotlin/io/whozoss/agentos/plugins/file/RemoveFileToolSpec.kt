@@ -3,12 +3,10 @@ package io.whozoss.agentos.plugins.file.tools
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import io.whozoss.agentos.plugins.file.tools.RemoveFileTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
-import java.util.UUID
 import java.nio.file.Path
-import kotlin.io.path.createFile
+import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
@@ -31,7 +29,7 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("file.txt"), ctx)
 
-            result shouldBe "File deleted successfully"
+            result shouldBe """"File deleted successfully""""
             file.exists() shouldBe false
         }
 
@@ -60,7 +58,7 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("link.txt"), ctx)
 
-            result shouldBe "File deleted successfully"
+            result shouldBe """"File deleted successfully""""
             linkFile.exists() shouldBe false
         }
 
@@ -71,7 +69,7 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("a/b/c/file.txt"), ctx)
 
-            result shouldBe "File deleted successfully"
+            result shouldBe """"File deleted successfully""""
             file.exists() shouldBe false
         }
 
