@@ -1,6 +1,8 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.user.UserService
+import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -33,9 +35,15 @@ class AgentConfigServiceImpl(
             .firstOrNull { it.name.equals(name, ignoreCase = true) }
 
     override fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig> {
-        val user = userService.findByExternalId(userExternalId) ?: return emptyList()
+        val user = userService.findByExternalId(userExternalId)
+            ?: run {
+                logger.warn { "[AgentConfigService] User not found for externalId: $userExternalId" }
+                throw ResourceNotFoundException("User not found for externalId: $userExternalId")
+            }
         return agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = user.id, agentName = null)
     }
+
+    companion object : KLogging()
 
     override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
         agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
