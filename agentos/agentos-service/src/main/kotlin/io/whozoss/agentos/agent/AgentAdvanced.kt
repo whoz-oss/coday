@@ -176,9 +176,36 @@ class AgentAdvanced(
         accumulatedEvents.add(parameters)
 
         if (!shouldContinue()) return
-        val response = executeTool(parameters, namespaceId, caseId)
+        // executeTool always returns a ToolResponseEvent, even on AgentInterrupt.
+        // We must emit and accumulate the response before re-throwing so the event
+        // history stays well-formed (every ToolRequestEvent has a matching response).
+        var interrupt: AgentInterrupt? = null
+        val response =
+            try {
+                executeTool(parameters, namespaceId, caseId)
+            } catch (e: AgentInterrupt) {
+                interrupt = e
+                // executeTool already built the ToolResponseEvent before throwing;
+                // the .also { throw e } pattern means the value was created but never
+                // returned. Re-create the response here so it can be emitted.
+                ToolResponseEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = parameters.toolRequestId,
+                    toolName = parameters.toolName,
+                    output =
+                        MessageContent.Text(
+                            when (e) {
+                                is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                            },
+                        ),
+                    success = true,
+                )
+            }
         emitEvent(response)
         accumulatedEvents.add(response)
+        // Re-throw the interrupt after the response has been properly recorded.
+        interrupt?.let { throw it }
     }
 
     private suspend fun generateFinalResponse(
@@ -324,7 +351,8 @@ Intention: ${intentionEvent.intention}
                 durationMs = System.currentTimeMillis() - startMs,
             )
         } catch (e: AgentInterrupt) {
-            // Re-throw so the run() catch block can handle it — do not swallow as a tool error.
+            // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent
+            // before the interrupt propagates to the run() catch block.
             throw e
         } catch (e: Exception) {
             ToolResponseEvent(

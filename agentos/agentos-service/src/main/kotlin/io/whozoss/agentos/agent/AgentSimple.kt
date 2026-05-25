@@ -15,12 +15,12 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
@@ -273,23 +273,23 @@ class AgentSimple(
                                 ).build(),
                         )
 
-                        // Add corresponding tool responses
+                        // Every AssistantMessage with tool_calls MUST be followed by a
+                        // ToolResponseMessage for each tool_call_id — OpenAI returns 400
+                        // otherwise. Use the real response when available, or a placeholder.
                         val toolResponseMessages =
-                            toolCallsForCurrentMessage.mapNotNull { toolCall ->
+                            toolCallsForCurrentMessage.map { toolCall ->
                                 val response = toolResponses[toolCall.id()]
-                                response?.let {
-                                    val output =
+                                val output =
+                                    response?.let {
                                         when (val content = it.output) {
                                             is MessageContent.Text -> content.content
                                             else -> content.toString()
                                         }
-                                    ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                                }
+                                    } ?: "[No response recorded]"
+                                ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
                             }
 
-                        if (toolResponseMessages.isNotEmpty()) {
-                            messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
-                        }
+                        messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
 
                         toolCallsForCurrentMessage.clear()
                     }
@@ -332,22 +332,23 @@ class AgentSimple(
                     ).build(),
             )
 
+            // Every AssistantMessage with tool_calls MUST be followed by a
+            // ToolResponseMessage for each tool_call_id — OpenAI returns 400
+            // otherwise. Use the real response when available, or a placeholder.
             val toolResponseMessages =
-                toolCallsForCurrentMessage.mapNotNull { toolCall ->
+                toolCallsForCurrentMessage.map { toolCall ->
                     val response = toolResponses[toolCall.id()]
-                    response?.let {
-                        val output =
+                    val output =
+                        response?.let {
                             when (val content = it.output) {
                                 is MessageContent.Text -> content.content
                                 else -> content.toString()
                             }
-                        ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                    }
+                        } ?: "[No response recorded]"
+                    ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
                 }
 
-            if (toolResponseMessages.isNotEmpty()) {
-                messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
-            }
+            messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
         }
 
         return messages
