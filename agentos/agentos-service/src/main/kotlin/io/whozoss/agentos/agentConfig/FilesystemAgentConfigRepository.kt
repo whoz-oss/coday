@@ -51,28 +51,41 @@ class FilesystemAgentConfigRepository(
     override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
         delegate.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
 
+    /**
+     * Returns published agents: persisted agents filtered by [enabled][AgentConfig.enabled]
+     * via the delegate (Cypher-side), plus all filesystem agents (always published by definition).
+     */
+    override fun findEnabledByParent(parentId: UUID): List<AgentConfig> {
+        val persistedEnabled = delegate.findEnabledByParent(parentId)
+        val fromFilesystem = filesystemAgents(parentId, excludeNames = persistedEnabled.mapTo(HashSet()) { it.name.lowercase() })
+        return persistedEnabled + fromFilesystem
+    }
+
     override fun findByParent(parentId: UUID): List<AgentConfig> {
         val persisted = delegate.findByParent(parentId)
-
-        val configPath = namespaceRepository.findByIds(listOf(parentId)).firstOrNull()?.configPath
-            ?: return persisted
-
-        val directory = Path.of(configPath, AGENTS_SUBDIR)
-        val fromFilesystem = cacheRegistry.getAll(directory)
-
-        if (fromFilesystem.isEmpty()) return persisted
-
-        val persistedNames = persisted.mapTo(HashSet()) { it.name.lowercase() }
-        val filesystemAdditions =
-            fromFilesystem
-                .filter { it.name.lowercase() !in persistedNames }
-                .map { it.copy(namespaceId = parentId) }
-                .sortedBy { it.name }
-        val merged = persisted + filesystemAdditions
-
-        val added = merged.size - persisted.size
-        logger.debug { "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + $added filesystem = ${merged.size} total" }
+        val fromFilesystem = filesystemAgents(parentId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() })
+        val merged = persisted + fromFilesystem
+        logger.debug { "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + ${fromFilesystem.size} filesystem = ${merged.size} total" }
         return merged
+    }
+
+    /**
+     * Loads and returns agent configs from the filesystem for [parentId].
+     *
+     * When [excludeNames] is provided, any filesystem agent whose lowercased name
+     * is in that set is dropped (persisted configs always win over filesystem ones).
+     */
+    private fun filesystemAgents(
+        parentId: UUID,
+        excludeNames: Set<String> = emptySet(),
+    ): List<AgentConfig> {
+        val configPath = namespaceRepository.findByIds(listOf(parentId)).firstOrNull()?.configPath
+            ?: return emptyList()
+        val directory = Path.of(configPath, AGENTS_SUBDIR)
+        return cacheRegistry.getAll(directory)
+            .filter { it.name.lowercase() !in excludeNames }
+            .map { it.copy(namespaceId = parentId) }
+            .sortedBy { it.name }
     }
 
     private fun parseYamlFile(file: Path): AgentConfig? {
@@ -91,6 +104,8 @@ class FilesystemAgentConfigRepository(
             instructions = model.instructions,
             modelName = model.modelName,
             integrations = model.integrations,
+            // Filesystem agents have no lifecycle — they are always published.
+            enabled = true,
         )
     }
 

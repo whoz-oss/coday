@@ -2,6 +2,7 @@ package io.whozoss.agentos.agentConfig
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -14,18 +15,22 @@ import java.util.UUID
 
 class AgentConfigServiceImplUnitSpec : StringSpec({
 
-    fun repository(): AgentConfigRepository =
-        object :
-            AgentConfigRepository,
-            io.whozoss.agentos.entity.EntityRepository<AgentConfig, UUID>
-            by InMemoryEntityRepository(
-                parentIdExtractor = { it.namespaceId },
-                comparator = compareBy { it.name },
-            ) {
+    fun repository(): AgentConfigRepository {
+        val inMemory = InMemoryEntityRepository<AgentConfig, UUID>(
+            parentIdExtractor = { it.namespaceId },
+            comparator = compareBy { it.name },
+        )
+        return object : AgentConfigRepository,
+            io.whozoss.agentos.entity.EntityRepository<AgentConfig, UUID> by inMemory {
             // findAvailableByNamespaceIdAndUserId is a Neo4j-only query; not exercised in unit tests.
             override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
+
+            // Returns only enabled configs from the in-memory store.
+            override fun findEnabledByParent(parentId: UUID): List<AgentConfig> =
+                inMemory.findByParent(parentId).filter { it.enabled }
         }
+    }
 
     val userService = mockk<UserService>(relaxed = true)
 
@@ -91,6 +96,40 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
         repo.save(config("Dev", nsId = otherNamespaceId))
 
         svc.findByName(namespaceId, "Dev").shouldBeNull()
+    }
+
+    // -------------------------------------------------------------------------
+    // findByNamespace
+    // -------------------------------------------------------------------------
+
+    "findByNamespace with enabledOnly=false returns all configs" {
+        val repo = repository()
+        val svc = service(repo)
+        repo.save(config("Published").copy(enabled = true))
+        repo.save(config("Unpublished").copy(enabled = false))
+
+        val result = svc.findByNamespace(namespaceId, enabledOnly = false)
+        result.map { it.name }.toSet() shouldBe setOf("Published", "Unpublished")
+    }
+
+    "findByNamespace with enabledOnly=true returns only enabled configs" {
+        val repo = repository()
+        val svc = service(repo)
+        repo.save(config("Published").copy(enabled = true))
+        repo.save(config("Unpublished").copy(enabled = false))
+
+        val result = svc.findByNamespace(namespaceId, enabledOnly = true)
+        result.map { it.name } shouldBe listOf("Published")
+    }
+
+    "findByNamespace defaults to enabledOnly=false" {
+        val repo = repository()
+        val svc = service(repo)
+        repo.save(config("Alpha").copy(enabled = false))
+        repo.save(config("Beta").copy(enabled = true))
+
+        val result = svc.findByNamespace(namespaceId)
+        result shouldHaveSize 2
     }
 
 })

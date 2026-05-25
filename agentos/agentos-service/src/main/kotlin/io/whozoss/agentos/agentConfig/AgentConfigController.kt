@@ -63,6 +63,7 @@ class AgentConfigController(
             createdOn = entity.metadata.created,
             updatedBy = entity.metadata.modifiedBy,
             updatedOn = entity.metadata.modified,
+            enabled = entity.enabled,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -76,13 +77,16 @@ class AgentConfigController(
             integrations = resource.integrations,
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
+            enabled = resource.enabled ?: false,
         )
 
     /**
      * Merge an update resource onto an existing persisted entity.
      *
-     * - [AgentConfig.namespaceId] is preserved from [existing] (mass-assignment guard).
-     * - Audit fields (`modifiedBy`, `modified`) are set by the service layer, not here.
+     * Two fields are intentionally excluded (mass-assignment guards):
+     * - [AgentConfig.namespaceId]: clients cannot relocate an AgentConfig across namespaces via PUT
+     * - [AgentConfig.enabled]: publication state is managed exclusively via the
+     *   [publish] and [unpublish] endpoints
      */
     private fun toDomainForUpdate(
         resource: AgentConfigResource,
@@ -106,9 +110,37 @@ class AgentConfigController(
     // POST /by-ids — inherited from EntityController.getByIds (batch authorization,
     // story 5-4 factorisation of the pattern introduced by 5-3).
 
-    @GetMapping("/by-parentId/{parentId}")
+    /**
+     * GET /api/agent-configs/by-parentId/{parentId} (no enabledOnly param)
+     *
+     * Matched by Spring MVC when `enabledOnly` is absent from the query string.
+     * The `params = ["!enabledOnly"]` selector makes this mutually exclusive with
+     * [listByNamespace], resolving the ambiguous-mapping conflict that arises from
+     * the inherited [EntityController.listByParent] `@GetMapping`.
+     *
+     * Delegates to [listByNamespace] with `enabledOnly = false`.
+     */
+    @GetMapping("/by-parentId/{parentId}", params = ["!enabledOnly"])
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> = super.listByParent(parentId)
+    override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> =
+        listByNamespace(parentId, enabledOnly = false)
+
+    /**
+     * GET /api/agent-configs/by-parentId/{parentId}?enabledOnly=...
+     *
+     * Matched by Spring MVC when `enabledOnly` is present in the query string.
+     * When `true`, only published agents are returned (end-user contexts like Copilot).
+     * When `false`, all agents visible to namespace members/admins are returned.
+     * Spring's `DefaultConversionService` handles `Boolean` binding — invalid values
+     * (neither `"true"` nor `"false"`) produce a 400.
+     */
+    @GetMapping("/by-parentId/{parentId}", params = ["enabledOnly"])
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    fun listByNamespace(
+        @PathVariable parentId: UUID,
+        @RequestParam(required = false, defaultValue = "false") enabledOnly: Boolean,
+    ): List<AgentConfigResource> =
+        agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")
@@ -129,6 +161,32 @@ class AgentConfigController(
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'DELETE')")
     override fun delete(@PathVariable id: UUID) = super.delete(id)
+
+    /**
+     * POST /api/agent-configs/{id}/publish
+     *
+     * Publishes an agent, making it visible to end-users.
+     * Requires WRITE permission (namespace ADMIN).
+     */
+    @PostMapping("/{id}/publish")
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    fun publish(@PathVariable id: UUID): AgentConfigResource {
+        logger.info { "[AgentConfig] Publishing agent config $id" }
+        return toResource(agentConfigService.publish(id))
+    }
+
+    /**
+     * POST /api/agent-configs/{id}/unpublish
+     *
+     * Unpublishes an agent, hiding it from end-users while keeping it editable by admins.
+     * Requires WRITE permission (namespace ADMIN).
+     */
+    @PostMapping("/{id}/unpublish")
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    fun unpublish(@PathVariable id: UUID): AgentConfigResource {
+        logger.info { "[AgentConfig] Unpublishing agent config $id" }
+        return toResource(agentConfigService.unpublish(id))
+    }
 
     /**
      * POST /api/agent-configs/search

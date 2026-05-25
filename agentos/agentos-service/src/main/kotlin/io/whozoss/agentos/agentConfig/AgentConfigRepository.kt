@@ -16,4 +16,14 @@ interface AgentConfigRepository : EntityRepository<AgentConfig, UUID> {
      * `toLower()` — no Kotlin-side filtering needed.
      */
     fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig>
+
+    /**
+     * Returns only published (enabled) [AgentConfig]s belonging to [parentId].
+     *
+     * Agents stored before the `enabled` field was introduced are treated as
+     * published for backward-compatibility.
+     *
+     * @param parentId The namespace UUID
+     */
+    fun findEnabledByParent(parentId: UUID): List<AgentConfig>
 }
