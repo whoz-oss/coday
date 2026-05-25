@@ -387,6 +387,59 @@ class AgentAdvancedContextSpec :
         }
 
         // -------------------------------------------------------------------------
+        // Orphaned tool requests (defensive safeguard)
+        // -------------------------------------------------------------------------
+
+        "orphaned tool request in detail window produces a placeholder ToolResponseMessage" {
+            // When a ToolRequestEvent has no matching ToolResponseEvent (e.g. after an
+            // AgentInterrupt), the message conversion must still produce a
+            // ToolResponseMessage — OpenAI returns 400 if an AssistantMessage with
+            // tool_calls is not followed by a ToolResponseMessage for each call.
+            val events =
+                listOf(
+                    userMessage("go"),
+                    toolRequest("orphan-1", "REDIRECT__redirect"),
+                )
+            val messages = context.convertEventsToMessages(events)
+
+            messages shouldHaveSize 3
+            messages[0].shouldBeInstanceOf<UserMessage>()
+            // AssistantMessage with tool_calls
+            val assistantMsg = messages[1].shouldBeInstanceOf<AssistantMessage>()
+            assistantMsg.toolCalls shouldHaveSize 1
+            assistantMsg.toolCalls[0].id() shouldBe "orphan-1"
+            // ToolResponseMessage with placeholder
+            val toolRespMsg = messages[2].shouldBeInstanceOf<ToolResponseMessage>()
+            toolRespMsg.responses shouldHaveSize 1
+            toolRespMsg.responses[0].id() shouldBe "orphan-1"
+            toolRespMsg.responses[0].responseData() shouldContain "No response recorded"
+        }
+
+        "orphaned tool request in summary window produces a success summary" {
+            // When an orphaned ToolRequestEvent falls outside the detail window,
+            // it is summarized. A missing response should not crash — it should
+            // default to Success (same as null response in toToolSummaryMessage).
+            val events =
+                listOf(
+                    userMessage("go"),
+                    toolRequest("orphan-old", "REDIRECT__redirect"),
+                    // Add enough recent tool calls to push orphan-old out of the detail window
+                    toolRequest("r1", "TOOL__x"),
+                    toolResponse("r1", "TOOL__x", "ok"),
+                )
+            val messages = context.convertEventsToMessages(events, maxDetailedToolCalls = 1)
+
+            // The orphaned request should be summarized, not detailed
+            val summaries =
+                messages.filterIsInstance<AssistantMessage>().filter {
+                    it.text?.contains("[Step summary]") == true
+                }
+            summaries shouldHaveSize 1
+            summaries[0].text shouldContain "REDIRECT__redirect"
+            summaries[0].text shouldContain "Success" // null response → Success
+        }
+
+        // -------------------------------------------------------------------------
         // buildMessages with/without instructions
         // -------------------------------------------------------------------------
 

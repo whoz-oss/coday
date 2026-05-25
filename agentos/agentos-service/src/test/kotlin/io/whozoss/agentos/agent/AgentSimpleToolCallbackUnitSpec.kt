@@ -9,10 +9,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.whozoss.agentos.redirect.RedirectTool
-import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -106,7 +106,10 @@ class AgentSimpleToolCallbackUnitSpec :
                     override val version = "1.0.0"
                     override val paramType: Class<Nothing>? = null
 
-                    override suspend fun execute(input: Nothing?, context: ToolContext): String = ""
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): String = ""
                 }
 
             val capturedCallbacks = slot<List<ToolCallback>>()
@@ -150,9 +153,15 @@ class AgentSimpleToolCallbackUnitSpec :
                     override val version = "1.0.0"
                     override val paramType: Class<Nothing>? = null
 
-                    override suspend fun execute(input: Nothing?, context: ToolContext): String = ""
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): String = ""
 
-                    override suspend fun executeWithJson(json: String?, context: ToolContext): String {
+                    override suspend fun executeWithJson(
+                        json: String?,
+                        context: ToolContext,
+                    ): String {
                         receivedArgs += json
                         return """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}"""
                     }
@@ -213,14 +222,14 @@ class AgentSimpleToolCallbackUnitSpec :
             val historyWithEmptyArgs =
                 listOf(
                     userMessage(namespaceId, caseId, "what time is it in New York?"),
-                    io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent(
+                    ToolRequestEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",
                         toolName = "GetCurrentDateTime",
                         args = "", // empty — would crash AnthropicChatModel before the fix
                     ),
-                    io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent(
+                    ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",
@@ -257,10 +266,11 @@ class AgentSimpleToolCallbackUnitSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val redirectTool = RedirectTool(
-                configName = "REDIRECT",
-                eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
-            )
+            val redirectTool =
+                RedirectTool(
+                    configName = "REDIRECT",
+                    eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+                )
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -290,6 +300,52 @@ class AgentSimpleToolCallbackUnitSpec :
             events.filterIsInstance<ToolResponseEvent>().first().success shouldBe true
         }
 
+        "convertEventsToMessages produces placeholder for orphaned ToolRequestEvent in history" {
+            // When a ToolRequestEvent exists without a matching ToolResponseEvent
+            // (e.g. after an AgentInterrupt that wasn't properly recorded), the
+            // message conversion must still produce a ToolResponseMessage — OpenAI
+            // returns 400 if an AssistantMessage with tool_calls is not followed
+            // by a ToolResponseMessage for each call.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("response")
+
+            val agent = makeAgent(agentId, mockChatClient, emptyList())
+
+            // History with an orphaned ToolRequestEvent (no matching ToolResponseEvent)
+            val historyWithOrphanedRequest =
+                listOf(
+                    userMessage(namespaceId, caseId, "redirect me"),
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "orphan-request-id",
+                        toolName = "REDIRECT__redirect",
+                        args = """{"agentName":"TargetAgent"}""",
+                    ),
+                    // No ToolResponseEvent for orphan-request-id!
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor(agentId.toString(), "TestAgent", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Redirected.")),
+                    ),
+                    userMessage(namespaceId, caseId, "follow-up after redirect"),
+                )
+
+            // Must not throw — before the fix this would produce a malformed message
+            // list that OpenAI would reject with 400
+            val events = agent.run(historyWithOrphanedRequest).toList()
+
+            events shouldHaveAtLeastSize 3
+            events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
+        }
+
         "convertEventsToMessages should not crash when history contains a ToolRequestEvent with null args" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -305,14 +361,14 @@ class AgentSimpleToolCallbackUnitSpec :
             val historyWithNullArgs =
                 listOf(
                     userMessage(namespaceId, caseId, "what time is it?"),
-                    io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent(
+                    ToolRequestEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",
                         toolName = "GetCurrentDateTime",
                         args = null, // null — also unsafe before the fix
                     ),
-                    io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent(
+                    ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",

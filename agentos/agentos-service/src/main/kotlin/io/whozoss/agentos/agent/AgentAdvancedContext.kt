@@ -98,21 +98,25 @@ data class AgentAdvancedContext(
             AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, normalizeArgs(event.args))
         val messages = mutableListOf<Message>(AssistantMessage.builder().toolCalls(listOf(toolCall)).build())
 
-        responsesByRequestId[event.toolRequestId]?.let { response ->
-            messages.add(
-                ToolResponseMessage
-                    .builder()
-                    .responses(
-                        listOf(
-                            ToolResponseMessage.ToolResponse(
-                                event.toolRequestId,
-                                event.toolName,
-                                extractText(response.output),
-                            ),
+        // Every AssistantMessage with tool_calls MUST be followed by a ToolResponseMessage
+        // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
+        // available, or synthesize a placeholder so the message list stays well-formed.
+        val responseText =
+            responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
+                ?: "[No response recorded]"
+        messages.add(
+            ToolResponseMessage
+                .builder()
+                .responses(
+                    listOf(
+                        ToolResponseMessage.ToolResponse(
+                            event.toolRequestId,
+                            event.toolName,
+                            responseText,
                         ),
-                    ).build(),
-            )
-        }
+                    ),
+                ).build(),
+        )
         return messages
     }
 

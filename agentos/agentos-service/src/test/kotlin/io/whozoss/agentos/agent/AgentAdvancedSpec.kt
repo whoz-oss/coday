@@ -195,6 +195,88 @@ class AgentAdvancedSpec :
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
         }
 
+        "on redirect, a ToolResponseEvent is emitted before AgentFinishedEvent" {
+            // The redirect tool throws AgentInterrupt.Redirect. handleToolExecution()
+            // must catch it, create and emit a ToolResponseEvent, add it to
+            // accumulatedEvents, then re-throw. This ensures the event history is
+            // well-formed: every ToolRequestEvent has a matching ToolResponseEvent.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool =
+                RedirectTool(
+                    configName = "REDIRECT",
+                    eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+                )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returns """{"agentName":"TargetAgent"}"""
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "Redirect to TargetAgent.",
+                    toolName = "REDIRECT__redirect",
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(redirectTool),
+                    instructions = null,
+                    agentId = agentId,
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    maxIterations = 5,
+                )
+
+            val events =
+                agent
+                    .run(
+                        listOf(
+                            MessageEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                actor = Actor("user1", "User One", ActorRole.USER),
+                                content = listOf(MessageContent.Text("do the thing")),
+                            ),
+                        ),
+                    ).toList()
+
+            // A ToolRequestEvent must exist for the redirect tool
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].toolName shouldBe "REDIRECT__redirect"
+
+            // A matching ToolResponseEvent must exist
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            toolResponses shouldHaveSize 1
+            toolResponses[0].toolRequestId shouldBe toolRequests[0].toolRequestId
+            toolResponses[0].success shouldBe true
+            (toolResponses[0].output as MessageContent.Text).content shouldContain "TargetAgent"
+
+            // ToolResponseEvent must appear before AgentFinishedEvent
+            val responseIndex = events.indexOf(toolResponses[0])
+            val finishedIndex = events.indexOfFirst { it is AgentFinishedEvent }
+            (responseIndex < finishedIndex) shouldBe true
+        }
+
         // -------------------------------------------------------------------------
         // Orchestration integration tests
         // -------------------------------------------------------------------------
