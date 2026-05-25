@@ -1,3 +1,13 @@
+## 0.162.2 (2026-05-25)
+
+### 🩹 Fixes
+
+- **agentos:** fix redirect tools in advanced mode (WZ-32112) ([#908](https://github.com/whoz-oss/coday/pull/908))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.162.1 (2026-05-22)
 
 ### 🩹 Fixes
