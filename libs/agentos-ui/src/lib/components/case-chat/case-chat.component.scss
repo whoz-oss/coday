@@ -179,15 +179,12 @@
   // Technical event row (WarnEvent, CaseStatusEvent, AgentRunningEvent, etc.)
   &__technical {
     flex-shrink: 0;
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    padding: 0.2rem 0.75rem;
     border-radius: 6px;
     background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
     border-left: 3px solid var(--color-border, rgba(0, 0, 0, 0.12));
     font-size: 0.78rem;
     color: var(--color-text-secondary, #6e6e73);
+    overflow: hidden;
 
     &--warn {
       border-left-color: var(--color-warning, #f5a623);
@@ -196,17 +193,50 @@
     }
   }
 
+  &__technical-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.2rem 0.75rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+  }
+
   &__technical-label {
     font-weight: 500;
     white-space: nowrap;
+    // When used as a standalone span (no detail), add its own padding
+    &:only-child {
+      display: block;
+      padding: 0.2rem 0.75rem;
+    }
   }
 
-  &__technical-detail {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
+  &__technical-chevron {
+    flex-shrink: 0;
+    font-size: 0.6rem;
+    color: var(--color-text-secondary, #6e6e73);
+    margin-left: auto;
+  }
+
+  &__technical-body {
+    padding: 0.3rem 0.75rem 0.5rem;
+    border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--color-text, #1d1d1f);
   }
 
   // Thinking indicator (three bouncing dots)
