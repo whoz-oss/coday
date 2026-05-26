@@ -42,7 +42,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "File write success"
+            result.success shouldBe true
+            result.output shouldContain "File write success"
             tempDir.resolve("newfile.txt").exists() shouldBe true
             tempDir.resolve("newfile.txt").readText() shouldBe "New content"
         }
@@ -61,7 +62,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "File write success"
+            result.success shouldBe true
+            result.output shouldContain "File write success"
             file.readText() shouldBe "New content"
         }
 
@@ -80,8 +82,9 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "not accepted"
-            result shouldContain "64"
+            // Per-file error is reported in output but the tool itself succeeds (partial result)
+            result.output shouldContain "not accepted"
+            result.output shouldContain "64"
             file.readText() shouldBe largeContent // Should remain unchanged
         }
 
@@ -98,7 +101,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "File write success"
+            result.success shouldBe true
+            result.output shouldContain "File write success"
             tempDir.resolve("newlarge.txt").readText() shouldBe largeContent
         }
 
@@ -114,7 +118,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "File write success"
+            result.success shouldBe true
+            result.output shouldContain "File write success"
             tempDir.resolve("a/b/c/file.txt").readText() shouldBe "nested"
         }
 
@@ -151,7 +156,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "successfully edited by chunks"
+            result.success shouldBe true
+            result.output shouldContain "successfully edited by chunks"
             file.readText() shouldBe "Goodbye universe, that is a test"
         }
 
@@ -172,8 +178,9 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "Chunks not found"
-            result shouldContain "Nonexistent chunk here"
+            result.success shouldBe true
+            result.output shouldContain "Chunks not found"
+            result.output shouldContain "Nonexistent chunk here"
             file.readText() shouldBe "Hello world"
         }
 
@@ -194,8 +201,9 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "Duplicate chunks found"
-            result shouldContain "Hello world here"
+            result.success shouldBe true
+            result.output shouldContain "Duplicate chunks found"
+            result.output shouldContain "Hello world here"
         }
 
         "patch with chunk too short < 15 chars should report error" {
@@ -215,8 +223,9 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "Chunks too short"
-            result shouldContain "short"
+            result.success shouldBe true
+            result.output shouldContain "Chunks too short"
+            result.output shouldContain "short"
         }
 
         "batch edits on different files should all execute" {
@@ -232,8 +241,9 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "file1.txt: File write success"
-            result shouldContain "file2.txt: File write success"
+            result.success shouldBe true
+            result.output shouldContain "file1.txt: File write success"
+            result.output shouldContain "file2.txt: File write success"
             tempDir.resolve("file1.txt").readText() shouldBe "Content 1"
             tempDir.resolve("file2.txt").readText() shouldBe "Content 2"
         }
@@ -254,10 +264,11 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "success.txt: File write success"
-            result shouldContain "large.txt:"
-            result shouldContain "not accepted"
-            result shouldContain "success2.txt: File write success"
+            result.success shouldBe true
+            result.output shouldContain "success.txt: File write success"
+            result.output shouldContain "large.txt:"
+            result.output shouldContain "not accepted"
+            result.output shouldContain "success2.txt: File write success"
             tempDir.resolve("success.txt").exists() shouldBe true
             tempDir.resolve("success2.txt").exists() shouldBe true
         }
@@ -277,8 +288,9 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "nonexistent.txt:"
-            result shouldContain "Path does not exist"
+            result.success shouldBe true
+            result.output shouldContain "nonexistent.txt:"
+            result.output shouldContain "Path does not exist"
         }
 
         "multiple patches in single edit should apply sequentially" {
@@ -301,7 +313,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "successfully edited by chunks"
+            result.success shouldBe true
+            result.output shouldContain "successfully edited by chunks"
             file.readText() shouldBe "1st line modified\n2nd line modified\nThird line here"
         }
 
@@ -310,7 +323,9 @@ class EditFilesToolSpec : StringSpec() {
 
             val result = tool.execute(Input(edits = emptyList()), ctx)
 
-            result shouldContain "No edits provided"
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "No edits provided"
         }
 
         "write should handle unicode content" {
@@ -319,14 +334,15 @@ class EditFilesToolSpec : StringSpec() {
             val result = tool.execute(
                 Input(
                     edits = listOf(
-                        WriteEdit(path = "unicode.txt", content = "Hello 世界 🌍"),
+                        WriteEdit(path = "unicode.txt", content = "Hello \u4e16\u754c \ud83c\udf0d"),
                     ),
                 ),
                 ctx,
             )
 
-            result shouldContain "File write success"
-            tempDir.resolve("unicode.txt").readText() shouldBe "Hello 世界 🌍"
+            result.success shouldBe true
+            result.output shouldContain "File write success"
+            tempDir.resolve("unicode.txt").readText() shouldBe "Hello \u4e16\u754c \ud83c\udf0d"
         }
 
         "atomic write cleanup on move failure - tmp file should be cleaned up" {
@@ -352,8 +368,8 @@ class EditFilesToolSpec : StringSpec() {
                     ctx,
                 )
 
-                result shouldContain "readonly/file.txt:"
-                result shouldContain "Error"
+                result.output shouldContain "readonly/file.txt:"
+                result.output shouldContain "Error"
 
                 readOnlyDir.setPosixFilePermissions(PosixFilePermissions.fromString("rwxr-xr-x"))
 
@@ -376,8 +392,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain ".env:"
-            result shouldContain "Access denied"
+            result.output shouldContain ".env:"
+            result.output shouldContain "Access denied"
             tempDir.resolve(".env").exists() shouldBe false
         }
 
@@ -393,8 +409,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain ".env.local:"
-            result shouldContain "Access denied"
+            result.output shouldContain ".env.local:"
+            result.output shouldContain "Access denied"
             tempDir.resolve(".env.local").exists() shouldBe false
         }
 
@@ -414,8 +430,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain ".env:"
-            result shouldContain "Access denied"
+            result.output shouldContain ".env:"
+            result.output shouldContain "Access denied"
             tempDir.resolve(".env").readText() shouldBe "OLD_SECRET=value"
         }
 
@@ -440,7 +456,7 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "File write success"
+            result.output shouldContain "File write success"
             tempDir.resolve("hello.txt").readText() shouldBe "Hello from JSON"
         }
 
@@ -469,7 +485,7 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "successfully edited by chunks"
+            result.output shouldContain "successfully edited by chunks"
             file.readText() shouldBe "A slow grey cat jumps"
         }
 
@@ -503,8 +519,8 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "new.txt: File write success"
-            result shouldContain "existing.txt: File successfully edited by chunks"
+            result.output shouldContain "new.txt: File write success"
+            result.output shouldContain "existing.txt: File successfully edited by chunks"
             tempDir.resolve("new.txt").readText() shouldBe "brand new file"
             existing.readText() shouldBe "Keep this new content here"
         }
@@ -521,7 +537,7 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "No edits provided"
+            result.output shouldContain "No edits provided"
         }
 
         "executeWithJson should handle multiple replacements in PatchEdit" {
@@ -553,7 +569,7 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "successfully edited by chunks"
+            result.output shouldContain "successfully edited by chunks"
             file.readText() shouldBe "First chunk replaced\nSecond chunk replaced\nThird line stays"
         }
 
@@ -574,7 +590,7 @@ class EditFilesToolSpec : StringSpec() {
                 ctx,
             )
 
-            result shouldContain "File write success"
+            result.output shouldContain "File write success"
             tempDir.resolve("defaults.txt").readText() shouldBe ""
         }
     }

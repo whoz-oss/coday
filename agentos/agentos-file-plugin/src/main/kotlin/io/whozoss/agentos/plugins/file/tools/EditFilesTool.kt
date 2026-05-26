@@ -7,6 +7,7 @@ import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
 import java.nio.charset.StandardCharsets
@@ -136,21 +137,28 @@ class EditFilesTool(
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): String {
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
             if (params.edits.isEmpty()) {
-                return """"No edits provided.""""
+                return ToolExecutionResult.error("No edits provided.", errorType = "INVALID_INPUT")
             }
 
-            runIOWithTimeout(IO_TIMEOUT) {
-                objectMapper.writeValueAsString(processEdits(params.edits))
-            }
+            val result = runIOWithTimeout(IO_TIMEOUT) { processEdits(params.edits) }
+            ToolExecutionResult.success(result)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Operation timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error processing edits: ${e.message}")
+            ToolExecutionResult.error(
+                "Error processing edits: ${e.message}",
+                errorType = "EDIT_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -275,5 +283,4 @@ class EditFilesTool(
 
     private fun formatChunks(chunks: List<String>): String = chunks.joinToString(" ") { "\n- \"\"\"$it\"\"\"" } + "\n"
 
-    private fun createErrorResponse(message: String): String = message
 }

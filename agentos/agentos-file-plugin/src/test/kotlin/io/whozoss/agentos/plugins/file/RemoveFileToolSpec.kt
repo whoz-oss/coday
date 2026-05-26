@@ -29,7 +29,8 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("file.txt"), ctx)
 
-            result shouldBe """"File deleted successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File deleted successfully"
             file.exists() shouldBe false
         }
 
@@ -38,7 +39,8 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("nonexistent.txt"), ctx)
 
-            result shouldContain "Path does not exist"
+            result.success shouldBe false
+            result.output shouldContain "Path does not exist"
         }
 
         "attempting to remove directory should reject" {
@@ -47,7 +49,8 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("dir"), ctx)
 
-            result shouldContain "Cannot remove directories"
+            result.success shouldBe false
+            result.output shouldContain "Cannot remove directories"
         }
 
         "removing file through valid symlink should remove the target" {
@@ -58,7 +61,8 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("link.txt"), ctx)
 
-            result shouldBe """"File deleted successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File deleted successfully"
             linkFile.exists() shouldBe false
         }
 
@@ -69,7 +73,8 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("a/b/c/file.txt"), ctx)
 
-            result shouldBe """"File deleted successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File deleted successfully"
             file.exists() shouldBe false
         }
 
@@ -78,7 +83,8 @@ class RemoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(RemoveFileTool.Input("../outside.txt"), ctx)
 
-            result shouldContain "path traversal not allowed"
+            result.success shouldBe false
+            result.output shouldContain "path traversal not allowed"
         }
     }
 }

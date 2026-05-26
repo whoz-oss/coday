@@ -1,11 +1,11 @@
 package io.whozoss.agentos.plugins.file.tools
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.plugins.file.matchesPattern
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
 import java.nio.file.Files
@@ -28,7 +28,6 @@ class SearchFilesTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<SearchFilesTool.Input> {
     companion object : KLogging() {
-        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
         private const val CONTENT_THRESHOLD = 200 * 1024 // 200 KB
     }
@@ -86,23 +85,37 @@ class SearchFilesTool(
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): String {
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
             if (params.fileName.isNullOrBlank() && params.fileContent.isNullOrBlank()) {
-                return createErrorResponse("At least one of fileName or fileContent must be provided")
+                return ToolExecutionResult.error(
+                    "At least one of fileName or fileContent must be provided",
+                    errorType = "INVALID_INPUT",
+                )
             }
 
-            runIOWithTimeout(IO_TIMEOUT) {
-                objectMapper.writeValueAsString(searchFiles(params))
-            }
+            val result = runIOWithTimeout(IO_TIMEOUT) { searchFiles(params) }
+            ToolExecutionResult.success(result)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Search timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Search timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid search parameters")
+            ToolExecutionResult.error(
+                e.message ?: "Invalid search parameters",
+                errorType = "INVALID_INPUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error searching files: ${e.message}")
+            ToolExecutionResult.error(
+                "Error searching files: ${e.message}",
+                errorType = "SEARCH_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -283,5 +296,4 @@ class SearchFilesTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = objectMapper.writeValueAsString(message)
 }

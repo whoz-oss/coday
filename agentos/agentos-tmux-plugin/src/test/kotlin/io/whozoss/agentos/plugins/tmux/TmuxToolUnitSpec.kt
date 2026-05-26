@@ -53,32 +53,34 @@ class TmuxToolUnitSpec :
         "execute should return error when input is null" {
             val tool = TmuxTool()
             val result = tool.execute(null, ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "Input is required"
+            result.success shouldBe false
+            result.output shouldContain "Input is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "execute should return error for unknown action" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "explode"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "Unknown action"
+            result.success shouldBe false
+            result.output shouldContain "Unknown action"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "execute should return error for invalid session name with special characters" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "status", session = "bad session!"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "Invalid session name"
+            result.success shouldBe false
+            result.output shouldContain "Invalid session name"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "execute should accept session names with hyphens and underscores without validation error" {
             val tool = TmuxTool()
             // Validation must pass — the session name is legal. Whether tmux is actually
             // installed on this machine is irrelevant: the response will always be a valid
-            // JSON object with a 'success' key, never a validation error.
+            // ToolExecutionResult, never a validation error.
             val result = tool.execute(TmuxTool.Input(action = "status", session = "my-service_01"), ctx)
-            result shouldContain "\"success\""
-            result.contains("Invalid session name") shouldBe false
+            result.output.contains("Invalid session name") shouldBe false
         }
 
         // ── Missing required parameters ──────────────────────────────────────────────────────
@@ -86,50 +88,57 @@ class TmuxToolUnitSpec :
         "status without session should return error" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "status"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "session is required"
+            result.success shouldBe false
+            result.output shouldContain "session is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "start without session should return error" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "start", command = "./gradlew bootRun"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "session is required"
+            result.success shouldBe false
+            result.output shouldContain "session is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "start without command should return error" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "start", session = "backend"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "command is required"
+            result.success shouldBe false
+            result.output shouldContain "command is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "logs without session should return error" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "logs"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "session is required"
+            result.success shouldBe false
+            result.output shouldContain "session is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "send without session should return error" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "send", command = "echo hi"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "session is required"
+            result.success shouldBe false
+            result.output shouldContain "session is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "send without command should return error" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "send", session = "backend"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "command is required"
+            result.success shouldBe false
+            result.output shouldContain "command is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "stop without session should return error" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "stop"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "session is required"
+            result.success shouldBe false
+            result.output shouldContain "session is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         // ── window parameter ─────────────────────────────────────────────────────────────────────────
@@ -137,13 +146,13 @@ class TmuxToolUnitSpec :
         "send without window should report missing session, not window" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "send", command = "echo hi"), ctx)
-            result shouldContain "session is required"
+            result.output shouldContain "session is required"
         }
 
         "logs without window should report missing session, not window" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "logs"), ctx)
-            result shouldContain "session is required"
+            result.output shouldContain "session is required"
         }
 
         // ── window validation ─────────────────────────────────────────────────────────────────────────
@@ -151,8 +160,9 @@ class TmuxToolUnitSpec :
         "execute should return error for invalid window name" {
             val tool = TmuxTool()
             val result = tool.execute(TmuxTool.Input(action = "logs", session = "backend", window = "bad window!"), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "Invalid window name"
+            result.success shouldBe false
+            result.output shouldContain "Invalid window name"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "execute should accept window names with dots and hyphens without validation error" {
@@ -160,17 +170,17 @@ class TmuxToolUnitSpec :
             // Window name is valid — validation must pass. The tool may fail to reach tmux
             // but must never emit a window-validation error for this input.
             val result = tool.execute(TmuxTool.Input(action = "logs", session = "backend", window = "my.window-1"), ctx)
-            result.contains("Invalid window name") shouldBe false
+            result.output.contains("Invalid window name") shouldBe false
         }
 
         // ── list action (tmux may or may not be installed) ──────────────────────────────────
 
         "list should return a success response regardless of whether tmux is installed" {
             val tool = TmuxTool()
-            // executeList() catches all failures from runTmux (including IOException when
-            // tmux is not installed) and maps them to a success response with a fallback
+            // LIST catches all failures from runTmux (including IOException when
+            // tmux is not installed) and maps them to a success result with a fallback
             // message. This test verifies that graceful fallback.
             val result = tool.execute(TmuxTool.Input(action = "list"), ctx)
-            result shouldContain "\"success\":true"
+            result.success shouldBe true
         }
     })

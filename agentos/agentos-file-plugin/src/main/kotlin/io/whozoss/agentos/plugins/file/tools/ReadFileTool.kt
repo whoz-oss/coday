@@ -1,10 +1,10 @@
 package io.whozoss.agentos.plugins.file.tools
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.charset.MalformedInputException
 import java.nio.charset.StandardCharsets
@@ -25,7 +25,6 @@ class ReadFileTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<ReadFileTool.Input> {
     companion object {
-        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
         private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
     }
@@ -66,19 +65,30 @@ class ReadFileTool(
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): String {
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
-            runIOWithTimeout(IO_TIMEOUT) {
-                objectMapper.writeValueAsString(readFile(params.filePath))
-            }
+            val content = runIOWithTimeout(IO_TIMEOUT) { readFile(params.filePath) }
+            ToolExecutionResult.success(content)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Operation timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid path")
+            ToolExecutionResult.error(
+                e.message ?: "Invalid path",
+                errorType = "INVALID_INPUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error reading file: ${e.message}")
+            ToolExecutionResult.error(
+                "Error reading file: ${e.message}",
+                errorType = "READ_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -102,5 +112,4 @@ class ReadFileTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
 }

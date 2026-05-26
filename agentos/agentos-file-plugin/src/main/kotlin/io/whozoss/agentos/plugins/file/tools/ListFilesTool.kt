@@ -1,10 +1,10 @@
 package io.whozoss.agentos.plugins.file.tools
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -23,7 +23,6 @@ class ListFilesTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<ListFilesTool.Input> {
     companion object {
-        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
@@ -63,22 +62,30 @@ class ListFilesTool(
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): String {
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
-            val entries =
-                runIOWithTimeout(IO_TIMEOUT) {
-                    listDirectory(params.relPath)
-                }
-
-            objectMapper.writeValueAsString(entries.joinToString("\n"))
+            val entries = runIOWithTimeout(IO_TIMEOUT) { listDirectory(params.relPath) }
+            ToolExecutionResult.success(entries.joinToString("\n"))
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Operation timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid path")
+            ToolExecutionResult.error(
+                e.message ?: "Invalid path",
+                errorType = "INVALID_INPUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error listing directory: ${e.message}")
+            ToolExecutionResult.error(
+                "Error listing directory: ${e.message}",
+                errorType = "LIST_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -113,5 +120,4 @@ class ListFilesTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
 }
