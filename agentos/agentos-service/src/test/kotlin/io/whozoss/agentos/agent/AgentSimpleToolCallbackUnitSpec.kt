@@ -20,6 +20,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
@@ -109,7 +110,7 @@ class AgentSimpleToolCallbackUnitSpec :
                     override suspend fun execute(
                         input: Nothing?,
                         context: ToolContext,
-                    ): String = ""
+                    ): ToolExecutionResult = ToolExecutionResult.success("")
                 }
 
             val capturedCallbacks = slot<List<ToolCallback>>()
@@ -156,14 +157,16 @@ class AgentSimpleToolCallbackUnitSpec :
                     override suspend fun execute(
                         input: Nothing?,
                         context: ToolContext,
-                    ): String = ""
+                    ): ToolExecutionResult = ToolExecutionResult.success("")
 
                     override suspend fun executeWithJson(
                         json: String?,
                         context: ToolContext,
-                    ): String {
+                    ): ToolExecutionResult {
                         receivedArgs += json
-                        return """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}"""
+                        return ToolExecutionResult.success(
+                            """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}"""
+                        )
                     }
                 }
 

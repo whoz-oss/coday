@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
@@ -330,7 +331,7 @@ Intention: ${intentionEvent.intention}
                         }
                     }
                 }
-            val result =
+            val result: ToolExecutionResult =
                 tool.executeWithJson(
                     toolRequest.args,
                     ToolContext(
@@ -346,9 +347,10 @@ Intention: ${intentionEvent.intention}
                 caseId = caseId,
                 toolRequestId = toolRequest.toolRequestId,
                 toolName = toolRequest.toolName,
-                output = MessageContent.Text(result),
-                success = true,
+                output = MessageContent.Text(result.output),
+                success = result.success,
                 durationMs = System.currentTimeMillis() - startMs,
+                toolMetadata = result.metadata,
             )
         } catch (e: AgentInterrupt) {
             // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent

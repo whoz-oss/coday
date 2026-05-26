@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
  * - [List]<[MessageContent]> — for [MessageEventNode.contentJson]
  * - Single [MessageContent]  — for [ToolResponseEventNode.outputJson]
  * - [List]<[String]>         — for [QuestionEventNode.options]
+ * - [Map]<[String],[Any?]>   — for [ToolResponseEventNode.metadataJson]
  */
 class MessageContentSerializer(
     private val mapper: ObjectMapper,
@@ -42,4 +43,8 @@ class MessageContentSerializer(
     fun serializeStringList(list: List<String>): String = mapper.writeValueAsString(list)
 
     fun deserializeStringList(json: String): List<String> = mapper.readValue(json)
+
+    fun serializeMetadata(metadata: Map<String, Any?>): String = mapper.writeValueAsString(metadata)
+
+    fun deserializeMetadata(json: String): Map<String, Any?> = mapper.readValue(json)
 }

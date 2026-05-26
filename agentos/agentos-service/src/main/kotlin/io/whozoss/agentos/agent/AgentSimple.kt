@@ -15,6 +15,7 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -442,10 +443,11 @@ class AgentSimple(
                         caseEvents = filteredEvents,
                     )
 
-                val result: String
+                val executionResult: ToolExecutionResult
+                // TODO: time measurement inside the try to add info to the ToolResponseEvent
                 val toolDuration =
                     measureTime {
-                        result =
+                        executionResult =
                             try {
                                 runBlocking(Dispatchers.IO) { tool.executeWithJson(toolInput, context) }
                             } catch (e: AgentInterrupt) {
@@ -494,12 +496,14 @@ class AgentSimple(
                         caseId = caseId,
                         toolRequestId = toolRequestId,
                         toolName = tool.name,
-                        output = MessageContent.Text(result),
-                        success = true,
+                        output = MessageContent.Text(executionResult.output),
+                        success = executionResult.success,
+                        durationMs = toolDuration.inWholeMilliseconds,
+                        toolMetadata = executionResult.metadata,
                     ),
                 )
 
-                return result
+                return executionResult.output
             }
         }
 

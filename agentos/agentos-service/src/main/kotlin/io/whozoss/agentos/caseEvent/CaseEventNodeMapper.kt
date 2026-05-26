@@ -188,6 +188,8 @@ class CaseEventNodeMapper(
                     node.toolName,
                     node.outputJson,
                     node.success,
+                    node.metadataJson,
+                    node.durationMs,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -364,6 +366,8 @@ class CaseEventNodeMapper(
             toolName = n.toolName,
             output = serializer.deserializeSingle(n.outputJson),
             success = n.success,
+            durationMs = n.durationMs,
+            toolMetadata = n.metadataJson?.let { serializer.deserializeMetadata(it) } ?: emptyMap(),
         )
 
     private fun toDomain(n: ThinkingEventNode) =
@@ -545,6 +549,8 @@ class CaseEventNodeMapper(
             toolName = e.toolName,
             outputJson = serializer.serializeSingle(e.output),
             success = e.success,
+            metadataJson = e.toolMetadata.takeIf { it.isNotEmpty() }?.let { serializer.serializeMetadata(it) },
+            durationMs = e.durationMs,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

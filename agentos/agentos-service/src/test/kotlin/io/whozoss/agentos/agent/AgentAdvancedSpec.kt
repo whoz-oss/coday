@@ -8,6 +8,7 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -369,7 +370,7 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "Read a file"
             every { mockTool.inputSchema } returns "{}"
             every { mockTool.paramType } returns String::class.java
-            coEvery { mockTool.executeWithJson(any(), any()) } returns "file content"
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("file content")
 
             // The generator returns FILES__ReadFile 3 times, then Answer on the 4th call
             val mockGenerator = mockk<AgentIntentionGenerator>()
