@@ -4,7 +4,7 @@ package io.whozoss.agentos.sdk.tool
  * Result of a [StandardTool] execution.
  *
  * Carries the textual output the LLM will see, optional opaque metadata for
- * the service layer, and observability fields (success flag, error details).
+ * the service layer, and observability fields (success flag, error type, error message).
  *
  * [metadata] is intentionally untyped ([Map]<[String], [Any?]>) — each integration
  * decides what to store there. Typical use cases: entity references for coherence
