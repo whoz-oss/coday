@@ -253,46 +253,40 @@ export class UserGroupControllerService extends BaseService {
   }
 
   /**
-   * @param namespaceExternalId
+   * @param namespaceId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public searchByNamespaceExternalIdUserGroup(
-    namespaceExternalId: string,
+  public searchByNamespaceIdUserGroup(
+    namespaceId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<UserGroupSearchResult>>
-  public searchByNamespaceExternalIdUserGroup(
-    namespaceExternalId: string,
+  public searchByNamespaceIdUserGroup(
+    namespaceId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<UserGroupSearchResult>>>
-  public searchByNamespaceExternalIdUserGroup(
-    namespaceExternalId: string,
+  public searchByNamespaceIdUserGroup(
+    namespaceId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<UserGroupSearchResult>>>
-  public searchByNamespaceExternalIdUserGroup(
-    namespaceExternalId: string,
+  public searchByNamespaceIdUserGroup(
+    namespaceId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (namespaceExternalId === null || namespaceExternalId === undefined) {
-      throw new Error(
-        'Required parameter namespaceExternalId was null or undefined when calling searchByNamespaceExternalIdUserGroup.'
-      )
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling searchByNamespaceIdUserGroup.')
     }
 
     let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
-    localVarQueryParameters = this.addToHttpParams(
-      localVarQueryParameters,
-      <any>namespaceExternalId,
-      'namespaceExternalId'
-    )
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
 
     let localVarHeaders = this.defaultHeaders
 

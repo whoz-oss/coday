@@ -15,6 +15,8 @@ import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { NamespaceUserListItem } from '../model/namespace-user-list-item'
+// @ts-ignore
+import { SyncUserRolesRequest } from '../model/sync-user-roles-request'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -401,6 +403,85 @@ export class NamespacePermissionEndpointsService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param syncUserRolesRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public updateRolesByExternalId(
+    syncUserRolesRequest: SyncUserRolesRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<SyncUserRolesRequest>
+  public updateRolesByExternalId(
+    syncUserRolesRequest: SyncUserRolesRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<SyncUserRolesRequest>>
+  public updateRolesByExternalId(
+    syncUserRolesRequest: SyncUserRolesRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<SyncUserRolesRequest>>
+  public updateRolesByExternalId(
+    syncUserRolesRequest: SyncUserRolesRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (syncUserRolesRequest === null || syncUserRolesRequest === undefined) {
+      throw new Error(
+        'Required parameter syncUserRolesRequest was null or undefined when calling updateRolesByExternalId.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/update-roles-by-external-id`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<SyncUserRolesRequest>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: syncUserRolesRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

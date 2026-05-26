@@ -17,4 +17,5 @@ export interface AgentConfig {
   modelName?: string
   integrations?: { [key: string]: Array<string> }
   advancedExecution?: boolean
+  externalMetadata?: { [key: string]: any }
 }

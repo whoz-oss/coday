@@ -46,12 +46,14 @@ model/message-event.ts
 model/models.ts
 model/namespace-agent-deploy-request.ts
 model/namespace-list-item.ts
+model/namespace-role-entry.ts
 model/namespace-user-list-item.ts
 model/namespace.ts
 model/plugin-action-response.ts
 model/plugin-info.ts
 model/plugin-upload-response.ts
 model/question-event.ts
+model/sync-user-roles-request.ts
 model/text-chunk-event.ts
 model/text.ts
 model/thinking-event.ts
