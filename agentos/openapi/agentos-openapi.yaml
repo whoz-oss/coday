@@ -1116,8 +1116,10 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
                   - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
@@ -1579,8 +1581,10 @@ paths:
                 - $ref: "#/components/schemas/AgentSelectedEvent"
                 - $ref: "#/components/schemas/AnswerEvent"
                 - $ref: "#/components/schemas/CaseStatusEvent"
+                - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                 - $ref: "#/components/schemas/IntentionGeneratedEvent"
                 - $ref: "#/components/schemas/MessageEvent"
+                - $ref: "#/components/schemas/PendingConfirmationEvent"
                 - $ref: "#/components/schemas/QuestionEvent"
                 - $ref: "#/components/schemas/TextChunkEvent"
                 - $ref: "#/components/schemas/ThinkingEvent"
@@ -1614,8 +1618,10 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
                   - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
@@ -2200,6 +2206,8 @@ components:
           - IntentionGeneratedEvent
           - ToolSelectedEvent
           - TextChunkEvent
+          - PendingConfirmationEvent
+          - ConfirmationResolvedEvent
       required:
       - caseId
       - id
@@ -2226,6 +2234,28 @@ components:
       - metadata
       - namespaceId
       - status
+      - timestamp
+      - type
+    ConfirmationResolvedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          confirmed:
+            type: boolean
+          pendingEventId:
+            type: string
+            format: uuid
+          resultText:
+            type: string
+      required:
+      - caseId
+      - confirmed
+      - id
+      - metadata
+      - namespaceId
+      - pendingEventId
+      - resultText
       - timestamp
       - type
     EntityMetadata:
@@ -2320,6 +2350,30 @@ components:
       - metadata
       - namespaceId
       - timestamp
+      - type
+    PendingConfirmationEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          analysisInstructions:
+            type: string
+          inputJson:
+            type: string
+          toolName:
+            type: string
+          toolRequestId:
+            type: string
+      required:
+      - analysisInstructions
+      - caseId
+      - id
+      - inputJson
+      - metadata
+      - namespaceId
+      - timestamp
+      - toolName
+      - toolRequestId
       - type
     QuestionEvent:
       allOf:
