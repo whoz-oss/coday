@@ -78,6 +78,11 @@ class AgentSimple(
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
 
             try {
+                logger.debug {
+                    "[$name] run started — tools exposed (${tools.size}): " +
+                        tools.joinToString(separator = ", ") { it.name }
+                }
+
                 // Convert events to messages
                 val messages = convertEventsToMessages(events)
 
@@ -88,6 +93,11 @@ class AgentSimple(
                     } else {
                         messages
                     }
+
+                logger.debug {
+                    "[$name] sending ${allMessages.size} messages to LLM" +
+                        (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
+                }
 
                 // Bail out immediately if an interrupt/kill was requested before
                 // the LLM call even starts (e.g. kill fired while the previous
@@ -405,6 +415,8 @@ class AgentSimple(
                 // the prompt was sent (or since the previous tool response was returned).
                 val turn = llmTurnIndex.get()
                 logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+
+                logger.trace { "[$name] tool '${tool.name}' called with args: $toolInput" }
 
                 sendEvent(
                     ToolRequestEvent(
