@@ -12,13 +12,15 @@ interface CaseRepository : EntityRepository<Case, UUID> {
     /**
      * Find cases in a namespace that [userId] is allowed to see.
      *
-     * Permission rule for Case (owner-private, FR15):
-     * - User has a direct `[:ADMIN]` or `[:MEMBER]` relation on the case, or
-     * - User has a direct `[:ADMIN]` relation on the parent namespace (transitive
-     *   ADMIN). Namespace MEMBER does NOT grant transitive READ on cases.
+     * Permission rule for Case (owner-private, FR15, WZ-32167):
+     * - User has a direct `[:ADMIN]` or `[:MEMBER]` relation on the case.
+     * - Namespace ADMIN does NOT grant transitive visibility over all cases;
+     *   every non-super-admin user (including Federation Admins and Designers)
+     *   goes through this filter and sees only cases they directly own or were
+     *   explicitly granted access to.
      *
-     * Super-admin callers must be handled upstream (controller short-circuits
-     * and uses [findByParent] directly to avoid going through this filter).
+     * Super-admin callers (`user.isAdmin == true`) are short-circuited upstream
+     * in the controller and use [findByParent] directly.
      *
      * Implementations must exclude soft-deleted cases.
      */

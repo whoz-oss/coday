@@ -1,7 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityController
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -35,9 +34,9 @@ import java.util.UUID
  *   the ADMIN/MEMBER grant on the new case is auto-applied in the body)
  *
  * `userService` and `permissionService` are still injected for two non-authorization
- * concerns: (1) the auto-ADMIN grant on the new case after create, (2) the fast-path
- * branch in `listByParent` (namespace ADMIN → unfiltered listing) which is a
- * performance optimization, not an authorization check.
+ * concerns: (1) the auto-ADMIN grant on the new case after create, (2) the super-admin
+ * fast-path in `listByParent` (unfiltered listing) which is a performance optimization,
+ * not an authorization check.
  */
 @RestController
 @RequestMapping(
@@ -95,30 +94,28 @@ class CaseController(
     // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
 
     /**
-     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace (/3.3).
+     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
      *
-     * `@PreAuthorize` gates on namespace READ ; inside the body, two perf paths:
-     * 1. Namespace ADMIN → unfiltered listing (single query, no per-case check).
-     * 2. Otherwise → permission-filtered listing via dedicated Cypher
-     *    (`findAccessibleByUserInNamespace`) which respects FR15 (MEMBERs see only
-     *    their own cases or those they were directly granted READ on).
+     * `@PreAuthorize` gates on namespace READ. Inside the body, two paths:
+     * 1. Super-admin (`user.isAdmin == true`) → unfiltered listing via
+     *    [CaseService.findByParent] (single query, no per-case permission check).
+     * 2. Everyone else (including namespace ADMINs, Federation Admins, Designers)
+     *    → permission-filtered listing via [CaseService.findAccessibleByUserInNamespace],
+     *    which returns only cases the user directly owns or was explicitly granted
+     *    access to (FR15, WZ-32167).
+     *
+     * The unfiltered path is intentionally restricted to super-admins only.
+     * Namespace-level roles do NOT grant visibility over other users' cases.
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(@PathVariable parentId: UUID): List<CaseResource> {
         val user = userService.getCurrentUser()
-        val userId = user.id.toString()
-        val isNamespaceAdmin = permissionService.hasPermission(
-            userId,
-            EntityType.NAMESPACE,
-            parentId.toString(),
-            Action.WRITE,
-        )
-        return if (isNamespaceAdmin) {
-            logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
+        return if (user.isAdmin) {
+            logger.debug { "User ${user.id} is super-admin — unfiltered case listing for namespace $parentId" }
             caseService.findByParent(parentId).map { toResource(it) }
         } else {
-            logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
+            logger.debug { "User ${user.id} — permission-filtered case listing for namespace $parentId" }
             caseService.findAccessibleByUserInNamespace(user.id, parentId).map { toResource(it) }
         }
     }

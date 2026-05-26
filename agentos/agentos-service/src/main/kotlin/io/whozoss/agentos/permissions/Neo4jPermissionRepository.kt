@@ -72,23 +72,26 @@ class Neo4jPermissionRepository(
 
             when (relation) {
                 PermissionRelation.ADMIN -> {
-                    permissionNodeRepository.hasAdminAccessViaNamespace(
-                        userId = userId,
-                        entityId = entityId,
-                        entityLabel = entityType.label
-                    )
-                }
-                PermissionRelation.MEMBER -> {
                     if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
-                        // Owner-private entities (e.g. Case, FR15): a namespace MEMBER
-                        // does NOT get transitive READ on children — only a namespace
-                        // ADMIN does, or the user with a direct relation on the entity
-                        // (handled in hasDirectPermission upstream).
+                        // Owner-private entities (Case, WZ-32167): namespace ADMIN does NOT
+                        // grant transitive access — only a direct ADMIN relation on the
+                        // entity counts. Returning false here forces fall-through to
+                        // hasDirectPermission which already checked direct ADMIN.
+                        false
+                    } else {
                         permissionNodeRepository.hasAdminAccessViaNamespace(
                             userId = userId,
                             entityId = entityId,
                             entityLabel = entityType.label
                         )
+                    }
+                }
+                PermissionRelation.MEMBER -> {
+                    if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
+                        // Owner-private entities (Case, FR15, WZ-32167): neither namespace
+                        // MEMBER nor namespace ADMIN grants transitive READ. Only a direct
+                        // relation on the entity itself (auto-granted at creation) counts.
+                        false
                     } else {
                         // Shared entities (AgentConfig, IntegrationConfig, AiProvider,
                         // AiModel): namespace MEMBERs legitimately inherit READ through
@@ -194,7 +197,14 @@ class Neo4jPermissionRepository(
             // Include both direct and transitive permissions
             when (relation) {
                 PermissionRelation.ADMIN -> {
-                    if (isNamespaceChildEntity(entityType)) {
+                    if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
+                        // Owner-private entities (Case, WZ-32167): only direct ADMIN
+                        // on the entity counts. Namespace ADMIN is not transitive.
+                        permissionNodeRepository.findEntitiesWhereUserIsAdmin(
+                            userId = userId,
+                            entityLabel = entityType.label
+                        )
+                    } else if (isNamespaceChildEntity(entityType)) {
                         permissionNodeRepository.findEntitiesWhereUserIsAdminTransitive(
                             userId = userId,
                             entityLabel = entityType.label
@@ -208,11 +218,10 @@ class Neo4jPermissionRepository(
                 }
                 PermissionRelation.MEMBER -> {
                     if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
-                        // Owner-private entities: MEMBER transitivity via namespace-MEMBER
-                        // is forbidden (FR15). Use the admin-transitive query which gives
-                        // direct ADMIN on entity + transitive via namespace ADMIN — the
-                        // exact set a user is allowed to "see".
-                        permissionNodeRepository.findEntitiesWhereUserIsAdminTransitive(
+                        // Owner-private entities (Case, FR15, WZ-32167): only a direct
+                        // ADMIN or MEMBER relation on the entity itself grants visibility.
+                        // Namespace ADMIN does NOT confer transitive access.
+                        permissionNodeRepository.findEntitiesWhereUserHasAccess(
                             userId = userId,
                             entityLabel = entityType.label
                         )
@@ -250,10 +259,10 @@ class Neo4jPermissionRepository(
                 )
                 PermissionRelation.MEMBER -> {
                     if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
-                        // Owner-private entities (Case, FR15) — MEMBER on the namespace does NOT
-                        // grant READ on children. Same rule as listEntitiesForUser:
-                        // only direct relation OR transitive via namespace ADMIN counts.
-                        permissionNodeRepository.filterIdsWhereUserIsAdmin(
+                        // Owner-private entities (Case, FR15, WZ-32167): only a direct
+                        // ADMIN or MEMBER relation on the entity node grants visibility.
+                        // Namespace ADMIN does NOT grant transitive READ on cases.
+                        permissionNodeRepository.filterIdsWhereUserHasDirectAccess(
                             userId = userId,
                             entityLabel = entityType.label,
                             ids = ids,

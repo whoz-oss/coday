@@ -248,4 +248,22 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("entityLabel") entityLabel: String,
         @Param("ids") ids: Collection<String>,
     ): List<String>
+
+    /**
+     * Filter ids where the user has a **direct** ADMIN or MEMBER relation on the entity.
+     *
+     * Used for owner-private entity types (e.g. Case, WZ-32167) where namespace-level
+     * ADMIN does NOT grant transitive visibility. Only a direct relation on the entity
+     * node itself (placed at creation time) counts.
+     */
+    @Query("""
+        MATCH (u:User {id: ${'$'}userId})-[:ADMIN|MEMBER]->(e)
+        WHERE ${'$'}entityLabel IN labels(e) AND e.id IN ${'$'}ids
+        RETURN e.id
+    """)
+    fun filterIdsWhereUserHasDirectAccess(
+        @Param("userId") userId: String,
+        @Param("entityLabel") entityLabel: String,
+        @Param("ids") ids: Collection<String>,
+    ): List<String>
 }

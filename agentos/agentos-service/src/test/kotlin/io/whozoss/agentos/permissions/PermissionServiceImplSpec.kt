@@ -97,6 +97,9 @@ class PermissionServiceImplSpec : StringSpec({
         verify { mockPermissionCache.put(any(), true) }
     }
 
+    // Note: transitive permission only applies to non-owner-private entity types
+    // (e.g. AgentConfig, IntegrationConfig). CASE is owner-private (WZ-32167) and
+    // skips the transitive check entirely — so this test uses AGENT_CONFIG.
     "should check transitive permissions when direct permission denied" {
         // Given
         val regularUser = User(
@@ -112,11 +115,11 @@ class PermissionServiceImplSpec : StringSpec({
             mockPermissionRepository.hasDirectPermission(any(), any(), any(), any())
         } returns false
         every {
-            mockPermissionRepository.hasTransitivePermission(userId, entityType, entityId, PermissionRelation.ADMIN)
+            mockPermissionRepository.hasTransitivePermission(userId, EntityType.AGENT_CONFIG, entityId, PermissionRelation.ADMIN)
         } returns true
 
         // When
-        val result = permissionService.hasPermission(userId, entityType, entityId, Action.WRITE)
+        val result = permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, entityId, Action.WRITE)
 
         // Then
         result shouldBe true

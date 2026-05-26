@@ -25,25 +25,23 @@ import java.util.UUID
 class PermissionServiceImpl(
     private val userService: UserService,
     private val permissionRepository: PermissionRepository,
-    private val permissionCache: PermissionCache
+    private val permissionCache: PermissionCache,
 ) : PermissionService {
-
-    companion object : KLogging()
-
     override fun hasPermission(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        action: Action
+        action: Action,
     ): Boolean {
         return try {
             // 1. Super-admin bypass check
-            val user = try {
-                userService.findById(UUID.fromString(userId))
-            } catch (e: IllegalArgumentException) {
-                logger.debug { "Invalid UUID format for userId: $userId" }
-                null
-            }
+            val user =
+                try {
+                    userService.findById(UUID.fromString(userId))
+                } catch (e: IllegalArgumentException) {
+                    logger.debug { "Invalid UUID format for userId: $userId" }
+                    null
+                }
             if (user?.isAdmin == true) {
                 logger.debug { "Super-admin bypass: user=$userId has all permissions" }
                 return true
@@ -70,41 +68,63 @@ class PermissionServiceImpl(
     }
 
     /**
-     * Evaluates permission through direct and transitive checks.
+     * Evaluates permission through direct and (where applicable) transitive checks.
+     *
+     * Owner-private entity types (currently [EntityType.CASE], FR15 / WZ-32167) are
+     * evaluated via **direct permission only**. A user can access a Case only when they
+     * hold an explicit ADMIN or MEMBER relation on that Case node — typically auto-granted
+     * at creation time. Namespace-level roles (ADMIN or MEMBER) do NOT confer transitive
+     * access to Cases owned by other users.
+     *
+     * All other entity types follow the standard two-step check:
+     * 1. Direct permission on the entity
+     * 2. Transitive permission through the parent namespace hierarchy
      */
     private fun evaluatePermission(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        action: Action
+        action: Action,
     ): Boolean {
-        // Determine required relation based on action
-        val requiredRelation = when (action) {
-            Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-            Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
-        }
+        val requiredRelation =
+            when (action) {
+                Action.READ -> PermissionRelation.MEMBER
 
-        // Check direct permission first
-        if (permissionRepository.hasDirectPermission(userId, entityType, entityId, requiredRelation)) {
-            logger.debug { "Direct permission granted: user=$userId, entity=$entityType:$entityId, action=$action" }
-            return true
-        }
+                // MEMBER or ADMIN can READ
+                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
+            }
 
-        // Check transitive permission through namespace hierarchy
-        if (permissionRepository.hasTransitivePermission(userId, entityType, entityId, requiredRelation)) {
-            logger.debug { "Transitive permission granted: user=$userId, entity=$entityType:$entityId, action=$action" }
-            return true
-        }
+        val granted =
+            if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
+                // Owner-private entities (Case, FR15 / WZ-32167): only a direct relation on the
+                // entity node itself counts. Namespace-level roles do NOT confer transitive access.
+                permissionRepository.hasDirectPermission(userId, entityType, entityId, requiredRelation)
+            } else {
+                // Standard entities: direct permission first, then transitive via namespace hierarchy.
 
-        logger.debug { "Permission denied: user=$userId, entity=$entityType:$entityId, action=$action" }
-        return false
+                permissionRepository.hasDirectPermission(
+                    userId,
+                    entityType,
+                    entityId,
+                    requiredRelation,
+                ) || permissionRepository.hasTransitivePermission(userId, entityType, entityId, requiredRelation)
+            }
+
+        logger.debug {
+            if (granted) {
+                "Permission granted: user=$userId, entity=$entityType:$entityId, action=$action"
+            } else {
+                "Permission denied: user=$userId, entity=$entityType:$entityId, action=$action"
+            }
+        }
+        return granted
     }
 
     override fun grantPermission(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ) {
         try {
             permissionRepository.grantPermission(userId, entityType, entityId, relation)
@@ -121,7 +141,7 @@ class PermissionServiceImpl(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ) {
         try {
             permissionRepository.revokePermission(userId, entityType, entityId, relation)
@@ -137,32 +157,33 @@ class PermissionServiceImpl(
     override fun listUsersWithPermission(
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation?
-    ): List<String> {
-        return try {
+        relation: PermissionRelation?,
+    ): List<String> =
+        try {
             permissionRepository.listUsersWithPermission(entityType, entityId, relation)
         } catch (e: Exception) {
             logger.error(e) { "Failed to list users with permission on $entityType:$entityId, relation=$relation" }
             emptyList() // Fail-closed: return empty list on error
         }
-    }
 
     override fun listEntitiesForUser(
         userId: String,
         entityType: EntityType,
-        action: Action
-    ): List<String> {
-        return try {
-            val requiredRelation = when (action) {
-                Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
-            }
+        action: Action,
+    ): List<String> =
+        try {
+            val requiredRelation =
+                when (action) {
+                    Action.READ -> PermissionRelation.MEMBER
+
+                    // MEMBER or ADMIN can READ
+                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
+                }
             permissionRepository.listEntitiesForUser(userId, entityType, requiredRelation)
         } catch (e: Exception) {
             logger.error(e) { "Failed to list entities for user=$userId, type=$entityType, action=$action" }
             emptyList() // Fail-closed: return empty list on error
         }
-    }
 
     override fun filterVisibleIds(
         userId: String,
@@ -172,10 +193,13 @@ class PermissionServiceImpl(
     ): Set<String> {
         if (ids.isEmpty()) return emptySet()
         return try {
-            val requiredRelation = when (action) {
-                Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
-            }
+            val requiredRelation =
+                when (action) {
+                    Action.READ -> PermissionRelation.MEMBER
+
+                    // MEMBER or ADMIN can READ
+                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
+                }
             permissionRepository.filterVisibleIds(userId, entityType, ids, requiredRelation)
         } catch (e: Exception) {
             logger.error(e) { "Failed to filter visible ids for user=$userId, type=$entityType, action=$action" }
@@ -191,5 +215,13 @@ class PermissionServiceImpl(
             logger.error(e) { "Failed to clear cache for user: $userId" }
             // Don't throw - cache clearing failure shouldn't break the flow
         }
+    }
+
+    companion object : KLogging() {
+        /**
+         * Entity types where access is granted only via a direct relation on the entity
+         * itself. Namespace-level roles do NOT confer transitive access (FR15, WZ-32167).
+         */
+        private val OWNER_PRIVATE_ENTITY_TYPES: Set<EntityType> = setOf(EntityType.CASE)
     }
 }
