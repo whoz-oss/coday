@@ -62,7 +62,7 @@ internal class TestRemoveTool(
     override fun getConfirmationInstructions(): String =
         "Be strict: explicit confirmation only after the assistant's question."
 
-    // The orchestrator invokes executeWithJson (default impl: parseInput → execute) for the
+    // The orchestrator invokes executeWithJson (parses JSON then calls execute) for the
     // post-confirmation path. onRejected: default returns "Action cancelled.".
 }
 

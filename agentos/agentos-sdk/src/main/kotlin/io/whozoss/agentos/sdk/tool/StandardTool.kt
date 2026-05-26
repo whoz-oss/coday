@@ -15,24 +15,6 @@ interface StandardTool<T> {
     ): String
 
     /**
-     * Parse the raw JSON the LLM produced into the tool's typed input.
-     *
-     * Runs in the plugin classloader, so [paramType] is always resolvable. Helper utility
-     * for tools that need the typed input inside a hook implementation (e.g. to read a
-     * field from a `requiresConfirmation` body). Not called by the orchestrator in the
-     * standard flow — the orchestrator stays string-based and lets the tool parse on its
-     * own terms via [executeWithJson] or by calling this method explicitly.
-     */
-    fun parseInput(json: String?): T? {
-        val type = paramType
-        return if (type == null || json.isNullOrBlank()) {
-            null
-        } else {
-            objectMapper.readValue(json, type)
-        }
-    }
-
-    /**
      * Deserialize raw JSON produced by the LLM and execute the tool.
      *
      * Called from the service layer (app classloader) with the raw JSON string that
@@ -47,7 +29,16 @@ interface StandardTool<T> {
     suspend fun executeWithJson(
         json: String?,
         context: ToolContext,
-    ): String = execute(parseInput(json), context)
+    ): String {
+        val type = paramType
+        val input: T? =
+            if (type == null || json.isNullOrBlank()) {
+                null
+            } else {
+                objectMapper.readValue(json, type)
+            }
+        return execute(input, context)
+    }
 
     // ─── User-confirmation opt-in (WZ-31596) ───────────────────────────────────────────────
     //
@@ -73,8 +64,8 @@ interface StandardTool<T> {
      * overrides this method behaves as a non-confirmation tool.
      *
      * The orchestrator passes the raw JSON args produced by the LLM. Tools that need a
-     * contextual check on the parsed input can call `this.parseInput(argsJson)` locally;
-     * most tools that opt in are destructive enough to simply return `true`.
+     * contextual check on a specific field can parse the JSON locally; most tools that
+     * opt in are destructive enough to simply return `true`.
      */
     fun requiresConfirmation(
         argsJson: String?,
