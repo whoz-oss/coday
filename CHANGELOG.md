@@ -1,3 +1,13 @@
+## 0.163.0 (2026-05-26)
+
+### 🚀 Features
+
+- #WZ-31597 ToolExecutionResult with metadata propagated to ToolResponseEvent ([#910](https://github.com/whoz-oss/coday/pull/910))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.162.2 (2026-05-25)
 
 ### 🩹 Fixes
