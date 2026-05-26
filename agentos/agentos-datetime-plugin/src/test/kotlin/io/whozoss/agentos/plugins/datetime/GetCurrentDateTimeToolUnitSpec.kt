@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.datetime
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
@@ -14,9 +15,10 @@ class GetCurrentDateTimeToolUnitSpec :
             val tool = GetCurrentDateTimeTool()
             val result = tool.execute(null, ctx)
 
-            result shouldContain "success"
-            result shouldContain "datetime"
-            result shouldContain "UTC"
+            result.success shouldBe true
+            // ISO_OFFSET_DATE_TIME formats UTC as 'Z', not '+00:00'
+            result.output shouldContain "Z"
+            result.metadata["timezone"] shouldBe "UTC"
         }
 
         "should return datetime in specified timezone" {
@@ -25,9 +27,9 @@ class GetCurrentDateTimeToolUnitSpec :
 
             val result = tool.execute(input, ctx)
 
-            result shouldContain "America/New_York"
-            result shouldContain "datetime"
-            result shouldContain "\"success\":true"
+            result.success shouldBe true
+            result.output shouldContain "-0"
+            result.metadata["timezone"] shouldBe "America/New_York"
         }
 
         "should return error for invalid timezone" {
@@ -36,9 +38,9 @@ class GetCurrentDateTimeToolUnitSpec :
 
             val result = tool.execute(input, ctx)
 
-            result shouldContain "\"success\":false"
-            result shouldContain "error"
-            result shouldContain "Invalid timezone"
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_TIMEZONE"
+            result.output shouldContain "Invalid timezone"
         }
 
         "should have correct metadata" {
@@ -73,5 +75,14 @@ class GetCurrentDateTimeToolUnitSpec :
             val tool = GetCurrentDateTimeTool(defaultTimezone = "Europe/Paris")
 
             tool.description shouldContain "Europe/Paris"
+        }
+
+        "metadata should contain offset and epochSecond on success" {
+            val tool = GetCurrentDateTimeTool()
+            val result = tool.execute(null, ctx)
+
+            result.success shouldBe true
+            result.metadata["offset"] shouldNotBe null
+            result.metadata["epochSecond"] shouldNotBe null
         }
     })

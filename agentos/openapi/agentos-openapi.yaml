@@ -2415,6 +2415,9 @@ components:
             - $ref: "#/components/schemas/Text"
           success:
             type: boolean
+          toolMetadata:
+            type: object
+            additionalProperties: {}
           toolName:
             type: string
           toolRequestId:
@@ -2427,6 +2430,7 @@ components:
       - output
       - success
       - timestamp
+      - toolMetadata
       - toolName
       - toolRequestId
       - type

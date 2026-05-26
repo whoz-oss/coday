@@ -41,47 +41,45 @@ class WaitToolUnitSpec :
 
         "execute should return error when input is null" {
             val result = WaitTool().execute(null, ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "Input is required"
+            result.success shouldBe false
+            result.output shouldContain "Input is required"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "execute should return error when seconds is 0" {
             val result = WaitTool().execute(WaitTool.Input(seconds = 0), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "seconds must be between"
+            result.success shouldBe false
+            result.output shouldContain "seconds must be between"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "execute should return error when seconds exceeds maximum" {
             val result = WaitTool().execute(WaitTool.Input(seconds = 31), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "seconds must be between"
-            result shouldContain "31"
+            result.success shouldBe false
+            result.output shouldContain "seconds must be between"
+            result.output shouldContain "31"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         "execute should return error for negative seconds" {
             val result = WaitTool().execute(WaitTool.Input(seconds = -5), ctx)
-            result shouldContain "\"success\":false"
-            result shouldContain "seconds must be between"
+            result.success shouldBe false
+            result.output shouldContain "seconds must be between"
+            result.errorType shouldBe "INVALID_INPUT"
         }
 
         // ── Successful wait ───────────────────────────────────────────────────────────
 
         "execute should return success and report elapsed seconds" {
             val result = WaitTool().execute(WaitTool.Input(seconds = 1), ctx)
-            result shouldContain "\"success\":true"
-            result shouldContain "1 second"
+            result.success shouldBe true
+            result.output shouldContain "1 second"
         }
 
-        "execute should use plural form for multiple seconds" {
-            // We do not actually sleep 2 s in this test — we just verify the output
-            // message grammar by intercepting the boundary: seconds=1 → "second",
-            // seconds>1 → "seconds". We use seconds=1 for the real sleep and verify
-            // the plural branch via the error path (which is instant).
-            val singular = WaitTool().execute(WaitTool.Input(seconds = 1), ctx)
-            singular shouldContain "1 second"
-            // Plural branch: verified via string logic without sleeping
-            // (the grammar is "${seconds} second${if (seconds==1) "" else "s"}")
-            // We trust the implementation; a unit test for grammar doesn't need to sleep.
+        "execute should use singular form for one second" {
+            val result = WaitTool().execute(WaitTool.Input(seconds = 1), ctx)
+            result.success shouldBe true
+            result.output shouldContain "1 second"
         }
 
         "execute should actually sleep for approximately the requested duration" {

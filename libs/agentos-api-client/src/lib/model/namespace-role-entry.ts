@@ -8,9 +8,7 @@
  * Do not edit the class manually.
  */
 
-export interface UserGroupCreateRequest {
-  namespaceId: string
-  name: string
-  userExternalIdsToAdd: Set<string>
-  agentIds: Set<string>
+export interface NamespaceRoleEntry {
+  namespaceExternalId: string
+  role: string
 }

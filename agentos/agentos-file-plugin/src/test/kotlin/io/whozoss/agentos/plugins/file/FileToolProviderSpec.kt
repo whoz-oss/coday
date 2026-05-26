@@ -5,7 +5,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
 import java.nio.file.Path
@@ -70,8 +69,8 @@ class FileToolProviderSpec : StringSpec() {
             val tools = FileToolProvider().provideTools(config, "TEST")
             val readTool = tools.first { it.name.contains("readFile") }
 
-            val result = (readTool as StandardTool<*>).executeWithJson("""{"filePath": "big.txt"}""", ctx)
-            result shouldContain "exceeds maximum size"
+            val result = readTool.executeWithJson("""{"filePath": "big.txt"}""", ctx)
+            result.output shouldContain "exceeds maximum size"
         }
 
         "extraDenyPatterns propagation to tools" {
@@ -86,8 +85,8 @@ class FileToolProviderSpec : StringSpec() {
             val tools = FileToolProvider().provideTools(config, "TEST")
             val readTool = tools.first { it.name.contains("readFile") }
 
-            val result = (readTool as StandardTool<*>).executeWithJson("""{"filePath": "data.custom-secret"}""", ctx)
-            result shouldContain "Access denied"
+            val result = readTool.executeWithJson("""{"filePath": "data.custom-secret"}""", ctx)
+            result.output shouldContain "Access denied"
         }
 
         "null extraDenyPatterns in JSON handled gracefully" {

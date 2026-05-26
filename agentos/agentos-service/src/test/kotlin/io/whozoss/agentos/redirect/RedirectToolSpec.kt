@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 
 private val CONTEXT = mockk<ToolContext>(relaxed = true)
 
@@ -23,7 +24,8 @@ class RedirectToolSpec : StringSpec({
     "execute returns a human-readable string when input is null instead of throwing" {
         val tool = RedirectTool(configName = null, eligibleAgents = makeEligible("AgentA"))
         val result = tool.execute(null, CONTEXT)
-        result shouldBe "Agent name is required."
+        result.output shouldBe "Agent name is required."
+        result.success shouldBe false
     }
 
     // -------------------------------------------------------------------------
@@ -38,13 +40,15 @@ class RedirectToolSpec : StringSpec({
             eligibleAgents = makeEligible("AgentA", "AgentB"),
         )
         val result = tool.execute(RedirectTool.Input("UnknownAgent"), CONTEXT)
-        result shouldBe "Agent does not exist."
+        result.output shouldBe "Agent does not exist."
+        result.success shouldBe false
     }
 
     "execute returns error even when eligible agents list is empty" {
         val tool = RedirectTool(configName = null, eligibleAgents = emptyList())
         val result = tool.execute(RedirectTool.Input("AnyAgent"), CONTEXT)
-        result shouldBe "Agent does not exist."
+        result.output shouldBe "Agent does not exist."
+        result.success shouldBe false
     }
 
     "execute returns error when agent name differs by case" {
@@ -54,7 +58,8 @@ class RedirectToolSpec : StringSpec({
             eligibleAgents = makeEligible("AgentA"),
         )
         val result = tool.execute(RedirectTool.Input("agenta"), CONTEXT)
-        result shouldBe "Agent does not exist."
+        result.output shouldBe "Agent does not exist."
+        result.success shouldBe false
     }
 
     // -------------------------------------------------------------------------

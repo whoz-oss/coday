@@ -20,6 +20,7 @@ export interface ToolResponseEvent {
   durationMs?: number
   output: ToolResponseEventAllOfOutput
   success: boolean
+  toolMetadata: { [key: string]: any }
   toolName: string
   toolRequestId: string
 }

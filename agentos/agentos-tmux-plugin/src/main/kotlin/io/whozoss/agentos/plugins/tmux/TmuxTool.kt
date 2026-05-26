@@ -1,8 +1,8 @@
 package io.whozoss.agentos.plugins.tmux
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import java.util.concurrent.TimeUnit
 
 /** Regex for safe session names: alphanumeric, hyphens, underscores only. */
@@ -26,10 +26,6 @@ class TmuxTool(
     internal val workingDirectory: String? = null,
     configName: String? = null,
 ) : StandardTool<TmuxTool.Input> {
-    companion object {
-        private val objectMapper = jacksonObjectMapper()
-    }
-
     override val name: String =
         when (configName) {
             null -> "Tmux"
@@ -114,27 +110,27 @@ class TmuxTool(
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 tool
                     .runTmux("list-sessions")
                     .fold(
-                        onSuccess = { output -> tool.createSuccessResponse(output.ifBlank { "No tmux sessions running" }) },
-                        onFailure = { tool.createSuccessResponse("No tmux sessions running") },
+                        onSuccess = { output -> ToolExecutionResult.success(output.ifBlank { "No tmux sessions running" }) },
+                        onFailure = { ToolExecutionResult.success("No tmux sessions running") },
                     )
         },
         STATUS {
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 when (val session = input.session) {
-                    null -> tool.createErrorResponse("session is required for action 'status'")
+                    null -> ToolExecutionResult.error("session is required for action 'status'", errorType = "INVALID_INPUT")
                     else ->
                         tool
                             .runTmux("has-session", "-t", session)
                             .fold(
-                                onSuccess = { tool.createSuccessResponse("running") },
-                                onFailure = { tool.createSuccessResponse("stopped") },
+                                onSuccess = { ToolExecutionResult.success("running") },
+                                onFailure = { ToolExecutionResult.success("stopped") },
                             )
                 }
         },
@@ -142,10 +138,10 @@ class TmuxTool(
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 when {
-                    input.session == null -> tool.createErrorResponse("session is required for action 'start'")
-                    input.command == null -> tool.createErrorResponse("command is required for action 'start'")
+                    input.session == null -> ToolExecutionResult.error("session is required for action 'start'", errorType = "INVALID_INPUT")
+                    input.command == null -> ToolExecutionResult.error("command is required for action 'start'", errorType = "INVALID_INPUT")
                     else -> {
                         val newSessionArgs =
                             buildList {
@@ -157,8 +153,14 @@ class TmuxTool(
                         tool
                             .runTmux("send-keys", "-t", "${input.session}:0", input.command, "Enter")
                             .fold(
-                                onSuccess = { tool.createSuccessResponse("Session '${input.session}' started with window 0") },
-                                onFailure = { e -> tool.createErrorResponse("Failed to start session '${input.session}': ${e.message}") },
+                                onSuccess = { ToolExecutionResult.success("Session '${input.session}' started with window 0") },
+                                onFailure = { e ->
+                                    ToolExecutionResult.error(
+                                        "Failed to start session '${input.session}': ${e.message}",
+                                        errorType = "COMMAND_FAILED",
+                                        errorMessage = e.message,
+                                    )
+                                },
                             )
                     }
                 }
@@ -167,15 +169,15 @@ class TmuxTool(
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 when (val session = input.session) {
-                    null -> tool.createErrorResponse("session is required for action 'stop'")
+                    null -> ToolExecutionResult.error("session is required for action 'stop'", errorType = "INVALID_INPUT")
                     else ->
                         tool
                             .runTmux("kill-session", "-t", session)
                             .fold(
-                                onSuccess = { tool.createSuccessResponse("Session '$session' killed") },
-                                onFailure = { tool.createErrorResponse("Session '$session' not found") },
+                                onSuccess = { ToolExecutionResult.success("Session '$session' killed") },
+                                onFailure = { ToolExecutionResult.error("Session '$session' not found", errorType = "SESSION_NOT_FOUND") },
                             )
                 }
         },
@@ -183,10 +185,10 @@ class TmuxTool(
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 when {
-                    input.session == null -> tool.createErrorResponse("session is required for action 'new-window'")
-                    input.command == null -> tool.createErrorResponse("command is required for action 'new-window'")
+                    input.session == null -> ToolExecutionResult.error("session is required for action 'new-window'", errorType = "INVALID_INPUT")
+                    input.command == null -> ToolExecutionResult.error("command is required for action 'new-window'", errorType = "INVALID_INPUT")
                     else -> {
                         val args =
                             buildList {
@@ -198,16 +200,22 @@ class TmuxTool(
                         val windowDesc = if (input.window != null) "'${input.window}'" else "a new window"
                         when {
                             createResult.isFailure ->
-                                tool.createErrorResponse(
+                                ToolExecutionResult.error(
                                     "Failed to create window in session '${input.session}': ${createResult.exceptionOrNull()?.message}",
+                                    errorType = "COMMAND_FAILED",
+                                    errorMessage = createResult.exceptionOrNull()?.message,
                                 )
                             else ->
                                 tool
                                     .runTmux("send-keys", "-t", tool.buildTarget(input.session, input.window), input.command, "Enter")
                                     .fold(
-                                        onSuccess = { tool.createSuccessResponse("Created $windowDesc in session '${input.session}'") },
+                                        onSuccess = { ToolExecutionResult.success("Created $windowDesc in session '${input.session}'") },
                                         onFailure = { e ->
-                                            tool.createErrorResponse("Failed to create window in session '${input.session}': ${e.message}")
+                                            ToolExecutionResult.error(
+                                                "Failed to create window in session '${input.session}': ${e.message}",
+                                                errorType = "COMMAND_FAILED",
+                                                errorMessage = e.message,
+                                            )
                                         },
                                     )
                         }
@@ -218,19 +226,21 @@ class TmuxTool(
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 when {
-                    input.session == null -> tool.createErrorResponse("session is required for action 'close-window'")
-                    input.window == null -> tool.createErrorResponse("window is required for action 'close-window'")
+                    input.session == null -> ToolExecutionResult.error("session is required for action 'close-window'", errorType = "INVALID_INPUT")
+                    input.window == null -> ToolExecutionResult.error("window is required for action 'close-window'", errorType = "INVALID_INPUT")
                     else -> {
                         val target = tool.buildTarget(input.session, input.window)
                         tool
                             .runTmux("kill-window", "-t", target)
                             .fold(
-                                onSuccess = { tool.createSuccessResponse("Window '${input.window}' in session '${input.session}' closed") },
+                                onSuccess = { ToolExecutionResult.success("Window '${input.window}' in session '${input.session}' closed") },
                                 onFailure = { e ->
-                                    tool.createErrorResponse(
+                                    ToolExecutionResult.error(
                                         "Failed to close window '${input.window}' in session '${input.session}': ${e.message}",
+                                        errorType = "COMMAND_FAILED",
+                                        errorMessage = e.message,
                                     )
                                 },
                             )
@@ -241,16 +251,16 @@ class TmuxTool(
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 when (val session = input.session) {
-                    null -> tool.createErrorResponse("session is required for action 'logs'")
+                    null -> ToolExecutionResult.error("session is required for action 'logs'", errorType = "INVALID_INPUT")
                     else -> {
                         val target = tool.buildTarget(session, input.window)
                         tool
                             .runTmux("capture-pane", "-t", target, "-p", "-S", "-200")
                             .fold(
-                                onSuccess = { output -> tool.createSuccessResponse(output) },
-                                onFailure = { tool.createErrorResponse("Session '$session' not found") },
+                                onSuccess = { output -> ToolExecutionResult.success(output) },
+                                onFailure = { ToolExecutionResult.error("Session '$session' not found", errorType = "SESSION_NOT_FOUND") },
                             )
                     }
                 }
@@ -259,17 +269,17 @@ class TmuxTool(
             override fun execute(
                 input: Input,
                 tool: TmuxTool,
-            ): String =
+            ): ToolExecutionResult =
                 when {
-                    input.session == null -> tool.createErrorResponse("session is required for action 'send'")
-                    input.command == null -> tool.createErrorResponse("command is required for action 'send'")
+                    input.session == null -> ToolExecutionResult.error("session is required for action 'send'", errorType = "INVALID_INPUT")
+                    input.command == null -> ToolExecutionResult.error("command is required for action 'send'", errorType = "INVALID_INPUT")
                     else -> {
                         val target = tool.buildTarget(input.session, input.window)
                         tool
                             .runTmux("send-keys", "-t", target, input.command, "Enter")
                             .fold(
-                                onSuccess = { tool.createSuccessResponse("Command sent to session '${input.session}'") },
-                                onFailure = { tool.createErrorResponse("Session '${input.session}' not found") },
+                                onSuccess = { ToolExecutionResult.success("Command sent to session '${input.session}'") },
+                                onFailure = { ToolExecutionResult.error("Session '${input.session}' not found", errorType = "SESSION_NOT_FOUND") },
                             )
                     }
                 }
@@ -278,14 +288,14 @@ class TmuxTool(
         abstract fun execute(
             input: Input,
             tool: TmuxTool,
-        ): String
+        ): ToolExecutionResult
 
         companion object {
             fun fromString(value: String): Action? = entries.firstOrNull { it.name.replace('_', '-').equals(value, ignoreCase = true) }
         }
     }
 
-    override suspend fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
         val validationError =
             when {
                 input == null -> "Input is required"
@@ -295,10 +305,10 @@ class TmuxTool(
                     "Invalid window name '${input.window}'. Only alphanumeric characters, hyphens, underscores, dots and plus signs are allowed."
                 else -> null
             }
-        if (validationError != null) return createErrorResponse(validationError)
+        if (validationError != null) return ToolExecutionResult.error(validationError, errorType = "INVALID_INPUT")
         val action =
             Action.fromString(input!!.action)
-                ?: return createErrorResponse("Unknown action: ${input.action}")
+                ?: return ToolExecutionResult.error("Unknown action: ${input.action}", errorType = "INVALID_INPUT")
         return action.execute(input, this)
     }
 
@@ -340,19 +350,4 @@ class TmuxTool(
             output
         }
 
-    internal fun createSuccessResponse(output: String): String =
-        objectMapper.writeValueAsString(
-            mapOf(
-                "success" to true,
-                "output" to output,
-            ),
-        )
-
-    internal fun createErrorResponse(message: String): String =
-        objectMapper.writeValueAsString(
-            mapOf(
-                "success" to false,
-                "error" to message,
-            ),
-        )
 }
