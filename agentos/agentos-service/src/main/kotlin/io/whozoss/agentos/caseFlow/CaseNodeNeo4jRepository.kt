@@ -26,24 +26,22 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     /**
      * Find cases in a namespace that a specific user is allowed to see.
      *
-     * Access rule for Case (owner-private, FR15):
-     * - Direct relation on the case: ADMIN or MEMBER → user can see it
-     * - Transitive via namespace: only ADMIN on namespace → user can see all cases
-     *   (namespace MEMBER does NOT gain transitive READ on cases)
+     * Access rule for Case (owner-private, FR15, WZ-32167):
+     * - A user can see a case only if they have a direct ADMIN or MEMBER
+     *   relation on that case node.
+     * - Namespace ADMIN does NOT grant transitive visibility over all cases in
+     *   the namespace. Namespace Admins and Designers must only see their own
+     *   conversations (i.e. cases where they hold a direct relation).
+     * - Super-admins bypass this query entirely — the controller short-circuits
+     *   them upstream via [user.isAdmin] and calls [findActiveByNamespaceId]
+     *   directly.
      *
      * Soft-deleted cases are filtered out. Returns cases in creation order.
-     *
-     * Super-admins do not use this query — the controller short-circuits them
-     * upstream via [io.whozoss.agentos.permissions.PermissionService.hasPermission]
-     * on the parent namespace.
      */
     @Query(
         $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
-              AND (
-                EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
-                OR EXISTS { MATCH (:User {id: $userId})-[:ADMIN]->(ns) }
-              )
+              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
             RETURN c, r, ns ORDER BY c.created ASC
             """,
     )
