@@ -95,7 +95,8 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
 
         logger.warn {
             "Intention generation failed after $MAX_INTENTION_ATTEMPTS " +
-                "attempts: ${lastException?.message}, falling back to $ANSWER_TOOL"
+                "attempts: ${lastException?.message}, falling back to $ANSWER_TOOL" +
+                (lastResponse?.let { "\nLast LLM response was:\n$it" } ?: "")
         }
         return IntentionGeneratedEvent(
             namespaceId = namespaceId,

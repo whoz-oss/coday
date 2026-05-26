@@ -409,7 +409,7 @@ class AgentSimple(
                 // The LLM decided to call this tool: log how long it thought since
                 // the prompt was sent (or since the previous tool response was returned).
                 val turn = llmTurnIndex.get()
-                logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+                logger.info { "$name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
 
                 logger.trace { "[$name] tool '${tool.name}' called with args: $toolInput" }
 
@@ -490,7 +490,7 @@ class AgentSimple(
                                 throw e
                             }
                     }
-                logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
+                logger.info { "tool '${tool.name}' executed in $toolDuration" }
 
                 // Reset the turn mark so the next measurement starts from when
                 // we hand the tool result back to the LLM.
