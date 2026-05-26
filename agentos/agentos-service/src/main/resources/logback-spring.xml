@@ -54,11 +54,11 @@
   </springProfile>
 
   <!--
-    Profile: development
-    Used for local development without ELK.
+    Profile: development or default
+    Used for local development without ELK or when no profile is active.
     Debug level, plain console output.
   -->
-  <springProfile name="development">
+  <springProfile name="development | default">
     <root level="debug">
       <appender-ref ref="CONSOLE"/>
     </root>

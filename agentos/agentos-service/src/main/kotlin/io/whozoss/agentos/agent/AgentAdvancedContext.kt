@@ -1,7 +1,6 @@
 package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -40,7 +39,7 @@ data class AgentAdvancedContext(
 
         return events.flatMap { event ->
             when (event) {
-                is MessageEvent -> listOf(toMessage(event))
+                is MessageEvent -> listOf(event.toSpringAiMessage(this.agentId.toString()))
                 is ToolRequestEvent -> toToolMessages(event, detailedRequestIds, responsesByRequestId)
                 is IntentionGeneratedEvent -> toIntentionMessage(event)
                 else -> emptyList()
@@ -83,19 +82,6 @@ data class AgentAdvancedContext(
         return result
     }
 
-    private fun AgentAdvancedContext.toMessage(event: MessageEvent): Message {
-        val textContent =
-            event.content
-                .filterIsInstance<MessageContent.Text>()
-                .joinToString("\n") { it.content }
-
-        return when {
-            event.actor.role == ActorRole.USER -> UserMessage(textContent)
-            event.actor.id == agentId.toString() -> AssistantMessage(textContent)
-            else -> UserMessage("[${event.actor.displayName}]: $textContent")
-        }
-    }
-
     private fun toToolMessages(
         event: ToolRequestEvent,
         detailedRequestIds: Set<String>,
@@ -115,21 +101,25 @@ data class AgentAdvancedContext(
             AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, normalizeArgs(event.args))
         val messages = mutableListOf<Message>(AssistantMessage.builder().toolCalls(listOf(toolCall)).build())
 
-        responsesByRequestId[event.toolRequestId]?.let { response ->
-            messages.add(
-                ToolResponseMessage
-                    .builder()
-                    .responses(
-                        listOf(
-                            ToolResponseMessage.ToolResponse(
-                                event.toolRequestId,
-                                event.toolName,
-                                extractText(response.output),
-                            ),
+        // Every AssistantMessage with tool_calls MUST be followed by a ToolResponseMessage
+        // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
+        // available, or synthesize a placeholder so the message list stays well-formed.
+        val responseText =
+            responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
+                ?: "[No response recorded]"
+        messages.add(
+            ToolResponseMessage
+                .builder()
+                .responses(
+                    listOf(
+                        ToolResponseMessage.ToolResponse(
+                            event.toolRequestId,
+                            event.toolName,
+                            responseText,
                         ),
-                    ).build(),
-            )
-        }
+                    ),
+                ).build(),
+        )
         return messages
     }
 
@@ -147,7 +137,9 @@ data class AgentAdvancedContext(
     }
 
     private fun toIntentionMessage(event: IntentionGeneratedEvent): List<Message> =
-        listOf(AssistantMessage("[Intention] ${event.intention}\n[Selected tool] ${event.toolName}"))
+        listOf(
+            AssistantMessage("INTERNAL STEP: Tool Call: ${event.toolName}\nIntention: ${event.intention}"),
+        )
 
     private fun normalizeArgs(args: String?): String = args?.takeIf { it.isNotBlank() } ?: "{}"
 

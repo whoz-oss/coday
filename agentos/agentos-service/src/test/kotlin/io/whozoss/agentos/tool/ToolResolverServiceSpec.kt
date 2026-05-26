@@ -30,7 +30,7 @@ class ToolResolverServiceSpec : StringSpec({
             override val inputSchema = """{"type":"object"}"""
             override val version = "1.0.0"
             override val paramType: Class<Nothing>? = null
-            override fun execute(input: Nothing?, context: ToolContext): String = name
+            override suspend fun execute(input: Nothing?, context: ToolContext): String = name
         }
 
     fun makeConfigLessPlugin(integrationType: String, vararg toolNames: String): ToolPlugin =
@@ -445,6 +445,69 @@ class ToolResolverServiceSpec : StringSpec({
         val tools = service.resolveToolsForRun(ns1, userId)
 
         tools shouldHaveSize 0
+    }
+
+    // -------------------------------------------------------------------------
+    // RedirectToolPlugin: ToolContext must be forwarded so namespaceId is available
+    // -------------------------------------------------------------------------
+
+    "resolveToolsForNamespace passes namespaceId via ToolContext to plugins that need it" {
+        // Regression: ToolResolverService called provideTools(config, name) without a ToolContext.
+        // RedirectToolPlugin requires context?.namespaceId to resolve eligible agents;
+        // without it, it returns emptyList() regardless of the config patterns.
+        val namespaceId = UUID.randomUUID()
+        var capturedContext: ToolContext? = null
+        val contextCapturingPlugin = object : ToolPlugin {
+            override val integrationType = "REDIRECT"
+            override val configSchema: JsonNode = mockk(relaxed = true)
+            override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
+                capturedContext = context
+                // Simulate what RedirectToolPlugin does: return empty when context is null
+                if (context?.namespaceId == null) return emptyList()
+                return listOf(makeTool("redirect"))
+            }
+        }
+        val config = integrationConfig(namespaceId, "REDIRECT_all", "REDIRECT")
+        val service = buildService(plugins = listOf(contextCapturingPlugin), configs = listOf(config))
+
+        val tools = service.resolveToolsForNamespace(namespaceId)
+
+        capturedContext shouldNotBe null
+        capturedContext!!.namespaceId shouldBe namespaceId
+        tools shouldHaveSize 1
+    }
+
+    "resolveToolsForRun passes namespaceId via ToolContext to plugins that need it" {
+        // Same regression for the user-scoped resolution path.
+        val namespaceId = UUID.randomUUID()
+        val userId = UUID.randomUUID()
+        var capturedContext: ToolContext? = null
+        val contextCapturingPlugin = object : ToolPlugin {
+            override val integrationType = "REDIRECT"
+            override val configSchema: JsonNode = mockk(relaxed = true)
+            override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
+                capturedContext = context
+                if (context?.namespaceId == null) return emptyList()
+                return listOf(makeTool("redirect"))
+            }
+        }
+        val shared = IntegrationConfig(
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            name = "REDIRECT_all",
+            integrationType = "REDIRECT",
+        )
+        val service = buildServiceForRun(
+            plugins = listOf(contextCapturingPlugin),
+            sharedConfigs = listOf(shared),
+            reconciledConfigs = mapOf("REDIRECT_all" to shared),
+        )
+
+        val tools = service.resolveToolsForRun(namespaceId, userId)
+
+        capturedContext shouldNotBe null
+        capturedContext!!.namespaceId shouldBe namespaceId
+        tools shouldHaveSize 1
     }
 
     "resolveToolsForRun combines config-less and configured tools when both have IntegrationConfigs" {

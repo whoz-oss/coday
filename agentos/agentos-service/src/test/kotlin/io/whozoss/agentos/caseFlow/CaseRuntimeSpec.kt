@@ -22,6 +22,9 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.flow
 import java.util.UUID
 
+/** Authorization check that grants access to all agents. */
+private val TRUE_FOR_ANY_AGENTS: (String, UUID?) -> Boolean = { _, _ -> true }
+
 /**
  * A simple recording wrapper for the runAgent callback.
  *
@@ -149,6 +152,7 @@ class CaseRuntimeSpec : StringSpec() {
                     event
                 },
                 selectAgent = selectAgent.asCallback,
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                 runAgent = runAgent.asCallback,
             )
 
@@ -242,6 +246,7 @@ class CaseRuntimeSpec : StringSpec() {
                             agentSelectedEvent(runtimeId, agentName),
                         )
                     },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, events, _, _, _ ->
                         agent.run(events).collect { event ->
                             savedEvents.add(event)
@@ -299,6 +304,7 @@ class CaseRuntimeSpec : StringSpec() {
                         event
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, events, _, _, _ ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
@@ -339,6 +345,7 @@ class CaseRuntimeSpec : StringSpec() {
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                         // Simulate a long-running agent: don't push AgentFinishedEvent
@@ -373,6 +380,7 @@ class CaseRuntimeSpec : StringSpec() {
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                     },
@@ -406,6 +414,7 @@ class CaseRuntimeSpec : StringSpec() {
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
                         // still false at this point, so shouldContinue() must return true.
@@ -497,6 +506,7 @@ class CaseRuntimeSpec : StringSpec() {
                 updateStatus = { _, _ -> },
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                 runAgent = runAgent.asCallback,
             )
 
@@ -511,6 +521,64 @@ class CaseRuntimeSpec : StringSpec() {
             // Agent B's AgentFinishedEvent must be in the saved events
             val finishedEvents = savedEvents.filterIsInstance<AgentFinishedEvent>()
             finishedEvents.any { it.agentName == agentB } shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Defensive authorization check on AgentSelectedEvent (redirect)
+        // -------------------------------------------------------------------------
+
+        "redirect to unauthorized agent emits WarnEvent and stops turn" {
+            val agentA = "agent-a"
+            val agentB = "agent-b"
+            val runtimeId = UUID.randomUUID()
+            val savedEvents = mutableListOf<CaseEvent>()
+            val runOrder = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+
+            val agentAMock = mockk<Agent>(name = "mock-$agentA") {
+                every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentA.toByteArray()))
+                every { name } returns agentA
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = UUID.nameUUIDFromBytes(agentA.toByteArray()), agentName = agentA))
+                        emit(AgentSelectedEvent(namespaceId = namespaceId, caseId = caseId,
+                            agentId = UUID.nameUUIDFromBytes(agentB.toByteArray()), agentName = agentB))
+                    }
+                }
+            }
+
+            val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentA)) }
+            val runAgent = RecordingRunAgent { name, events ->
+                runOrder += name
+                agentAMock.run(events).collect { event ->
+                    savedEvents.add(event)
+                    runtime.emitEvent(event)
+                    runtime.pushEvents(listOf(event))
+                }
+            }
+
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatus = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = selectAgent.asCallback,
+                isAgentAuthorized = { name, _ -> name == agentA }, // agentB not authorized
+                runAgent = runAgent.asCallback,
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            // agentA ran, agentB was blocked
+            runAgent.callCount shouldBe 1
+            runOrder shouldBe listOf(agentA)
+            savedEvents.filterIsInstance<WarnEvent>().any {
+                it.message.contains(agentB)
+            } shouldBe true
         }
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
@@ -556,6 +624,7 @@ class CaseRuntimeSpec : StringSpec() {
                         event
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = recorder.asCallback,
                 )
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))

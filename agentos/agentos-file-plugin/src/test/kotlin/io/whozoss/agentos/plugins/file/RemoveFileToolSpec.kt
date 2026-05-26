@@ -39,7 +39,7 @@ class RemoveFileToolSpec :
 
             val result = tool.execute(RemoveFileTool.Input("file.txt"), ctx)
 
-            result shouldBe "File deleted successfully"
+            result shouldBe """"File deleted successfully""""
             file.exists() shouldBe false
         }
 
@@ -66,7 +66,7 @@ class RemoveFileToolSpec :
 
             val result = tool.executeWithJson("""{"path":"file.txt"}""", ctx)
 
-            result shouldBe "File deleted successfully"
+            result shouldBe """"File deleted successfully""""
             file.exists() shouldBe false
         }
 
@@ -77,7 +77,7 @@ class RemoveFileToolSpec :
 
             val result = tool.executeWithJson("""{"path":"a/b/c/file.txt"}""", ctx)
 
-            result shouldBe "File deleted successfully"
+            result shouldBe """"File deleted successfully""""
             file.exists() shouldBe false
         }
 
@@ -89,7 +89,7 @@ class RemoveFileToolSpec :
 
             val result = tool.executeWithJson("""{"path":"link.txt"}""", ctx)
 
-            result shouldBe "File deleted successfully"
+            result shouldBe """"File deleted successfully""""
             linkFile.exists() shouldBe false
         }
 

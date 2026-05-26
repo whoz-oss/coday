@@ -1,5 +1,6 @@
 package io.whozoss.agentos
 
+import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
 import org.springframework.boot.autoconfigure.SpringBootApplication
@@ -14,7 +15,7 @@ import org.springframework.boot.runApplication
         org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration::class,
     ],
 )
-@EnableConfigurationProperties(AgentOsPluginsConfigProperties::class, PersistenceConfigProperties::class)
+@EnableConfigurationProperties(AgentConfigProperties::class, AgentOsPluginsConfigProperties::class, PersistenceConfigProperties::class)
 class AgentOSApplication
 
 fun main(args: Array<String>) {

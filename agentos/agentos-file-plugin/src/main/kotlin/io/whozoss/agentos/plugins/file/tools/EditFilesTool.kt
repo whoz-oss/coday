@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -36,6 +37,7 @@ class EditFilesTool(
         private const val WRITE_SIZE_THRESHOLD = 64 * 1024 // 64 KB
         private const val PATCH_MIN_CHUNK = 15
         private val PID = ProcessHandle.current().pid()
+        private val objectMapper = jacksonObjectMapper()
     }
 
     override val name: String = if (configName != null) "${configName}__editFiles" else "FILES__editFiles"
@@ -131,16 +133,19 @@ class EditFilesTool(
         val edits: List<Edit> = emptyList(),
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): String {
         val params = input ?: Input()
 
         return try {
             if (params.edits.isEmpty()) {
-                return "No edits provided."
+                return """"No edits provided.""""
             }
 
             runIOWithTimeout(IO_TIMEOUT) {
-                processEdits(params.edits)
+                objectMapper.writeValueAsString(processEdits(params.edits))
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
@@ -150,16 +155,17 @@ class EditFilesTool(
     }
 
     private fun processEdits(edits: List<Edit>): String {
-        val results = edits.map { edit ->
-            try {
-                when (edit) {
-                    is WriteEdit -> processWrite(edit.path, edit.content)
-                    is PatchEdit -> processPatch(edit.path, edit.replacements)
+        val results =
+            edits.map { edit ->
+                try {
+                    when (edit) {
+                        is WriteEdit -> processWrite(edit.path, edit.content)
+                        is PatchEdit -> processPatch(edit.path, edit.replacements)
+                    }
+                } catch (e: Exception) {
+                    "${edit.path}: Error — ${e.message}"
                 }
-            } catch (e: Exception) {
-                "${edit.path}: Error — ${e.message}"
             }
-        }
         return results.joinToString("\n")
     }
 
@@ -179,7 +185,7 @@ class EditFilesTool(
         }
 
         // Atomic write with cleanup
-        val tmpPath = resolved.resolveSibling("${resolved.fileName}.${PID}.${UUID.randomUUID()}.tmp")
+        val tmpPath = resolved.resolveSibling("${resolved.fileName}.$PID.${UUID.randomUUID()}.tmp")
         return try {
             // Create parent directories
             resolved.parent?.let { Files.createDirectories(it) }
@@ -220,12 +226,15 @@ class EditFilesTool(
                 oldPart.length < PATCH_MIN_CHUNK -> {
                     tooShortChunks.add(oldPart)
                 }
+
                 !fileContent.contains(oldPart) -> {
                     chunksNotFound.add(oldPart)
                 }
+
                 fileContent.split(oldPart).size - 1 > 1 -> {
                     duplicateChunks.add(oldPart)
                 }
+
                 else -> {
                     fileContent = fileContent.replaceFirst(oldPart, newPart)
                 }
@@ -233,7 +242,7 @@ class EditFilesTool(
         }
 
         // Write file ALWAYS (non-transactional behavior)
-        val tmpPath = resolved.resolveSibling("${resolved.fileName}.${PID}.${UUID.randomUUID()}.tmp")
+        val tmpPath = resolved.resolveSibling("${resolved.fileName}.$PID.${UUID.randomUUID()}.tmp")
         try {
             Files.writeString(tmpPath, fileContent, StandardCharsets.UTF_8)
             Files.move(tmpPath, resolved, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)

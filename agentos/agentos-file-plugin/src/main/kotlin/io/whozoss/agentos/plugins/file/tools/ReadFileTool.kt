@@ -63,12 +63,15 @@ class ReadFileTool(
         val filePath: String = "",
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): String {
         val params = input ?: Input()
 
         return try {
             runIOWithTimeout(IO_TIMEOUT) {
-                readFile(params.filePath)
+                objectMapper.writeValueAsString(readFile(params.filePath))
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")

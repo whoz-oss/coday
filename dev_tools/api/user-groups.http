@@ -1,24 +1,33 @@
-@namespaceExternalId=123
+@namespaceId=3f4c1174-6b94-4fdf-a119-18c5070501cd
 @agentId=2495be79-e5e7-49ce-a1b3-771897f9c44b
 @userGroupId=08577023-6fd2-4c1d-bc64-d48317c979f6
 
 ### List user groups
-GET {{apiBaseUrl}}/api/user-groups?namespaceExternalId={{namespaceExternalId}}
+GET {{apiBaseUrl}}/api/user-groups?namespaceId={{namespaceId}}
 Content-Type: application/json
 
 ### Read user groups
 GET {{apiBaseUrl}}/api/user-groups/{{userGroupId}}
 Content-Type: application/json
 
+### Edit a user group
+POST {{apiBaseUrl}}/api/user-groups/9ea63645-7ea0-4fe1-baa2-e5f0f1a0320e
+Content-Type: application/json
+
+{
+  "name": "User group A",
+  "agentIds": []
+}
+
 ### Create a user group
 POST {{apiBaseUrl}}/api/user-groups
 Content-Type: application/json
 
 {
-  "namespaceExternalId": "{{namespaceExternalId}}",
-  "name": "User group 1",
-  "agentIds": ["{{agentId}}"],
-  "userExternalIdsToAdd": ["alan"]
+  "namespaceId": "{{namespaceId}}",
+  "name": "User group 2",
+  "agentIds": [],
+  "userExternalIdsToAdd": []
 }
 
 

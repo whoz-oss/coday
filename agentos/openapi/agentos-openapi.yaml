@@ -569,17 +569,40 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/users/by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: listByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
   /api/user-groups:
     get:
       tags:
       - user-group-controller
-      operationId: searchByNamespaceExternalIdUserGroup
+      operationId: searchByNamespaceIdUserGroup
       parameters:
-      - name: namespaceExternalId
+      - name: namespaceId
         in: query
         required: true
         schema:
           type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -821,6 +844,24 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/namespaces/update-roles-by-external-id:
+    post:
+      tags:
+      - namespace-permission-endpoints
+      operationId: updateRolesByExternalId
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncUserRolesRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncUserRolesRequest"
   /api/namespaces/by-ids:
     post:
       tags:
@@ -1480,7 +1521,7 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: live
+      - name: includePreviousEvents
         in: query
         required: false
         schema:
@@ -1744,6 +1785,9 @@ components:
           - ERROR
         title:
           type: string
+        created:
+          type: string
+          format: date-time
       required:
       - namespaceId
       - status
@@ -1867,8 +1911,9 @@ components:
     UserGroupCreateRequest:
       type: object
       properties:
-        namespaceExternalId:
+        namespaceId:
           type: string
+          format: uuid
           minLength: 1
         name:
           type: string
@@ -1892,7 +1937,7 @@ components:
       required:
       - agentIds
       - name
-      - namespaceExternalId
+      - namespaceId
       - userExternalIdsToAdd
     UserGroupSearchResult:
       type: object
@@ -1988,6 +2033,31 @@ components:
             format: uuid
       required:
       - agentIds
+    NamespaceRoleEntry:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          minLength: 1
+        role:
+          type: string
+          pattern: ADMIN|MEMBER
+      required:
+      - namespaceExternalId
+      - role
+    SyncUserRolesRequest:
+      type: object
+      properties:
+        userExternalId:
+          type: string
+          minLength: 1
+        namespaceRoles:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamespaceRoleEntry"
+      required:
+      - namespaceRoles
+      - userExternalId
     AddMessageRequest:
       type: object
       properties:
@@ -2397,14 +2467,14 @@ components:
     AgentConfigSearchRequest:
       type: object
       properties:
-        namespaceExternalId:
+        namespaceId:
           type: string
-          minLength: 1
+          format: uuid
         userExternalId:
           type: string
           minLength: 1
       required:
-      - namespaceExternalId
+      - namespaceId
       - userExternalId
     PluginInfo:
       type: object

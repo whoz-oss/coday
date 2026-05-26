@@ -5,8 +5,8 @@ package io.whozoss.agentos.security
  *
  * Two implementations are provided, selected by [agentos.security.mode]:
  * - [LocalSecurityService] (default): returns the OS username.
- * - [AuthSecurityService]: extracts the email from the Cloudflare CF_Authorization JWT,
- *   or falls back to the x-forwarded-email header. Throws 401 if no identity header is present.
+ * - [AuthSecurityService]: reads the `X-External-User-Id` header set by the upstream gateway.
+ *   Throws 401 if the header is absent or blank.
  *
  * The current request is read internally from [org.springframework.web.context.request.RequestContextHolder],
  * so callers do not need to pass an [jakarta.servlet.http.HttpServletRequest].

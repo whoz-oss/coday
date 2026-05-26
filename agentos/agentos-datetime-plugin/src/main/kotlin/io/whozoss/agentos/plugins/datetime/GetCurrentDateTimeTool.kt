@@ -58,7 +58,7 @@ class GetCurrentDateTimeTool(
         val timezone: String? = null,
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): String {
         val timezone = input?.timezone?.takeIf { it.isNotBlank() } ?: defaultTimezone
 
         return try {

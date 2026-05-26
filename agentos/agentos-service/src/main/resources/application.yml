@@ -20,6 +20,11 @@ spring:
     chat:
       client:
         enabled: false
+      observations:
+        include-error-logging: true
+    tools:
+      observations:
+        include-content: false
     model:
       chat: none
       audio:
@@ -69,6 +74,11 @@ management:
       show-details: always
 
 agentos:
+  defaults:
+    # Environment-level fallback agent name. Consulted when a namespace has no
+    # defaultAgentName configured. The named agent must exist in the case's namespace.
+    # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
+    # agent-name: copilot
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
   security:

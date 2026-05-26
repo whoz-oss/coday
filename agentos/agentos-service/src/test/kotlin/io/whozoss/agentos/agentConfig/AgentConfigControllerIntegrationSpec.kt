@@ -242,11 +242,11 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         // POST /api/agent-configs/search
         // -------------------------------------------------------------------------
 
-        "POST /api/agent-configs/search with blank namespaceExternalId returns 400" {
+        "POST /api/agent-configs/search with blank namespaceId returns 400" {
             mockMvc.perform(
                 post("/api/agent-configs/search")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceExternalId": "", "userExternalId": "alice@example.com" }""")
+                    .content("""{ "namespaceId": "", "userExternalId": "alice@example.com" }""")
             ).andExpect(status().isBadRequest)
         }
 
@@ -254,18 +254,16 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/agent-configs/search")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceExternalId": "ext-ns", "userExternalId": "" }""")
+                    .content("""{ "namespaceId": "242c4c1b-a41f-4a90-9613-e13b2a51c377", "userExternalId": "" }""")
             ).andExpect(status().isBadRequest)
         }
 
-        "POST /api/agent-configs/search with unknown namespace and user returns 200 with empty list" {
+        "POST /api/agent-configs/search with unknown user returns 404" {
             mockMvc.perform(
                 post("/api/agent-configs/search")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceExternalId": "unknown-ns", "userExternalId": "ghost@example.com" }""")
-            )
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+                    .content("""{ "namespaceId": "242c4c1b-a41f-4a90-9613-e13b2a51c377", "userExternalId": "ghost@example.com" }""")
+            ).andExpect(status().isNotFound)
         }
     }
 }

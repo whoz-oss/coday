@@ -32,7 +32,7 @@ class FileToolProviderSpec : StringSpec() {
         }
 
         "read-write config produces 6 tools" {
-            val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}""")
+            val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}""".trimIndent())
             val tools = FileToolProvider().provideTools(config, "TEST")
             tools.size shouldBe 6
             tools.map { it.name } shouldContainAll listOf(

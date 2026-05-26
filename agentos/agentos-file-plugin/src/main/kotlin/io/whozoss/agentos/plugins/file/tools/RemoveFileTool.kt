@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.TimeoutCancellationException
@@ -27,6 +28,7 @@ class RemoveFileTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<RemoveFileTool.Input> {
     companion object {
+        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
@@ -65,7 +67,7 @@ class RemoveFileTool(
         val path: String = "",
     )
 
-    override fun execute(
+    override suspend fun execute(
         input: Input?,
         context: ToolContext,
     ): String {
@@ -73,7 +75,7 @@ class RemoveFileTool(
 
         return try {
             runIOWithTimeout(IO_TIMEOUT) {
-                removeFile(params.path)
+                objectMapper.writeValueAsString(removeFile(params.path))
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after $IO_TIMEOUT seconds")

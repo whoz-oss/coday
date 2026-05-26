@@ -1,7 +1,9 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
@@ -31,6 +33,8 @@ import java.util.concurrent.ConcurrentHashMap
 @Service
 class CaseServiceImpl(
     private val agentService: AgentService,
+    private val agentConfigService: AgentConfigService,
+    private val agentConfigProperties: AgentConfigProperties,
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
     private val userService: UserService,
@@ -126,6 +130,11 @@ class CaseServiceImpl(
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
+            isAgentAuthorized = { agentName, userId ->
+                userId == null || agentConfigService
+                    .findAvailableByNamespaceIdAndUserId(namespaceId = case.namespaceId, userId = userId, agentName = agentName)
+                    .isNotEmpty()
+            },
             runAgent = { agentName, events, eventsProvider, userId, shouldContinue -> runAgent(agentName, case.id, events, eventsProvider, userId, shouldContinue) },
             inputEvents = inputEvents,
         )
@@ -238,30 +247,39 @@ class CaseServiceImpl(
         namespaceId: UUID,
         caseId: UUID,
     ): List<CaseEvent> {
-        val defaultAgentName = namespaceService.findById(namespaceId)?.defaultAgentName
-        return if (defaultAgentName == null) {
-            logger.warn { "[CaseService] No default agent configured for namespace $namespaceId" }
-            listOf(
-                WarnEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    message = "No default agent configured for this namespace. Use @agentName to address an agent explicitly.",
-                ),
-            )
-        } else {
-            val resolvedName = agentService.resolveAgentName(defaultAgentName, namespaceId)
-            if (resolvedName == null) {
-                logger.warn { "[CaseService] Default agent '$defaultAgentName' is not available in namespace $namespaceId" }
+        val namespaceLevelDefault = namespaceService.findById(namespaceId)?.defaultAgentName
+        val effectiveDefaultName = namespaceLevelDefault ?: agentConfigProperties.agentName
+
+        return when {
+            effectiveDefaultName == null -> {
+                logger.warn { "[CaseService] No default agent configured for namespace $namespaceId" }
                 listOf(
                     WarnEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
-                        message = "Default agent '$defaultAgentName' is not available. Use @agentName to address an agent explicitly.",
+                        message = "No default agent configured for this namespace. Use @agentName to address an agent explicitly.",
                     ),
                 )
-            } else {
-                logger.info { "[CaseService] Selecting default agent: $resolvedName" }
-                listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+            }
+            else -> {
+                val resolvedName = agentService.resolveAgentName(effectiveDefaultName, namespaceId)
+                when {
+                    resolvedName != null -> {
+                        val source = if (namespaceLevelDefault != null) "namespace" else "environment"
+                        logger.info { "[CaseService] Selecting $source default agent: $resolvedName" }
+                        listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+                    }
+                    else -> {
+                        logger.warn { "[CaseService] Default agent '$effectiveDefaultName' is not available in namespace $namespaceId" }
+                        listOf(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = "Default agent '$effectiveDefaultName' is not available. Use @agentName to address an agent explicitly.",
+                            ),
+                        )
+                    }
+                }
             }
         }
     }

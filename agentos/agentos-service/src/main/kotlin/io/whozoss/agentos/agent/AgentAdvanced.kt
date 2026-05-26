@@ -39,9 +39,9 @@ import java.util.UUID
  * - [Applied]: the user confirmed AND the tool ran successfully. Fall through so
  *   the LLM can comment naturally on the outcome.
  * - [Rejected]: the user explicitly refused. Fall through so the LLM can produce
- *   a clarifying follow-up (e.g. "alors quel fichier veux-tu supprimer ?"). The
- *   hardened `shouldConfirm` clauses prevent an autonomous retry of the same
- *   destructive intention without a fresh explicit prompt.
+ *   a clarifying follow-up. The hardened `shouldConfirm` clauses prevent an
+ *   autonomous retry of the same destructive intention without a fresh explicit
+ *   prompt.
  * - [Aborted]: tool threw post-confirm OR the pending was orphan-closed (tool
  *   missing, etc.). Action did not apply AND there's nothing meaningful to invite
  *   the user to do next — close the turn cleanly.
@@ -225,6 +225,9 @@ class AgentAdvanced(
                         message = "Unknown tool referenced: ${e.message}",
                     ),
                 )
+            } catch (e: AgentInterrupt) {
+                // Not an error: a tool requested a structured interruption of this agent run.
+                emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -274,6 +277,7 @@ class AgentAdvanced(
         val toolRequestId = UUID.randomUUID().toString()
         val parameters =
             generateParameters(
+                accumulatedEvents = accumulatedEvents,
                 intentionEvent = intention,
                 namespaceId = namespaceId,
                 caseId = caseId,
@@ -374,9 +378,33 @@ class AgentAdvanced(
         }
 
         // Standard path — tool doesn't require confirmation.
-        val response = executeTool(parameters, namespaceId, caseId)
+        if (!shouldContinue()) return false
+        // executeTool always returns a ToolResponseEvent, even on AgentInterrupt.
+        // We must emit and accumulate the response before re-throwing so the event
+        // history stays well-formed (every ToolRequestEvent has a matching response).
+        var interrupt: AgentInterrupt? = null
+        val response =
+            try {
+                executeTool(parameters, namespaceId, caseId)
+            } catch (e: AgentInterrupt) {
+                interrupt = e
+                ToolResponseEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = parameters.toolRequestId,
+                    toolName = parameters.toolName,
+                    output =
+                        MessageContent.Text(
+                            when (e) {
+                                is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                            },
+                        ),
+                    success = true,
+                )
+            }
         emitEvent(response)
         accumulatedEvents.add(response)
+        interrupt?.let { throw it }
         return false
     }
 
@@ -623,7 +651,7 @@ class AgentAdvanced(
                 contentBuilder.append(chunk)
                 emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
             }
-        val content = contentBuilder.toString()
+        val content = contentBuilder.toString().stripConversationTags()
         if (content.isNotEmpty()) {
             val msg =
                 MessageEvent(
@@ -664,6 +692,7 @@ class AgentAdvanced(
     }
 
     private fun generateParameters(
+        accumulatedEvents: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         namespaceId: UUID,
         caseId: UUID,
@@ -675,18 +704,23 @@ class AgentAdvanced(
 
         val parametersPrompt =
             """
+Generate the parameters for the tool call below.
 Tool: ${tool.name}
 Description: ${tool.description}
-Input Schema: ${tool.inputSchema}
+Input Schema: 
+```
+${tool.inputSchema}
+```
 
 Intention: ${intentionEvent.intention}
 
-Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.
+**Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
             """.trimIndent()
-
+        val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
+        val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(parametersPrompt)
         val rawParameters =
             context.chatClient
-                .prompt(Prompt(UserMessage(parametersPrompt)))
+                .prompt(Prompt(messages))
                 .call()
                 .content()
                 ?.trim() ?: "{}"
@@ -703,7 +737,7 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
 
     private fun stripJsonFence(raw: String): String = JSON_FENCE_REGEX.matchEntire(raw)?.groupValues?.get(1)?.trim() ?: raw
 
-    private fun executeTool(
+    private suspend fun executeTool(
         toolRequest: ToolRequestEvent,
         namespaceId: UUID,
         caseId: UUID,
@@ -743,7 +777,8 @@ Generate ONLY the JSON object matching the input schema above. No explanation, n
                 durationMs = System.currentTimeMillis() - startMs,
             )
         } catch (e: AgentInterrupt) {
-            // Re-throw so the run() catch block can handle it — do not swallow as a tool error.
+            // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent
+            // before the interrupt propagates to the run() catch block.
             throw e
         } catch (e: Exception) {
             ToolResponseEvent(

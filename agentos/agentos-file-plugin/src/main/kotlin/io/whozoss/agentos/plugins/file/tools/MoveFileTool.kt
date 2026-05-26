@@ -65,12 +65,15 @@ class MoveFileTool(
         val to: String = "",
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): String {
         val params = input ?: Input()
 
         return try {
             runIOWithTimeout(IO_TIMEOUT) {
-                moveFile(params.from, params.to)
+                objectMapper.writeValueAsString(moveFile(params.from, params.to))
             }
         } catch (e: TimeoutCancellationException) {
             createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
@@ -113,5 +116,6 @@ class MoveFileTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
+    /** surroung with double to be real json on output */
+    private fun createErrorResponse(message: String): String = """"$message""""
 }

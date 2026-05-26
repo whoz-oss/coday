@@ -28,7 +28,7 @@ class ListFilesToolSpec : StringSpec() {
                 result shouldContain "subdir/"
                 result shouldContain "file1.txt"
                 result shouldContain "file2.md"
-                result shouldNotContain "subdir\n"  // Should have slash
+                result shouldNotContain "subdir\n" // Should have slash
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -56,7 +56,7 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input("empty"), ctx)
 
-                result shouldBe ""
+                result shouldBe """"""""
             } finally {
                 tempDir.toFile().deleteRecursively()
             }

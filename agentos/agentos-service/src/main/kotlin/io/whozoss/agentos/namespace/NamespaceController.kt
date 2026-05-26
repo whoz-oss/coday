@@ -14,8 +14,16 @@ import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
-import org.springframework.web.bind.annotation.*
-import java.util.*
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
+import org.springframework.web.bind.annotation.RestController
+import java.util.UUID
 
 /**
  * REST API for managing Namespaces.
@@ -73,11 +81,8 @@ class NamespaceController(
         resource: NamespaceResource,
         existing: Namespace,
     ): Namespace =
-        existing.copy(
-            name = resource.name,
-            description = resource.description,
-            configPath = resource.configPath?.takeIf { it.isNotBlank() },
-            // externalId intentionally preserved — see KDoc above.
+        toDomain(resource).copy(
+            externalId = existing.externalId, // externalId intentionally preserved — see KDoc above.)
         )
 
     @GetMapping("/{id}")
@@ -124,7 +129,9 @@ class NamespaceController(
         @Valid @RequestBody resource: NamespaceResource,
     ): NamespaceResource {
         val existing = service.findById(id) ?: throw ResourceNotFoundException("Entity not found: $id")
-        return toResource(service.update(toDomainForUpdate(resource, existing)))
+        val updated = toResource(service.update(toDomainForUpdate(resource, existing)))
+        logger.info { "Namespace $id updated by user ${userService.getCurrentUser().id}" }
+        return updated
     }
 
     /**
@@ -190,8 +197,9 @@ class NamespaceController(
     @PreAuthorize("isAuthenticated()")
     fun listByExternalIds(
         @RequestBody externalIds: List<String>,
-    ): List<NamespaceResource> =
-        externalIds
+    ): List<NamespaceResource> {
+        logger.debug { "listByExternalIds called with $externalIds external id(s)" }
+        return externalIds
             .takeIf { it.isNotEmpty() }
             ?.let { ids ->
                 val found = namespaceService.findByExternalIds(ids)
@@ -202,12 +210,14 @@ class NamespaceController(
                     }
 
                     else -> {
-                        val readableIds = namespaceService.findIdsVisibleTo(currentUser.id.toString(), Action.READ).toSet()
+                        val readableIds =
+                            namespaceService.findIdsVisibleTo(currentUser.id.toString(), Action.READ).toSet()
                         found.filter { it.metadata.id in readableIds }
                     }
                 }.map { toResource(it) }
             }
             ?: emptyList()
+    }
 
     /**
      * GET /api/namespaces — list namespaces filtered by the caller's permissions.
