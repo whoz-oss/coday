@@ -53,11 +53,6 @@ class AgentAdvanced(
                 ),
             )
 
-            logger.debug {
-                "[$name] run started — tools exposed (${context.tools.size}): " +
-                    context.tools.joinToString { it.name }
-            }
-
             var iteration = 0
             var continueLoop = true
             var lastIntention: IntentionGeneratedEvent? = null

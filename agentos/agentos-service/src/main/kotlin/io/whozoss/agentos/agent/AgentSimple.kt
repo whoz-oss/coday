@@ -78,11 +78,6 @@ class AgentSimple(
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
 
             try {
-                logger.debug {
-                    "[$name] run started — tools exposed (${tools.size}): " +
-                        tools.joinToString(separator = ", ") { it.name }
-                }
-
                 // Convert events to messages
                 val messages = convertEventsToMessages(events)
 

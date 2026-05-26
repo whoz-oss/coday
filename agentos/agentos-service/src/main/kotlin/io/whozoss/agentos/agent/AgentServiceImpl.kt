@@ -158,10 +158,9 @@ class AgentServiceImpl(
             } else {
                 toolResolverService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
             }
-        logger.info {
-            "[AgentService] Loaded ${tools.size} tool(s) " +
-                "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
-        }
+        logger.info { "[AgentService] Loaded ${tools.size} tool(s) for agent: $agentName" }
+        logger.debug { "[AgentService] Tools for '$agentName': ${tools.map { it.name }}" }
+        logger.trace { "[AgentService] Tools detail for '$agentName':\n" + tools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
 
         // Resolve user identity once here so plugins receive it via ToolContext without
         // needing access to UserService themselves.
