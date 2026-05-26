@@ -25,10 +25,11 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input(""), ctx)
 
-                result shouldContain "subdir/"
-                result shouldContain "file1.txt"
-                result shouldContain "file2.md"
-                result shouldNotContain "subdir\n" // Should have slash
+                result.success shouldBe true
+                result.output shouldContain "subdir/"
+                result.output shouldContain "file1.txt"
+                result.output shouldContain "file2.md"
+                result.output shouldNotContain "subdir\n" // Should have slash
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -42,13 +43,14 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input("."), ctx)
 
-                result shouldContain "file.txt"
+                result.success shouldBe true
+                result.output shouldContain "file.txt"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
         }
 
-        "empty directory should return empty list" {
+        "empty directory should return empty string" {
             val tempDir = Files.createTempDirectory("test")
             try {
                 val tool = ListFilesTool(tempDir)
@@ -56,7 +58,8 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input("empty"), ctx)
 
-                result shouldBe """"""""
+                result.success shouldBe true
+                result.output shouldBe ""
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -72,7 +75,8 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input(""), ctx)
 
-                result shouldContain "link.txt"
+                result.success shouldBe true
+                result.output shouldContain "link.txt"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -88,8 +92,9 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input(""), ctx)
 
-                result shouldContain "broken-link.txt"
-                result shouldContain "inaccessible"
+                result.success shouldBe true
+                result.output shouldContain "broken-link.txt"
+                result.output shouldContain "inaccessible"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -103,7 +108,8 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input("file.txt"), ctx)
 
-                result shouldContain "not a directory"
+                result.success shouldBe false
+                result.output shouldContain "not a directory"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -118,7 +124,8 @@ class ListFilesToolSpec : StringSpec() {
 
                 val result = tool.execute(ListFilesTool.Input("a/b"), ctx)
 
-                result shouldContain "file.txt"
+                result.success shouldBe true
+                result.output shouldContain "file.txt"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }

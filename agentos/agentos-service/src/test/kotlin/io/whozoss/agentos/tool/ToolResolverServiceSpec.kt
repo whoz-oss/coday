@@ -17,6 +17,7 @@ import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import org.pf4j.PluginManager
 import java.util.UUID
@@ -30,7 +31,8 @@ class ToolResolverServiceSpec : StringSpec({
             override val inputSchema = """{"type":"object"}"""
             override val version = "1.0.0"
             override val paramType: Class<Nothing>? = null
-            override suspend fun execute(input: Nothing?, context: ToolContext): String = name
+            override suspend fun execute(input: Nothing?, context: ToolContext): ToolExecutionResult =
+                ToolExecutionResult.success(name)
         }
 
     fun makeConfigLessPlugin(integrationType: String, vararg toolNames: String): ToolPlugin =

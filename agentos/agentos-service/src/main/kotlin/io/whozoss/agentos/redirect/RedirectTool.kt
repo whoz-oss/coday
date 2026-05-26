@@ -3,6 +3,7 @@ package io.whozoss.agentos.redirect
 import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 
 /**
  * Internal tool that redirects the current case run to another agent.
@@ -90,11 +91,11 @@ class RedirectTool(
      * [io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent] before invoking [executeWithJson],
      * so traces are complete before the exception propagates.
      */
-    override suspend fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
         val target = input?.agentName
         return when {
-            target == null -> "Agent name is required."
-            eligibleAgents.none { it.name == target } -> "Agent does not exist."
+            target == null -> ToolExecutionResult.error("Agent name is required.", errorType = "MISSING_INPUT")
+            eligibleAgents.none { it.name == target } -> ToolExecutionResult.error("Agent does not exist.", errorType = "NOT_FOUND")
             else -> throw AgentInterrupt.Redirect(target)
         }
     }

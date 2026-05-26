@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
@@ -313,9 +314,12 @@ class AgentAdvanced(
                     // success reflects whether the tool actually applied (mirror executeTool
                     // and the post-confirmation path's executionFailed pattern).
                     var executionFailed = false
-                    val resultText =
+                    var toolResult: ToolExecutionResult? = null
+                    val resultText: String =
                         try {
-                            tool.executeWithJson(argsJson, toolCtx)
+                            val r = tool.executeWithJson(argsJson, toolCtx)
+                            toolResult = r
+                            r.output
                         } catch (e: Exception) {
                             logger.warn(e) {
                                 "[AgentAdvanced] implicit-consent tool execution failed for ${tool.name}"
@@ -323,6 +327,7 @@ class AgentAdvanced(
                             executionFailed = true
                             "Error executing tool: ${e.message}"
                         }
+                    val effectiveSuccess = !executionFailed && (toolResult?.success ?: false)
                     val response =
                         ToolResponseEvent(
                             namespaceId = namespaceId,
@@ -330,7 +335,8 @@ class AgentAdvanced(
                             toolRequestId = toolRequestId,
                             toolName = parameters.toolName,
                             output = MessageContent.Text(resultText),
-                            success = !executionFailed,
+                            success = effectiveSuccess,
+                            toolMetadata = toolResult?.metadata ?: emptyMap(),
                         )
                     emitEvent(response)
                     accumulatedEvents.add(response)
@@ -536,19 +542,26 @@ class AgentAdvanced(
 
         val toolCtx = buildToolContext(pending.toolName, namespaceId)
         var executionFailed = false
+        var toolResult: ToolExecutionResult? = null
         val resultText: String =
             try {
-                if (confirmed) tool.executeWithJson(pending.inputJson, toolCtx) else tool.onRejected()
+                if (confirmed) {
+                    val r = tool.executeWithJson(pending.inputJson, toolCtx)
+                    toolResult = r
+                    r.output
+                } else {
+                    tool.onRejected()
+                }
             } catch (e: Exception) {
                 logger.warn(e) { "[AgentAdvanced] tool execution failed during confirmation resolution for ${pending.toolName}" }
                 executionFailed = true
                 "Error during tool execution: ${e.message}"
             }
 
-        // Authoritative outcome: the action took effect only if the user confirmed AND the
-        // tool did not throw. ConfirmationResolvedEvent.confirmed and the synthetic
-        // ToolResponseEvent.success both reflect that combined state.
-        val effectiveSuccess = confirmed && !executionFailed
+        // Authoritative outcome: the action took effect only if the user confirmed, the
+        // tool did not throw AND the tool itself reported success. ConfirmationResolvedEvent.confirmed
+        // and the synthetic ToolResponseEvent.success both reflect that combined state.
+        val effectiveSuccess = confirmed && !executionFailed && (toolResult?.success ?: false)
 
         val resolved =
             ConfirmationResolvedEvent(
@@ -585,6 +598,7 @@ class AgentAdvanced(
                 toolName = pending.toolName,
                 output = MessageContent.Text(resultText),
                 success = effectiveSuccess,
+                toolMetadata = toolResult?.metadata ?: emptyMap(),
             )
         emitEvent(syntheticResponse)
         appendTo += syntheticResponse
@@ -756,7 +770,7 @@ Intention: ${intentionEvent.intention}
         val startMs = System.currentTimeMillis()
         return try {
             val filteredEvents = filterEventsByIntegration(toolRequest.toolName, caseEventsProvider())
-            val result =
+            val result: ToolExecutionResult =
                 tool.executeWithJson(
                     toolRequest.args,
                     ToolContext(
@@ -772,9 +786,10 @@ Intention: ${intentionEvent.intention}
                 caseId = caseId,
                 toolRequestId = toolRequest.toolRequestId,
                 toolName = toolRequest.toolName,
-                output = MessageContent.Text(result),
-                success = true,
+                output = MessageContent.Text(result.output),
+                success = result.success,
                 durationMs = System.currentTimeMillis() - startMs,
+                toolMetadata = result.metadata,
             )
         } catch (e: AgentInterrupt) {
             // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent

@@ -31,7 +31,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "dest.txt"), ctx)
 
-            result shouldBe """"File moved successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File moved successfully"
             source.exists() shouldBe false
             dest.exists() shouldBe true
             dest.readText() shouldBe "content"
@@ -42,7 +43,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "nonexistent.txt", to = "dest.txt"), ctx)
 
-            result shouldContain "Path does not exist"
+            result.success shouldBe false
+            result.output shouldContain "Path does not exist"
         }
 
         "move to existing destination should error" {
@@ -52,7 +54,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "dest.txt"), ctx)
 
-            result shouldContain "Destination already exists"
+            // Destination already exists is returned from moveFile() as a plain string — success=true
+            result.output shouldContain "Destination already exists"
         }
 
         "move should create parent directories in destination" {
@@ -61,7 +64,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "source.txt", to = "a/b/c/dest.txt"), ctx)
 
-            result shouldBe """"File moved successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File moved successfully"
             tempDir.resolve("a/b/c/dest.txt").exists() shouldBe true
             tempDir.resolve("a/b/c/dest.txt").readText() shouldBe "content"
         }
@@ -72,7 +76,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "old-name.txt", to = "new-name.txt"), ctx)
 
-            result shouldBe """"File moved successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File moved successfully"
             source.exists() shouldBe false
             tempDir.resolve("new-name.txt").exists() shouldBe true
         }
@@ -84,7 +89,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "file.txt", to = "subdir/file.txt"), ctx)
 
-            result shouldBe """"File moved successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File moved successfully"
             tempDir.resolve("file.txt").exists() shouldBe false
             tempDir.resolve("subdir/file.txt").exists() shouldBe true
         }
@@ -96,7 +102,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "subdir/file.txt", to = "file.txt"), ctx)
 
-            result shouldBe """"File moved successfully""""
+            result.success shouldBe true
+            result.output shouldBe "File moved successfully"
             tempDir.resolve("subdir/file.txt").exists() shouldBe false
             tempDir.resolve("file.txt").exists() shouldBe true
         }
@@ -106,7 +113,8 @@ class MoveFileToolSpec : StringSpec() {
 
             val result = tool.execute(MoveFileTool.Input(from = "../outside.txt", to = "dest.txt"), ctx)
 
-            result shouldContain "path traversal not allowed"
+            result.success shouldBe false
+            result.output shouldContain "path traversal not allowed"
         }
     }
 }

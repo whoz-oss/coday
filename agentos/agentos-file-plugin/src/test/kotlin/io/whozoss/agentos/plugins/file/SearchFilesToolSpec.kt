@@ -33,9 +33,10 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "config"), ctx)
 
-            result shouldContain "config.json"
-            result shouldContain "user-config.yaml"
-            result shouldNotContain "other.txt"
+            result.success shouldBe true
+            result.output shouldContain "config.json"
+            result.output shouldContain "user-config.yaml"
+            result.output shouldNotContain "other.txt"
         }
 
         "search by fileContent should find matching files" {
@@ -46,22 +47,24 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "world"), ctx)
 
-            result shouldContain "file1.txt"
-            result shouldContain "file2.txt"
-            result shouldNotContain "file3.txt"
+            result.success shouldBe true
+            result.output shouldContain "file1.txt"
+            result.output shouldContain "file2.txt"
+            result.output shouldNotContain "file3.txt"
         }
 
         "search combined fileName and fileContent should return intersection" {
             val tool = SearchFilesTool(tempDir)
-            tempDir.resolve("config.json").writeText("{\"enabled\": true}")
+            tempDir.resolve("config.json").writeText("\"{\"enabled\": true}\"")
             tempDir.resolve("config.yaml").writeText("disabled: false")
-            tempDir.resolve("settings.json").writeText("{\"enabled\": false}")
+            tempDir.resolve("settings.json").writeText("\"{\"enabled\": false}\"")
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "config", fileContent = "enabled"), ctx)
 
-            result shouldContain "config.json"
-            result shouldNotContain "config.yaml"
-            result shouldNotContain "settings.json"
+            result.success shouldBe true
+            result.output shouldContain "config.json"
+            result.output shouldNotContain "config.yaml"
+            result.output shouldNotContain "settings.json"
         }
 
         "no matching files should return no matching files found" {
@@ -70,7 +73,8 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "nonexistent"), ctx)
 
-            result shouldBe """"No matching files found.""""
+            result.success shouldBe true
+            result.output shouldBe "No matching files found."
         }
 
         "smart return - small total size should return content with headers" {
@@ -80,10 +84,11 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "small"), ctx)
 
-            result shouldContain "=== small1.txt ==="
-            result shouldContain "Content 1"
-            result shouldContain "=== small2.txt ==="
-            result shouldContain "Content 2"
+            result.success shouldBe true
+            result.output shouldContain "=== small1.txt ==="
+            result.output shouldContain "Content 1"
+            result.output shouldContain "=== small2.txt ==="
+            result.output shouldContain "Content 2"
         }
 
         "smart return - large total size should return paths only" {
@@ -94,10 +99,11 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "large"), ctx)
 
-            result shouldContain "large1.txt"
-            result shouldContain "large2.txt"
-            result shouldNotContain "==="
-            result shouldNotContain "xxx"
+            result.success shouldBe true
+            result.output shouldContain "large1.txt"
+            result.output shouldContain "large2.txt"
+            result.output shouldNotContain "==="
+            result.output shouldNotContain "xxx"
         }
 
         "fileTypes filter should restrict by extension" {
@@ -108,9 +114,10 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "e", fileTypes = listOf("ts", "json")), ctx)
 
-            result shouldContain "file1.ts"
-            result shouldContain "file2.json"
-            result shouldNotContain "file3.txt"
+            result.success shouldBe true
+            result.output shouldContain "file1.ts"
+            result.output shouldContain "file2.json"
+            result.output shouldNotContain "file3.txt"
         }
 
         "neither fileName nor fileContent should error" {
@@ -118,7 +125,9 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(), ctx)
 
-            result shouldContain "At least one of fileName or fileContent must be provided"
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "At least one of fileName or fileContent must be provided"
         }
 
         "search in subdirectory using path parameter" {
@@ -129,8 +138,9 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "file", path = "subdir"), ctx)
 
-            result shouldContain "subdir/file1.txt"
-            result shouldNotContain "file2.txt"
+            result.success shouldBe true
+            result.output shouldContain "subdir/file1.txt"
+            result.output shouldNotContain "file2.txt"
         }
 
         "binary files in content search should be skipped or marked unreadable" {
@@ -140,8 +150,9 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "searchable"), ctx)
 
-            result shouldContain "text.txt"
-            result shouldNotContain "binary.bin"
+            result.success shouldBe true
+            result.output shouldContain "text.txt"
+            result.output shouldNotContain "binary.bin"
         }
 
         "nested directory search should work" {
@@ -151,7 +162,8 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "deep"), ctx)
 
-            result shouldContain "a/b/c/deep.txt"
+            result.success shouldBe true
+            result.output shouldContain "a/b/c/deep.txt"
         }
 
         "case insensitive fileName search" {
@@ -161,8 +173,9 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "config"), ctx)
 
-            result shouldContain "CONFIG.json"
-            result shouldContain "config.yaml"
+            result.success shouldBe true
+            result.output shouldContain "CONFIG.json"
+            result.output shouldContain "config.yaml"
         }
 
         "case insensitive fileContent search" {
@@ -171,7 +184,8 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "hello"), ctx)
 
-            result shouldContain "file.txt"
+            result.success shouldBe true
+            result.output shouldContain "file.txt"
         }
 
         "pattern starting with - should fallback to NIO" {
@@ -181,8 +195,9 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "-flag"), ctx)
 
-            result shouldContain "file1.txt"
-            result shouldNotContain "file2.txt"
+            result.success shouldBe true
+            result.output shouldContain "file1.txt"
+            result.output shouldNotContain "file2.txt"
         }
 
         "pattern with null byte should fallback to NIO" {
@@ -191,7 +206,8 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "test\u0000injection"), ctx)
 
-            result shouldBe """"No matching files found.""""
+            result.success shouldBe true
+            result.output shouldBe "No matching files found."
         }
 
         "pattern exceeding 1000 chars should fallback to NIO" {
@@ -201,7 +217,8 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = longPattern), ctx)
 
-            result shouldContain "file1.txt"
+            result.success shouldBe true
+            result.output shouldContain "file1.txt"
         }
 
         "paths in results should not expose root directory" {
@@ -210,9 +227,10 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "secret"), ctx)
 
+            result.success shouldBe true
             // Result should be a relative path, not an absolute path containing the temp dir
-            result shouldNotContain tempDir.toString()
-            result shouldContain "secret.txt"
+            result.output shouldNotContain tempDir.toString()
+            result.output shouldContain "secret.txt"
         }
 
         "ripgrep --iglob should match fileName case-insensitively with fileContent" {
@@ -223,10 +241,11 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileName = "testfile", fileContent = "searchable"), ctx)
 
+            result.success shouldBe true
             // All three files should match regardless of case
-            result shouldContain "TestFile.txt"
-            result shouldContain "testfile.md"
-            result shouldContain "TESTFILE.json"
+            result.output shouldContain "TestFile.txt"
+            result.output shouldContain "testfile.md"
+            result.output shouldContain "TESTFILE.json"
         }
 
         "search should not expose denied files like .env" {
@@ -237,16 +256,15 @@ class SearchFilesToolSpec : StringSpec() {
             // Search for .ENV (uppercase) should not return .env contents
             val result = tool.execute(SearchFilesTool.Input(fileName = ".ENV"), ctx)
 
+            result.success shouldBe true
             // .env file should be filtered out due to deny pattern
-            result shouldNotContain "SECRET_KEY"
-            result shouldNotContain "supersecret"
-            // Note: Can't use "shouldNotContain .env" because result contains "config.env"
-            // Instead, verify that the .env file name doesn't appear as a standalone match
-            val lines = result.split("\n")
+            result.output shouldNotContain "SECRET_KEY"
+            result.output shouldNotContain "supersecret"
+            val lines = result.output.split("\n")
             lines.none { it.trim() == ".env" || it.contains("=== .env ===") } shouldBe true
 
             // config.env should be allowed
-            result shouldContain "config.env"
+            result.output shouldContain "config.env"
         }
 
         "should deny extra patterns passed via constructor" {
@@ -259,10 +277,11 @@ class SearchFilesToolSpec : StringSpec() {
 
             val result = tool.execute(SearchFilesTool.Input(fileContent = "data"), ctx)
 
+            result.success shouldBe true
             // *.custom file should be filtered out
-            result shouldNotContain "secret.custom"
+            result.output shouldNotContain "secret.custom"
             // allowed.txt should appear
-            result shouldContain "allowed.txt"
+            result.output shouldContain "allowed.txt"
         }
     }
 }

@@ -34,7 +34,8 @@ class StandardToolSpec : StringSpec() {
             override val paramType: Class<TimezoneInput> = TimezoneInput::class.java
             override val inputSchema = "{}"
 
-            override suspend fun execute(input: TimezoneInput?, context: ToolContext): String = input?.timezone ?: "null-input"
+            override suspend fun execute(input: TimezoneInput?, context: ToolContext): ToolExecutionResult =
+                ToolExecutionResult.success(input?.timezone ?: "null-input")
         }
 
     init {
@@ -43,18 +44,18 @@ class StandardToolSpec : StringSpec() {
         // The tool under test returns "null-input" to signal no args were received.
         // Real tools (e.g. GetCurrentDateTime) return an error to force the LLM to retry.
         "executeWithJson with null calls execute with null input" {
-            testTool.executeWithJson(null, dummyContext) shouldBe "null-input"
+            testTool.executeWithJson(null, dummyContext).output shouldBe "null-input"
         }
 
         "executeWithJson with blank string calls execute with null input" {
-            testTool.executeWithJson("", dummyContext) shouldBe "null-input"
-            testTool.executeWithJson("   ", dummyContext) shouldBe "null-input"
+            testTool.executeWithJson("", dummyContext).output shouldBe "null-input"
+            testTool.executeWithJson("   ", dummyContext).output shouldBe "null-input"
         }
 
         "executeWithJson with empty object uses data-class defaults" {
             // Previously '{}' was short-circuited to null; now it must be deserialized
             // so Kotlin data-class defaults (timezone = 'UTC') kick in.
-            testTool.executeWithJson("{}", dummyContext) shouldBe "UTC"
+            testTool.executeWithJson("{}", dummyContext).output shouldBe "UTC"
         }
 
         "executeWithJson with explicit timezone uses that value" {
@@ -64,7 +65,7 @@ class StandardToolSpec : StringSpec() {
                     "{\"timezone\":\"America/New_York\"}"
                 },
                 dummyContext,
-            ) shouldBe "America/New_York"
+            ).output shouldBe "America/New_York"
         }
     }
 }

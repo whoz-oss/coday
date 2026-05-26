@@ -2,9 +2,9 @@ package io.whozoss.agentos.plugins.file.tools
 
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -28,7 +28,6 @@ class RemoveFileTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<RemoveFileTool.Input> {
     companion object {
-        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
@@ -70,19 +69,30 @@ class RemoveFileTool(
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): String {
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
-            runIOWithTimeout(IO_TIMEOUT) {
-                objectMapper.writeValueAsString(removeFile(params.path))
-            }
+            val result = runIOWithTimeout(IO_TIMEOUT) { removeFile(params.path) }
+            ToolExecutionResult.success(result)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after $IO_TIMEOUT seconds")
+            ToolExecutionResult.error(
+                "Operation timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid path")
+            ToolExecutionResult.error(
+                e.message ?: "Invalid path",
+                errorType = "INVALID_INPUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error removing file: ${e.message}")
+            ToolExecutionResult.error(
+                "Error removing file: ${e.message}",
+                errorType = "REMOVE_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -102,8 +112,6 @@ class RemoveFileTool(
             "File not found: $path"
         }
     }
-
-    private fun createErrorResponse(message: String): String = message
 
     // File deletion is always destructive — always confirm. The path is `required` by the
     // inputSchema and re-validated inside execute(); we don't gate on payload shape here.

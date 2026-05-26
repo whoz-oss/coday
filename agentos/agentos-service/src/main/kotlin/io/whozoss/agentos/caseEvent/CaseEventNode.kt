@@ -160,6 +160,13 @@ class ToolResponseEventNode(
     /** JSON-serialised [io.whozoss.agentos.sdk.caseEvent.MessageContent] */
     val outputJson: String,
     val success: Boolean = true,
+    /**
+     * JSON-serialised [Map]<[String], [Any?]> of opaque tool metadata, or null when the tool
+     * produced no metadata. Stored as a nullable string for backward compatibility with
+     * existing nodes that pre-date this field.
+     */
+    val metadataJson: String? = null,
+    val durationMs: Long? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

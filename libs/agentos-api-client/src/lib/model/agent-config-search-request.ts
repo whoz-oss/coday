@@ -9,6 +9,6 @@
  */
 
 export interface AgentConfigSearchRequest {
-  namespaceExternalId: string
+  namespaceId: string
   userExternalId: string
 }

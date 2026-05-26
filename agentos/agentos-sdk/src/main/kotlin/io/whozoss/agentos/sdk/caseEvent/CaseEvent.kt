@@ -191,6 +191,12 @@ data class ToolRequestEvent(
 
 /**
  * Emitted when a tool execution completes.
+ *
+ * [metadata] carries opaque integration-specific data returned by the tool alongside its
+ * textual [output]. Downstream tool calls in the same case can read it back via
+ * [io.whozoss.agentos.sdk.tool.ToolContext.caseEvents] to perform coherence checks
+ * (e.g. verifying that a referenced entity was fetched before being mutated).
+ * The map is empty when the tool returned no metadata.
  */
 data class ToolResponseEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -203,6 +209,8 @@ data class ToolResponseEvent(
     val success: Boolean = true,
     /** Wall-clock duration of the tool execution in milliseconds, null when not measured. */
     val durationMs: Long? = null,
+    /** Opaque metadata returned by the tool. Empty map when the tool produced no metadata. */
+    val toolMetadata: Map<String, Any?> = emptyMap(),
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_RESPONSE
 }

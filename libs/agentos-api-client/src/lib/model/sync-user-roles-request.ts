@@ -7,10 +7,9 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { NamespaceRoleEntry } from './namespace-role-entry'
 
-export interface UserGroupCreateRequest {
-  namespaceId: string
-  name: string
-  userExternalIdsToAdd: Set<string>
-  agentIds: Set<string>
+export interface SyncUserRolesRequest {
+  userExternalId: string
+  namespaceRoles: Array<NamespaceRoleEntry>
 }

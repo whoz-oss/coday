@@ -9,10 +9,16 @@ interface StandardTool<T> {
     val version: String
     val paramType: Class<T>?
 
+    /**
+     * Execute the tool with a typed input and return a [ToolExecutionResult].
+     *
+     * The default implementation wraps the returned string in a [ToolExecutionResult.success]
+     * with no metadata. Override to attach metadata or signal errors via [ToolExecutionResult.error].
+     */
     suspend fun execute(
         input: T?,
         context: ToolContext,
-    ): String
+    ): ToolExecutionResult
 
     /**
      * Deserialize raw JSON produced by the LLM and execute the tool.
@@ -22,14 +28,18 @@ interface StandardTool<T> {
      * inside the plugin classloader, so [paramType] is always resolvable without
      * crossing classloader boundaries.
      *
+     * Override this method when you need full control over deserialization.
+     * The default implementation delegates to [execute] after deserializing [json]
+     * with the shared [objectMapper].
+     *
      * @param json Raw JSON string from the LLM (e.g. `{"timezone":"UTC"}`)
      * @param context The execution context for this tool call
-     * @return The execution result as a String
+     * @return The execution result including output and optional metadata
      */
     suspend fun executeWithJson(
         json: String?,
         context: ToolContext,
-    ): String {
+    ): ToolExecutionResult {
         val type = paramType
         val input: T? =
             if (type == null || json.isNullOrBlank()) {

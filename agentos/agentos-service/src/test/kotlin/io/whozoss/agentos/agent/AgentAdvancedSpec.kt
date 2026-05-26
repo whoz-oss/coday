@@ -9,6 +9,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -46,12 +47,12 @@ internal class TestRemoveTool(
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): String {
-        val path = input?.path?.takeIf { it.isNotBlank() } ?: return "Error: path required"
+    ): ToolExecutionResult {
+        val path = input?.path?.takeIf { it.isNotBlank() } ?: return ToolExecutionResult.error("Error: path required")
         val resolved = rootDir.resolve(path)
-        if (Files.isDirectory(resolved)) return "Error: Cannot remove directories: $path"
+        if (Files.isDirectory(resolved)) return ToolExecutionResult.error("Error: Cannot remove directories: $path")
         Files.deleteIfExists(resolved)
-        return "File $path deleted successfully"
+        return ToolExecutionResult.success("File $path deleted successfully")
     }
 
     override fun requiresConfirmation(
@@ -418,7 +419,7 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "Read a file"
             every { mockTool.inputSchema } returns "{}"
             every { mockTool.paramType } returns String::class.java
-            coEvery { mockTool.executeWithJson(any(), any()) } returns "file content"
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("file content")
 
             // The generator returns FILES__ReadFile 3 times, then Answer on the 4th call
             val mockGenerator = mockk<AgentIntentionGenerator>()
@@ -917,7 +918,7 @@ class AgentAdvancedSpec :
                 override val version = "1.0.0"
                 override val paramType = null
                 override val bypassImplicitConsent = false
-                override suspend fun execute(input: Map<String, Any>?, context: ToolContext): String =
+                override suspend fun execute(input: Map<String, Any>?, context: ToolContext): ToolExecutionResult =
                     throw RuntimeException("boom")
                 override fun requiresConfirmation(argsJson: String?, context: ToolContext) = true
             }
@@ -1012,9 +1013,10 @@ class AgentAdvancedSpec :
                 override val version = "1.0.0"
                 override val paramType = null
                 override val bypassImplicitConsent = true
-                override suspend fun execute(input: Map<String, Any>?, context: ToolContext): String = "ok"
+                override suspend fun execute(input: Map<String, Any>?, context: ToolContext): ToolExecutionResult =
+                    ToolExecutionResult.success("ok")
                 override fun requiresConfirmation(argsJson: String?, context: ToolContext) = true
-                override suspend fun executeWithJson(json: String?, context: ToolContext): String {
+                override suspend fun executeWithJson(json: String?, context: ToolContext): ToolExecutionResult {
                     throw RuntimeException("disk full")
                 }
             }
