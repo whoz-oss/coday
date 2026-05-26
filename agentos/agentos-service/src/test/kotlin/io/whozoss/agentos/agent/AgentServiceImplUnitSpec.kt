@@ -1,6 +1,5 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -43,7 +42,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val agentConfigService: AgentConfigService = mockk()
     private val intentionGenerator: AgentIntentionGenerator = mockk(relaxed = true)
     private val confirmationManager: ConfirmationManager = mockk(relaxed = true)
-    private val objectMapper = jacksonObjectMapper()
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -57,7 +55,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentConfigService,
             intentionGenerator,
             confirmationManager,
-            objectMapper,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -158,9 +155,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
             val advancedCtx = contextField.get(agent) as AgentAdvancedContext
             advancedCtx.confirmationManager.shouldNotBeNull()
-            advancedCtx.objectMapper.shouldNotBeNull()
             advancedCtx.confirmationManager shouldBe confirmationManager
-            advancedCtx.objectMapper shouldBe objectMapper
         }
 
         "findAgentByName uses AgentConfig instructions as base of system prompt" {
@@ -332,7 +327,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigService,
                     intentionGenerator,
                     confirmationManager,
-                    objectMapper,
                 )
             val configs =
                 listOf(

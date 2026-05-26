@@ -1,6 +1,5 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -599,7 +598,6 @@ class AgentAdvancedSpec :
             tools: List<StandardTool<*>>,
             agentId: UUID,
             confirmationManager: ConfirmationManager? = mockk(relaxed = true),
-            objectMapper: com.fasterxml.jackson.databind.ObjectMapper? = jacksonObjectMapper(),
             chatClient: ChatClient = mockk(relaxed = true),
         ): Pair<AgentAdvancedContext, ChatClient> {
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -612,7 +610,6 @@ class AgentAdvancedSpec :
                     instructions = null,
                     agentId = agentId,
                     confirmationManager = confirmationManager,
-                    objectMapper = objectMapper,
                 )
             return ctx to chatClient
         }
@@ -1083,7 +1080,6 @@ class AgentAdvancedSpec :
                 listOf(tool),
                 agentId,
                 confirmationManager = null,
-                objectMapper = null,
             )
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"old.txt"}"""
 
@@ -1139,6 +1135,33 @@ class AgentAdvancedSpec :
                     .single { (it.content.first() as MessageContent.Text).content.contains("Cannot resolve confirmation") }
             (agentMsg.content.first() as MessageContent.Text).content shouldContain "SOMETHING__obsolete"
             events.filterIsInstance<WarnEvent>().any { it.message.contains("Cannot resolve pending confirmation") } shouldBe true
+        }
+
+        "ToolNotFoundException: unknown tool name in intention surfaces as WarnEvent, no tool execution" {
+            // Intention generator returns a toolName that is NOT in context.tools — could be
+            // an LLM hallucination, a stale alias, or a plugin registry desync. The orchestrator
+            // must catch ToolNotFoundException in run(), emit a WarnEvent, and stop the loop
+            // cleanly (no ToolResponseEvent, no infinite retry).
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val (ctx, _) = confirmationContext(emptyList(), agentId)
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "DOES_NOT_EXIST"),
+                    maxIterations = 1,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val warn = events.filterIsInstance<WarnEvent>().single()
+            warn.message shouldContain "Unknown tool referenced"
+            warn.message shouldContain "DOES_NOT_EXIST"
+            // Loop must not execute the unknown tool — no ToolResponseEvent emitted.
+            events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
         }
 
         "detectRepetitionLoop returns null when window contains a synthetic ToolResponseEvent" {

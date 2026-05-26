@@ -1,6 +1,5 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -21,7 +20,6 @@ data class AgentAdvancedContext(
     val instructions: String?,
     val agentId: UUID,
     val confirmationManager: ConfirmationManager? = null,
-    val objectMapper: ObjectMapper? = null,
 ) {
     internal fun buildMessages(events: List<CaseEvent>): List<Message> {
         val history = convertEventsToMessages(events)
