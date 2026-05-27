@@ -120,7 +120,7 @@ class AgentConfigController(
      *
      * Delegates to [listByNamespace] with `enabledOnly = false`.
      */
-    @GetMapping("/by-parentId/{parentId}", params = ["!enabledOnly"])
+    @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> =
         listByNamespace(parentId, enabledOnly = false)
@@ -138,7 +138,7 @@ class AgentConfigController(
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     fun listByNamespace(
         @PathVariable parentId: UUID,
-        @RequestParam(required = false, defaultValue = "false") enabledOnly: Boolean,
+        @RequestParam enabledOnly: Boolean,
     ): List<AgentConfigResource> =
         agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
 
