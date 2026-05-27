@@ -40,7 +40,7 @@ data class AgentConfigNode(
     val integrationsJson: String? = null,
     val externalMetadataJson: String? = null,
     val advancedExecution: Boolean = false,
-    val enabled: Boolean = false,
+    val published: Boolean = false,
     // EntityMetadata fields
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -71,7 +71,7 @@ data class AgentConfigNode(
             integrations = integrationsJson?.let { MAPPER.readValue(it, INTEGRATIONS_TYPE) },
             advancedExecution = advancedExecution,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
-            enabled = enabled,
+            published = published,
         )
 
     companion object {
@@ -90,8 +90,8 @@ data class AgentConfigNode(
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
                 externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
                 advancedExecution = config.advancedExecution,
-                enabled = config.enabled,
                 version = config.metadata.version,
+                published = config.published,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,
