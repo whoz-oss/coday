@@ -17,6 +17,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.kotest.matchers.nulls.shouldBeNull
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
@@ -275,6 +276,116 @@ class AgentSimpleUnitSpec :
             events.filterIsInstance<ThinkingEvent>().size shouldBe 0
             // The LLM must never have been called
             verify(exactly = 0) { mockChatClient.prompt(any<Prompt>()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // sessionContext injection
+        // -------------------------------------------------------------------------
+
+        "session context on last user message is injected as UserMessage before that message" {
+            // When the last user MessageEvent carries a non-null sessionContext, a synthetic
+            // UserMessage with <session-context> XML must be prepended to it in the LLM prompt.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val capturedPrompt = slot<Prompt>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("ok")
+
+            val agent = makeAgent(agentId, mockChatClient)
+            val msgWithContext = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User One", ActorRole.USER),
+                content = listOf(MessageContent.Text("help me")),
+                sessionContext = mapOf("pageType" to "project", "entityId" to "42"),
+            )
+
+            agent.run(listOf(msgWithContext)).toList()
+
+            val promptMessages = capturedPrompt.captured.instructions
+            val userMessages = promptMessages.filterIsInstance<UserMessage>()
+            // Expect at least 2 UserMessages: the context injection + the actual message
+            (userMessages.size >= 2) shouldBe true
+            val contextMsg = userMessages.firstOrNull { it.text.contains("<session-context>") }
+            contextMsg shouldNotBe null
+            contextMsg!!.text shouldContain "pageType: project"
+            contextMsg.text shouldContain "entityId: 42"
+            contextMsg.text shouldContain "</session-context>"
+            // The context message must immediately precede the user message
+            val contextIndex = promptMessages.indexOf(contextMsg)
+            val userMsgIndex = promptMessages.indexOfFirst {
+                it is UserMessage && it.text.contains("<user name=\"User One\">") && it.text.contains("help me")
+            }
+            (contextIndex + 1) shouldBe userMsgIndex
+        }
+
+        "session context on earlier user messages is NOT injected into the LLM prompt" {
+            // Only the last user message's sessionContext is injected.
+            // A context on a previous turn must be silently ignored.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val capturedPrompt = slot<Prompt>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("ok")
+
+            val agent = makeAgent(agentId, mockChatClient)
+            val firstMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User One", ActorRole.USER),
+                content = listOf(MessageContent.Text("first")),
+                sessionContext = mapOf("pageType" to "dashboard"),
+            )
+            val agentReply = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor(agentId.toString(), "SimpleAgent", ActorRole.AGENT),
+                content = listOf(MessageContent.Text("got it")),
+            )
+            val secondMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User One", ActorRole.USER),
+                content = listOf(MessageContent.Text("follow-up")),
+                sessionContext = null,
+            )
+
+            agent.run(listOf(firstMsg, agentReply, secondMsg)).toList()
+
+            val promptMessages = capturedPrompt.captured.instructions
+            val contextMsg = promptMessages.filterIsInstance<UserMessage>()
+                .firstOrNull { it.text.contains("<session-context>") }
+            // No context injection: the last user message has no sessionContext
+            contextMsg.shouldBeNull()
+        }
+
+        "no session context message is injected when last user message has null sessionContext" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val capturedPrompt = slot<Prompt>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(capture(capturedPrompt)).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("ok")
+
+            val agent = makeAgent(agentId, mockChatClient)
+
+            agent.run(listOf(userMessage(namespaceId, caseId, "hello"))).toList()
+
+            val promptMessages = capturedPrompt.captured.instructions
+            val contextMsg = promptMessages.filterIsInstance<UserMessage>()
+                .firstOrNull { it.text.contains("<session-context>") }
+            contextMsg.shouldBeNull()
         }
 
         "should stop collecting chunks and still emit AgentFinishedEvent when shouldContinue flips to false mid-stream" {

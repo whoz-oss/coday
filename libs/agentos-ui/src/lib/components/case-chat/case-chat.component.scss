@@ -239,6 +239,40 @@
     color: var(--color-text, #1d1d1f);
   }
 
+  // Session context debug block — shown above a MessageEvent when debug toggle is active
+  &__session-context {
+    flex-shrink: 0;
+    border-radius: 6px;
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
+    border-left: 3px solid var(--color-primary, #0071e3);
+    padding: 0.25rem 0.75rem 0.4rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary, #6e6e73);
+    overflow: hidden;
+  }
+
+  &__session-context-label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-primary, #0071e3);
+    margin-bottom: 0.2rem;
+  }
+
+  &__session-context-body {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+    font-size: 0.75rem;
+    color: var(--color-text, #1d1d1f);
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
   // Thinking indicator (three bouncing dots)
   // Messages and thinking indicator are also direct flex items of __messages:
   // flex-shrink: 0 prevents them from being crushed in the scroll container.

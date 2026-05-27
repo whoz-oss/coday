@@ -1,3 +1,24 @@
+## 0.165.1 (2026-05-27)
+
+### 🩹 Fixes
+
+- wz-32167: endpoint to get cases concerning a user by external id ([#915](https://github.com/whoz-oss/coday/pull/915))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.165.0 (2026-05-27)
+
+### 🚀 Features
+
+- #32144 add sessionContext to MessageEvent for application context injection ([#913](https://github.com/whoz-oss/coday/pull/913), [#32144](https://github.com/whoz-oss/coday/issues/32144))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.164.1 (2026-05-27)
 
 ### 🩹 Fixes

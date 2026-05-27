@@ -126,6 +126,11 @@ class MessageEventNode(
     val actorRole: String,
     /** JSON-serialised [List]<[io.whozoss.agentos.sdk.caseEvent.MessageContent]> */
     val contentJson: String,
+    /**
+     * JSON-serialised [Map]<[String],[Any?]> of opaque application context at send time,
+     * or null when no context was provided.
+     */
+    val contextJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

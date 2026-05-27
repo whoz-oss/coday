@@ -15,7 +15,7 @@
         "command": "./agentos-service/check-openapi-spec.sh",
         "cwd": "agentos"
       },
-      "dependsOn": ["build"]
+      "dependsOn": ["assemble"]
     },
     "generate-openapi-spec": {
       "executor": "nx:run-commands",
@@ -27,7 +27,7 @@
         "command": "./gradlew :agentos-service:generateOpenApiDocs --no-configuration-cache",
         "cwd": "agentos"
       },
-      "dependsOn": ["build"]
+      "dependsOn": ["assemble"]
     },
     "regenerate": {
       "executor": "nx:run-commands",
@@ -62,7 +62,7 @@
         "command": "./gradlew :agentos-service:bootJar",
         "cwd": "agentos"
       },
-      "dependsOn": ["build"]
+      "dependsOn": ["assemble"]
     }
   },
   "tags": [

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -26,6 +27,14 @@ data class AgentAdvancedContext(
         return if (instructions != null) history + listOf(UserMessage(instructions)) else history
     }
 
+    /**
+     * Convert case events to Spring AI messages for the LLM prompt.
+     *
+     * When the last user [MessageEvent] carries a non-null [MessageEvent.sessionContext],
+     * it is injected as a [UserMessage] immediately before that message to maintain the
+     * alternating user/assistant pattern expected by most LLM APIs. Session context on
+     * earlier messages is ignored.
+     */
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
         maxDetailedToolCalls: Int = 6,
@@ -35,12 +44,33 @@ data class AgentAdvancedContext(
         val detailedRequestIds =
             selectDetailedToolRequestIds(events, maxDetailedToolCalls, maxDetailedMessagesWithSteps)
 
-        return events.flatMap { event ->
+        val lastUserMsgIndex =
+            events.indexOfLast {
+                it is MessageEvent && it.actor.role == ActorRole.USER
+            }
+
+        return events.flatMapIndexed { index, event ->
             when (event) {
-                is MessageEvent -> listOf(event.toSpringAiMessage(this.agentId.toString()))
-                is ToolRequestEvent -> toToolMessages(event, detailedRequestIds, responsesByRequestId)
-                is IntentionGeneratedEvent -> toIntentionMessage(event)
-                else -> emptyList()
+                is MessageEvent -> {
+                    val prefix: List<Message> =
+                        event
+                            .sessionContextPromptText()
+                            .takeIf { index == lastUserMsgIndex }
+                            ?.let { listOf(UserMessage(it)) } ?: emptyList()
+                    prefix + listOf(event.toSpringAiMessage(this.agentId.toString()))
+                }
+
+                is ToolRequestEvent -> {
+                    toToolMessages(event, detailedRequestIds, responsesByRequestId)
+                }
+
+                is IntentionGeneratedEvent -> {
+                    toIntentionMessage(event)
+                }
+
+                else -> {
+                    emptyList()
+                }
             }
         }
     }
