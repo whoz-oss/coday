@@ -58,7 +58,7 @@ class CaseServiceImpl(
         //.
         val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
-        logger.info { "[CaseService] Case created: ${saved.id} for namespace ${entity.namespaceId}" }
+        logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         return saved
     }
 
@@ -115,7 +115,7 @@ class CaseServiceImpl(
             caseRepository.findByIds(listOf(caseId)).firstOrNull()
                 ?: throw ResourceNotFoundException("Case not found: $caseId")
         val pastEvents = caseEventService.findByParent(caseId)
-        logger.info { "[CaseService] Rehydrating case $caseId with ${pastEvents.size} past events" }
+        logger.info { "Rehydrating case $caseId with ${pastEvents.size} past events" }
         return buildRuntime(case, pastEvents)
     }
 
@@ -204,11 +204,11 @@ class CaseServiceImpl(
                 val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
                 when {
                     resolvedName != null -> {
-                        logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
+                        logger.info { "Agent mention resolved: @$mentionedName -> $resolvedName" }
                         listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
                     }
                     else -> {
-                        logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
+                        logger.warn { "Agent '@$mentionedName' not found, falling back to default" }
                         listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")) +
                             selectDefaultAgent(namespaceId, caseId)
                     }
@@ -218,11 +218,11 @@ class CaseServiceImpl(
                 val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
                 when {
                     stillAvailable -> {
-                        logger.info { "[CaseService] Re-using last selected agent: $lastSelectedName" }
+                        logger.info { "Re-using last selected agent: $lastSelectedName" }
                         listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
                     }
                     else -> {
-                        logger.warn { "[CaseService] Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
+                        logger.warn { "Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
                         listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$lastSelectedName' is no longer available")) +
                             selectDefaultAgent(namespaceId, caseId)
                     }
@@ -252,7 +252,7 @@ class CaseServiceImpl(
 
         return when {
             effectiveDefaultName == null -> {
-                logger.warn { "[CaseService] No default agent configured for namespace $namespaceId" }
+                logger.warn { "No default agent configured for namespace $namespaceId" }
                 listOf(
                     WarnEvent(
                         namespaceId = namespaceId,
@@ -266,11 +266,11 @@ class CaseServiceImpl(
                 when {
                     resolvedName != null -> {
                         val source = if (namespaceLevelDefault != null) "namespace" else "environment"
-                        logger.info { "[CaseService] Selecting $source default agent: $resolvedName" }
+                        logger.info { "Selecting $source default agent: $resolvedName" }
                         listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
                     }
                     else -> {
-                        logger.warn { "[CaseService] Default agent '$effectiveDefaultName' is not available in namespace $namespaceId" }
+                        logger.warn { "Default agent '$effectiveDefaultName' is not available in namespace $namespaceId" }
                         listOf(
                             WarnEvent(
                                 namespaceId = namespaceId,
@@ -316,7 +316,7 @@ class CaseServiceImpl(
             "Cannot run agent for case $caseId: user $userId does not exist"
         }
 
-        logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
+        logger.info { "Running agent: $agentName for case $caseId" }
         val context = AgentExecutionContext(
             namespaceId = runtime.namespaceId,
             caseId = caseId,
@@ -327,7 +327,7 @@ class CaseServiceImpl(
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)
             .catch { error ->
-                logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
+                logger.error(error) { "Error in agent $agentName for case $caseId" }
                 storeEvent(
                     WarnEvent(
                         namespaceId = runtime.namespaceId,
@@ -344,7 +344,7 @@ class CaseServiceImpl(
                 }
                 runtime.emitEvent(saved)
             }
-        logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
+        logger.info { "Agent $agentName finished for case $caseId" }
     }
 
     /**
@@ -402,7 +402,7 @@ class CaseServiceImpl(
             it.emitEvent(savedStatusEvent)
             if (newStatus.isTerminal()) {
                 activeRuntimes.remove(caseId)
-                logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
+                logger.info { "Case $caseId reached terminal status $newStatus, evicted" }
             }
         }
     }

@@ -89,6 +89,11 @@ class AgentSimple(
                         messages
                     }
 
+                logger.debug {
+                    "[$name] sending ${allMessages.size} messages to LLM" +
+                        (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
+                }
+
                 // Bail out immediately if an interrupt/kill was requested before
                 // the LLM call even starts (e.g. kill fired while the previous
                 // tool response was being stored).
@@ -404,7 +409,9 @@ class AgentSimple(
                 // The LLM decided to call this tool: log how long it thought since
                 // the prompt was sent (or since the previous tool response was returned).
                 val turn = llmTurnIndex.get()
-                logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+                logger.info { "$name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+
+                logger.trace { "[$name] tool '${tool.name}' called with args: $toolInput" }
 
                 sendEvent(
                     ToolRequestEvent(
@@ -483,7 +490,7 @@ class AgentSimple(
                                 throw e
                             }
                     }
-                logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
+                logger.info { "tool '${tool.name}' executed in $toolDuration" }
 
                 // Reset the turn mark so the next measurement starts from when
                 // we hand the tool result back to the LLM.
