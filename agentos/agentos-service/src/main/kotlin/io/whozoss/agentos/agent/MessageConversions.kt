@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import org.springframework.web.util.HtmlUtils
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
@@ -43,14 +44,8 @@ internal fun MessageEvent.sessionContextPromptText(): String? {
     return "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
 }
 
-/** Escapes XML special characters to prevent prompt injection. */
-private fun escapeXml(value: String): String =
-    value
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
-        .replace("'", "&apos;")
+/** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
+private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
 
 /**
  * Convert a [MessageEvent] to a Spring AI [Message], as seen from the perspective of [currentAgentId].
