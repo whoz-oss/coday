@@ -1,3 +1,13 @@
+## 0.165.1 (2026-05-27)
+
+### 🩹 Fixes
+
+- wz-32167: endpoint to get cases concerning a user by external id ([#915](https://github.com/whoz-oss/coday/pull/915))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.165.0 (2026-05-27)
 
 ### 🚀 Features
