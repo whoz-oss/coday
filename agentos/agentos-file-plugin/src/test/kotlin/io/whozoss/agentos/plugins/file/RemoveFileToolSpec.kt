@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.file.tools
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
 import java.nio.file.Path
@@ -87,7 +88,7 @@ class RemoveFileToolSpec : StringSpec() {
             result.output shouldContain "path traversal not allowed"
         }
 
-        // ─── WZ-31596 confirmation flow coverage ────────────────────────────────────────
+        // ─── WZ-31596 confirmation flow coverage ────────────────────────────────────────────
 
         "removing file via executeWithJson succeeds (parses JSON then delegates to execute)" {
             val tool = RemoveFileTool(tempDir)
@@ -110,12 +111,9 @@ class RemoveFileToolSpec : StringSpec() {
             file.exists() shouldBe true
         }
 
-        "requiresConfirmation is unconditionally true; bypassImplicitConsent is true" {
+        "confirmationMode is EVERY_TIME (implicit consent never trusted)" {
             val tool = RemoveFileTool(tempDir)
-            tool.bypassImplicitConsent shouldBe true
-            tool.requiresConfirmation("""{"path":"file.txt"}""", ctx) shouldBe true
-            tool.requiresConfirmation("""{"path":""}""", ctx) shouldBe true
-            tool.requiresConfirmation(null, ctx) shouldBe true
+            tool.confirmationMode shouldBe ConfirmationMode.EVERY_TIME
         }
     }
 }

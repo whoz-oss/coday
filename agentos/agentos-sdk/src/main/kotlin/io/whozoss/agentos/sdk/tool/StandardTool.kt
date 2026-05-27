@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.tool
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.sdk.tool.StandardTool.Companion.objectMapper
 
 interface StandardTool<T> {
     val name: String
@@ -52,35 +53,25 @@ interface StandardTool<T> {
 
     // ─── User-confirmation opt-in (WZ-31596) ───────────────────────────────────────────────
     //
-    // A tool opts in to the confirmation flow by overriding [requiresConfirmation] to
-    // return `true` for the inputs that need explicit user validation. The orchestrator
-    // then routes via the [PendingConfirmationEvent] persistence cycle and calls
-    // [executeWithJson] (post-confirmation) or [onRejected] (post-refusal).
+    // A tool opts in to the confirmation flow by setting [confirmationMode] to a value
+    // other than [ConfirmationMode.NONE]. The orchestrator then routes via the
+    // [PendingConfirmationEvent] persistence cycle and calls [executeWithJson]
+    // (post-confirmation) or [onRejected] (post-refusal).
     //
-    // When [requiresConfirmation] returns `false` (the default), the tool runs through
-    // its standard [execute] path — same as a tool that never opted in.
+    // When [confirmationMode] is [ConfirmationMode.NONE] (the default), the tool runs
+    // through its standard [execute] path — same as a tool that never opted in.
 
     /**
-     * When `true`, the orchestrator skips the implicit-consent check (`shouldConfirm`)
-     * and always asks the user for an explicit confirmation prompt. Set this on tools
-     * whose side-effects are destructive enough that the LLM-judged "user already
-     * authorised" path is unsafe (e.g. file deletion, irreversible writes).
-     */
-    val bypassImplicitConsent: Boolean get() = false
-
-    /**
-     * Returns `true` if this specific call requires explicit user confirmation before any
-     * side-effect is applied. Single opt-in for the confirmation flow — a tool that never
-     * overrides this method behaves as a non-confirmation tool.
+     * Declares how this tool participates in the user-confirmation flow.
      *
-     * The orchestrator passes the raw JSON args produced by the LLM. Tools that need a
-     * contextual check on a specific field can parse the JSON locally; most tools that
-     * opt in are destructive enough to simply return `true`.
+     * - [ConfirmationMode.NONE]: no confirmation required — tool executes directly (default).
+     * - [ConfirmationMode.AT_LEAST_ONCE]: confirmation required, but the orchestrator may
+     *   skip the explicit prompt when it detects implicit consent in the conversation
+     *   history (via [ConfirmationManager.shouldConfirm]).
+     * - [ConfirmationMode.EVERY_TIME]: confirmation required on every call; implicit consent
+     *   is never trusted. Use this for irreversible side-effects (e.g. file deletion).
      */
-    fun requiresConfirmation(
-        argsJson: String?,
-        context: ToolContext,
-    ): Boolean = false
+    val confirmationMode: ConfirmationMode get() = ConfirmationMode.NONE
 
     /**
      * Instructions appended to the `analyzeConfirmation` prompt to guide the LLM judge

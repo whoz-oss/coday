@@ -15,6 +15,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.*
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.flow.toList
@@ -35,7 +36,7 @@ import kotlin.io.path.writeText
 internal class TestRemoveTool(
     private val rootDir: java.nio.file.Path,
     override val name: String = "FILES__remove",
-    override val bypassImplicitConsent: Boolean = true,
+    override val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
 ) : StandardTool<TestRemoveTool.Input> {
     data class Input(val path: String? = null)
 
@@ -54,11 +55,6 @@ internal class TestRemoveTool(
         Files.deleteIfExists(resolved)
         return ToolExecutionResult.success("File $path deleted successfully")
     }
-
-    override fun requiresConfirmation(
-        argsJson: String?,
-        context: ToolContext,
-    ): Boolean = true
 
     override fun getConfirmationInstructions(): String =
         "Be strict: explicit confirmation only after the assistant's question."
@@ -80,6 +76,7 @@ class AgentAdvancedSpec :
                     tools = emptyList(),
                     instructions = null,
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             return AgentAdvanced(
                 name = "ParserAgent",
@@ -99,6 +96,7 @@ class AgentAdvancedSpec :
                 content = listOf(MessageContent.Text("Hello, can you help me?")),
             ),
         )
+
         // -------------------------------------------------------------------------
         // Redirect contract
         // -------------------------------------------------------------------------
@@ -120,7 +118,6 @@ class AgentAdvancedSpec :
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            // call() → parameter generation returns valid JSON for the redirect tool
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns """{"agentName":"TargetAgent"}"""
@@ -145,6 +142,7 @@ class AgentAdvancedSpec :
                     tools = listOf(redirectTool),
                     instructions = null,
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             val agent =
                 AgentAdvanced(
@@ -192,7 +190,6 @@ class AgentAdvancedSpec :
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            // call() → parameter generation returns valid JSON for the redirect tool
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns """{"agentName":"TargetAgent"}"""
@@ -217,6 +214,7 @@ class AgentAdvancedSpec :
                     tools = listOf(redirectTool),
                     instructions = null,
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             val agent =
                 AgentAdvanced(
@@ -260,7 +258,6 @@ class AgentAdvancedSpec :
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            // call() → parameter generation returns valid JSON for the redirect tool
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns """{"agentName":"TargetAgent"}"""
@@ -285,6 +282,7 @@ class AgentAdvancedSpec :
                     tools = listOf(redirectTool),
                     instructions = null,
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             val agent =
                 AgentAdvanced(
@@ -326,7 +324,6 @@ class AgentAdvancedSpec :
             (responseIndex < finishedIndex) shouldBe true
         }
 
-
         // -------------------------------------------------------------------------
         // Orchestration integration tests
         // -------------------------------------------------------------------------
@@ -359,6 +356,7 @@ class AgentAdvancedSpec :
                     tools = emptyList(),
                     instructions = null,
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             val agent =
                 AgentAdvanced(
@@ -460,7 +458,6 @@ class AgentAdvancedSpec :
                     toolName = "Answer",
                 )
 
-            // Also mock call() for generateParameters
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns "{}"
@@ -472,6 +469,7 @@ class AgentAdvancedSpec :
                     tools = listOf(mockTool),
                     instructions = null,
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             val agent =
                 AgentAdvanced(
@@ -598,7 +596,7 @@ class AgentAdvancedSpec :
         fun confirmationContext(
             tools: List<StandardTool<*>>,
             agentId: UUID,
-            confirmationManager: ConfirmationManager? = mockk(relaxed = true),
+            confirmationManager: ConfirmationManager,
             chatClient: ChatClient = mockk(relaxed = true),
         ): Pair<AgentAdvancedContext, ChatClient> {
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -660,7 +658,6 @@ class AgentAdvancedSpec :
 
             val toolReqIdx = events.indexOfFirst { it is ToolRequestEvent }
             val pendingIdx = events.indexOfFirst { it is PendingConfirmationEvent }
-            // The IN-CHANNEL MessageEvent(AGENT) carries the question for both UI display and LLM context.
             val agentMsgIdx = events.indexOfFirst { it is MessageEvent && (it as MessageEvent).actor.role == ActorRole.AGENT }
             val finishedIdx = events.indexOfFirst { it is AgentFinishedEvent }
 
@@ -668,14 +665,10 @@ class AgentAdvancedSpec :
             (pendingIdx > toolReqIdx) shouldBe true
             (agentMsgIdx > pendingIdx) shouldBe true
             (finishedIdx > agentMsgIdx) shouldBe true
-            // No ToolResponseEvent for this tool call at this turn.
             events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
-            // File still on disk.
             target.exists() shouldBe true
-            // IN-CHANNEL MessageEvent carries the LLM-formulated question.
             val agentMsg = events[agentMsgIdx] as MessageEvent
             (agentMsg.content.first() as MessageContent.Text).content shouldBe "Voulez-vous supprimer old.txt?"
-            // PendingConfirmationEvent carries the input JSON for replay.
             val pending = events[pendingIdx] as PendingConfirmationEvent
             pending.inputJson shouldContain "old.txt"
         }
@@ -763,9 +756,6 @@ class AgentAdvancedSpec :
             val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns ConfirmationDecision.REJECTED
             val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
-            // After rejection we fall through so the LLM can ask a natural follow-up
-            // ("alors quel fichier ?"). Mock the generator to terminate with `Answer`,
-            // which is what a well-behaved LLM would do on a refusal.
             val intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer")
             val agent =
                 AgentAdvanced(
@@ -779,7 +769,6 @@ class AgentAdvancedSpec :
 
             val resolved = events.filterIsInstance<ConfirmationResolvedEvent>().single()
             resolved.confirmed shouldBe false
-            // Default onRejected returns "Action cancelled."
             resolved.resultText shouldBe "Action cancelled."
 
             val resolutionMsg =
@@ -789,19 +778,14 @@ class AgentAdvancedSpec :
                     .first { (it.content.first() as MessageContent.Text).content.startsWith("User declined.") }
             (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "Action cancelled."
 
-            // Synthetic ToolResponseEvent paired on the original toolRequestId carries the rejection.
             val synthetic =
                 events.filterIsInstance<ToolResponseEvent>().single { it.toolRequestId == "orig-req-2" }
             synthetic.success shouldBe false
             target.exists() shouldBe true
 
-            // Intention loop ran (post-rejection follow-up is the natural UX).
             verify(atLeast = 1) { intentionGenerator.generate(any(), any(), any(), any(), any()) }
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
 
-            // CRITICAL safety guard: the LLM must not be allowed to autonomously retry the
-            // destructive tool it was just refused on. No NEW ToolRequestEvent on FILES__remove
-            // beyond the synthetic ToolResponseEvent paired to the original pending.
             events.filterIsInstance<ToolRequestEvent>().filter { it.toolName == "FILES__remove" } shouldHaveSize 0
             events.filterIsInstance<ToolResponseEvent>().filter {
                 it.toolName == "FILES__remove" && it.toolRequestId != "orig-req-2"
@@ -828,12 +812,12 @@ class AgentAdvancedSpec :
                     namespaceId = namespaceId,
                     caseId = caseId,
                     actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("hmm peut-être")),
+                    content = listOf(MessageContent.Text("hmm peut-\u00eatre")),
                 )
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns
                 ConfirmationDecision.AMBIGUOUS
-            val clarificationText = "Pour être sûr — veux-tu vraiment supprimer old.txt ? Oui ou non."
+            val clarificationText = "Pour \u00eatre s\u00fbr \u2014 veux-tu vraiment supprimer old.txt ? Oui ou non."
             every { confirmationManager.formulateQuestion(any(), any(), any(), any()) } returns clarificationText
             val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
@@ -857,13 +841,13 @@ class AgentAdvancedSpec :
             target.exists() shouldBe true
         }
 
-        "AC6bis: tool with bypassImplicitConsent=false + shouldConfirm=false executes directly without PendingConfirmation" {
+        "AC6bis: tool with confirmationMode=AT_LEAST_ONCE + shouldConfirm=false executes directly without PendingConfirmation" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
             val tempDir = Files.createTempDirectory("agentadvanced-ac6bis-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
-            val tool = TestRemoveTool(tempDir, name = "TEST__safe", bypassImplicitConsent = false)
+            val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.AT_LEAST_ONCE)
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
@@ -917,10 +901,9 @@ class AgentAdvancedSpec :
                 override val inputSchema = "{}"
                 override val version = "1.0.0"
                 override val paramType = null
-                override val bypassImplicitConsent = false
+                override val confirmationMode = ConfirmationMode.AT_LEAST_ONCE
                 override suspend fun execute(input: Map<String, Any>?, context: ToolContext): ToolExecutionResult =
                     throw RuntimeException("boom")
-                override fun requiresConfirmation(argsJson: String?, context: ToolContext) = true
             }
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
@@ -981,7 +964,7 @@ class AgentAdvancedSpec :
                     toolName = "FILES__remove",
                     inputJson = """{"path":"old.txt"}""",
                 )
-            val (ctx, _) = confirmationContext(listOf(tool), agentId)
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, mockk(relaxed = true))
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -999,23 +982,18 @@ class AgentAdvancedSpec :
         }
 
         "executeWithJson throws after user confirms: success=false, MessageEvent says declined" {
-            // Blocker #1 from review: even if the user said yes, if the tool execution
-            // throws then the synthetic ToolResponseEvent.success must be false and the
-            // IN-CHANNEL MessageEvent must NOT claim "User confirmed." (the action did not apply).
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            // Tool whose executeWithJson throws (the path AgentAdvanced invokes post-confirmation).
             val tool = object : StandardTool<Map<String, Any>> {
                 override val name = "FAILING__remove"
                 override val description = "always throws on executeWithJson"
                 override val inputSchema = "{}"
                 override val version = "1.0.0"
                 override val paramType = null
-                override val bypassImplicitConsent = true
+                override val confirmationMode = ConfirmationMode.EVERY_TIME
                 override suspend fun execute(input: Map<String, Any>?, context: ToolContext): ToolExecutionResult =
                     ToolExecutionResult.success("ok")
-                override fun requiresConfirmation(argsJson: String?, context: ToolContext) = true
                 override suspend fun executeWithJson(json: String?, context: ToolContext): ToolExecutionResult {
                     throw RuntimeException("disk full")
                 }
@@ -1048,19 +1026,15 @@ class AgentAdvancedSpec :
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userYes).toList()
 
-            // ConfirmationResolvedEvent.confirmed reflects effective success (user confirmed
-            // AND execution applied). The user said yes, but the tool threw → false.
             val resolved = events.filterIsInstance<ConfirmationResolvedEvent>().single()
             resolved.confirmed shouldBe false
             resolved.resultText shouldContain "disk full"
 
-            // Synthetic ToolResponseEvent.success likewise reflects whether the action applied.
             val synthetic =
                 events.filterIsInstance<ToolResponseEvent>().single { it.toolRequestId == "throw-req" }
             synthetic.success shouldBe false
             (synthetic.output as MessageContent.Text).content shouldContain "disk full"
 
-            // IN-CHANNEL MessageEvent must NOT mislead the LLM with "User confirmed.".
             val agentMessages =
                 events.filterIsInstance<MessageEvent>().filter { it.actor.role == ActorRole.AGENT }
             val resolutionMsg =
@@ -1070,36 +1044,10 @@ class AgentAdvancedSpec :
             (resolutionMsg.content.first() as MessageContent.Text).content shouldContain "User declined."
         }
 
-        "AC10: missing ConfirmationManager throws ConfirmationConfigurationException — surfaced as WarnEvent" {
-            val tempDir = Files.createTempDirectory("agentadvanced-ac10-").also { it.toFile().deleteOnExit() }
-            tempDir.resolve("old.txt").writeText("data")
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-            val tool = TestRemoveTool(tempDir)
-            // No confirmationManager.
-            val (ctx, chatClient) = confirmationContext(
-                listOf(tool),
-                agentId,
-                confirmationManager = null,
-            )
-            every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"old.txt"}"""
-
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = ctx,
-                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "FILES__remove"),
-                    maxIterations = 2,
-                )
-            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
-
-            val warn = events.filterIsInstance<WarnEvent>().single()
-            warn.message shouldContain "Confirmation flow misconfigured"
-            warn.message shouldContain "no ConfirmationManager"
-            events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
-        }
+        // AC10 removed: confirmationManager is now non-nullable on AgentAdvancedContext.
+        // A missing ConfirmationManager is a compile-time error, not a runtime one.
+        // The ConfirmationConfigurationException / WarnEvent path is no longer reachable
+        // through normal usage — DI wiring failures surface at Spring context startup.
 
         "AC12: orphan pending (missing tool) closes durably with ConfirmationResolved + MessageEvent + WarnEvent" {
             val namespaceId = UUID.randomUUID()
@@ -1115,8 +1063,7 @@ class AgentAdvancedSpec :
                     toolName = "SOMETHING__obsolete",
                     inputJson = """{"a":"b"}""",
                 )
-            // No matching tool in the registry.
-            val (ctx, _) = confirmationContext(emptyList(), agentId)
+            val (ctx, _) = confirmationContext(emptyList(), agentId, mockk(relaxed = true))
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -1140,14 +1087,10 @@ class AgentAdvancedSpec :
         }
 
         "ToolNotFoundException: unknown tool name in intention surfaces as WarnEvent, no tool execution" {
-            // Intention generator returns a toolName that is NOT in context.tools — could be
-            // an LLM hallucination, a stale alias, or a plugin registry desync. The orchestrator
-            // must catch ToolNotFoundException in run(), emit a WarnEvent, and stop the loop
-            // cleanly (no ToolResponseEvent, no infinite retry).
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            val (ctx, _) = confirmationContext(emptyList(), agentId)
+            val (ctx, _) = confirmationContext(emptyList(), agentId, mockk(relaxed = true))
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -1162,7 +1105,6 @@ class AgentAdvancedSpec :
             val warn = events.filterIsInstance<WarnEvent>().single()
             warn.message shouldContain "Unknown tool referenced"
             warn.message shouldContain "DOES_NOT_EXIST"
-            // Loop must not execute the unknown tool — no ToolResponseEvent emitted.
             events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
         }
 

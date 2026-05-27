@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -16,11 +17,11 @@ import kotlin.io.path.isDirectory
  *
  * Only removes files, not directories. Fails if file doesn't exist or is a directory.
  *
- * Opts in to the WZ-31596 confirmation flow by overriding [requiresConfirmation] to
- * always return `true` — file deletion is unconditionally destructive. AgentAdvanced
+ * Opts in to the WZ-31596 confirmation flow with [ConfirmationMode.EVERY_TIME] — file
+ * deletion is irreversible and implicit consent must never be trusted. AgentAdvanced
  * gates the call (asks the user, then on confirmation calls [executeWithJson] →
  * [execute] — same validation + delete path; on refusal calls [onRejected]).
- * AgentSimple invokes [execute] directly (no confirmation gate, preserves rétrocompat).
+ * AgentSimple invokes [execute] directly (no confirmation gate).
  */
 class RemoveFileTool(
     private val projectRoot: Path,
@@ -42,8 +43,8 @@ class RemoveFileTool(
 
     override val paramType: Class<Input> = Input::class.java
 
-    // File deletion is destructive and irreversible — always force an explicit user prompt.
-    override val bypassImplicitConsent: Boolean = true
+    // File deletion is irreversible — implicit consent must never be trusted.
+    override val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME
 
     // language=JSON
     override val inputSchema: String =
@@ -112,13 +113,6 @@ class RemoveFileTool(
             "File not found: $path"
         }
     }
-
-    // File deletion is always destructive — always confirm. The path is `required` by the
-    // inputSchema and re-validated inside execute(); we don't gate on payload shape here.
-    override fun requiresConfirmation(
-        argsJson: String?,
-        context: ToolContext,
-    ): Boolean = true
 
     override fun getConfirmationInstructions(): String =
         "Be strict: the user MUST explicitly accept the deletion. A bare 'ok' is acceptable only if " +
