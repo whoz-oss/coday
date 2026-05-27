@@ -79,10 +79,9 @@ interface CaseService : EntityService<Case, UUID> {
      *
      * [sessionContext] is an optional opaque map of application-level context at the time
      * the user sent the message (e.g. current page, entity type/id, edit mode). When present,
-     * it is persisted as a [io.whozoss.agentos.sdk.caseEvent.SessionContextEvent] emitted
-     * immediately before the [io.whozoss.agentos.sdk.caseEvent.MessageEvent]. Only the most
-     * recent [io.whozoss.agentos.sdk.caseEvent.SessionContextEvent] is injected into the LLM
-     * prompt; earlier ones are ignored during message conversion.
+     * it is embedded directly on [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext]
+     * and persisted with the message. Only the last user message's context is injected into
+     * the LLM prompt; earlier turns' context is ignored during message conversion.
      */
     fun addMessage(
         caseId: UUID,

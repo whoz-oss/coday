@@ -45,7 +45,7 @@ data class AgentAdvancedContext(
 
         val lastUserMsgIndex =
             events.indexOfLast {
-                it is MessageEvent && (it as MessageEvent).actor.role == ActorRole.USER
+                it is MessageEvent && it.actor.role == ActorRole.USER
             }
 
         return events.flatMapIndexed { index, event ->

@@ -269,7 +269,7 @@ class AgentSimple(
         }
 
         val lastUserMessageIndex = events.indexOfLast {
-            it is MessageEvent && (it as MessageEvent).actor.role == ActorRole.USER
+            it is MessageEvent && it.actor.role == ActorRole.USER
         }
 
         // Second pass: build messages with tool calls
