@@ -52,22 +52,22 @@ class FilesystemAgentConfigRepository(
         delegate.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
 
     /**
-     * Returns published agents: persisted agents filtered by [enabled][AgentConfig.enabled]
-     * via the delegate (Cypher-side), plus all filesystem agents (always published by definition).
+     * Returns agents for [parentId], optionally filtered to published ones.
+     *
+     * When [enabledOnly] is `true`, persisted agents are filtered to enabled ones via the
+     * delegate (Cypher-side). Filesystem agents are always considered published and are
+     * included in both cases.
      */
-    override fun findEnabledByParent(parentId: UUID): List<AgentConfig> {
-        val persistedEnabled = delegate.findEnabledByParent(parentId)
-        val fromFilesystem = filesystemAgents(parentId, excludeNames = persistedEnabled.mapTo(HashSet()) { it.name.lowercase() })
-        return persistedEnabled + fromFilesystem
-    }
-
-    override fun findByParent(parentId: UUID): List<AgentConfig> {
-        val persisted = delegate.findByParent(parentId)
+    override fun findByParent(parentId: UUID, enabledOnly: Boolean): List<AgentConfig> {
+        val persisted = delegate.findByParent(parentId, enabledOnly)
         val fromFilesystem = filesystemAgents(parentId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() })
         val merged = persisted + fromFilesystem
         logger.debug { "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + ${fromFilesystem.size} filesystem = ${merged.size} total" }
         return merged
     }
+
+    override fun findByParent(parentId: UUID): List<AgentConfig> =
+        findByParent(parentId, enabledOnly = false)
 
     /**
      * Loads and returns agent configs from the filesystem for [parentId].

@@ -26,9 +26,10 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
             override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
 
-            // Returns only enabled configs from the in-memory store.
-            override fun findEnabledByParent(parentId: UUID): List<AgentConfig> =
-                inMemory.findByParent(parentId).filter { it.enabled }
+            // Returns configs from the in-memory store, filtered by enabledOnly.
+            override fun findByParent(parentId: UUID, enabledOnly: Boolean): List<AgentConfig> =
+                if (enabledOnly) inMemory.findByParent(parentId).filter { it.enabled }
+                else inMemory.findByParent(parentId)
         }
     }
 

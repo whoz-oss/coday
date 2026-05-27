@@ -49,8 +49,7 @@ class AgentConfigServiceImpl(
         agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
 
     override fun findByNamespace(namespaceId: UUID, enabledOnly: Boolean): List<AgentConfig> =
-        if (enabledOnly) agentConfigRepository.findEnabledByParent(namespaceId)
-        else agentConfigRepository.findByParent(namespaceId)
+        agentConfigRepository.findByParent(namespaceId, enabledOnly)
 
     override fun publish(id: UUID): AgentConfig {
         val existing = agentConfigRepository.findById(id)
