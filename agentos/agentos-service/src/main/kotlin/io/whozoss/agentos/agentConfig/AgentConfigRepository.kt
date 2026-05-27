@@ -20,13 +20,13 @@ interface AgentConfigRepository : EntityRepository<AgentConfig, UUID> {
     /**
      * Returns [AgentConfig]s belonging to [parentId], optionally filtered to published ones.
      *
-     * When [enabledOnly] is `true`, only enabled (published) configs are returned.
-     * When [enabledOnly] is `false`, all active (non-removed) configs are returned.
-     * Agents stored before the `enabled` field was introduced are treated as
+     * When [publishedOnly] is `true`, only published configs are returned.
+     * When [publishedOnly] is `false`, all active (non-removed) configs are returned.
+     * Agents stored before the `published` field was introduced are treated as
      * published for backward-compatibility.
      *
      * @param parentId The namespace UUID
-     * @param enabledOnly When `true`, restricts results to published configs only
+     * @param publishedOnly When `true`, restricts results to published configs only
      */
-    fun findByParent(parentId: UUID, enabledOnly: Boolean): List<AgentConfig>
+    fun findByParent(parentId: UUID, publishedOnly: Boolean): List<AgentConfig>
 }

@@ -54,11 +54,11 @@ class FilesystemAgentConfigRepository(
     /**
      * Returns agents for [parentId], optionally filtered to published ones.
      *
-     * Delegates to the underlying repository with [enabledOnly], then merges
+     * Delegates to the underlying repository with [publishedOnly], then merges
      * filesystem agents (which are always published by definition).
      */
-    override fun findByParent(parentId: UUID, enabledOnly: Boolean): List<AgentConfig> {
-        val persisted = delegate.findByParent(parentId, enabledOnly)
+    override fun findByParent(parentId: UUID, publishedOnly: Boolean): List<AgentConfig> {
+        val persisted = delegate.findByParent(parentId, publishedOnly)
         val fromFilesystem = filesystemAgents(parentId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() })
         val merged = persisted + fromFilesystem
         logger.debug { "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + ${fromFilesystem.size} filesystem = ${merged.size} total" }
@@ -66,7 +66,7 @@ class FilesystemAgentConfigRepository(
     }
 
     override fun findByParent(parentId: UUID): List<AgentConfig> =
-        findByParent(parentId, enabledOnly = false)
+        findByParent(parentId, publishedOnly = false)
 
     /**
      * Loads and returns agent configs from the filesystem for [parentId].
@@ -104,7 +104,7 @@ class FilesystemAgentConfigRepository(
             modelName = model.modelName,
             integrations = model.integrations,
             // Filesystem agents have no lifecycle — they are always published.
-            enabled = true,
+            published = true,
         )
     }
 

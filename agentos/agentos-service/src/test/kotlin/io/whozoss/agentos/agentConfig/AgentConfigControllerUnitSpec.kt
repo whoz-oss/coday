@@ -114,7 +114,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
             description = "Writes code",
             instructions = "Write clean code.",
             modelName = "claude-3-opus",
-            enabled = false,
+            published = false,
         )
     }
 
@@ -318,11 +318,11 @@ class AgentConfigControllerUnitSpec : StringSpec({
         verify(exactly = 1) { service.findByNamespace(namespaceId, false) }
     }
 
-    "listByNamespace with enabledOnly=true returns only enabled configs" {
-        val c1 = config(name = "published").copy(enabled = true)
+    "listByNamespace with publishedOnly=true returns only published configs" {
+        val c1 = config(name = "published").copy(published = true)
         every { service.findByNamespace(namespaceId, true) } returns listOf(c1)
 
-        val result = controller.listByNamespace(namespaceId, enabledOnly = true)
+        val result = controller.listByNamespace(namespaceId, publishedOnly = true)
 
         result shouldBe listOf(controller.toResource(c1))
         verify(exactly = 1) { service.findByNamespace(namespaceId, true) }

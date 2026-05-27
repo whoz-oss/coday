@@ -38,5 +38,5 @@ data class AgentConfigResource(
      */
     val externalMetadata: Map<String, Any?>? = null,
     /** Whether this agent is published. Null on input is treated as false (unpublished). */
-    val enabled: Boolean? = null,
+    val published: Boolean? = null,
 )
