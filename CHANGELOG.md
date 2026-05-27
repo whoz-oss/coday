@@ -1,3 +1,15 @@
+## 0.164.1 (2026-05-27)
+
+### 🩹 Fixes
+
+- #WZ-31424 Add user group to permission transitive dependency check ([6aa61452](https://github.com/whoz-oss/coday/commit/6aa61452))
+- #WZ-31424 Add user group to namespace child entity ([#914](https://github.com/whoz-oss/coday/pull/914))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.164.0 (2026-05-27)
 
 ### 🚀 Features
