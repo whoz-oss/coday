@@ -167,6 +167,21 @@ class CaseController(
     @PreAuthorize("hasPermission(#id, 'Case', 'DELETE')")
     override fun delete(@PathVariable id: UUID) = super.delete(id)
 
+    /**
+     * GET /api/cases/by-user/{userId} — list all cases concerning a specific user
+     * across every namespace.
+     *
+     * A case concerns a user when they have a direct ADMIN or MEMBER relation on it.
+     * Requires ADMIN permission on the requested user entity, or the caller to be
+     * the user themselves.
+     */
+    @GetMapping("/by-user/{userId}")
+    @PreAuthorize("hasPermission(#userId, 'User', 'READ')")
+    fun listByUser(@PathVariable userId: UUID): List<CaseResource> {
+        logger.debug { "Listing cases for user $userId" }
+        return caseService.findConcerningUser(userId).map { toResource(it) }
+    }
+
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")

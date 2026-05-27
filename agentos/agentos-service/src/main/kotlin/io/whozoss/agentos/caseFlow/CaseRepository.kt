@@ -23,4 +23,14 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      * Implementations must exclude soft-deleted cases.
      */
     fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+
+    /**
+     * Find all cases concerning [userId] across every namespace.
+     *
+     * A case concerns a user when they have a direct ADMIN or MEMBER relation on it.
+     * Namespace-level ADMIN is intentionally excluded so that a namespace admin only
+     * sees their own threads, not every case in the namespace.
+     * Implementations must exclude soft-deleted cases.
+     */
+    fun findConcerningUser(userId: UUID): List<Case>
 }

@@ -6,6 +6,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
@@ -43,6 +44,7 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
+    @Autowired lateinit var userService: UserService
 
     init {
 
@@ -188,6 +190,45 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.id == '$caseId')]", org.hamcrest.Matchers.hasSize<Any>(0)))
         }
+
+        // -------------------------------------------------------------------------
+        // GET /api/cases/by-user/{userId}
+        // -------------------------------------------------------------------------
+
+        "GET /api/cases/by-user/{userId} returns cases across multiple namespaces for that user" {
+            val ns1 = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "user-id-ns1"),
+            )
+            val ns2 = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "user-id-ns2"),
+            )
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns1.id}", "title": "case in ns1" }""")
+            ).andExpect(status().isCreated)
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns2.id}", "title": "case in ns2" }""")
+            ).andExpect(status().isCreated)
+
+            val userId = userService.getCurrentUser().id
+
+            mockMvc.perform(get("/api/cases/by-user/$userId"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(org.hamcrest.Matchers.greaterThanOrEqualTo(2))))
+        }
+
+        "GET /api/cases/by-user/{userId} returns 200 with empty list when user has no cases" {
+            val userId = userService.getCurrentUser().id
+            mockMvc.perform(get("/api/cases/by-user/$userId"))
+                .andExpect(status().isOk)
+        }
+
+        // -------------------------------------------------------------------------
+        // DELETE /api/cases/{id} returns 404 on a second attempt (already soft-deleted)
+        // -------------------------------------------------------------------------
 
         "DELETE /api/cases/{id} returns 404 on a second attempt (already soft-deleted)" {
             val ns = namespaceService.create(

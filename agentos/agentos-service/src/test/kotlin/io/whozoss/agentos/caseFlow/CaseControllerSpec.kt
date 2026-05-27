@@ -226,6 +226,28 @@ class CaseControllerSpec : StringSpec({
         controller.listByParent(namespaceId) shouldBe emptyList()
     }
 
+    // -------------------------------------------------------------------------
+    // listByUser — GET /api/cases/by-user/{userId}
+    // -------------------------------------------------------------------------
+
+    "listByUser returns cases concerning the requested user across namespaces" {
+        val ns2 = UUID.randomUUID()
+        val case1 = caseEntity(title = "in ns1")
+        val case2 = caseEntity(title = "in ns2").copy(namespaceId = ns2)
+        every { caseService.findConcerningUser(callerId) } returns listOf(case1, case2)
+
+        val result = controller.listByUser(callerId)
+
+        result.map { it.id } shouldBe listOf(case1.metadata.id, case2.metadata.id)
+        verify(exactly = 1) { caseService.findConcerningUser(callerId) }
+    }
+
+    "listByUser returns empty list when no cases concern the requested user" {
+        every { caseService.findConcerningUser(callerId) } returns emptyList()
+
+        controller.listByUser(callerId) shouldBe emptyList()
+    }
+
     "listByParent short-circuits for super-admin (hasPermission WRITE returns true via bypass)" {
         val superAdmin = caller.copy(isAdmin = true)
         val case1 = caseEntity()

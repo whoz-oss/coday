@@ -84,6 +84,9 @@ class CaseServiceImpl(
     override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
         caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
 
+    override fun findConcerningUser(userId: UUID): List<Case> =
+        caseRepository.findConcerningUser(userId)
+
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
             killCase(id)
