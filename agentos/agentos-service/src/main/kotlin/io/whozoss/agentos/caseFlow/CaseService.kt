@@ -76,12 +76,20 @@ interface CaseService : EntityService<Case, UUID> {
     /**
      * Store a user message on the case and launch the execution loop in the background.
      * Returns immediately — the caller is never blocked by agent execution.
+     *
+     * [sessionContext] is an optional opaque map of application-level context at the time
+     * the user sent the message (e.g. current page, entity type/id, edit mode). When present,
+     * it is persisted as a [io.whozoss.agentos.sdk.caseEvent.SessionContextEvent] emitted
+     * immediately before the [io.whozoss.agentos.sdk.caseEvent.MessageEvent]. Only the most
+     * recent [io.whozoss.agentos.sdk.caseEvent.SessionContextEvent] is injected into the LLM
+     * prompt; earlier ones are ignored during message conversion.
      */
     fun addMessage(
         caseId: UUID,
         actor: Actor,
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
         answerToEventId: UUID? = null,
+        sessionContext: Map<String, Any?>? = null,
     )
 
     // ========================================

@@ -35,6 +35,7 @@ enum class CaseEventType(
     INTENTION_GENERATED("IntentionGeneratedEvent"),
     TOOL_SELECTED("ToolSelectedEvent"),
     TEXT_CHUNK("TextChunkEvent"),
+    SESSION_CONTEXT("SessionContextEvent"),
     ;
 
     companion object {
@@ -72,6 +73,7 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = IntentionGeneratedEvent::class, name = "IntentionGeneratedEvent"),
     JsonSubTypes.Type(value = ToolSelectedEvent::class, name = "ToolSelectedEvent"),
     JsonSubTypes.Type(value = TextChunkEvent::class, name = "TextChunkEvent"),
+    JsonSubTypes.Type(value = SessionContextEvent::class, name = "SessionContextEvent"),
 )
 sealed interface CaseEvent : Entity {
     val namespaceId: UUID
@@ -304,6 +306,28 @@ data class ToolSelectedEvent(
     val toolName: String,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_SELECTED
+}
+
+/**
+ * Emitted when a user message is accompanied by application session context.
+ *
+ * Carries opaque key-value data describing the client's current state at the time
+ * the user sent the message (e.g. current page type, entity type/id, edit mode).
+ * AgentOS treats this as an opaque [Map] — interpretation is left to the agent.
+ *
+ * Persisted for traceability. Only the most recent [SessionContextEvent] preceding
+ * the last user [MessageEvent] is injected into the LLM prompt; earlier ones are
+ * silently ignored during message conversion.
+ */
+data class SessionContextEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    /** Opaque context map. Keys and values are defined by the calling application. */
+    val context: Map<String, Any?>,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.SESSION_CONTEXT
 }
 
 /**

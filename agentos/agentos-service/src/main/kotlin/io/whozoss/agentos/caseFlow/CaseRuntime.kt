@@ -6,6 +6,7 @@ import io.whozoss.agentos.orchestration.CaseEventEmitter
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SessionContextEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -147,11 +148,16 @@ class CaseRuntime(
      * Store a user message and emit the agent-selection events.
      * Does NOT start the execution loop — the caller ([CaseService]) is responsible
      * for launching [run] in a background coroutine.
+     *
+     * When [sessionContext] is non-null, a [SessionContextEvent] is persisted and emitted
+     * immediately before the [MessageEvent]. This preserves the causal ordering in the
+     * event history: context always precedes the message it annotates.
      */
     fun addUserMessage(
         actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
+        sessionContext: Map<String, Any?>? = null,
     ) {
         logger.info {
             "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
@@ -186,6 +192,9 @@ class CaseRuntime(
             }
         }
 
+        if (sessionContext != null) {
+            storeAndEmitEvent(SessionContextEvent(caseId = id, namespaceId = namespaceId, context = sessionContext))
+        }
         storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
         selectAgent(content, eventList.getAll()).forEach { storeAndEmitEvent(it) }
     }

@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SessionContextEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -29,6 +30,7 @@ import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
+import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
@@ -251,6 +253,11 @@ class AgentSimple(
      * Convert CaseEvents to Spring AI Messages for LLM context.
      * Includes tool calls and responses for proper conversation history.
      * Converts other agents to "user" role for LLM compatibility.
+     *
+     * The most recent [SessionContextEvent] preceding the last user [MessageEvent]
+     * is injected as an extra [UserMessage] immediately before that message.
+     * All earlier [SessionContextEvent]s are ignored — only the current session
+     * context is relevant to the LLM.
      */
     private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
         val messages = mutableListOf<Message>()
@@ -262,6 +269,13 @@ class AgentSimple(
             toolResponses[toolResponse.toolRequestId] = toolResponse
         }
 
+        // Identify the most recent SessionContextEvent that precedes the last user MessageEvent.
+        // It will be injected as a UserMessage just before that MessageEvent.
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && (it as MessageEvent).actor.role == io.whozoss.agentos.sdk.actor.ActorRole.USER }
+        val sessionContextToInject: SessionContextEvent? = if (lastUserMessageIndex > 0) {
+            events.subList(0, lastUserMessageIndex).filterIsInstance<SessionContextEvent>().lastOrNull()
+        } else null
+
         // Second pass: build messages with tool calls
         var i = 0
         while (i < events.size) {
@@ -269,6 +283,10 @@ class AgentSimple(
 
             when (event) {
                 is MessageEvent -> {
+                    // Inject session context as a UserMessage immediately before the last user message.
+                    if (i == lastUserMessageIndex && sessionContextToInject != null) {
+                        messages.add(UserMessage(sessionContextToInject.toPromptText()))
+                    }
                     // If we have accumulated tool calls, create AssistantMessage with them
                     if (toolCallsForCurrentMessage.isNotEmpty()) {
                         messages.add(

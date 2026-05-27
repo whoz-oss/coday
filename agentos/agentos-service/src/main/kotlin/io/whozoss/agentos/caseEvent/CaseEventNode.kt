@@ -255,6 +255,21 @@ class ToolSelectedEventNode(
     removed: Boolean? = null,
 ) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
+@Node("SessionContextEvent")
+class SessionContextEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    /** JSON-serialised [Map]<[String], [Any?]> of opaque session context */
+    val contextJson: String,
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
 @Node("TextChunkEvent")
 class TextChunkEventNode(
     id: String,

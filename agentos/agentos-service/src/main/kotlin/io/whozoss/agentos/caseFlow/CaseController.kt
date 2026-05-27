@@ -185,6 +185,7 @@ class CaseController(
             actor = userActor,
             content = listOf(MessageContent.Text(request.content)),
             answerToEventId = request.answerToEventId,
+            sessionContext = request.sessionContext,
         )
         logger.info { "Message added to case: $caseId" }
     }
@@ -217,4 +218,6 @@ class CaseController(
 data class AddMessageRequest(
     val content: String,
     val answerToEventId: UUID? = null,
+    /** Opaque application context at the time the user sent this message. Persisted as a [SessionContextEvent]. */
+    val sessionContext: Map<String, Any?>? = null,
 )

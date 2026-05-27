@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.SessionContextEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -25,6 +26,14 @@ data class AgentAdvancedContext(
         return if (instructions != null) history + listOf(UserMessage(instructions)) else history
     }
 
+    /**
+     * Convert case events to Spring AI messages for the LLM prompt.
+     *
+     * The most recent [SessionContextEvent] preceding the last user [MessageEvent]
+     * is injected as a [UserMessage] immediately before that message, as a synthetic
+     * assistant-turn boundary to maintain the alternating user/assistant pattern
+     * expected by most LLM APIs. All earlier [SessionContextEvent]s are ignored.
+     */
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
         maxDetailedToolCalls: Int = 6,
@@ -34,9 +43,24 @@ data class AgentAdvancedContext(
         val detailedRequestIds =
             selectDetailedToolRequestIds(events, maxDetailedToolCalls, maxDetailedMessagesWithSteps)
 
-        return events.flatMap { event ->
+        // Identify the most recent SessionContextEvent preceding the last user MessageEvent.
+        val lastUserMsgIndex = events.indexOfLast {
+            it is MessageEvent && (it as MessageEvent).actor.role == io.whozoss.agentos.sdk.actor.ActorRole.USER
+        }
+        val sessionContextToInject: SessionContextEvent? = if (lastUserMsgIndex > 0) {
+            events.subList(0, lastUserMsgIndex).filterIsInstance<SessionContextEvent>().lastOrNull()
+        } else null
+
+        return events.flatMapIndexed { index, event ->
             when (event) {
-                is MessageEvent -> listOf(event.toSpringAiMessage(this.agentId.toString()))
+                is MessageEvent -> {
+                    // For Advanced, inject context as a UserMessage before the last user message.
+                    // This preserves the user/assistant alternation expected by the LLM.
+                    val prefix: List<Message> = if (index == lastUserMsgIndex && sessionContextToInject != null) {
+                        listOf(UserMessage(sessionContextToInject.toPromptText()))
+                    } else emptyList()
+                    prefix + listOf(event.toSpringAiMessage(this.agentId.toString()))
+                }
                 is ToolRequestEvent -> toToolMessages(event, detailedRequestIds, responsesByRequestId)
                 is IntentionGeneratedEvent -> toIntentionMessage(event)
                 else -> emptyList()
