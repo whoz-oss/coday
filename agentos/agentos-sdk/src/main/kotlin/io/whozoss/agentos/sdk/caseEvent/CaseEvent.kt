@@ -158,6 +158,12 @@ data class AgentRunningEvent(
 
 /**
  * Emitted when a message is added to the context.
+ *
+ * [sessionContext] carries optional opaque application-level context at the time the user
+ * sent the message (e.g. current page type, entity type/id, edit mode). It is persisted
+ * for traceability but never replayed as a conversational message — only the most recent
+ * user [MessageEvent] that carries a non-null [sessionContext] has it injected into the
+ * LLM prompt (as a synthetic context block prepended to the message).
  */
 data class MessageEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -166,6 +172,8 @@ data class MessageEvent(
     override val timestamp: Instant = Instant.now(),
     val actor: Actor,
     val content: List<MessageContent>,
+    /** Opaque application context at send time. Null when no context was provided. */
+    val sessionContext: Map<String, Any?>? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }

@@ -29,6 +29,7 @@ import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
+import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
@@ -251,6 +252,11 @@ class AgentSimple(
      * Convert CaseEvents to Spring AI Messages for LLM context.
      * Includes tool calls and responses for proper conversation history.
      * Converts other agents to "user" role for LLM compatibility.
+     *
+     * When the last user [MessageEvent] carries a non-null [MessageEvent.sessionContext],
+     * it is injected as an extra [UserMessage] immediately before that message.
+     * Session context on earlier messages is ignored — only the current turn's context
+     * is relevant to the LLM.
      */
     private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
         val messages = mutableListOf<Message>()
@@ -262,13 +268,19 @@ class AgentSimple(
             toolResponses[toolResponse.toolRequestId] = toolResponse
         }
 
-        // Second pass: build messages with tool calls
-        var i = 0
-        while (i < events.size) {
-            val event = events[i]
+        val lastUserMessageIndex =
+            events.indexOfLast {
+                it is MessageEvent && it.actor.role == ActorRole.USER
+            }
 
+        // Second pass: build messages with tool calls
+        events.forEachIndexed { index, event ->
             when (event) {
                 is MessageEvent -> {
+                    // Inject session context as a UserMessage immediately before the last user message.
+                    if (index == lastUserMessageIndex) {
+                        event.sessionContextPromptText()?.let { messages.add(UserMessage(it)) }
+                    }
                     // If we have accumulated tool calls, create AssistantMessage with them
                     if (toolCallsForCurrentMessage.isNotEmpty()) {
                         messages.add(
@@ -323,8 +335,6 @@ class AgentSimple(
                     // Ignore other event types for message conversion
                 }
             }
-
-            i++
         }
 
         // Handle any remaining tool calls at the end.

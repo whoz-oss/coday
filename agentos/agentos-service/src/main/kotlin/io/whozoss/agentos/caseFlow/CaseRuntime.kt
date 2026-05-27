@@ -147,11 +147,15 @@ class CaseRuntime(
      * Store a user message and emit the agent-selection events.
      * Does NOT start the execution loop — the caller ([CaseService]) is responsible
      * for launching [run] in a background coroutine.
+     *
+     * When [sessionContext] is non-null, it is embedded directly in the [MessageEvent]
+     * as [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext].
      */
     fun addUserMessage(
         actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
+        sessionContext: Map<String, Any?>? = null,
     ) {
         logger.info {
             "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
@@ -186,7 +190,7 @@ class CaseRuntime(
             }
         }
 
-        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
+        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content, sessionContext = sessionContext))
         selectAgent(content, eventList.getAll()).forEach { storeAndEmitEvent(it) }
     }
 

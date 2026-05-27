@@ -167,9 +167,10 @@ class CaseServiceImpl(
         actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID?,
+        sessionContext: Map<String, Any?>?,
     ) {
         val runtime = getCaseRuntime(caseId)
-        runtime.addUserMessage(actor, content, answerToEventId)
+        runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
     }

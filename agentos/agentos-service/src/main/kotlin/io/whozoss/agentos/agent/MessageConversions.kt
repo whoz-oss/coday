@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import org.springframework.web.util.HtmlUtils
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
@@ -13,6 +14,7 @@ import org.springframework.ai.chat.messages.UserMessage
  */
 private val AGENT_TAG_REGEX = Regex("""<agent name="[^"]*">(.*?)</agent>""", RegexOption.DOT_MATCHES_ALL)
 private val USER_TAG_REGEX = Regex("""<user name="[^"]*">(.*?)</user>""", RegexOption.DOT_MATCHES_ALL)
+private val SESSION_CONTEXT_TAG = "session-context"
 
 /**
  * Strip any conversation tags ([AGENT_TAG_REGEX], [USER_TAG_REGEX]) from a string.
@@ -24,6 +26,25 @@ internal fun String.stripConversationTags(): String =
     AGENT_TAG_REGEX
         .replace(this, "$1")
         .let { USER_TAG_REGEX.replace(it, "$1") }
+
+/**
+ * Render the [MessageEvent.sessionContext] as a human-readable prompt fragment.
+ *
+ * Formats the opaque context map as a simple key: value list inside an XML tag so the
+ * LLM can identify it as structured metadata rather than conversational content.
+ * Returns null when [MessageEvent.sessionContext] is null.
+ *
+ * Keys and values are XML-escaped to prevent prompt injection via client-controlled
+ * context values (e.g. a value containing `</session-context>` must not be able to
+ * break the XML structure seen by the LLM).
+ */
+internal fun MessageEvent.sessionContextPromptText(): String? =
+    sessionContext?.let { ctx ->
+        val entries = ctx.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
+        "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
+}
+    /** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
+private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
 
 /**
  * Convert a [MessageEvent] to a Spring AI [Message], as seen from the perspective of [currentAgentId].
