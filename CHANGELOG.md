@@ -1,3 +1,13 @@
+## 0.164.0 (2026-05-27)
+
+### 🚀 Features
+
+- WZ-32157 context improvements ([#912](https://github.com/whoz-oss/coday/pull/912))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.163.0 (2026-05-26)
 
 ### 🚀 Features
