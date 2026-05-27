@@ -268,19 +268,17 @@ class AgentSimple(
             toolResponses[toolResponse.toolRequestId] = toolResponse
         }
 
-        val lastUserMessageIndex = events.indexOfLast {
-            it is MessageEvent && it.actor.role == ActorRole.USER
-        }
+        val lastUserMessageIndex =
+            events.indexOfLast {
+                it is MessageEvent && it.actor.role == ActorRole.USER
+            }
 
         // Second pass: build messages with tool calls
-        var i = 0
-        while (i < events.size) {
-            val event = events[i]
-
+        events.forEachIndexed { index, event ->
             when (event) {
                 is MessageEvent -> {
                     // Inject session context as a UserMessage immediately before the last user message.
-                    if (i == lastUserMessageIndex) {
+                    if (index == lastUserMessageIndex) {
                         event.sessionContextPromptText()?.let { messages.add(UserMessage(it)) }
                     }
                     // If we have accumulated tool calls, create AssistantMessage with them
@@ -337,8 +335,6 @@ class AgentSimple(
                     // Ignore other event types for message conversion
                 }
             }
-
-            i++
         }
 
         // Handle any remaining tool calls at the end.

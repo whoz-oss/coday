@@ -38,13 +38,12 @@ internal fun String.stripConversationTags(): String =
  * context values (e.g. a value containing `</session-context>` must not be able to
  * break the XML structure seen by the LLM).
  */
-internal fun MessageEvent.sessionContextPromptText(): String? {
-    val ctx = sessionContext ?: return null
-    val entries = ctx.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
-    return "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
+internal fun MessageEvent.sessionContextPromptText(): String? =
+    sessionContext?.let { ctx ->
+        val entries = ctx.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
+        "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
 }
-
-/** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
+    /** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
 private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
 
 /**

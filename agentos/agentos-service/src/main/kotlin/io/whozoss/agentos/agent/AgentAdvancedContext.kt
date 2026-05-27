@@ -52,11 +52,10 @@ data class AgentAdvancedContext(
             when (event) {
                 is MessageEvent -> {
                     val prefix: List<Message> =
-                        if (index == lastUserMsgIndex) {
-                            event.sessionContextPromptText()?.let { listOf(UserMessage(it)) } ?: emptyList()
-                        } else {
-                            emptyList()
-                        }
+                        event
+                            .sessionContextPromptText()
+                            .takeIf { index == lastUserMsgIndex }
+                            ?.let { listOf(UserMessage(it)) } ?: emptyList()
                     prefix + listOf(event.toSpringAiMessage(this.agentId.toString()))
                 }
 

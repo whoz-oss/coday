@@ -128,7 +128,7 @@ class MessageEventNode(
     val contentJson: String,
     /**
      * JSON-serialised [Map]<[String],[Any?]> of opaque application context at send time,
-     * or null when no context was provided. Nullable for backward compat with existing nodes.
+     * or null when no context was provided.
      */
     val contextJson: String? = null,
     created: Instant = Instant.now(),
