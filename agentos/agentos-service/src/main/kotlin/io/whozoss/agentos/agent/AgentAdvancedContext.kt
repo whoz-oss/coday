@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -42,21 +43,34 @@ data class AgentAdvancedContext(
         val detailedRequestIds =
             selectDetailedToolRequestIds(events, maxDetailedToolCalls, maxDetailedMessagesWithSteps)
 
-        val lastUserMsgIndex = events.indexOfLast {
-            it is MessageEvent && (it as MessageEvent).actor.role == io.whozoss.agentos.sdk.actor.ActorRole.USER
-        }
+        val lastUserMsgIndex =
+            events.indexOfLast {
+                it is MessageEvent && (it as MessageEvent).actor.role == ActorRole.USER
+            }
 
         return events.flatMapIndexed { index, event ->
             when (event) {
                 is MessageEvent -> {
-                    val prefix: List<Message> = if (index == lastUserMsgIndex) {
-                        event.sessionContextPromptText()?.let { listOf(UserMessage(it)) } ?: emptyList()
-                    } else emptyList()
+                    val prefix: List<Message> =
+                        if (index == lastUserMsgIndex) {
+                            event.sessionContextPromptText()?.let { listOf(UserMessage(it)) } ?: emptyList()
+                        } else {
+                            emptyList()
+                        }
                     prefix + listOf(event.toSpringAiMessage(this.agentId.toString()))
                 }
-                is ToolRequestEvent -> toToolMessages(event, detailedRequestIds, responsesByRequestId)
-                is IntentionGeneratedEvent -> toIntentionMessage(event)
-                else -> emptyList()
+
+                is ToolRequestEvent -> {
+                    toToolMessages(event, detailedRequestIds, responsesByRequestId)
+                }
+
+                is IntentionGeneratedEvent -> {
+                    toIntentionMessage(event)
+                }
+
+                else -> {
+                    emptyList()
+                }
             }
         }
     }

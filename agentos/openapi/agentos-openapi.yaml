@@ -2066,6 +2066,9 @@ components:
         answerToEventId:
           type: string
           format: uuid
+        sessionContext:
+          type: object
+          additionalProperties: {}
       required:
       - content
     Actor:
@@ -2312,6 +2315,9 @@ components:
               oneOf:
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
+          sessionContext:
+            type: object
+            additionalProperties: {}
       required:
       - actor
       - caseId
