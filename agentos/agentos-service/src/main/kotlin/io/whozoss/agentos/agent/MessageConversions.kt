@@ -13,6 +13,7 @@ import org.springframework.ai.chat.messages.UserMessage
  */
 private val AGENT_TAG_REGEX = Regex("""<agent name="[^"]*">(.*?)</agent>""", RegexOption.DOT_MATCHES_ALL)
 private val USER_TAG_REGEX = Regex("""<user name="[^"]*">(.*?)</user>""", RegexOption.DOT_MATCHES_ALL)
+private val SESSION_CONTEXT_TAG = "session-context"
 
 /**
  * Strip any conversation tags ([AGENT_TAG_REGEX], [USER_TAG_REGEX]) from a string.
@@ -39,7 +40,7 @@ internal fun String.stripConversationTags(): String =
 internal fun MessageEvent.sessionContextPromptText(): String? {
     val ctx = sessionContext ?: return null
     val entries = ctx.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
-    return "<session-context>\n$entries\n</session-context>"
+    return "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
 }
 
 /** Escapes XML special characters to prevent prompt injection. */
