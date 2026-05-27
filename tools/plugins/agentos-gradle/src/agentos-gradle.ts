@@ -60,6 +60,17 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
             },
             dependsOn: [SDK_DEPENDENCY],
           },
+          assemble: {
+            executor: 'nx:run-commands',
+            cache: true,
+            inputs: GRADLE_INPUTS,
+            outputs: ['{projectRoot}/build'],
+            options: {
+              command: `./gradlew :${projectName}:assemble`,
+              cwd: 'agentos',
+            },
+            dependsOn: [SDK_DEPENDENCY],
+          },
           test: {
             executor: 'nx:run-commands',
             cache: true,

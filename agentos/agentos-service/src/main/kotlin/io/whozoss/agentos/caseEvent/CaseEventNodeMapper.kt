@@ -157,6 +157,7 @@ class CaseEventNodeMapper(
                     node.actorDisplayName,
                     node.actorRole,
                     node.contentJson,
+                    node.contextJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -285,7 +286,7 @@ class CaseEventNodeMapper(
                 )
         }
 
-    // ─── toDomain ──────────────────────────────────────────────────────────────────────────
+    // ─── toDomain ──────────────────────────────────────────────────────────────────────────────────────
 
     private fun toDomain(n: CaseStatusEventNode) =
         CaseStatusEvent(
@@ -343,6 +344,7 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             actor = Actor(id = n.actorId, displayName = n.actorDisplayName, role = ActorRole.valueOf(n.actorRole)),
             content = serializer.deserialize(n.contentJson),
+            sessionContext = n.contextJson?.let { serializer.deserializeMetadata(it) },
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -431,7 +433,7 @@ class CaseEventNodeMapper(
             chunk = n.chunk,
         )
 
-    // ─── fromDomain ───────────────────────────────────────────────────────────────────────
+    // ─── fromDomain ─────────────────────────────────────────────────────────────────────────────────────
 
     private fun fromDomain(e: CaseStatusEvent) =
         CaseStatusEventNode(
@@ -516,6 +518,7 @@ class CaseEventNodeMapper(
             actorDisplayName = e.actor.displayName,
             actorRole = e.actor.role.name,
             contentJson = serializer.serialize(e.content),
+            contextJson = e.sessionContext?.let { serializer.serializeMetadata(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -651,7 +654,7 @@ class CaseEventNodeMapper(
             removed = e.metadata.removed.takeIf { it },
         )
 
-    // ─── Shared helper ─────────────────────────────────────────────────────────────────────
+    // ─── Shared helper ──────────────────────────────────────────────────────────────────────────────────────
 
     private fun metadata(n: CaseEventNode) =
         EntityMetadata(

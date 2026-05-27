@@ -21,6 +21,12 @@
             [class.case-chat__message--user]="item.event.actor.role === 'USER'"
             [class.case-chat__message--agent]="item.event.actor.role === 'AGENT'"
           >
+            @if (showTechnical() && item.event.sessionContext) {
+              <div class="case-chat__session-context">
+                <span class="case-chat__session-context-label">session context</span>
+                <pre class="case-chat__session-context-body">{{ item.event.sessionContext | json }}</pre>
+              </div>
+            }
             <span class="case-chat__message-author">{{ item.event.actor.displayName }}</span>
             <div class="case-chat__message-text case-chat__message-text--markdown" [innerHTML]="item.html"></div>
           </div>
