@@ -37,6 +37,15 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
 
+    /**
+     * List all cases concerning [userId] across every namespace.
+     *
+     * Delegates to [CaseRepository.findConcerningUser]. A case concerns a user
+     * when they have a direct ADMIN or MEMBER relation on it. Namespace-level
+     * ADMIN is intentionally excluded.
+     */
+    fun findConcerningUser(userId: UUID): List<Case>
+
     // ========================================
     // Runtime Instance Management
     // ========================================

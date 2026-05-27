@@ -45,6 +45,11 @@ open class Neo4jCaseRepository(
             )
             .map { it.toDomain() }
 
+    override fun findConcerningUser(userId: UUID): List<Case> =
+        caseNodeNeo4jRepository
+            .findConcerningUser(userId = userId.toString())
+            .map { it.toDomain() }
+
     override fun delete(id: UUID): Boolean =
         caseNodeNeo4jRepository
             .findByIdOrNull(id.toString())

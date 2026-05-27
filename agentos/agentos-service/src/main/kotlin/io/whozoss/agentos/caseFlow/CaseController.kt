@@ -5,11 +5,11 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
@@ -49,7 +49,6 @@ class CaseController(
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
-
     override val entityType = EntityType.CASE
 
     override fun toResource(entity: Case): CaseResource =
@@ -90,7 +89,9 @@ class CaseController(
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
     @HideOnAccessDenied
-    override fun getById(@PathVariable id: UUID): CaseResource = super.getById(id)
+    override fun getById(
+        @PathVariable id: UUID,
+    ): CaseResource = super.getById(id)
 
     // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
 
@@ -105,15 +106,18 @@ class CaseController(
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    override fun listByParent(@PathVariable parentId: UUID): List<CaseResource> {
+    override fun listByParent(
+        @PathVariable parentId: UUID,
+    ): List<CaseResource> {
         val user = userService.getCurrentUser()
         val userId = user.id.toString()
-        val isNamespaceAdmin = permissionService.hasPermission(
-            userId,
-            EntityType.NAMESPACE,
-            parentId.toString(),
-            Action.WRITE,
-        )
+        val isNamespaceAdmin =
+            permissionService.hasPermission(
+                userId,
+                EntityType.NAMESPACE,
+                parentId.toString(),
+                Action.WRITE,
+            )
         return if (isNamespaceAdmin) {
             logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
             caseService.findByParent(parentId).map { toResource(it) }
@@ -131,7 +135,9 @@ class CaseController(
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'READ')")
-    override fun create(@Valid @RequestBody resource: CaseResource): CaseResource {
+    override fun create(
+        @Valid @RequestBody resource: CaseResource,
+    ): CaseResource {
         val created = super.create(resource)
         val caseId = created.id ?: error("Created case must have an id")
         val userId = userService.getCurrentUser().id.toString()
@@ -158,14 +164,51 @@ class CaseController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: CaseResource,
     ): CaseResource {
-        val existing = caseService.findById(id)
-            ?: throw io.whozoss.agentos.exception.ResourceNotFoundException("Case not found: $id")
+        val existing =
+            caseService.findById(id)
+                ?: throw io.whozoss.agentos.exception
+                    .ResourceNotFoundException("Case not found: $id")
         return toResource(caseService.update(toDomainForUpdate(resource, existing)))
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'DELETE')")
-    override fun delete(@PathVariable id: UUID) = super.delete(id)
+    override fun delete(
+        @PathVariable id: UUID,
+    ) = super.delete(id)
+
+    /**
+     * GET /api/cases/by-user/{userId} — list all cases concerning a specific user
+     * across every namespace.
+     *
+     * A case concerns a user when they have a direct ADMIN or MEMBER relation on it.
+     */
+    @GetMapping("/by-user/{userId}")
+    fun listByUser(
+        @PathVariable userId: UUID,
+    ): List<CaseResource> {
+        logger.debug { "Listing cases for user $userId" }
+        return caseService.findConcerningUser(userId).map { toResource(it) }
+    }
+
+    /**
+     * GET /api/cases/by-user/external/{externalId} — list all cases concerning a user
+     * identified by their external identity-provider key, across every namespace.
+     *
+     * Resolves the user from [externalId], then delegates to [listByUser] logic.
+     * Returns 404 if no user matches the external id.
+     */
+    @GetMapping("/by-user/external/{externalId}")
+    fun listByUserExternalId(
+        @PathVariable externalId: String,
+    ): List<CaseResource> {
+        val user =
+            userService.findByExternalId(externalId)
+                ?: throw io.whozoss.agentos.exception
+                    .ResourceNotFoundException("User not found: $externalId")
+        logger.debug { "Listing cases for user ${user.id} (externalId=$externalId)" }
+        return caseService.findConcerningUser(user.id).map { toResource(it) }
+    }
 
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
@@ -176,9 +219,10 @@ class CaseController(
     ) {
         val user = userService.getCurrentUser()
         logger.info { "Adding message to case: $caseId" }
-        val displayName = listOfNotNull(user.firstname, user.lastname)
-            .joinToString(" ")
-            .ifBlank { user.metadata.id.toString() }
+        val displayName =
+            listOfNotNull(user.firstname, user.lastname)
+                .joinToString(" ")
+                .ifBlank { user.metadata.id.toString() }
         val userActor = Actor(id = user.metadata.id.toString(), displayName = displayName, role = ActorRole.USER)
         caseService.addMessage(
             caseId = caseId,
@@ -196,7 +240,9 @@ class CaseController(
      */
     @PostMapping("/{caseId}/interrupt")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
-    fun interruptCase(@PathVariable caseId: UUID) {
+    fun interruptCase(
+        @PathVariable caseId: UUID,
+    ) {
         logger.info { "Interrupting case: $caseId" }
         caseService.interruptCase(caseId)
         logger.info { "Case interrupted: $caseId" }
@@ -205,14 +251,15 @@ class CaseController(
     /** POST /api/cases/{caseId}/kill — permanently terminate a case. Requires DELETE. */
     @PostMapping("/{caseId}/kill")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'DELETE')")
-    fun killCase(@PathVariable caseId: UUID) {
+    fun killCase(
+        @PathVariable caseId: UUID,
+    ) {
         logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }
     }
 
-    companion object : KLogging() {
-    }
+    companion object : KLogging()
 }
 
 data class AddMessageRequest(

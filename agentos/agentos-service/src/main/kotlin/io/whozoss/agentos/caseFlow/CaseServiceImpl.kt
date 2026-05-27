@@ -26,6 +26,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -55,7 +56,7 @@ class CaseServiceImpl(
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
         // Persist the full entity so client-supplied title and status are preserved
-        //.
+        // .
         val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
@@ -81,8 +82,13 @@ class CaseServiceImpl(
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
-    override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
-        caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
+    override fun findAccessibleByUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case> = caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
+
+    @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
+    override fun findConcerningUser(userId: UUID): List<Case> = caseRepository.findConcerningUser(userId)
 
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
@@ -131,11 +137,24 @@ class CaseServiceImpl(
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
             isAgentAuthorized = { agentName, userId ->
-                userId == null || agentConfigService
-                    .findAvailableByNamespaceIdAndUserId(namespaceId = case.namespaceId, userId = userId, agentName = agentName)
-                    .isNotEmpty()
+                userId == null ||
+                    agentConfigService
+                        .findAvailableByNamespaceIdAndUserId(
+                            namespaceId = case.namespaceId,
+                            userId = userId,
+                            agentName = agentName,
+                        ).isNotEmpty()
             },
-            runAgent = { agentName, events, eventsProvider, userId, shouldContinue -> runAgent(agentName, case.id, events, eventsProvider, userId, shouldContinue) },
+            runAgent = { agentName, events, eventsProvider, userId, shouldContinue ->
+                runAgent(
+                    agentName,
+                    case.id,
+                    events,
+                    eventsProvider,
+                    userId,
+                    shouldContinue,
+                )
+            },
             inputEvents = inputEvents,
         )
 
@@ -208,13 +227,21 @@ class CaseServiceImpl(
                         logger.info { "Agent mention resolved: @$mentionedName -> $resolvedName" }
                         listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
                     }
+
                     else -> {
                         logger.warn { "Agent '@$mentionedName' not found, falling back to default" }
-                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")) +
+                        listOf(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = "Agent '$mentionedName' not found",
+                            ),
+                        ) +
                             selectDefaultAgent(namespaceId, caseId)
                     }
                 }
             }
+
             lastSelectedName != null -> {
                 val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
                 when {
@@ -222,14 +249,24 @@ class CaseServiceImpl(
                         logger.info { "Re-using last selected agent: $lastSelectedName" }
                         listOf(agentSelectedEvent(lastSelectedName, namespaceId, caseId))
                     }
+
                     else -> {
                         logger.warn { "Last selected agent '$lastSelectedName' is no longer available, falling back to default" }
-                        listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$lastSelectedName' is no longer available")) +
+                        listOf(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = "Agent '$lastSelectedName' is no longer available",
+                            ),
+                        ) +
                             selectDefaultAgent(namespaceId, caseId)
                     }
                 }
             }
-            else -> selectDefaultAgent(namespaceId, caseId)
+
+            else -> {
+                selectDefaultAgent(namespaceId, caseId)
+            }
         }
     }
 
@@ -262,6 +299,7 @@ class CaseServiceImpl(
                     ),
                 )
             }
+
             else -> {
                 val resolvedName = agentService.resolveAgentName(effectiveDefaultName, namespaceId)
                 when {
@@ -270,6 +308,7 @@ class CaseServiceImpl(
                         logger.info { "Selecting $source default agent: $resolvedName" }
                         listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
                     }
+
                     else -> {
                         logger.warn { "Default agent '$effectiveDefaultName' is not available in namespace $namespaceId" }
                         listOf(
@@ -318,12 +357,13 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
-        val context = AgentExecutionContext(
-            namespaceId = runtime.namespaceId,
-            caseId = caseId,
-            userId = userId,
-            caseEventsProvider = eventsProvider,
-        )
+        val context =
+            AgentExecutionContext(
+                namespaceId = runtime.namespaceId,
+                caseId = caseId,
+                userId = userId,
+                caseEventsProvider = eventsProvider,
+            )
         agentService
             .findAgentByName(agentName, context)
             .run(events, shouldContinue)
