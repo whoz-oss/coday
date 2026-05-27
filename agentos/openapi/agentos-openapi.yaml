@@ -1717,7 +1717,7 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: publishedOnly
+      - name: enabledOnly
         in: query
         required: false
         schema:
@@ -1938,7 +1938,7 @@ components:
         externalMetadata:
           type: object
           additionalProperties: {}
-        published:
+        enabled:
           type: boolean
       required:
       - name
