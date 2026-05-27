@@ -25,8 +25,8 @@ import java.util.UUID
  * Persistence contract tests for [AgentConfigRepository] Cypher queries.
  *
  * Covers:
- * - [AgentConfigRepository.findByParent] with `publishedOnly` filter (published/unpublished,
- *   backward compatibility with null published, soft-delete, namespace scoping)
+ * - [AgentConfigRepository.findByParent] with `enabledOnly` filter (enabled/disabled,
+ *   backward compatibility with null enabled, soft-delete, namespace scoping)
  * - [AgentConfigRepository.findAvailableByNamespaceIdAndUserId] (user group membership,
  *   namespace membership, union/deduplication, agent name filtering)
  */
@@ -256,41 +256,41 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // findByParent with publishedOnly filter
+        // findByParent with enabledOnly filter
         // -------------------------------------------------------------------------
 
-        "findByParent with publishedOnly=false returns all active configs regardless of published status" {
+        "findByParent with enabledOnly=false returns all active configs regardless of enabled status" {
             val ns = namespaceRepo.save(namespace())
-            val published = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(published = true))
-            val unpublished = agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(published = false))
+            val enabled = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(enabled = true))
+            val disabled = agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(enabled = false))
 
-            val result = agentConfigRepo.findByParent(ns.id, publishedOnly = false)
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = false)
 
-            result.map { it.id } shouldContainExactlyInAnyOrder listOf(published.id, unpublished.id)
+            result.map { it.id } shouldContainExactlyInAnyOrder listOf(enabled.id, disabled.id)
         }
 
-        "findByParent with publishedOnly=true returns only published configs" {
+        "findByParent with enabledOnly=true returns only enabled configs" {
             val ns = namespaceRepo.save(namespace())
-            val published = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(published = true))
-            agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(published = false))
+            val enabled = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(enabled = true))
+            agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(enabled = false))
 
-            val result = agentConfigRepo.findByParent(ns.id, publishedOnly = true)
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
 
             result shouldHaveSize 1
-            result.first().id shouldBe published.id
+            result.first().id shouldBe enabled.id
         }
 
-        "findByParent with publishedOnly=true treats null published as published for backward compatibility" {
+        "findByParent with enabledOnly=true treats null enabled as published for backward compatibility" {
             val ns = namespaceRepo.save(namespace())
             val saved = agentConfigRepo.save(agentConfig(ns.id, "legacy-agent"))
             driver.session().use { session ->
                 session.run(
-                    "MATCH (a:AgentConfig {id: \$id}) REMOVE a.published",
+                    "MATCH (a:AgentConfig {id: \$id}) REMOVE a.enabled",
                     mapOf("id" to saved.id.toString()),
                 )
             }
 
-            val result = agentConfigRepo.findByParent(ns.id, publishedOnly = true)
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
 
             result shouldHaveSize 1
             result.first().id shouldBe saved.id
@@ -302,18 +302,18 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val toDelete = agentConfigRepo.save(agentConfig(ns.id, "deleted-agent"))
             agentConfigRepo.delete(toDelete.id)
 
-            val result = agentConfigRepo.findByParent(ns.id, publishedOnly = false)
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = false)
 
             result shouldHaveSize 1
             result.first().id shouldBe active.id
         }
 
-        "findByParent with publishedOnly=true excludes soft-deleted published configs" {
+        "findByParent with enabledOnly=true excludes soft-deleted enabled configs" {
             val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "enabled-then-deleted").copy(published = true))
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "enabled-then-deleted").copy(enabled = true))
             agentConfigRepo.delete(agent.id)
 
-            val result = agentConfigRepo.findByParent(ns.id, publishedOnly = true)
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
 
             result.shouldBeEmpty()
         }
@@ -324,7 +324,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val agentInNs1 = agentConfigRepo.save(agentConfig(ns1.id, "ns1-agent"))
             agentConfigRepo.save(agentConfig(ns2.id, "ns2-agent"))
 
-            val result = agentConfigRepo.findByParent(ns1.id, publishedOnly = false)
+            val result = agentConfigRepo.findByParent(ns1.id, enabledOnly = false)
 
             result shouldHaveSize 1
             result.first().id shouldBe agentInNs1.id

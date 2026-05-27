@@ -63,7 +63,7 @@ class AgentConfigController(
             createdOn = entity.metadata.created,
             updatedBy = entity.metadata.modifiedBy,
             updatedOn = entity.metadata.modified,
-            published = entity.published,
+            enabled = entity.enabled,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -77,7 +77,7 @@ class AgentConfigController(
             integrations = resource.integrations,
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
-            published = resource.published ?: false,
+            enabled = resource.enabled ?: false,
         )
 
     /**
@@ -85,7 +85,7 @@ class AgentConfigController(
      *
      * Two fields are intentionally excluded (mass-assignment guards):
      * - [AgentConfig.namespaceId]: clients cannot relocate an AgentConfig across namespaces via PUT
-     * - [AgentConfig.published]: publication state is managed exclusively via the
+     * - [AgentConfig.enabled]: publication state is managed exclusively via the
      *   [publish] and [unpublish] endpoints
      */
     private fun toDomainForUpdate(
@@ -111,36 +111,36 @@ class AgentConfigController(
     // story 5-4 factorisation of the pattern introduced by 5-3).
 
     /**
-     * GET /api/agent-configs/by-parentId/{parentId} (no publishedOnly param)
+     * GET /api/agent-configs/by-parentId/{parentId} (no enabledOnly param)
      *
-     * Matched by Spring MVC when `publishedOnly` is absent from the query string.
-     * The `params = ["!publishedOnly"]` selector makes this mutually exclusive with
+     * Matched by Spring MVC when `enabledOnly` is absent from the query string.
+     * The `params = ["!enabledOnly"]` selector makes this mutually exclusive with
      * [listByNamespace], resolving the ambiguous-mapping conflict that arises from
      * the inherited [EntityController.listByParent] `@GetMapping`.
      *
-     * Delegates to [listByNamespace] with `publishedOnly = false`.
+     * Delegates to [listByNamespace] with `enabledOnly = false`.
      */
-    @GetMapping("/by-parentId/{parentId}", params = ["!publishedOnly"])
+    @GetMapping("/by-parentId/{parentId}", params = ["!enabledOnly"])
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> =
-        listByNamespace(parentId, publishedOnly = false)
+        listByNamespace(parentId, enabledOnly = false)
 
     /**
-     * GET /api/agent-configs/by-parentId/{parentId}?publishedOnly=...
+     * GET /api/agent-configs/by-parentId/{parentId}?enabledOnly=...
      *
-     * Matched by Spring MVC when `publishedOnly` is present in the query string.
+     * Matched by Spring MVC when `enabledOnly` is present in the query string.
      * When `true`, only published agents are returned (end-user contexts like Copilot).
      * When `false`, all agents visible to namespace members/admins are returned.
      * Spring's `DefaultConversionService` handles `Boolean` binding — invalid values
      * (neither `"true"` nor `"false"`) produce a 400.
      */
-    @GetMapping("/by-parentId/{parentId}", params = ["publishedOnly"])
+    @GetMapping("/by-parentId/{parentId}", params = ["enabledOnly"])
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     fun listByNamespace(
         @PathVariable parentId: UUID,
-        @RequestParam(required = false, defaultValue = "false") publishedOnly: Boolean,
+        @RequestParam(required = false, defaultValue = "false") enabledOnly: Boolean,
     ): List<AgentConfigResource> =
-        agentConfigService.findByNamespace(parentId, publishedOnly).map { toResource(it) }
+        agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")

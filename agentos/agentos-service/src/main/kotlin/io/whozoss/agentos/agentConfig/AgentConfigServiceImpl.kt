@@ -50,18 +50,18 @@ class AgentConfigServiceImpl(
     override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
         agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
 
-    override fun findByNamespace(namespaceId: UUID, publishedOnly: Boolean): List<AgentConfig> =
-        agentConfigRepository.findByParent(namespaceId, publishedOnly)
+    override fun findByNamespace(namespaceId: UUID, enabledOnly: Boolean): List<AgentConfig> =
+        agentConfigRepository.findByParent(namespaceId, enabledOnly)
 
     override fun publish(id: UUID): AgentConfig {
         val existing = agentConfigRepository.findById(id)
             ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        return agentConfigRepository.save(existing.copy(published = true))
+        return agentConfigRepository.save(existing.copy(enabled = true))
     }
 
     override fun unpublish(id: UUID): AgentConfig {
         val existing = agentConfigRepository.findById(id)
             ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        return agentConfigRepository.save(existing.copy(published = false))
+        return agentConfigRepository.save(existing.copy(enabled = false))
     }
 }
