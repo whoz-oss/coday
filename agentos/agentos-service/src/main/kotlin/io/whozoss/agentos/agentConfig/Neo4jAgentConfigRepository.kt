@@ -34,9 +34,9 @@ open class Neo4jAgentConfigRepository(
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
 
-    override fun findEnabledByParent(parentId: UUID): List<AgentConfig> =
+    override fun findByParent(parentId: UUID, enabledOnly: Boolean): List<AgentConfig> =
         neo4jRepository
-            .findActiveByNamespaceId(parentId.toString(), enabledOnly = true)
+            .findActiveByNamespaceId(parentId.toString(), enabledOnly = enabledOnly)
             .map { it.toDomain() }
 
     override fun delete(id: UUID): Boolean =
