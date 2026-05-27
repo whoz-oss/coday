@@ -1533,6 +1533,47 @@ paths:
             \ field."
           content:
             text/event-stream: {}
+  /api/cases/by-user/{userId}:
+    get:
+      tags:
+      - case-controller
+      operationId: listByUserCase
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
+  /api/cases/by-user/external/{externalId}:
+    get:
+      tags:
+      - case-controller
+      operationId: listByUserExternalIdCase
+      parameters:
+      - name: externalId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
   /api/cases/by-parentId/{parentId}:
     get:
       tags:
