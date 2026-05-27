@@ -64,7 +64,7 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
         var lastResponse: String? = null
 
         logger.debug { "Intention generation: sending ${messages.size + 1} messages to LLM" }
-        logger.debug { "Intention prompt:\n$prompt" }
+        logger.trace { "Intention prompt:\n$prompt" }
 
         repeat(MAX_INTENTION_ATTEMPTS) { attempt ->
             try {
@@ -74,7 +74,7 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
                         .call()
                         .content() ?: throw AgentIntentionGenerationException("Null LLM response")
 
-                logger.debug { "Intention generation response:\n$response" }
+                logger.trace { "Intention generation response:\n$response" }
                 lastResponse = response
                 val (intention, toolName) = parseIntentionAndTool(response, toolNames)
 
@@ -95,7 +95,8 @@ Now produce your response using EXACTLY these XML tags (no extra text outside th
 
         logger.warn {
             "Intention generation failed after $MAX_INTENTION_ATTEMPTS " +
-                "attempts: ${lastException?.message}, falling back to $ANSWER_TOOL"
+                "attempts: ${lastException?.message}, falling back to $ANSWER_TOOL" +
+                (lastResponse?.let { "\nLast LLM response was:\n$it" } ?: "")
         }
         return IntentionGeneratedEvent(
             namespaceId = namespaceId,

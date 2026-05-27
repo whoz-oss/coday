@@ -284,6 +284,7 @@ class Neo4jPermissionRepository(
             EntityType.INTEGRATION_CONFIG,
             EntityType.AI_PROVIDER,
             EntityType.AI_MODEL,
+            EntityType.USER_GROUP,
         )
     }
 }

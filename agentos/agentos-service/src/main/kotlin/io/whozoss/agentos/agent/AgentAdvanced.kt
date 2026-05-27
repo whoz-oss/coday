@@ -154,6 +154,10 @@ class AgentAdvanced(
                     accumulatedEvents.add(intention)
                     lastIntention = intention
 
+                    logger.debug {
+                        "[$name] iteration $iteration/${maxIterations}\n\nintention='${intention.intention}\n\n'tool='${intention.toolName}\n\n'"
+                    }
+
                     if (intention.toolName == AgentIntentionGenerator.ANSWER_TOOL) {
                         continueLoop = false
                     } else {
@@ -654,6 +658,9 @@ class AgentAdvanced(
         val intentionContext = lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
         val messages = context.buildMessages(accumulatedEvents) + UserMessage(intentionContext)
 
+        logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
+        logger.trace { "[$name] generateFinalResponse intentionContext:\n$intentionContext" }
+
         val contentBuilder = StringBuilder()
         context.chatClient
             .prompt(Prompt(messages))
@@ -732,6 +739,10 @@ Intention: ${intentionEvent.intention}
             """.trimIndent()
         val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
         val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(parametersPrompt)
+
+        logger.debug { "[$name] generateParameters for '${tool.name}' — sending ${messages.size} messages" }
+        logger.trace { "[$name] generateParameters prompt:\n$parametersPrompt" }
+
         val rawParameters =
             context.chatClient
                 .prompt(Prompt(messages))
@@ -739,6 +750,8 @@ Intention: ${intentionEvent.intention}
                 .content()
                 ?.trim() ?: "{}"
         val parameters = stripJsonFence(rawParameters)
+
+        logger.trace { "[$name] generateParameters raw response for '${tool.name}': $parameters" }
 
         return ToolRequestEvent(
             namespaceId = namespaceId,

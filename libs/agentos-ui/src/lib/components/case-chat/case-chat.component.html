@@ -22,9 +22,21 @@
           </div>
         } @else if (item.kind === 'technical') {
           <div class="case-chat__technical" [class.case-chat__technical--warn]="item.item.type === 'WarnEvent'">
-            <span class="case-chat__technical-label">{{ item.item.label }}</span>
             @if (item.item.detail) {
-              <span class="case-chat__technical-detail">{{ item.item.detail }}</span>
+              <button
+                type="button"
+                class="case-chat__technical-header"
+                (click)="toggleTechnical(item.eventId)"
+                [attr.aria-expanded]="isTechnicalExpanded(item.eventId)"
+              >
+                <span class="case-chat__technical-label">{{ item.item.label }}</span>
+                <span class="case-chat__technical-chevron">{{ isTechnicalExpanded(item.eventId) ? '▼' : '▶' }}</span>
+              </button>
+              @if (isTechnicalExpanded(item.eventId)) {
+                <div class="case-chat__technical-body">{{ item.item.detail }}</div>
+              }
+            } @else {
+              <span class="case-chat__technical-label">{{ item.item.label }}</span>
             }
           </div>
         } @else {

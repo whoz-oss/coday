@@ -23,6 +23,7 @@ import {
   CaseEvent,
   CaseStatusEvent,
   Configuration,
+  IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
   ToolResponseEvent,
@@ -42,7 +43,13 @@ export interface ToolCall {
 
 /** A technical event displayed only when showTechnical is enabled. */
 export interface TechnicalItem {
-  type: 'WarnEvent' | 'CaseStatusEvent' | 'AgentRunningEvent' | 'AgentFinishedEvent' | 'AgentSelectedEvent'
+  type:
+    | 'WarnEvent'
+    | 'CaseStatusEvent'
+    | 'AgentRunningEvent'
+    | 'AgentFinishedEvent'
+    | 'AgentSelectedEvent'
+    | 'IntentionGeneratedEvent'
   label: string
   detail?: string
 }
@@ -139,6 +146,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  /** Expanded state per technical eventId — collapsed by default */
+  protected readonly expandedTechnicals = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -447,6 +457,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'PendingConfirmationEvent',
       'ConfirmationResolvedEvent',
       'WarnEvent',
+      'IntentionGeneratedEvent',
     ] as const
 
     // handle the different event names we see in the SSE stream
@@ -587,6 +598,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.showTechnical.update((v) => !v)
   }
 
+  protected toggleTechnical(eventId: string): void {
+    this.expandedTechnicals.update((set) => {
+      const next = new Set(set)
+      if (next.has(eventId)) next.delete(eventId)
+      else next.add(eventId)
+      return next
+    })
+  }
+
+  protected isTechnicalExpanded(eventId: string): boolean {
+    return this.expandedTechnicals().has(eventId)
+  }
+
   // ---------------------------------------------------------------------------
   // Markdown rendering
   // ---------------------------------------------------------------------------
@@ -663,6 +687,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'AgentSelectedEvent': {
         const e = event as AgentSelectedEvent
         return { type: 'AgentSelectedEvent', label: `🎯 Agent selected: ${e.agentName}` }
+      }
+      case 'IntentionGeneratedEvent': {
+        const e = event as IntentionGeneratedEvent
+        return { type: 'IntentionGeneratedEvent', label: `🧠 Intention → ${e.toolName}`, detail: e.intention }
       }
       default:
         return null

@@ -109,14 +109,15 @@ class AgentServiceImpl(
         userId: UUID?,
     ): Pair<AiModel, AiProvider> {
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
-        val providerConfig = if (userId != null) {
-            aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
-        } else {
-            baseProvider
-        }
+        val providerConfig =
+            if (userId != null) {
+                aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+            } else {
+                baseProvider
+            }
 
         logger.info {
-            "[AgentService] Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
+            "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
                 "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
                 "provider='${providerConfig.name}', userId=$userId)"
         }
@@ -151,7 +152,7 @@ class AgentServiceImpl(
         providerConfig: AiProvider,
         context: AgentExecutionContext,
     ): Agent {
-        logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
+        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
 
         val tools =
             if (context.userId != null) {
@@ -159,10 +160,9 @@ class AgentServiceImpl(
             } else {
                 toolResolverService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
             }
-        logger.info {
-            "[AgentService] Loaded ${tools.size} tool(s) " +
-                "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
-        }
+        logger.info { "Loaded ${tools.size} tool(s) for agent '$agentName'" }
+        logger.debug { "Tools for '$agentName': ${tools.map { it.name }}" }
+        logger.trace { "Tools detail for '$agentName':\n" + tools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
 
         // Resolve user identity once here so plugins receive it via ToolContext without
         // needing access to UserService themselves.
@@ -170,6 +170,7 @@ class AgentServiceImpl(
 
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
         val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
+        logger.trace { "Final instructions for '$agentName':\n$instructions" }
 
         return if (advancedExecution) {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
