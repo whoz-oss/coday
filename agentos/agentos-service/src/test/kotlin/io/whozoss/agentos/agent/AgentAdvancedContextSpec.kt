@@ -2,7 +2,9 @@ package io.whozoss.agentos.agent
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
@@ -437,6 +439,64 @@ class AgentAdvancedContextSpec :
             summaries shouldHaveSize 1
             summaries[0].text shouldContain "REDIRECT__redirect"
             summaries[0].text shouldContain "Success" // null response → Success
+        }
+
+        // -------------------------------------------------------------------------
+        // sessionContext injection
+        // -------------------------------------------------------------------------
+
+        "session context on last user message is injected as UserMessage before that message" {
+            val events = listOf(
+                userMessage("first turn"),
+                agentMessage(agentId, "Agent", "reply"),
+                MessageEvent(
+                    namespaceId = ns,
+                    caseId = case,
+                    actor = Actor("user1", "User", ActorRole.USER),
+                    content = listOf(MessageContent.Text("second turn")),
+                    sessionContext = mapOf("pageType" to "project", "entityId" to "99"),
+                ),
+            )
+            val messages = context.convertEventsToMessages(events)
+
+            val contextMsg = messages.filterIsInstance<UserMessage>()
+                .firstOrNull { it.text.contains("<session-context>") }
+            contextMsg shouldNotBe null
+            contextMsg!!.text shouldContain "pageType: project"
+            contextMsg.text shouldContain "entityId: 99"
+            // The context message must immediately precede the last user message
+            val contextIndex = messages.indexOf(contextMsg)
+            val lastUserMsg = messages.filterIsInstance<UserMessage>()
+                .last { it.text.contains("<user name=\"") && it.text.contains("second turn") }
+            messages.indexOf(lastUserMsg) shouldBe contextIndex + 1
+        }
+
+        "session context on earlier user messages is NOT injected" {
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = ns,
+                    caseId = case,
+                    actor = Actor("user1", "User", ActorRole.USER),
+                    content = listOf(MessageContent.Text("first")),
+                    sessionContext = mapOf("pageType" to "dashboard"),
+                ),
+                agentMessage(agentId, "Agent", "ok"),
+                userMessage("follow-up"),  // last user message, no context
+            )
+            val messages = context.convertEventsToMessages(events)
+
+            val contextMsg = messages.filterIsInstance<UserMessage>()
+                .firstOrNull { it.text.contains("<session-context>") }
+            contextMsg.shouldBeNull()
+        }
+
+        "no session context message is injected when last user message has null sessionContext" {
+            val events = listOf(userMessage("hello"))
+            val messages = context.convertEventsToMessages(events)
+
+            val contextMsg = messages.filterIsInstance<UserMessage>()
+                .firstOrNull { it.text.contains("<session-context>") }
+            contextMsg.shouldBeNull()
         }
 
         // -------------------------------------------------------------------------

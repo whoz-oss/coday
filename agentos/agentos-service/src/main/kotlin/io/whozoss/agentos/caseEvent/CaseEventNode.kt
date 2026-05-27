@@ -126,6 +126,11 @@ class MessageEventNode(
     val actorRole: String,
     /** JSON-serialised [List]<[io.whozoss.agentos.sdk.caseEvent.MessageContent]> */
     val contentJson: String,
+    /**
+     * JSON-serialised [Map]<[String],[Any?]> of opaque application context at send time,
+     * or null when no context was provided. Nullable for backward compat with existing nodes.
+     */
+    val contextJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -248,21 +253,6 @@ class ToolSelectedEventNode(
     timestamp: Instant,
     val agentId: String,
     val toolName: String,
-    created: Instant = Instant.now(),
-    createdBy: String? = null,
-    modified: Instant = Instant.now(),
-    modifiedBy: String? = null,
-    removed: Boolean? = null,
-) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
-
-@Node("SessionContextEvent")
-class SessionContextEventNode(
-    id: String,
-    caseId: String,
-    namespaceId: String,
-    timestamp: Instant,
-    /** JSON-serialised [Map]<[String], [Any?]> of opaque session context */
-    val contextJson: String,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

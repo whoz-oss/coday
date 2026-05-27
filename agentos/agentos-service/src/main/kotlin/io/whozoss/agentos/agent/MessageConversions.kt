@@ -3,7 +3,6 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.SessionContextEvent
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
@@ -27,14 +26,15 @@ internal fun String.stripConversationTags(): String =
         .let { USER_TAG_REGEX.replace(it, "$1") }
 
 /**
- * Render a [SessionContextEvent] as a human-readable prompt fragment for injection into the LLM.
+ * Render the [MessageEvent.sessionContext] as a human-readable prompt fragment.
  *
  * Formats the opaque context map as a simple key: value list inside an XML tag so the
  * LLM can identify it as structured metadata rather than conversational content.
- * The tag is intentionally distinct from the `<user>` / `<agent>` tags to avoid confusion.
+ * Returns null when [MessageEvent.sessionContext] is null.
  */
-internal fun SessionContextEvent.toPromptText(): String {
-    val entries = context.entries.joinToString("\n") { (k, v) -> "  $k: $v" }
+internal fun MessageEvent.sessionContextPromptText(): String? {
+    val ctx = sessionContext ?: return null
+    val entries = ctx.entries.joinToString("\n") { (k, v) -> "  $k: $v" }
     return "<session-context>\n$entries\n</session-context>"
 }
 

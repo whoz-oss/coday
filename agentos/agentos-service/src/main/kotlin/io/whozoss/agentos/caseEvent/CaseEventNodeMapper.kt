@@ -11,7 +11,6 @@ import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
-import io.whozoss.agentos.sdk.caseEvent.SessionContextEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -54,7 +53,6 @@ class CaseEventNodeMapper(
             is AnswerEventNode -> toDomain(node)
             is IntentionGeneratedEventNode -> toDomain(node)
             is ToolSelectedEventNode -> toDomain(node)
-            is SessionContextEventNode -> toDomain(node)
             is TextChunkEventNode -> toDomain(node)
         }
 
@@ -73,7 +71,6 @@ class CaseEventNodeMapper(
             is AnswerEvent -> fromDomain(event)
             is IntentionGeneratedEvent -> fromDomain(event)
             is ToolSelectedEvent -> fromDomain(event)
-            is SessionContextEvent -> fromDomain(event)
             is TextChunkEvent -> fromDomain(event)
         }
 
@@ -160,6 +157,7 @@ class CaseEventNodeMapper(
                     node.actorDisplayName,
                     node.actorRole,
                     node.contentJson,
+                    node.contextJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -273,19 +271,6 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is SessionContextEventNode ->
-                SessionContextEventNode(
-                    node.id,
-                    node.caseId,
-                    node.namespaceId,
-                    node.timestamp,
-                    node.contextJson,
-                    node.created,
-                    node.createdBy,
-                    node.modified,
-                    node.modifiedBy,
-                    removed,
-                )
             is TextChunkEventNode ->
                 TextChunkEventNode(
                     node.id,
@@ -301,7 +286,7 @@ class CaseEventNodeMapper(
                 )
         }
 
-    // ─── toDomain ──────────────────────────────────────────────────────────────────────────
+    // ─── toDomain ──────────────────────────────────────────────────────────────────────────────────────
 
     private fun toDomain(n: CaseStatusEventNode) =
         CaseStatusEvent(
@@ -359,6 +344,7 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             actor = Actor(id = n.actorId, displayName = n.actorDisplayName, role = ActorRole.valueOf(n.actorRole)),
             content = serializer.deserialize(n.contentJson),
+            sessionContext = n.contextJson?.let { serializer.deserializeMetadata(it) },
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -438,15 +424,6 @@ class CaseEventNodeMapper(
             toolName = n.toolName,
         )
 
-    private fun toDomain(n: SessionContextEventNode) =
-        SessionContextEvent(
-            metadata = metadata(n),
-            namespaceId = UUID.fromString(n.namespaceId),
-            caseId = UUID.fromString(n.caseId),
-            timestamp = n.timestamp,
-            context = serializer.deserializeMetadata(n.contextJson),
-        )
-
     private fun toDomain(n: TextChunkEventNode) =
         TextChunkEvent(
             metadata = metadata(n),
@@ -456,7 +433,7 @@ class CaseEventNodeMapper(
             chunk = n.chunk,
         )
 
-    // ─── fromDomain ───────────────────────────────────────────────────────────────────────
+    // ─── fromDomain ─────────────────────────────────────────────────────────────────────────────────────
 
     private fun fromDomain(e: CaseStatusEvent) =
         CaseStatusEventNode(
@@ -541,6 +518,7 @@ class CaseEventNodeMapper(
             actorDisplayName = e.actor.displayName,
             actorRole = e.actor.role.name,
             contentJson = serializer.serialize(e.content),
+            contextJson = e.sessionContext?.let { serializer.serializeMetadata(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -662,20 +640,6 @@ class CaseEventNodeMapper(
             removed = e.metadata.removed.takeIf { it },
         )
 
-    private fun fromDomain(e: SessionContextEvent) =
-        SessionContextEventNode(
-            id = e.id.toString(),
-            caseId = e.caseId.toString(),
-            namespaceId = e.namespaceId.toString(),
-            timestamp = e.timestamp,
-            contextJson = serializer.serializeMetadata(e.context),
-            created = e.metadata.created,
-            createdBy = e.metadata.createdBy,
-            modified = e.metadata.modified,
-            modifiedBy = e.metadata.modifiedBy,
-            removed = e.metadata.removed.takeIf { it },
-        )
-
     private fun fromDomain(e: TextChunkEvent) =
         TextChunkEventNode(
             id = e.id.toString(),
@@ -690,7 +654,7 @@ class CaseEventNodeMapper(
             removed = e.metadata.removed.takeIf { it },
         )
 
-    // ─── Shared helper ─────────────────────────────────────────────────────────────────────
+    // ─── Shared helper ──────────────────────────────────────────────────────────────────────────────────────
 
     private fun metadata(n: CaseEventNode) =
         EntityMetadata(

@@ -4,7 +4,6 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.SessionContextEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -254,10 +253,10 @@ class AgentSimple(
      * Includes tool calls and responses for proper conversation history.
      * Converts other agents to "user" role for LLM compatibility.
      *
-     * The most recent [SessionContextEvent] preceding the last user [MessageEvent]
-     * is injected as an extra [UserMessage] immediately before that message.
-     * All earlier [SessionContextEvent]s are ignored — only the current session
-     * context is relevant to the LLM.
+     * When the last user [MessageEvent] carries a non-null [MessageEvent.sessionContext],
+     * it is injected as an extra [UserMessage] immediately before that message.
+     * Session context on earlier messages is ignored — only the current turn's context
+     * is relevant to the LLM.
      */
     private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
         val messages = mutableListOf<Message>()
@@ -269,12 +268,9 @@ class AgentSimple(
             toolResponses[toolResponse.toolRequestId] = toolResponse
         }
 
-        // Identify the most recent SessionContextEvent that precedes the last user MessageEvent.
-        // It will be injected as a UserMessage just before that MessageEvent.
-        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && (it as MessageEvent).actor.role == io.whozoss.agentos.sdk.actor.ActorRole.USER }
-        val sessionContextToInject: SessionContextEvent? = if (lastUserMessageIndex > 0) {
-            events.subList(0, lastUserMessageIndex).filterIsInstance<SessionContextEvent>().lastOrNull()
-        } else null
+        val lastUserMessageIndex = events.indexOfLast {
+            it is MessageEvent && (it as MessageEvent).actor.role == ActorRole.USER
+        }
 
         // Second pass: build messages with tool calls
         var i = 0
@@ -284,8 +280,8 @@ class AgentSimple(
             when (event) {
                 is MessageEvent -> {
                     // Inject session context as a UserMessage immediately before the last user message.
-                    if (i == lastUserMessageIndex && sessionContextToInject != null) {
-                        messages.add(UserMessage(sessionContextToInject.toPromptText()))
+                    if (i == lastUserMessageIndex) {
+                        event.sessionContextPromptText()?.let { messages.add(UserMessage(it)) }
                     }
                     // If we have accumulated tool calls, create AssistantMessage with them
                     if (toolCallsForCurrentMessage.isNotEmpty()) {
