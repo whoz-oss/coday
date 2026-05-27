@@ -87,7 +87,7 @@ class CaseServiceImpl(
         namespaceId: UUID,
     ): List<Case> = caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
 
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#userId, 'User', 'READ')")
+    @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
     override fun findConcerningUser(userId: UUID): List<Case> = caseRepository.findConcerningUser(userId)
 
     override fun delete(id: UUID): Boolean {
