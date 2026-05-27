@@ -377,4 +377,67 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         result shouldBe 3
         verify(exactly = 1) { delegate.deleteByParent(namespaceId) }
     }
+
+    // -------------------------------------------------------------------------
+    // findByParent with enabledOnly=true
+    // -------------------------------------------------------------------------
+
+    "findByParent with enabledOnly=true forwards enabledOnly to delegate" {
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, configPath = null)
+        val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
+
+        every { delegate.findByParent(namespaceId, enabledOnly = true) } returns persisted
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, enabledOnly = true)
+
+        result shouldBe persisted
+        verify(exactly = 1) { delegate.findByParent(namespaceId, enabledOnly = true) }
+    }
+
+    "findByParent with enabledOnly=true still merges filesystem agents" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev", modelName = "BIG"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        every { delegate.findByParent(namespaceId, enabledOnly = true) } returns emptyList()
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, enabledOnly = true)
+
+        result shouldHaveSize 1
+        result.single().name shouldBe "Dev"
+    }
+
+    "findByParent with enabledOnly=true drops filesystem config when persisted has same name" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev", modelName = "SMALL"))
+
+        val persisted = listOf(persistedConfig(namespaceId, "dev", modelName = "BIG"))
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        every { delegate.findByParent(namespaceId, enabledOnly = true) } returns persisted
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, enabledOnly = true)
+
+        result shouldHaveSize 1
+        result.single().modelName shouldBe "BIG"
+    }
+
+    "findByParent with enabledOnly=true places persisted first then filesystem" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "alpha.yaml", agentYaml("Alpha"))
+        writeYaml(agentsDir(root), "beta.yaml", agentYaml("Beta"))
+
+        val persisted = listOf(persistedConfig(namespaceId, "Gamma"))
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        every { delegate.findByParent(namespaceId, enabledOnly = true) } returns persisted
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, enabledOnly = true)
+
+        result shouldHaveSize 3
+        result.first().name shouldBe "Gamma"
+        result.drop(1).map { it.name } shouldBe listOf("Alpha", "Beta")
+    }
 })

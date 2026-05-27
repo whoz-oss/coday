@@ -54,9 +54,8 @@ class FilesystemAgentConfigRepository(
     /**
      * Returns agents for [parentId], optionally filtered to published ones.
      *
-     * When [enabledOnly] is `true`, persisted agents are filtered to enabled ones via the
-     * delegate (Cypher-side). Filesystem agents are always considered published and are
-     * included in both cases.
+     * Delegates to the underlying repository with [enabledOnly], then merges
+     * filesystem agents (which are always published by definition).
      */
     override fun findByParent(parentId: UUID, enabledOnly: Boolean): List<AgentConfig> {
         val persisted = delegate.findByParent(parentId, enabledOnly)
