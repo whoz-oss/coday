@@ -12,14 +12,14 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      *
      * When [enabledOnly] is true, only published agents are returned.
      * Agents stored before the `enabled` field was introduced are treated as
-     * published (`COALESCE(a.enabled, true)`) for backward-compatibility.
+     * disabled (`COALESCE(a.enabled, false)`).
      */
     @Query(
         $$"""
             MATCH (a:AgentConfig)
             WHERE a.namespaceId = $namespaceId
               AND NOT COALESCE(a.removed, false)
-              AND (NOT $enabledOnly OR COALESCE(a.enabled, true))
+              AND (NOT $enabledOnly OR COALESCE(a.enabled, false))
             RETURN a ORDER BY a.name ASC
             """,
     )
