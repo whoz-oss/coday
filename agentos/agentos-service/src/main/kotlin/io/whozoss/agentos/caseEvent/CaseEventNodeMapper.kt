@@ -8,8 +8,10 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
@@ -54,6 +56,8 @@ class CaseEventNodeMapper(
             is IntentionGeneratedEventNode -> toDomain(node)
             is ToolSelectedEventNode -> toDomain(node)
             is TextChunkEventNode -> toDomain(node)
+            is PendingConfirmationEventNode -> toDomain(node)
+            is ConfirmationResolvedEventNode -> toDomain(node)
         }
 
     fun fromDomain(event: CaseEvent): CaseEventNode =
@@ -72,6 +76,8 @@ class CaseEventNodeMapper(
             is IntentionGeneratedEvent -> fromDomain(event)
             is ToolSelectedEvent -> fromDomain(event)
             is TextChunkEvent -> fromDomain(event)
+            is PendingConfirmationEvent -> fromDomain(event)
+            is ConfirmationResolvedEvent -> fromDomain(event)
         }
 
     fun withRemoved(
@@ -284,6 +290,37 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
+            is PendingConfirmationEventNode ->
+                PendingConfirmationEventNode(
+                    node.id,
+                    node.caseId,
+                    node.namespaceId,
+                    node.timestamp,
+                    node.toolRequestId,
+                    node.toolName,
+                    node.inputJson,
+                    node.analysisInstructions,
+                    node.created,
+                    node.createdBy,
+                    node.modified,
+                    node.modifiedBy,
+                    removed,
+                )
+            is ConfirmationResolvedEventNode ->
+                ConfirmationResolvedEventNode(
+                    node.id,
+                    node.caseId,
+                    node.namespaceId,
+                    node.timestamp,
+                    node.pendingEventId,
+                    node.confirmed,
+                    node.resultText,
+                    node.created,
+                    node.createdBy,
+                    node.modified,
+                    node.modifiedBy,
+                    removed,
+                )
         }
 
     // ─── toDomain ──────────────────────────────────────────────────────────────────────────────────────
@@ -431,6 +468,29 @@ class CaseEventNodeMapper(
             caseId = UUID.fromString(n.caseId),
             timestamp = n.timestamp,
             chunk = n.chunk,
+        )
+
+    private fun toDomain(n: PendingConfirmationEventNode) =
+        PendingConfirmationEvent(
+            metadata = metadata(n),
+            namespaceId = UUID.fromString(n.namespaceId),
+            caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp,
+            toolRequestId = n.toolRequestId,
+            toolName = n.toolName,
+            inputJson = n.inputJson,
+            analysisInstructions = n.analysisInstructions,
+        )
+
+    private fun toDomain(n: ConfirmationResolvedEventNode) =
+        ConfirmationResolvedEvent(
+            metadata = metadata(n),
+            namespaceId = UUID.fromString(n.namespaceId),
+            caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp,
+            pendingEventId = UUID.fromString(n.pendingEventId),
+            confirmed = n.confirmed,
+            resultText = n.resultText,
         )
 
     // ─── fromDomain ─────────────────────────────────────────────────────────────────────────────────────
@@ -647,6 +707,39 @@ class CaseEventNodeMapper(
             namespaceId = e.namespaceId.toString(),
             timestamp = e.timestamp,
             chunk = e.chunk,
+            created = e.metadata.created,
+            createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified,
+            modifiedBy = e.metadata.modifiedBy,
+            removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: PendingConfirmationEvent) =
+        PendingConfirmationEventNode(
+            id = e.id.toString(),
+            caseId = e.caseId.toString(),
+            namespaceId = e.namespaceId.toString(),
+            timestamp = e.timestamp,
+            toolRequestId = e.toolRequestId,
+            toolName = e.toolName,
+            inputJson = e.inputJson,
+            analysisInstructions = e.analysisInstructions,
+            created = e.metadata.created,
+            createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified,
+            modifiedBy = e.metadata.modifiedBy,
+            removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: ConfirmationResolvedEvent) =
+        ConfirmationResolvedEventNode(
+            id = e.id.toString(),
+            caseId = e.caseId.toString(),
+            namespaceId = e.namespaceId.toString(),
+            timestamp = e.timestamp,
+            pendingEventId = e.pendingEventId.toString(),
+            confirmed = e.confirmed,
+            resultText = e.resultText,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

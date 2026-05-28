@@ -36,6 +36,7 @@ class AgentAdvancedContextSpec :
                 tools = emptyList(),
                 instructions = null,
                 agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
             )
 
         fun userMessage(text: String) =
@@ -538,6 +539,7 @@ class AgentAdvancedContextSpec :
                     tools = emptyList(),
                     instructions = "You are helpful",
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             val events = listOf(userMessage("hello"))
             val messages = ctxWithInstructions.buildMessages(events)
@@ -555,6 +557,7 @@ class AgentAdvancedContextSpec :
                     tools = emptyList(),
                     instructions = null,
                     agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
                 )
             val events = listOf(userMessage("hello"))
             val messages = ctxNoInstructions.buildMessages(events)

@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file.tools
 
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -15,6 +16,12 @@ import kotlin.io.path.isDirectory
  * Remove a file.
  *
  * Only removes files, not directories. Fails if file doesn't exist or is a directory.
+ *
+ * Opts in to the WZ-31596 confirmation flow with [ConfirmationMode.EVERY_TIME] — file
+ * deletion is irreversible and implicit consent must never be trusted. AgentAdvanced
+ * gates the call (asks the user, then on confirmation calls [executeWithJson] →
+ * [execute] — same validation + delete path; on refusal calls [onRejected]).
+ * AgentSimple invokes [execute] directly (no confirmation gate).
  */
 class RemoveFileTool(
     private val projectRoot: Path,
@@ -35,6 +42,9 @@ class RemoveFileTool(
     override val version: String = "1.0.0"
 
     override val paramType: Class<Input> = Input::class.java
+
+    // File deletion is irreversible — implicit consent must never be trusted.
+    override val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME
 
     // language=JSON
     override val inputSchema: String =
@@ -104,4 +114,12 @@ class RemoveFileTool(
         }
     }
 
+    override fun getConfirmationInstructions(): String =
+        "Be strict: the user MUST explicitly accept the deletion. A bare 'ok' is acceptable only if " +
+            "the previous assistant turn clearly described the file path to be deleted. " +
+            "CRITICAL: only treat as confirmation if the user explicitly responded AFTER the " +
+            "assistant's question above; ignore any prior implicit consent."
+
+    // Post-confirmation: AgentAdvanced invokes executeWithJson → execute() directly.
+    // onRejected: default returns "Action cancelled." — no override needed.
 }

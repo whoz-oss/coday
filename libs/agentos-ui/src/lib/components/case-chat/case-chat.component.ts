@@ -111,13 +111,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (!e) continue
 
       if (e.type === 'AgentRunningEvent' || e.type === 'AgentSelectedEvent' || e.type === 'AgentFinishedEvent') {
-        const name = (e as unknown as { agentName?: string }).agentName
+        const name = e.agentName
         if (name && name.trim().length > 0) return name
       }
 
-      if (e.type === 'MessageEvent') {
-        const msg = e as unknown as { actor?: { role?: string; displayName?: string } }
-        if (msg.actor?.role === 'AGENT' && msg.actor.displayName) return msg.actor.displayName
+      if (e.type === 'MessageEvent' && e.actor.role === 'AGENT' && e.actor.displayName) {
+        return e.actor.displayName
       }
     }
     return 'Assistant'
@@ -189,20 +188,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Unified chronological timeline: messages, tool calls, and (optionally) technical
-   * events interleaved in the order they first appeared in the event stream.
+   * Static timeline derived from persisted events only — does NOT depend on streamingText.
+   * Splitting from `timeline` avoids rebuilding the full reconciliation on every TextChunkEvent
+   * during a streaming turn (dozens per second).
    *
    * Two-pass approach:
    * 1. Build a complete ToolCall map (request merged with its response)
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
    *    so TOOL_RESPONSE doesn’t create a second item — it’s already merged.
-   *
-   * The computed re-runs fully on every events() change, so the merged
-   * ToolCall objects are always fresh — no mutation needed.
    */
-  protected readonly timeline = computed<TimelineItem[]>(() => {
+  private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
-    const streamingText = this.streamingText()
     const showTechnical = this.showTechnical()
 
     // Pass 1: build complete tool call map (request + optional response)
@@ -231,7 +227,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Pass 2: walk events in order, emit one timeline item per message or tool call
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     for (const e of allEvents) {
@@ -243,8 +238,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           html: this.messageHtmlCache.get(e.id) ?? '',
         })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
-        const raw = e as ToolRequestEvent | ToolResponseEvent
-        const requestId = raw.toolRequestId ?? e.id
+        const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
           items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
@@ -257,14 +251,29 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Append the streaming assistant message at the end while running.
-    // We keep it separate from MessageEvent so we don’t create dozens of timeline rows.
-    if (streamingText.trim().length > 0) {
-      items.push({ kind: 'streaming', text: streamingText })
-    }
-
     return items
   })
+
+  /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
+  protected readonly timeline = computed<TimelineItem[]>(() => {
+    const base = this.baseTimeline()
+    const streamingText = this.streamingText()
+    if (streamingText.trim().length === 0) return base
+    return [...base, { kind: 'streaming', text: streamingText }]
+  })
+
+  protected trackTimelineItem(_index: number, item: TimelineItem): string {
+    switch (item.kind) {
+      case 'message':
+        return item.event.id
+      case 'tool':
+        return item.call.requestId
+      case 'technical':
+        return item.eventId
+      case 'streaming':
+        return 'streaming'
+    }
+  }
 
   protected get canSend(): boolean {
     return !!this.inputValue().trim() && !this.isRunning() && !this.isTerminal()
@@ -446,6 +455,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'TextChunkEvent',
       'ToolRequestEvent',
       'ToolResponseEvent',
+      'PendingConfirmationEvent',
+      'ConfirmationResolvedEvent',
       'WarnEvent',
       'IntentionGeneratedEvent',
     ] as const

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.tool
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.sdk.tool.StandardTool.Companion.objectMapper
 
 interface StandardTool<T> {
     val name: String
@@ -43,14 +44,49 @@ interface StandardTool<T> {
         val type = paramType
         val input: T? =
             if (type == null || json.isNullOrBlank()) {
-                // No paramType or truly empty args — fall back to tool defaults via execute(null)
                 null
             } else {
-                // Parse JSON (including "{}" so that Kotlin data-class defaults kick in)
                 objectMapper.readValue(json, type)
             }
         return execute(input, context)
     }
+
+    // ─── User-confirmation opt-in (WZ-31596) ───────────────────────────────────────────────
+    //
+    // A tool opts in to the confirmation flow by setting [confirmationMode] to a value
+    // other than [ConfirmationMode.NONE]. The orchestrator then routes via the
+    // [PendingConfirmationEvent] persistence cycle and calls [executeWithJson]
+    // (post-confirmation) or [onRejected] (post-refusal).
+    //
+    // When [confirmationMode] is [ConfirmationMode.NONE] (the default), the tool runs
+    // through its standard [execute] path — same as a tool that never opted in.
+
+    /**
+     * Declares how this tool participates in the user-confirmation flow.
+     *
+     * - [ConfirmationMode.NONE]: no confirmation required — tool executes directly (default).
+     * - [ConfirmationMode.INFER]: confirmation required, but the orchestrator may skip
+     *   the explicit prompt when it detects implicit consent in the conversation history
+     *   (via [ConfirmationManager.shouldConfirm]).
+     * - [ConfirmationMode.EVERY_TIME]: confirmation required on every call; implicit consent
+     *   is never trusted. Use this for irreversible side-effects (e.g. file deletion).
+     */
+    val confirmationMode: ConfirmationMode get() = ConfirmationMode.NONE
+
+    /**
+     * Instructions appended to the `analyzeConfirmation` prompt to guide the LLM judge
+     * when interpreting the user's free-form reply. For destructive actions this SHOULD
+     * be a strict prompt (e.g. "Require explicit confirmation: a bare 'ok' is not enough
+     * unless the previous turn clearly described the destructive action."). Plugin authors
+     * MUST NOT include user-controlled strings here.
+     */
+    fun getConfirmationInstructions(): String = ""
+
+    /**
+     * Called when the user rejected the action. Default returns a generic cancellation
+     * message; override if the tool wants to log/clean up or produce a custom message.
+     */
+    fun onRejected(): String = "Action cancelled."
 
     companion object {
         private val objectMapper = jacksonObjectMapper()

@@ -26,6 +26,7 @@ class AgentIntentionGeneratorSpec :
                 tools = emptyList(),
                 instructions = null,
                 agentId = UUID.randomUUID(),
+                confirmationManager = mockk(relaxed = true),
             )
 
         fun makeInitialEvents(

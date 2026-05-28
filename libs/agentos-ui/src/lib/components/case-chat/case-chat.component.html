@@ -5,16 +5,7 @@
         <p>No messages yet.</p>
       </div>
     } @else {
-      @for (
-        item of timeline();
-        track item.kind === 'message'
-          ? item.event.id
-          : item.kind === 'tool'
-            ? item.call.requestId
-            : item.kind === 'technical'
-              ? item.eventId
-              : 'streaming'
-      ) {
+      @for (item of timeline(); track trackTimelineItem($index, item)) {
         @if (item.kind === 'message') {
           <div
             class="case-chat__message"

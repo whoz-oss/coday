@@ -20,6 +20,7 @@ data class AgentAdvancedContext(
     val tools: List<StandardTool<*>>,
     val instructions: String?,
     val agentId: UUID,
+    val confirmationManager: ConfirmationManager,
 ) {
     internal fun buildMessages(events: List<CaseEvent>): List<Message> {
         val history = convertEventsToMessages(events)

@@ -43,6 +43,7 @@ class AgentServiceImpl(
     private val aiProviderReconciliationService: ConfigMergeService<AiProvider>,
     private val agentConfigService: AgentConfigService,
     private val intentionGenerator: AgentIntentionGenerator,
+    private val confirmationManager: ConfirmationManager,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -173,13 +174,13 @@ class AgentServiceImpl(
 
         return if (advancedExecution) {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
-            val advancedContext =
-                AgentAdvancedContext(
-                    chatClient = chatClient,
-                    tools = tools.toList(),
-                    instructions = instructions,
-                    agentId = agentId,
-                )
+            val advancedContext = AgentAdvancedContext(
+                chatClient = chatClient,
+                tools = tools.toList(),
+                instructions = instructions,
+                agentId = agentId,
+                confirmationManager = confirmationManager,
+            )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
                 name = agentName,
