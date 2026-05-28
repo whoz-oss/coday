@@ -132,7 +132,7 @@ class AgentConfigController(
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     fun listByNamespace(
         @PathVariable parentId: UUID,
-        @RequestParam enabledOnly: Boolean,
+        @RequestParam(required = false, defaultValue = "false") enabledOnly: Boolean,
     ): List<AgentConfigResource> =
         agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
 

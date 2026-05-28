@@ -1719,9 +1719,10 @@ paths:
           format: uuid
       - name: enabledOnly
         in: query
-        required: true
+        required: false
         schema:
           type: boolean
+          default: false
       responses:
         "200":
           description: OK
