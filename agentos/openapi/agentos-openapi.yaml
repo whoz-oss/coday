@@ -1708,7 +1708,7 @@ paths:
     get:
       tags:
       - agent-config-controller
-      operationId: listByParentAgentConfig
+      operationId: listByNamespaceAgentConfig
       parameters:
       - name: parentId
         in: path
@@ -1719,10 +1719,9 @@ paths:
           format: uuid
       - name: enabledOnly
         in: query
-        required: false
+        required: true
         schema:
           type: boolean
-          default: false
       responses:
         "200":
           description: OK
