@@ -265,15 +265,23 @@ class AgentServiceImpl(
         val userBlock =
             context.userId?.let { userId ->
                 userService.findById(userId)?.let { user ->
-                    buildString {
-                        appendLine()
-                        appendLine("## User")
-                        appendLine("- id: ${user.metadata.id}")
-                        if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
-                        if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
-                        if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
-                        if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
-                    }.trimEnd()
+                    // Only inject a user block when at least one human-readable field is present.
+                    // Internal UUIDs (id, externalId) are intentionally excluded — they carry no
+                    // conversational meaning and confuse the LLM about who the interlocutor is.
+                    val hasIdentity = !user.firstname.isNullOrBlank() || !user.lastname.isNullOrBlank()
+                    val hasContext = !user.bio.isNullOrBlank() || user.email.isNotBlank()
+                    if (!hasIdentity && !hasContext) {
+                        null
+                    } else {
+                        buildString {
+                            appendLine()
+                            appendLine("## User")
+                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                            if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
+                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                        }.trimEnd()
+                    }
                 }
             }
 
