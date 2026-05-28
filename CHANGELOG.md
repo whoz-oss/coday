@@ -1,3 +1,16 @@
+## 0.165.4 (2026-05-28)
+
+### 🚀 Features
+
+- **agentos:** port IN-CHANNEL confirmation flow to AgentAdvanced (WZ-31596) ([#885](https://github.com/whoz-oss/coday/pull/885), [#862](https://github.com/whoz-oss/coday/issues/862), [#865](https://github.com/whoz-oss/coday/issues/865))
+
+### ❤️ Thank You
+
+- mathieu_dearmey @mathieu-dearmey
+- selim-bensenouci-ep-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.165.3 (2026-05-28)
 
 ### 🩹 Fixes
