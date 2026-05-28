@@ -441,7 +441,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agent.instructions shouldContain "Alice"
             agent.instructions shouldContain "Smith"
             agent.instructions shouldContain "Backend engineer passionate about distributed systems."
-            agent.instructions shouldContain userId.toString()
+            // Internal AgentOS UUID must NOT appear in the prompt — it carries no conversational
+            // meaning and confuses the LLM about who the interlocutor is.
+            agent.instructions shouldNotContain userId.toString()
         }
 
         "findAgentByName omits optional user fields that are blank" {
@@ -471,10 +473,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
 
+            // Email alone is enough to produce a ## User block.
             agent.instructions shouldContain user.email
             agent.instructions shouldNotContain "firstname"
             agent.instructions shouldNotContain "lastname"
             agent.instructions shouldNotContain "bio"
+            // Internal UUID must never appear regardless of which fields are populated.
+            agent.instructions shouldNotContain userId.toString()
         }
 
         "findAgentByName skips user block when userId is null" {
@@ -492,6 +497,39 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agent.instructions shouldNotContain "## User"
             verify(exactly = 0) { userService.findById(any()) }
+        }
+
+        "findAgentByName skips user block when user has no human-readable fields" {
+            val userId = UUID.randomUUID()
+            val user =
+                User(
+                    metadata = EntityMetadata(id = userId),
+                    externalId = "opaque-objectid-123",
+                    email = "",
+                    firstname = null,
+                    lastname = null,
+                    bio = null,
+                )
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { userService.findById(userId) } returns user
+
+            val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
+
+            // No readable data available: the ## User block must be omitted entirely
+            // rather than injecting an opaque UUID that confuses the LLM.
+            agent.instructions shouldNotContain "## User"
+            agent.instructions shouldNotContain userId.toString()
+            agent.instructions shouldNotContain "opaque-objectid-123"
         }
 
         // -------------------------------------------------------------------------
