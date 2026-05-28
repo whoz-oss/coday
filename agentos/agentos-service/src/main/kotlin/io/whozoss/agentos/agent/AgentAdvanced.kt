@@ -29,47 +29,6 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
 
-/**
- * Outcome of [AgentAdvanced.handleConfirmationGate] and [AgentAdvanced.handleToolExecution].
- *
- * - [AwaitingConfirmation]: a [PendingConfirmationEvent] was emitted and the agent must
- *   exit the intention loop to wait for the user's reply.
- * - [ContinueLoop]: the tool was executed (or skipped) and the loop should proceed normally.
- */
-private enum class GateOutcome {
-    AwaitingConfirmation,
-    ContinueLoop,
-}
-
-/**
- * Outcome of [AgentAdvanced.handleConfirmationResolution].
- *
- * Discriminates four runtime situations so that [AgentAdvanced.run] can route each
- * to the correct post-resolution behaviour: close the turn cleanly vs fall through
- * to the normal intention loop.
- *
- * - [Unresolved]: the pending is still alive (no user reply yet, or an AMBIGUOUS
- *   re-ask was just emitted, or the run was cancelled mid-flight). Close the turn.
- * - [Applied]: the user confirmed AND the tool ran successfully. Fall through so
- *   the LLM can comment naturally on the outcome.
- * - [Rejected]: the user explicitly refused. Fall through so the LLM can produce
- *   a clarifying follow-up. The hardened `shouldConfirm` clauses prevent an
- *   autonomous retry of the same destructive intention without a fresh explicit
- *   prompt.
- * - [Aborted]: tool threw post-confirm OR the pending was orphan-closed (tool
- *   missing, etc.). Action did not apply AND there's nothing meaningful to invite
- *   the user to do next — close the turn cleanly.
- */
-private sealed interface ConfirmationResolution {
-    data object Unresolved : ConfirmationResolution
-
-    data object Applied : ConfirmationResolution
-
-    data object Rejected : ConfirmationResolution
-
-    data object Aborted : ConfirmationResolution
-}
-
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
@@ -144,6 +103,7 @@ class AgentAdvanced(
 
             var iteration = 0
             var continueLoop = true
+            var hasUnresolvedConfirmation = false
             var lastIntention: IntentionGeneratedEvent? = null
             var repetitionWarningEmitted = false
 
@@ -188,34 +148,34 @@ class AgentAdvanced(
                                     shouldContinue = shouldContinue,
                                     emitEvent = { event -> emit(event) },
                                 )
-                            if (gateOutcome == GateOutcome.AwaitingConfirmation) continueLoop = false
+                            if (gateOutcome == GateOutcome.AwaitingConfirmation) {
+                                continueLoop = false
+                                hasUnresolvedConfirmation = true
+                            }
                         }
                     }
                 }
 
-                val interruptedByConfirmation =
-                    shouldAbortForPendingConfirmation(continueLoop, iteration, accumulatedEvents)
-
-                if (iteration >= maxIterations && !interruptedByConfirmation) {
-                    emit(
-                        WarnEvent(
+                if (!hasUnresolvedConfirmation) {
+                    if (iteration >= maxIterations) {
+                        emit(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = "Agent reached maximum iterations ($maxIterations) without completing",
+                            ),
+                        )
+                    }
+                    if (shouldContinue()) {
+                        generateFinalResponse(
+                            accumulatedEvents = accumulatedEvents,
+                            lastIntention = lastIntention,
                             namespaceId = namespaceId,
                             caseId = caseId,
-                            message = "Agent reached maximum iterations ($maxIterations) without completing",
-                        ),
-                    )
-                }
-                if (shouldContinue() && !interruptedByConfirmation) {
-                    generateFinalResponse(
-                        accumulatedEvents = accumulatedEvents,
-                        lastIntention = lastIntention,
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        shouldContinue = shouldContinue,
-                        emitEvent = { event -> emit(event) },
-                    )
-                }
-                if (!interruptedByConfirmation) {
+                            shouldContinue = shouldContinue,
+                            emitEvent = { event -> emit(event) },
+                        )
+                    }
                     emit(
                         AgentFinishedEvent(
                             namespaceId = namespaceId,
@@ -263,16 +223,6 @@ class AgentAdvanced(
                 )
             }
         }
-
-    private fun shouldAbortForPendingConfirmation(
-        continueLoop: Boolean,
-        iteration: Int,
-        accumulatedEvents: List<CaseEvent>,
-    ): Boolean =
-        !continueLoop &&
-            iteration < maxIterations &&
-            accumulatedEvents.any { it is PendingConfirmationEvent } &&
-            findUnresolvedPendingConfirmation(accumulatedEvents) != null
 
     private suspend fun handleRepetitionDetection(
         events: List<CaseEvent>,
@@ -394,7 +344,7 @@ class AgentAdvanced(
      *
      * - [ConfirmationMode.EVERY_TIME]: always emits a [PendingConfirmationEvent] +
      *   IN-CHANNEL [MessageEvent] and returns [GateOutcome.AwaitingConfirmation].
-     * - [ConfirmationMode.AT_LEAST_ONCE]: delegates to [ConfirmationManager.shouldConfirm];
+     * - [ConfirmationMode.INFER]: delegates to [ConfirmationManager.shouldConfirm];
      *   if implicit consent is detected, executes the tool directly and returns
      *   [GateOutcome.ContinueLoop]; otherwise behaves like [EVERY_TIME].
      */
@@ -416,7 +366,7 @@ class AgentAdvanced(
                     true
                 }
 
-                ConfirmationMode.AT_LEAST_ONCE -> {
+                ConfirmationMode.INFER -> {
                     context.confirmationManager.shouldConfirm(
                         chatClient = context.chatClient,
                         history = history,

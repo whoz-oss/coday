@@ -65,9 +65,9 @@ interface StandardTool<T> {
      * Declares how this tool participates in the user-confirmation flow.
      *
      * - [ConfirmationMode.NONE]: no confirmation required — tool executes directly (default).
-     * - [ConfirmationMode.AT_LEAST_ONCE]: confirmation required, but the orchestrator may
-     *   skip the explicit prompt when it detects implicit consent in the conversation
-     *   history (via [ConfirmationManager.shouldConfirm]).
+     * - [ConfirmationMode.INFER]: confirmation required, but the orchestrator may skip
+     *   the explicit prompt when it detects implicit consent in the conversation history
+     *   (via [ConfirmationManager.shouldConfirm]).
      * - [ConfirmationMode.EVERY_TIME]: confirmation required on every call; implicit consent
      *   is never trusted. Use this for irreversible side-effects (e.g. file deletion).
      */

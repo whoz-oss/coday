@@ -841,13 +841,13 @@ class AgentAdvancedSpec :
             target.exists() shouldBe true
         }
 
-        "AC6bis: tool with confirmationMode=AT_LEAST_ONCE + shouldConfirm=false executes directly without PendingConfirmation" {
+        "AC6bis: tool with confirmationMode=INFER + shouldConfirm=false executes directly without PendingConfirmation" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
             val tempDir = Files.createTempDirectory("agentadvanced-ac6bis-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
-            val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.AT_LEAST_ONCE)
+            val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
@@ -901,7 +901,7 @@ class AgentAdvancedSpec :
                 override val inputSchema = "{}"
                 override val version = "1.0.0"
                 override val paramType = null
-                override val confirmationMode = ConfirmationMode.AT_LEAST_ONCE
+                override val confirmationMode = ConfirmationMode.INFER
                 override suspend fun execute(input: Map<String, Any>?, context: ToolContext): ToolExecutionResult =
                     throw RuntimeException("boom")
             }
