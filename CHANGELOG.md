@@ -1,3 +1,16 @@
+## 0.165.3 (2026-05-28)
+
+### 🩹 Fixes
+
+- #WZ-31424 Remove wrong constraint on user group creation ([3dc63e30](https://github.com/whoz-oss/coday/commit/3dc63e30))
+- #WZ-31424 Regenerate open api documentation ([86beaa80](https://github.com/whoz-oss/coday/commit/86beaa80))
+- #WZ-31424 Remove wrong constraint on user group creation ([#918](https://github.com/whoz-oss/coday/pull/918))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.165.2 (2026-05-28)
 
 ### 🩹 Fixes
