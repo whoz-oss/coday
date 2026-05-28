@@ -1,3 +1,13 @@
+## 0.166.0 (2026-05-28)
+
+### 🚀 Features
+
+- #WZ-32223 leaner user context — omit UUID from prompt, skip block when no readable data ([#921](https://github.com/whoz-oss/coday/pull/921))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.165.4 (2026-05-28)
 
 ### 🚀 Features
