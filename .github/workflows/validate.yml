@@ -30,6 +30,11 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
+      - name: Set cache base SHA
+        run: |
+          BASE_SHA=$(git merge-base HEAD origin/${GITHUB_BASE_REF})
+          echo "NX_CACHE_BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -59,6 +64,11 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
+
+      - name: Set cache base SHA
+        run: |
+          BASE_SHA=$(git merge-base HEAD origin/${GITHUB_BASE_REF})
+          echo "NX_CACHE_BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
