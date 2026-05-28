@@ -14,6 +14,9 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -54,7 +57,8 @@ class UserGroupServiceImplUnitSpec :
             namespaceService: NamespaceService = mockk(),
             agentConfigRepository: AgentConfigRepository = mockk(),
             userService: UserService = mockk(relaxed = true),
-        ) = UserGroupServiceImpl(userGroupRepository, namespaceService, agentConfigRepository, userService)
+            permissionService: PermissionService = mockk(relaxed = true),
+        ) = UserGroupServiceImpl(userGroupRepository, namespaceService, agentConfigRepository, userService, permissionService)
 
         // -------------------------------------------------------------------------
         // createFromRequest — agent validation
@@ -387,6 +391,81 @@ class UserGroupServiceImplUnitSpec :
             shouldThrow<UnprocessableEntityException> {
                 service.updateFromRequest(groupId, UserGroupUpdateRequest(name = "Team", agentIds = setOf(agentId)))
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // findGroupsByUserExternalIdsVisibleToUser
+        // -------------------------------------------------------------------------
+
+        "findGroupsByUserExternalIdsVisibleToUser returns all groups for admin" {
+            val groupId = randomUUID()
+            val userGroupRepository = mockk<UserGroupRepository>()
+            val adminUser = User(metadata = EntityMetadata(id = randomUUID()), externalId = "admin@example.com", isAdmin = true)
+            val groups = mapOf("alice@example.com" to listOf(UserGroupSummary(id = groupId, name = "Team A")))
+
+            every { userGroupRepository.findGroupsByUserExternalIds(listOf("alice@example.com")) } returns groups
+
+            val service = buildService(userGroupRepository = userGroupRepository)
+            val result = service.findGroupsByUserExternalIdsVisibleToUser(listOf("alice@example.com"), adminUser)
+
+            result shouldBe groups
+        }
+
+        "findGroupsByUserExternalIdsVisibleToUser filters groups by permission for non-admin" {
+            val visibleGroupId = randomUUID()
+            val hiddenGroupId = randomUUID()
+            val userGroupRepository = mockk<UserGroupRepository>()
+            val permService = mockk<PermissionService>()
+            val regularUser = User(metadata = EntityMetadata(id = randomUUID()), externalId = "user@example.com", isAdmin = false)
+            val groups =
+                mapOf(
+                    "alice@example.com" to
+                        listOf(
+                            UserGroupSummary(id = visibleGroupId, name = "Visible"),
+                            UserGroupSummary(id = hiddenGroupId, name = "Hidden"),
+                        ),
+                )
+
+            every { userGroupRepository.findGroupsByUserExternalIds(listOf("alice@example.com")) } returns groups
+            every {
+                permService.filterVisibleIds(
+                    userId = regularUser.id.toString(),
+                    entityType = EntityType.USER_GROUP,
+                    ids = setOf(visibleGroupId.toString(), hiddenGroupId.toString()),
+                    action = Action.READ,
+                )
+            } returns setOf(visibleGroupId.toString())
+
+            val service = buildService(userGroupRepository = userGroupRepository, permissionService = permService)
+            val result = service.findGroupsByUserExternalIdsVisibleToUser(listOf("alice@example.com"), regularUser)
+
+            result shouldBe mapOf("alice@example.com" to listOf(UserGroupSummary(id = visibleGroupId, name = "Visible")))
+        }
+
+        "findGroupsByUserExternalIdsVisibleToUser removes entry when all groups are filtered out" {
+            val hiddenGroupId = randomUUID()
+            val userGroupRepository = mockk<UserGroupRepository>()
+            val permService = mockk<PermissionService>()
+            val regularUser = User(metadata = EntityMetadata(id = randomUUID()), externalId = "user@example.com", isAdmin = false)
+            val groups =
+                mapOf(
+                    "alice@example.com" to listOf(UserGroupSummary(id = hiddenGroupId, name = "Hidden")),
+                )
+
+            every { userGroupRepository.findGroupsByUserExternalIds(listOf("alice@example.com")) } returns groups
+            every {
+                permService.filterVisibleIds(
+                    userId = regularUser.id.toString(),
+                    entityType = EntityType.USER_GROUP,
+                    ids = setOf(hiddenGroupId.toString()),
+                    action = Action.READ,
+                )
+            } returns emptySet()
+
+            val service = buildService(userGroupRepository = userGroupRepository, permissionService = permService)
+            val result = service.findGroupsByUserExternalIdsVisibleToUser(listOf("alice@example.com"), regularUser)
+
+            result shouldBe emptyMap()
         }
 
         "createFromRequest with no userExternalIds skips addUsers" {

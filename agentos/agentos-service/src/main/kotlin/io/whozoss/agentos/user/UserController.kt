@@ -3,6 +3,7 @@ package io.whozoss.agentos.user
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -204,16 +205,17 @@ class UserController(
         return userService.findByExternalIds(externalIds.toSet()).map(::toResource)
     }
 
-    /** POST /api/users/groups-by-external-ids — return groups per user. Super-admin only. */
+    /** POST /api/users/groups-by-external-ids — return groups per user, filtered to groups visible to the caller. */
     @PostMapping("/groups-by-external-ids")
     @ResponseStatus(HttpStatus.OK)
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     fun getGroupsByExternalIds(
         @RequestBody externalIds: List<String>,
     ): Map<String, List<UserGroupSummaryResource>> {
         if (externalIds.isEmpty()) return emptyMap()
+        val currentUser = userService.getCurrentUser()
         return userGroupService
-            .findGroupsByUserExternalIds(externalIds)
+            .findGroupsByUserExternalIdsVisibleToUser(externalIds, currentUser)
             .mapValues { (_, groups) -> groups.map { it.toResource() } }
     }
 
