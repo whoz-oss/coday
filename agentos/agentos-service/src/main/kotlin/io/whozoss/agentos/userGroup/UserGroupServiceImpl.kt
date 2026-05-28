@@ -119,6 +119,23 @@ class UserGroupServiceImpl(
     override fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>> =
         userGroupRepository.findGroupsByUserExternalIds(externalIds)
 
+    @Transactional
+    override fun updateMemberships(
+        userGroupId: UUID,
+        entries: List<UserGroupMembershipEntry>,
+    ): UserGroupSearchResult {
+        // Validate the group exists before touching any edges.
+        getById(userGroupId)
+
+        userGroupRepository.updateMemberships(
+            userGroupId,
+            entries.map { it.userId to it.role },
+        )
+
+        return userGroupRepository.findByIdWithDetails(userGroupId)
+            ?: throw IllegalStateException("UserGroup $userGroupId not found after membership update")
+    }
+
     private fun validateAgentsInNamespace(
         agentIds: Set<UUID>,
         namespaceId: UUID,

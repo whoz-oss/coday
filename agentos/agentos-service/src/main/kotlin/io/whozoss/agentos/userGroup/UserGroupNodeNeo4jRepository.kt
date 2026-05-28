@@ -63,4 +63,32 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         groupId: String,
         userExternalIds: List<String>,
     )
+
+    /**
+     * Revoke both [:ADMIN] and [:MEMBER] edges from [userId] to [groupId],
+     * then MERGE the desired [role] edge. Called once per entry in the admin
+     * membership update batch.
+     *
+     * The OPTIONAL MATCH + DELETE pattern is idempotent: if the edge does not
+     * exist the DELETE is a no-op.
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})
+          WHERE u.removed IS NULL OR u.removed = false
+        MATCH (g:UserGroup {id: $groupId})
+          WHERE g.removed IS NULL OR g.removed = false
+        OPTIONAL MATCH (u)-[rm:MEMBER]->(g) DELETE rm
+        WITH u, g
+        OPTIONAL MATCH (u)-[ra:ADMIN]->(g)  DELETE ra
+        WITH u, g
+        FOREACH (_ IN CASE $role WHEN 'ADMIN'   THEN [1] ELSE [] END | MERGE (u)-[:ADMIN]->(g))
+        FOREACH (_ IN CASE $role WHEN 'MEMBER'  THEN [1] ELSE [] END | MERGE (u)-[:MEMBER]->(g))
+        """,
+    )
+    fun upsertMembership(
+        groupId: String,
+        userId: String,
+        role: String?,
+    )
 }

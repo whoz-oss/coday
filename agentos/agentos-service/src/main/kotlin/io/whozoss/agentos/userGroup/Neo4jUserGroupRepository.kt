@@ -13,6 +13,13 @@ private data class UserExternalIdGroupRow(
     val groupName: String,
 )
 
+private data class UserGroupMemberRow(
+    val userId: String,
+    val externalId: String,
+    val email: String,
+    val role: String,
+)
+
 open class Neo4jUserGroupRepository(
     private val neo4jRepository: UserGroupNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
@@ -37,49 +44,112 @@ open class Neo4jUserGroupRepository(
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
 
+    /**
+     * List query — returns count only, members list is empty.
+     * Loading full member lists for every group in a namespace listing is not acceptable
+     * at scale (thousands of users per group).
+     */
     override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> =
-        querySearchResults(
-            whereClause = $$"ns.id = $namespaceId AND NOT COALESCE(g.removed, false) AND NOT COALESCE(ns.removed, false)",
-            paramName = "namespaceId",
-            paramValue = namespaceId.toString(),
-        ).all().toList()
+        neo4jClient
+            .query(
+                """
+                    MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
+                    WHERE ns.id = ${'$'}namespaceId
+                      AND NOT COALESCE(g.removed, false)
+                      AND NOT COALESCE(ns.removed, false)
+                    OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
+                      WHERE NOT COALESCE(a.removed, false)
+                    OPTIONAL MATCH (u:User)-[:ADMIN|MEMBER]->(g)
+                      WHERE NOT COALESCE(u.removed, false)
+                    RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
+                           g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+                    ORDER BY g.name ASC
+                """,
+            ).bindAll(mapOf("namespaceId" to namespaceId.toString()))
+            .fetchAs(UserGroupSearchResult::class.java)
+            .mappedBy { _, record ->
+                UserGroupSearchResult(
+                    userGroupId = UUID.fromString(record["userGroupId"].asString()),
+                    namespaceId = UUID.fromString(record["namespaceId"].asString()),
+                    namespaceExternalId = record["namespaceExternalId"].asString(),
+                    name = record["name"].asString(),
+                    agentIds = record["agentIds"].asList { UUID.fromString(it.asString()) },
+                    userCount = record["userCount"].asInt(),
+                )
+            }.all().toList()
 
-    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
-        querySearchResults(
-            whereClause = $$"g.id = $userGroupId AND NOT COALESCE(g.removed, false) AND NOT COALESCE(ns.removed, false)",
-            paramName = "userGroupId",
-            paramValue = id.toString(),
-        ).one().orElse(null)
+    /**
+     * Detail query — returns the full member list with roles alongside agents.
+     *
+     * Two separate Cypher round-trips:
+     * 1. Group metadata + agent ids + member count (same shape as the list query).
+     * 2. Member list with roles (ADMIN or MEMBER) via `type(r)`.
+     *
+     * A single query cannot simultaneously aggregate agent ids and return per-member
+     * role data without a cartesian explosion or complex WITH/UNWIND gymnastics.
+     * Two simple queries are cleaner and each runs in O(members + agents).
+     */
+    override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? {
+        val base = neo4jClient
+            .query(
+                """
+                    MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
+                    WHERE g.id = ${'$'}userGroupId
+                      AND NOT COALESCE(g.removed, false)
+                      AND NOT COALESCE(ns.removed, false)
+                    OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
+                      WHERE NOT COALESCE(a.removed, false)
+                    OPTIONAL MATCH (u:User)-[:ADMIN|MEMBER]->(g)
+                      WHERE NOT COALESCE(u.removed, false)
+                    RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
+                           g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+                """,
+            ).bindAll(mapOf("userGroupId" to id.toString()))
+            .fetchAs(UserGroupSearchResult::class.java)
+            .mappedBy { _, record ->
+                UserGroupSearchResult(
+                    userGroupId = UUID.fromString(record["userGroupId"].asString()),
+                    namespaceId = UUID.fromString(record["namespaceId"].asString()),
+                    namespaceExternalId = record["namespaceExternalId"].asString(),
+                    name = record["name"].asString(),
+                    agentIds = record["agentIds"].asList { UUID.fromString(it.asString()) },
+                    userCount = record["userCount"].asInt(),
+                )
+            }.one().orElse(null) ?: return null
 
-    private fun querySearchResults(
-        whereClause: String,
-        paramName: String,
-        paramValue: String,
-    ) = neo4jClient
-        .query(
-            """
-                MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
-                WHERE $whereClause
-                OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-                  WHERE NOT COALESCE(a.removed, false)
-                OPTIONAL MATCH (u:User)-[:MEMBER]->(g)
-                  WHERE NOT COALESCE(u.removed, false)
-                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
-                ORDER BY g.name ASC
-            """,
-        ).bind(paramValue)
-        .to(paramName)
-        .fetchAs(UserGroupSearchResult::class.java)
-        .mappedBy { _, record ->
-            UserGroupSearchResult(
-                userGroupId = UUID.fromString(record["userGroupId"].asString()),
-                namespaceId = UUID.fromString(record["namespaceId"].asString()),
-                namespaceExternalId = record["namespaceExternalId"].asString(),
-                name = record["name"].asString(),
-                agentIds = record["agentIds"].asList { UUID.fromString(it.asString()) },
-                userCount = record["userCount"].asInt(),
-            )
-        }
+        val members = neo4jClient
+            .query(
+                """
+                    MATCH (u:User)-[r:ADMIN|MEMBER]->(g:UserGroup {id: ${'$'}userGroupId})
+                    WHERE NOT COALESCE(u.removed, false)
+                      AND NOT COALESCE(g.removed, false)
+                    RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
+                           type(r) AS role
+                    ORDER BY u.email ASC
+                """,
+            ).bindAll(mapOf("userGroupId" to id.toString()))
+            .fetchAs(UserGroupMemberRow::class.java)
+            .mappedBy { _, record ->
+                UserGroupMemberRow(
+                    userId = record["userId"].asString(),
+                    externalId = record["externalId"].asString(),
+                    email = record["email"].asString(),
+                    role = record["role"].asString(),
+                )
+            }.all().toList()
+
+        return base.copy(
+            members = members.map {
+                UserGroupMember(
+                    userId = UUID.fromString(it.userId),
+                    externalId = it.externalId,
+                    email = it.email,
+                    role = it.role,
+                )
+            },
+            userCount = members.size,
+        )
+    }
 
     override fun addAgents(
         userGroupId: UUID,
@@ -106,12 +176,22 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
+    override fun updateMemberships(userGroupId: UUID, entries: List<Pair<UUID, String?>>) {
+        entries.forEach { (userId, role) ->
+            neo4jRepository.upsertMembership(
+                groupId = userGroupId.toString(),
+                userId = userId.toString(),
+                role = role,
+            )
+        }
+    }
+
     override fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>> {
         if (externalIds.isEmpty()) return emptyMap()
         return neo4jClient
             .query(
                 $$"""
-                    MATCH (u:User)-[:MEMBER]->(g:UserGroup)
+                    MATCH (u:User)-[:ADMIN|MEMBER]->(g:UserGroup)
                     WHERE u.externalId IN $externalIds
                       AND NOT COALESCE(g.removed, false)
                       AND NOT COALESCE(u.removed, false)

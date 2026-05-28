@@ -389,6 +389,58 @@ class UserGroupServiceImplUnitSpec :
             }
         }
 
+        // -------------------------------------------------------------------------
+        // updateMemberships
+        // -------------------------------------------------------------------------
+
+        "updateMemberships delegates to repository after validating group exists" {
+            val groupId = randomUUID()
+            val userId1 = randomUUID()
+            val userId2 = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult = UserGroupSearchResult(
+                userGroupId = groupId,
+                namespaceId = namespaceId,
+                namespaceExternalId = externalId,
+                name = "Team",
+                userCount = 2,
+            )
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId)) } returns listOf(existing)
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+
+            val service = buildService(userGroupRepository)
+            service.updateMemberships(
+                groupId,
+                listOf(
+                    UserGroupMembershipEntry(userId1, "ADMIN"),
+                    UserGroupMembershipEntry(userId2, null),
+                ),
+            )
+
+            verify(exactly = 1) {
+                userGroupRepository.updateMemberships(
+                    groupId,
+                    match { entries ->
+                        entries.toSet() == setOf(userId1 to "ADMIN", userId2 to null)
+                    },
+                )
+            }
+        }
+
+        "updateMemberships throws 404 when group does not exist" {
+            val groupId = randomUUID()
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId)) } returns emptyList()
+
+            val service = buildService(userGroupRepository)
+
+            shouldThrow<ResourceNotFoundException> {
+                service.updateMemberships(groupId, listOf(UserGroupMembershipEntry(randomUUID(), "MEMBER")))
+            }
+        }
+
         "createFromRequest with no userExternalIds skips addUsers" {
             val groupId = randomUUID()
             val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team F")

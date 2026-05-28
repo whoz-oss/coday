@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -48,13 +49,32 @@ class UserGroupController(
     ): UserGroupSearchResultResource =
         userGroupService.createFromRequest(request).toResource()
 
-    @PostMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PutMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'WRITE')")
     fun update(
         @PathVariable userGroupId: UUID,
         @Valid @RequestBody request: UserGroupUpdateRequest,
     ): UserGroupSearchResultResource =
         userGroupService.updateFromRequest(userGroupId, request).toResource()
+
+    /**
+     * PUT /api/user-groups/{userGroupId}/members
+     *
+     * Upsert memberships for a batch of users. Each entry drives one of three operations:
+     * - role = ADMIN: ensure the user is ADMIN on the group (revoke MEMBER first if needed).
+     * - role = MEMBER: ensure the user is MEMBER on the group (revoke ADMIN first if needed).
+     * - role = null: remove the user from the group entirely.
+     *
+     * Idempotent. Unknown userIds are silently skipped.
+     * Authorization: WRITE on the group (namespace ADMIN via transitive permission).
+     */
+    @PutMapping("/{userGroupId}/members", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'WRITE')")
+    fun updateMemberships(
+        @PathVariable userGroupId: UUID,
+        @Valid @RequestBody entries: List<UserGroupMembershipEntry>,
+    ): UserGroupSearchResultResource =
+        userGroupService.updateMemberships(userGroupId, entries).toResource()
 
     @DeleteMapping("/{userGroupId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -73,6 +93,14 @@ class UserGroupController(
             namespaceExternalId = namespaceExternalId,
             name = name,
             agentIds = agentIds,
+            members = members.map {
+                UserGroupMemberResource(
+                    userId = it.userId,
+                    externalId = it.externalId,
+                    email = it.email,
+                    role = it.role,
+                )
+            },
             userCount = userCount,
         )
 }

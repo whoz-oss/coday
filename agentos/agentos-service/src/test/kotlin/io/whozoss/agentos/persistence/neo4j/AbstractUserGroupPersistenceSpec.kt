@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.userGroup.UserGroup
+import io.whozoss.agentos.userGroup.UserGroupMember
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
@@ -145,6 +146,133 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
 
             results shouldHaveSize 1
             results.first().userCount shouldBe 1
+        }
+
+        // -------------------------------------------------------------------------
+        // findByIdWithDetails — member list with roles
+        // -------------------------------------------------------------------------
+
+        "findByIdWithDetails returns empty members list when group has no members" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-detail-empty"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Empty Group"))
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)
+
+            result!!.members.shouldBeEmpty()
+            result.userCount shouldBe 0
+        }
+
+        "findByIdWithDetails returns members with MEMBER role added via addUsers" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-detail-member"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Group Detail"))
+            val alice = userRepo.save(user("alice-detail@example.com"))
+            userGroupRepo.addUsers(g.id, listOf(alice.externalId))
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)!!
+
+            result.members shouldHaveSize 1
+            result.userCount shouldBe 1
+            result.members.first().let {
+                it.userId shouldBe alice.id
+                it.externalId shouldBe alice.externalId
+                it.role shouldBe UserGroupMember.ROLE_MEMBER
+            }
+        }
+
+        "findByIdWithDetails does not return soft-deleted members" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-detail-del"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Group Detail Del"))
+            val alice = userRepo.save(user("alice-dd@example.com"))
+            val bob = userRepo.save(user("bob-dd@example.com"))
+            userGroupRepo.addUsers(g.id, listOf(alice.externalId, bob.externalId))
+            userRepo.delete(alice.id)
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)!!
+
+            result.members shouldHaveSize 1
+            result.members.first().externalId shouldBe bob.externalId
+            result.userCount shouldBe 1
+        }
+
+        // -------------------------------------------------------------------------
+        // updateMemberships
+        // -------------------------------------------------------------------------
+
+        "updateMemberships grants ADMIN role and revokes any existing MEMBER" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-upsert-admin"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Upsert Admin"))
+            val alice = userRepo.save(user("alice-ua@example.com"))
+            // Start as MEMBER via legacy sync
+            userGroupRepo.addUsers(g.id, listOf(alice.externalId))
+
+            userGroupRepo.updateMemberships(g.id, listOf(alice.id to UserGroupMember.ROLE_ADMIN))
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)!!
+            result.members shouldHaveSize 1
+            result.members.first().role shouldBe UserGroupMember.ROLE_ADMIN
+        }
+
+        "updateMemberships demotes ADMIN to MEMBER" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-upsert-demote"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Upsert Demote"))
+            val alice = userRepo.save(user("alice-ud@example.com"))
+            userGroupRepo.updateMemberships(g.id, listOf(alice.id to UserGroupMember.ROLE_ADMIN))
+
+            userGroupRepo.updateMemberships(g.id, listOf(alice.id to UserGroupMember.ROLE_MEMBER))
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)!!
+            result.members shouldHaveSize 1
+            result.members.first().role shouldBe UserGroupMember.ROLE_MEMBER
+        }
+
+        "updateMemberships with null role removes user from group" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-upsert-remove"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Upsert Remove"))
+            val alice = userRepo.save(user("alice-ur@example.com"))
+            userGroupRepo.updateMemberships(g.id, listOf(alice.id to UserGroupMember.ROLE_MEMBER))
+
+            userGroupRepo.updateMemberships(g.id, listOf(alice.id to null))
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)!!
+            result.members.shouldBeEmpty()
+        }
+
+        "updateMemberships is idempotent for MEMBER" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-upsert-idem"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Upsert Idempotent"))
+            val alice = userRepo.save(user("alice-ui@example.com"))
+            userGroupRepo.updateMemberships(g.id, listOf(alice.id to UserGroupMember.ROLE_MEMBER))
+            userGroupRepo.updateMemberships(g.id, listOf(alice.id to UserGroupMember.ROLE_MEMBER))
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)!!
+            result.members shouldHaveSize 1
+            result.members.first().role shouldBe UserGroupMember.ROLE_MEMBER
+        }
+
+        "updateMemberships silently skips unknown userIds" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-upsert-unknown"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Upsert Unknown"))
+
+            userGroupRepo.updateMemberships(g.id, listOf(UUID.randomUUID() to UserGroupMember.ROLE_MEMBER))
+
+            val result = userGroupRepo.findByIdWithDetails(g.id)!!
+            result.members.shouldBeEmpty()
+        }
+
+        "findByNamespaceId counts both ADMIN and MEMBER edges" {
+            val ns = namespaceRepo.save(namespace(externalId = "fed-count-both"))
+            val g = userGroupRepo.save(userGroup(ns.id, "Count Both"))
+            val alice = userRepo.save(user("alice-cb@example.com"))
+            val bob = userRepo.save(user("bob-cb@example.com"))
+            userGroupRepo.updateMemberships(g.id, listOf(
+                alice.id to UserGroupMember.ROLE_ADMIN,
+                bob.id to UserGroupMember.ROLE_MEMBER,
+            ))
+
+            val results = userGroupRepo.findByNamespaceId(ns.id)
+
+            results shouldHaveSize 1
+            results.first().userCount shouldBe 2
         }
     }
 }
