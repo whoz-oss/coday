@@ -280,7 +280,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             result.first().id shouldBe enabled.id
         }
 
-        "findByParent with enabledOnly=true treats null enabled as published for backward compatibility" {
+        "findByParent with enabledOnly=true treats null enabled as disabled" {
             val ns = namespaceRepo.save(namespace())
             val saved = agentConfigRepo.save(agentConfig(ns.id, "legacy-agent"))
             driver.session().use { session ->
@@ -292,8 +292,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
             val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
 
-            result shouldHaveSize 1
-            result.first().id shouldBe saved.id
+            result.shouldBeEmpty()
         }
 
         "findByParent excludes soft-deleted configs" {
