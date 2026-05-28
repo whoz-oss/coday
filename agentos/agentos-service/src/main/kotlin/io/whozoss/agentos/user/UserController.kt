@@ -213,27 +213,10 @@ class UserController(
         @RequestBody externalIds: List<String>,
     ): Map<String, List<UserGroupSummaryResource>> {
         if (externalIds.isEmpty()) return emptyMap()
-        val allGroups = userGroupService.findGroupsByUserExternalIds(externalIds)
         val currentUser = userService.getCurrentUser()
-        if (currentUser.isAdmin) {
-            return allGroups.mapValues { (_, groups) -> groups.map { it.toResource() } }
-        }
-        val allGroupIds =
-            allGroups.values
-                .flatten()
-                .map { it.id.toString() }
-                .toSet()
-        val visibleGroupIds =
-            permissionService.filterVisibleIds(
-                userId = currentUser.id.toString(),
-                entityType = EntityType.USER_GROUP,
-                ids = allGroupIds,
-                action = Action.READ,
-            )
-        return allGroups
-            .mapValues { (_, groups) ->
-                groups.filter { it.id.toString() in visibleGroupIds }.map { it.toResource() }
-            }.filterValues { it.isNotEmpty() }
+        return userGroupService
+            .findGroupsByUserExternalIdsVisibleToUser(externalIds, currentUser)
+            .mapValues { (_, groups) -> groups.map { it.toResource() } }
     }
 
     companion object : KLogging()

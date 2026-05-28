@@ -4,6 +4,10 @@ import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -16,6 +20,7 @@ class UserGroupServiceImpl(
     private val namespaceService: NamespaceService,
     private val agentConfigRepository: AgentConfigRepository,
     private val userService: UserService,
+    private val permissionService: PermissionService,
 ) : UserGroupService {
     @Transactional
     override fun create(entity: UserGroup): UserGroup =
@@ -116,8 +121,25 @@ class UserGroupServiceImpl(
             ?: throw IllegalStateException("UserGroup $userGroupId not found after update")
     }
 
-    override fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>> =
-        userGroupRepository.findGroupsByUserExternalIds(externalIds)
+    override fun findGroupsByUserExternalIdsVisibleToUser(
+        externalIds: Collection<String>,
+        user: User,
+    ): Map<String, List<UserGroupSummary>> {
+        val allGroups = userGroupRepository.findGroupsByUserExternalIds(externalIds)
+        val visibleGroupIds = if (user.isAdmin) {
+            allGroups.values.flatten().map { it.id.toString() }.toSet()
+        } else {
+            permissionService.filterVisibleIds(
+                userId = user.id.toString(),
+                entityType = EntityType.USER_GROUP,
+                ids = allGroups.values.flatten().map { it.id.toString() }.toSet(),
+                action = Action.READ,
+            )
+        }
+        return allGroups
+            .mapValues { (_, groups) -> groups.filter { it.id.toString() in visibleGroupIds } }
+            .filterValues { it.isNotEmpty() }
+    }
 
     private fun validateAgentsInNamespace(
         agentIds: Set<UUID>,
