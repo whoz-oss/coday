@@ -1955,7 +1955,6 @@ components:
         namespaceId:
           type: string
           format: uuid
-          minLength: 1
         name:
           type: string
           maxLength: 250

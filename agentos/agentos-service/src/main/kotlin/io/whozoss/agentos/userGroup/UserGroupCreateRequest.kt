@@ -7,7 +7,6 @@ import java.util.UUID
 
 @Schema(name = "UserGroupCreateRequest")
 data class UserGroupCreateRequest(
-    @field:NotBlank
     val namespaceId: UUID,
     @field:NotBlank
     @field:Size(max = 250)
