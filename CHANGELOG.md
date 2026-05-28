@@ -1,3 +1,16 @@
+## 0.165.2 (2026-05-28)
+
+### 🩹 Fixes
+
+- #WZ-31424 Change permission for group ids per users ([fd3e645e](https://github.com/whoz-oss/coday/commit/fd3e645e))
+- #WZ-31424 Code review ([f66e4b4a](https://github.com/whoz-oss/coday/commit/f66e4b4a))
+- #WZ-31424 Change permission for group ids per users ([#916](https://github.com/whoz-oss/coday/pull/916))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.165.1 (2026-05-27)
 
 ### 🩹 Fixes
