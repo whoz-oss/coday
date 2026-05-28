@@ -52,6 +52,16 @@ export async function preTasksExecution(): Promise<void> {
     env: {
       ...process.env,
       NX_CACHE_BASE_SHA: process.env['NX_CACHE_BASE_SHA'] ?? 'unknown',
+      // Explicitly forward cache credentials in case the worker process.env
+      // was not yet updated via setWorkerEnv when this runs
+      ACTIONS_RESULTS_URL: process.env['ACTIONS_RESULTS_URL'] ?? '',
+      ACTIONS_RUNTIME_TOKEN: process.env['ACTIONS_RUNTIME_TOKEN'] ?? '',
+      ACTIONS_CACHE_URL: process.env['ACTIONS_CACHE_URL'] ?? '',
+      // Force v2 cache service when ACTIONS_RESULTS_URL is available
+      // (v1 requires ACTIONS_CACHE_URL; v2 requires ACTIONS_RESULTS_URL)
+      ...(process.env['ACTIONS_RESULTS_URL'] && !process.env['ACTIONS_CACHE_SERVICE_V2']
+        ? { ACTIONS_CACHE_SERVICE_V2: 'true' }
+        : {}),
     },
   })
   child.unref()
@@ -73,7 +83,7 @@ export async function postTasksExecution(): Promise<void> {
     process.kill(pid, 'SIGTERM')
     console.log(`[nx-cache] proxy stopped (pid: ${pid})`)
   } catch (err) {
-    // Server may have already exited — not fatal
+    // Server may have already exited — not fatal.
     console.warn('[nx-cache] could not stop proxy:', err)
   } finally {
     fs.rmSync(stateFile, { force: true })

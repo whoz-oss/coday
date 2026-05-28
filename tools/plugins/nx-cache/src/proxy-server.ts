@@ -17,8 +17,12 @@ import * as fs from 'fs'
 import * as http from 'http'
 import * as net from 'net'
 
-if (!cache.isFeatureAvailable()) {
-  console.warn('[nx-cache-server] GitHub Actions cache service is not available, exiting cleanly')
+// @actions/cache@4.0.3 isFeatureAvailable() only checks ACTIONS_CACHE_URL (v1).
+// We support v2 via ACTIONS_RESULTS_URL + ACTIONS_CACHE_SERVICE_V2=true.
+// Check the URL directly instead of relying on isFeatureAvailable().
+const cacheServiceUrl = process.env['ACTIONS_CACHE_URL'] || process.env['ACTIONS_RESULTS_URL'] || ''
+if (!cacheServiceUrl) {
+  console.warn('[nx-cache-server] No GitHub Actions cache service URL found, exiting cleanly')
   process.exit(0)
 }
 

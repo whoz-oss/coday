@@ -24,8 +24,20 @@ exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL || '')
 exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '')
 
 // Compute and export the merge-base SHA for Nx cache key isolation
-const baseRef = process.env.INPUT_BASE_REF
-const baseSha = execSync(`git merge-base HEAD origin/${baseRef}`).toString().trim()
+// GitHub converts input names to uppercase and replaces hyphens with underscores
+const baseRef = process.env['INPUT_BASE-REF'] || process.env.INPUT_BASE_REF || process.env.GITHUB_BASE_REF
+let baseSha = 'unknown'
+if (baseRef) {
+  try {
+    baseSha = execSync(`git merge-base HEAD origin/${baseRef}`).toString().trim()
+  } catch (e) {
+    console.warn(`[expose-runtime] Could not compute merge-base for ${baseRef}: ${e.message}`)
+    baseSha = execSync('git rev-parse HEAD').toString().trim()
+  }
+} else {
+  console.warn('[expose-runtime] No base ref available, using HEAD SHA for cache key')
+  baseSha = execSync('git rev-parse HEAD').toString().trim()
+}
 exportVariable('NX_CACHE_BASE_SHA', baseSha)
 
 console.log(`[expose-runtime] ACTIONS_RESULTS_URL set: ${!!process.env.ACTIONS_RESULTS_URL}`)
