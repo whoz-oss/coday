@@ -33,4 +33,13 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      * Implementations must exclude soft-deleted cases.
      */
     fun findConcerningUser(userId: UUID): List<Case>
+
+    /**
+     * Find all cases concerning [userId] scoped to a single [namespaceId].
+     *
+     * Same permission rule as [findConcerningUser] (direct ADMIN or MEMBER on the case),
+     * but restricted to the given namespace.
+     * Implementations must exclude soft-deleted cases.
+     */
+    fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
 }

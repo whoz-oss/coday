@@ -46,6 +46,13 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun findConcerningUser(userId: UUID): List<Case>
 
+    /**
+     * List all cases concerning [userId] scoped to a single [namespaceId].
+     *
+     * Same permission rule as [findConcerningUser] but restricted to one namespace.
+     */
+    fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+
     // ========================================
     // Runtime Instance Management
     // ========================================

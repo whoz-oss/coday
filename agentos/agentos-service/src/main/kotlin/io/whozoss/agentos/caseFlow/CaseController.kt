@@ -10,6 +10,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
@@ -46,6 +47,7 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
+    private val namespaceService: NamespaceService,
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
@@ -210,6 +212,30 @@ class CaseController(
         return caseService.findConcerningUser(user.id).map { toResource(it) }
     }
 
+    /**
+     * POST /api/cases/by-user/in-namespace — list cases concerning a user scoped to a
+     * single namespace, identified by their respective external IDs.
+     *
+     * Resolves the user from [ListByUserInNamespaceRequest.externalId] and the namespace
+     * from [ListByUserInNamespaceRequest.namespaceExternalId], then returns only cases
+     * at the intersection. Returns 404 if no user or namespace matches.
+     */
+    @PostMapping("/by-user/in-namespace", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    fun listByUserInNamespace(
+        @RequestBody request: ListByUserInNamespaceRequest,
+    ): List<CaseResource> {
+        val user =
+            userService.findByExternalId(request.userExternalId)
+                ?: throw io.whozoss.agentos.exception
+                    .ResourceNotFoundException("User not found: ${request.userExternalId}")
+        val namespace =
+            namespaceService.findByExternalId(request.namespaceExternalId)
+                ?: throw io.whozoss.agentos.exception
+                    .ResourceNotFoundException("Namespace not found: ${request.namespaceExternalId}")
+        logger.debug { "Listing cases for user ${user.id} in namespace ${namespace.id}" }
+        return caseService.findConcerningUserInNamespace(user.id, namespace.id).map { toResource(it) }
+    }
+
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
@@ -261,6 +287,11 @@ class CaseController(
 
     companion object : KLogging()
 }
+
+data class ListByUserInNamespaceRequest(
+    val userExternalId: String,
+    val namespaceExternalId: String,
+)
 
 data class AddMessageRequest(
     val content: String,
