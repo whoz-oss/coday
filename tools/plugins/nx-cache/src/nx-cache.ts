@@ -30,20 +30,22 @@ function getStateFilePath(): string {
 }
 
 export async function preTasksExecution(): Promise<void> {
-  console.log(
-    `[nx-cache] preTasksExecution fired (ACTIONS_RESULTS_URL=${!!process.env['ACTIONS_RESULTS_URL']}, ACTIONS_CACHE_URL=${!!process.env['ACTIONS_CACHE_URL']})`
-  )
   if (!isGitHubActionsEnvironment()) {
-    console.log('[nx-cache] not in GitHub Actions environment, skipping remote cache')
+    return
+  }
+
+  // ACTIONS_RESULTS_URL (cache v2) and ACTIONS_CACHE_URL (cache v1) live in the
+  // runner agent process environment but are NOT forwarded to step shells or
+  // plugin worker processes by default. Check here before spawning.
+  const cacheAvailable = !!process.env['ACTIONS_RESULTS_URL'] || !!process.env['ACTIONS_CACHE_URL']
+  if (!cacheAvailable) {
+    console.log('[nx-cache] GitHub Actions cache credentials not available in this process, skipping remote cache')
     return
   }
 
   const stateFile = getStateFilePath()
-  // __dirname works because Nx loads local plugins in CJS mode via @swc-node/register
   const serverScript = path.join(__dirname, 'proxy-server.ts')
 
-  // Use @swc-node/register (already a workspace dep used by Nx itself)
-  // to run the proxy server script without a separate compile step.
   const child = spawn(process.execPath, ['--require', '@swc-node/register', serverScript, stateFile], {
     detached: true,
     stdio: 'inherit',

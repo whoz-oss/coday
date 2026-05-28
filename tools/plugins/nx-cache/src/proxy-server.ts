@@ -18,8 +18,8 @@ import * as http from 'http'
 import * as net from 'net'
 
 if (!cache.isFeatureAvailable()) {
-  console.error('[nx-cache-server] GitHub Actions cache service is not available')
-  process.exit(1)
+  console.warn('[nx-cache-server] GitHub Actions cache service is not available, exiting cleanly')
+  process.exit(0)
 }
 
 const stateFile = process.argv[2]
