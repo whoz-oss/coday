@@ -1,3 +1,13 @@
+## 0.166.4 (2026-05-29)
+
+### 🩹 Fixes
+
+- wz-31596: add logs and streamline confirm mechanism ([#924](https://github.com/whoz-oss/coday/pull/924))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.166.3 (2026-05-29)
 
 ### 🩹 Fixes

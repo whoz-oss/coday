@@ -1,6 +1,6 @@
 {
   "name": "@agentos/agentos-service",
-  "version": "0.166.3",
+  "version": "0.166.4",
   "private": true,
   "type": "module",
   "main": "./src/index.js",
