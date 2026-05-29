@@ -1,3 +1,15 @@
+## 0.166.5 (2026-05-29)
+
+### 🩹 Fixes
+
+- #WZ-32275 Improve the success rate of parameter generation to json ([e88d326d](https://github.com/whoz-oss/coday/commit/e88d326d))
+- #WZ-32275 Improve the success rate of parameter generation to json ([#925](https://github.com/whoz-oss/coday/pull/925))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
 ## 0.166.4 (2026-05-29)
 
 ### 🩹 Fixes
