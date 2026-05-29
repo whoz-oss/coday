@@ -9,6 +9,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.springframework.ai.retry.NonTransientAiException
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
@@ -1156,6 +1157,66 @@ class AgentAdvancedSpec :
                     .single { (it.content.first() as MessageContent.Text).content.contains("Cannot resolve confirmation") }
             (agentMsg.content.first() as MessageContent.Text).content shouldContain "SOMETHING__obsolete"
             events.filterIsInstance<WarnEvent>().any { it.message.contains("Cannot resolve pending confirmation") } shouldBe true
+        }
+
+        "NonTransientAiException from LLM during generateParameters surfaces as WarnEvent + AgentFinishedEvent, no loop" {
+            // Regression guard for WZ-32274: a 400 from the LLM provider on the
+            // generateParameters call must terminate the run immediately instead of
+            // looping until maxIterations is exhausted.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            // The first call() is generateParameters — provider rejects with 400.
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } throws NonTransientAiException("400 - bad_request_error: messages: ...")
+
+            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "FILES__ReadFile"
+            every { mockTool.description } returns "Read a file"
+            every { mockTool.inputSchema } returns "{}"
+            every { mockTool.paramType } returns String::class.java
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returns IntentionGeneratedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                intention = "Read the file.",
+                toolName = "FILES__ReadFile",
+            )
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = listOf(mockTool),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                maxIterations = 10,
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Must emit exactly one WarnEvent mentioning the provider error
+            val warnEvents = events.filterIsInstance<WarnEvent>()
+            warnEvents shouldHaveSize 1
+            warnEvents[0].message shouldContain "AI provider rejected"
+
+            // Must terminate cleanly with AgentFinishedEvent
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+
+            // The intention generator must have been called only once — no loop
+            verify(exactly = 1) { mockGenerator.generate(any(), any(), any(), any(), any()) }
         }
 
         "ToolNotFoundException: unknown tool name in intention surfaces as WarnEvent, no tool execution" {

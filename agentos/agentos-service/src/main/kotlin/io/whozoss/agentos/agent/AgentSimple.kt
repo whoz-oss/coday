@@ -25,6 +25,7 @@ import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
@@ -227,6 +228,25 @@ class AgentSimple(
                     emit(toolEvent)
                 }
                 emitInterruptEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+            } catch (e: NonTransientAiException) {
+                // The LLM provider rejected the request with a 4xx error. Retrying with
+                // the same payload would produce the same result — stop the run cleanly.
+                logger.error(e) { "LLM provider rejected request for case $caseId" }
+                emit(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "The AI provider rejected the request and the agent cannot continue: ${e.message}",
+                    ),
+                )
+                emit(
+                    AgentFinishedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = id,
+                        agentName = name,
+                    ),
+                )
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
