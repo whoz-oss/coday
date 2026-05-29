@@ -419,34 +419,21 @@ class AgentAdvancedSpec :
             every { mockTool.paramType } returns String::class.java
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("file content")
 
-            // The generator returns FILES__ReadFile 3 times, then Answer on the 4th call
+            // The generator returns FILES__ReadFile 5 times (filling the window with 3+ identical
+            // calls), then Answer once the repetition warning is passed to the LLM
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
                 mockGenerator.generate(any(), any(), any(), any(), isNull())
             } returnsMany
-                listOf(
+                (1..5).map {
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         agentId = UUID.randomUUID(),
-                        intention = "Reading the file.",
+                        intention = "Reading the file (iteration $it).",
                         toolName = "FILES__ReadFile",
-                    ),
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = UUID.randomUUID(),
-                        intention = "Reading the file again.",
-                        toolName = "FILES__ReadFile",
-                    ),
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = UUID.randomUUID(),
-                        intention = "Reading the file yet again.",
-                        toolName = "FILES__ReadFile",
-                    ),
-                )
+                    )
+                }
             every {
                 mockGenerator.generate(any(), any(), any(), any(), not(isNull()))
             } returns
@@ -495,96 +482,181 @@ class AgentAdvancedSpec :
         // detectRepetitionLoop unit tests
         // -------------------------------------------------------------------------
 
-        "detectRepetitionLoop returns null when fewer than WINDOW tool responses" {
+        "detectRepetitionLoop returns null when fewer than REPETITION_WINDOW tool responses" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
+            // Only 4 responses — window requires 5
             val events =
-                listOf(
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "req-1",
-                        toolName = "FILES__ReadFile",
-                        output = MessageContent.Text("content"),
-                    ),
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "req-2",
-                        toolName = "FILES__ReadFile",
-                        output = MessageContent.Text("content"),
-                    ),
-                )
-
-            agent.detectRepetitionLoop(events) shouldBe null
-        }
-
-        "detectRepetitionLoop returns tool name when WINDOW consecutive same-tool responses" {
-            val agent = makeParserAgent()
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val events =
-                (1..AgentAdvanced.REPETITION_DETECTION_WINDOW).map { i ->
+                (1..4).map { i ->
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "req-$i",
                         toolName = "FILES__ReadFile",
                         output = MessageContent.Text("content"),
+                    )
+                }
+
+            agent.detectRepetitionLoop(events) shouldBe null
+        }
+
+        "detectRepetitionLoop returns tool name when THRESHOLD identical calls within WINDOW" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val sameArgs = """{"path":"foo.txt"}"""
+            // Window of 5 with all 5 identical — clearly a repetition
+            val events =
+                (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
+                    listOf(
+                        ToolRequestEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            args = sameArgs,
+                        ),
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            output = MessageContent.Text("content"),
+                        ),
                     )
                 }
 
             agent.detectRepetitionLoop(events) shouldBe "FILES__ReadFile"
         }
 
-        "detectRepetitionLoop returns null when WINDOW consecutive responses are all failures" {
+        "detectRepetitionLoop returns tool name on two-tool alternation loop (A,B,A,B,A)" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val events =
-                (1..AgentAdvanced.REPETITION_DETECTION_WINDOW).map { i ->
+            val argsA = """{"q":"B2"}"""
+            val argsB = """{"q":"E2"}"""
+            // A appears 3 times in the window of 5 — threshold reached
+            val calls = listOf(
+                "toolA" to argsA,
+                "toolB" to argsB,
+                "toolA" to argsA,
+                "toolB" to argsB,
+                "toolA" to argsA,
+            )
+            val events = calls.mapIndexed { i, (tool, args) ->
+                listOf(
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-$i",
+                        toolName = tool,
+                        args = args,
+                    ),
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "req-$i",
-                        toolName = "FILES__ReadFile",
-                        output = MessageContent.Text("Error: file not found"),
-                        success = false,
+                        toolName = tool,
+                        output = MessageContent.Text("result"),
+                    ),
+                )
+            }.flatten()
+
+            agent.detectRepetitionLoop(events) shouldBe "toolA"
+        }
+
+        "detectRepetitionLoop returns null when WINDOW consecutive same-tool responses have different args (WZ-32262)" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val argsList = listOf(
+                """{"qualificationNameInput":"B2","rootCategory":"GRADE"}""",
+                """{"qualificationNameInput":"E2","rootCategory":"GRADE"}""",
+                """{"qualificationNameInput":"E4","rootCategory":"GRADE"}""",
+            )
+            val events =
+                argsList.mapIndexed { i, args ->
+                    listOf(
+                        ToolRequestEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "SearchQualifications",
+                            args = args,
+                        ),
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "SearchQualifications",
+                            output = MessageContent.Text("result $i"),
+                        ),
                     )
-                }
+                }.flatten()
 
             agent.detectRepetitionLoop(events) shouldBe null
         }
 
-        "detectRepetitionLoop returns null when tools are mixed in the window" {
+        "detectRepetitionLoop returns tool name when THRESHOLD failures with same args within WINDOW" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
+            val sameArgs = """{"path":"missing.txt"}"""
             val events =
+                (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
+                    listOf(
+                        ToolRequestEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            args = sameArgs,
+                        ),
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            output = MessageContent.Text("Error: file not found"),
+                            success = false,
+                        ),
+                    )
+                }
+
+            agent.detectRepetitionLoop(events) shouldBe "FILES__ReadFile"
+        }
+
+        "detectRepetitionLoop returns null when no (toolName, args) pair reaches THRESHOLD in the window" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            // 5 calls: FILES__ReadFile appears twice, JIRA__GetIssue three times but with different args each time
+            val calls = listOf(
+                "FILES__ReadFile" to """{"path":"a.txt"}""",
+                "JIRA__GetIssue" to """{"id":"WZ-1"}""",
+                "FILES__ReadFile" to """{"path":"a.txt"}""",
+                "JIRA__GetIssue" to """{"id":"WZ-2"}""",
+                "JIRA__GetIssue" to """{"id":"WZ-3"}""",
+            )
+            val events = calls.mapIndexed { i, (tool, args) ->
                 listOf(
-                    ToolResponseEvent(
+                    ToolRequestEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
-                        toolRequestId = "req-1",
-                        toolName = "FILES__ReadFile",
-                        output = MessageContent.Text("content"),
+                        toolRequestId = "req-$i",
+                        toolName = tool,
+                        args = args,
                     ),
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
-                        toolRequestId = "req-2",
-                        toolName = "JIRA__GetIssue",
-                        output = MessageContent.Text("content"),
-                    ),
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "req-3",
-                        toolName = "FILES__ReadFile",
+                        toolRequestId = "req-$i",
+                        toolName = tool,
                         output = MessageContent.Text("content"),
                     ),
                 )
+            }.flatten()
 
             agent.detectRepetitionLoop(events) shouldBe null
         }

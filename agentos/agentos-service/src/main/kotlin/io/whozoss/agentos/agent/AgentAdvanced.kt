@@ -240,12 +240,12 @@ class AgentAdvanced(
             else -> {
                 val msg =
                     "Calling a tool with the same parameters will produce the same results.\n" +
-                        "You have called the tool $repeatedTool $REPETITION_DETECTION_WINDOW times consecutively. " +
+                        "You have called the tool $repeatedTool $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls. " +
                         "If the tool has not added meaningful information to the conversation, " +
                         "stop calling it and consider the next step toward achieving the user's goal. " +
                         "If you do not have enough information to proceed, use ${AgentIntentionGenerator.ANSWER_TOOL} to ask the user for further instructions."
                 if (!warningAlreadyEmitted) {
-                    logger.warn { "Repetition loop detected: $repeatedTool called $REPETITION_DETECTION_WINDOW consecutive times" }
+                    logger.warn { "Repetition loop detected: $repeatedTool called $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls" }
                     emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
                 }
                 msg
@@ -831,20 +831,35 @@ class AgentAdvanced(
                 .filter { it.metadata.id in resolvedPendingIds }
                 .mapTo(mutableSetOf()) { it.toolRequestId }
 
-        // Take last N raw ToolResponseEvent (success only) — preserves the original
-        // "consecutive" semantics. If the window contains any synthetic (= confirmation
-        // resolution), do not signal repetition — those are user-validated, not auto.
+        // Build a lookup of toolRequestId → args for quick pairing with ToolResponseEvent.
+        val argsByRequestId =
+            events
+                .filterIsInstance<ToolRequestEvent>()
+                .associate { it.toolRequestId to (it.args?.trim() ?: "") }
+
+        // Take last REPETITION_WINDOW ToolResponseEvent (success or failure) — a tool
+        // that consistently fails with the same input is also a repetition loop.
+        // If the window contains any synthetic (= confirmation resolution), do not signal
+        // repetition — those are user-validated, not auto.
         val window =
             events
                 .filterIsInstance<ToolResponseEvent>()
-                .filter { it.success }
-                .takeLast(REPETITION_DETECTION_WINDOW)
+                .takeLast(REPETITION_WINDOW)
 
+        if (window.size < REPETITION_WINDOW || window.any { it.toolRequestId in syntheticToolRequestIds }) return null
+
+        // A repetition is detected when the same (toolName, args) pair appears at least
+        // REPETITION_THRESHOLD times in the window. This catches two-tool alternation
+        // loops (A, B, A, B, A) as well as straight repetition (A, A, A, ...).
+        // Calls to the same tool with different payloads are legitimate exploration
+        // and do not count toward the threshold (WZ-32262).
         return window
-            .takeIf { it.size == REPETITION_DETECTION_WINDOW && it.none { e -> e.toolRequestId in syntheticToolRequestIds } }
-            ?.map { it.toolName }
-            ?.toSet()
-            ?.singleOrNull()
+            .groupingBy { e -> e.toolName to (argsByRequestId[e.toolRequestId] ?: "") }
+            .eachCount()
+            .entries
+            .firstOrNull { it.value >= REPETITION_THRESHOLD }
+            ?.key
+            ?.first
     }
 
     private fun generateParameters(
@@ -967,7 +982,11 @@ Intention: ${intentionEvent.intention}
     }
 
     companion object : KLogging() {
-        internal const val REPETITION_DETECTION_WINDOW = 3
+        /** How many recent tool responses to inspect for repetition. */
+        internal const val REPETITION_WINDOW = 5
+
+        /** How many identical (toolName, args) calls within the window trigger a warning. */
+        internal const val REPETITION_THRESHOLD = 3
 
         private val JSON_FENCE_REGEX =
             Regex(
