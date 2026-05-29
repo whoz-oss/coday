@@ -860,10 +860,11 @@ class AgentAdvanced(
 
         val parametersPrompt =
             """
-Generate the parameters for the tool call below.
+Generate the parameters for the tool call below. You must generate a JSON object corresponding to the given input json schema.
+
 Tool: ${tool.name}
 Description: ${tool.description}
-Input Schema: 
+Input JSON Schema: 
 ```
 ${tool.inputSchema}
 ```
