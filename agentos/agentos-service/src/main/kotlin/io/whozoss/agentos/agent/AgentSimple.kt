@@ -229,24 +229,7 @@ class AgentSimple(
                 }
                 emitInterruptEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: NonTransientAiException) {
-                // The LLM provider rejected the request with a 4xx error. Retrying with
-                // the same payload would produce the same result — stop the run cleanly.
-                logger.error(e) { "LLM provider rejected request for case $caseId" }
-                emit(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "The AI provider rejected the request and the agent cannot continue: ${e.message}",
-                    ),
-                )
-                emit(
-                    AgentFinishedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = id,
-                        agentName = name,
-                    ),
-                )
+                emitProviderErrorEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(

@@ -190,25 +190,7 @@ class AgentAdvanced(
                 // Not an error: a tool requested a structured interruption of this agent run.
                 emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: NonTransientAiException) {
-                // The LLM provider rejected the request with a 4xx error. Retrying with
-                // the same payload would produce the same result — stop the run cleanly
-                // rather than looping until maxIterations is exhausted.
-                logger.error(e) { "LLM provider rejected request for case $caseId" }
-                emit(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "The AI provider rejected the request and the agent cannot continue: ${e.message}",
-                    ),
-                )
-                emit(
-                    AgentFinishedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = id,
-                        agentName = name,
-                    ),
-                )
+                emitProviderErrorEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: ConfirmationConfigurationException) {
                 // DI wiring bug — surface loudly so prod logs catch it. Still emit a WarnEvent
                 // so the per-case lifecycle terminates cleanly, but the operator-facing signal
