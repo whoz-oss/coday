@@ -1065,6 +1065,26 @@ paths:
       responses:
         "200":
           description: OK
+  /api/cases/by-user/in-namespace:
+    post:
+      tags:
+      - case-controller
+      operationId: listByUserInNamespaceCase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListByUserInNamespaceRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
   /api/cases/by-ids:
     post:
       tags:
@@ -2117,6 +2137,16 @@ components:
           additionalProperties: {}
       required:
       - content
+    ListByUserInNamespaceRequest:
+      type: object
+      properties:
+        userExternalId:
+          type: string
+        namespaceExternalId:
+          type: string
+      required:
+      - namespaceExternalId
+      - userExternalId
     Actor:
       type: object
       properties:

@@ -90,6 +90,10 @@ class CaseServiceImpl(
     @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
     override fun findConcerningUser(userId: UUID): List<Case> = caseRepository.findConcerningUser(userId)
 
+    @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
+    override fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+        caseRepository.findConcerningUserInNamespace(userId, namespaceId)
+
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
             killCase(id)

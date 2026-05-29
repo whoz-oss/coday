@@ -67,4 +67,19 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
             """,
     )
     fun findConcerningUser(userId: String): List<CaseNode>
+
+    /**
+     * Find all non-removed cases concerning a user scoped to a single namespace.
+     *
+     * Same permission rule as [findConcerningUser] (direct ADMIN or MEMBER on the case),
+     * but restricted to the given namespace.
+     */
+    @Query(
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+            WHERE (c.removed IS NULL OR c.removed = false)
+              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
+            RETURN c, r, ns ORDER BY c.created ASC
+            """,
+    )
+    fun findConcerningUserInNamespace(userId: String, namespaceId: String): List<CaseNode>
 }

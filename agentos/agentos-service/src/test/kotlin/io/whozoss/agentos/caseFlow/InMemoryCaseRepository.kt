@@ -25,4 +25,8 @@ class InMemoryCaseRepository : CaseRepository {
 
     /** In tests all cases are visible to every user (no permission graph). */
     override fun findConcerningUser(userId: UUID): List<Case> = delegate.findAll()
+
+    /** In tests all cases in the namespace are visible (no permission graph). */
+    override fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+        delegate.findByParent(namespaceId)
 }

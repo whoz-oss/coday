@@ -38,9 +38,10 @@ import java.util.UUID
 class CaseControllerSpec : StringSpec({
 
     val caseService = mockk<CaseService>()
+    val namespaceService = mockk<io.whozoss.agentos.namespace.NamespaceService>()
     val userService = mockk<UserService>()
     val permissionService = mockk<PermissionService>()
-    val controller = CaseController(caseService, userService, permissionService)
+    val controller = CaseController(caseService, namespaceService, userService, permissionService)
 
     val callerId = UUID.randomUUID()
     val caller = User(
@@ -278,6 +279,68 @@ class CaseControllerSpec : StringSpec({
         every { caseService.findConcerningUser(callerId) } returns emptyList()
 
         controller.listByUserExternalId(caller.externalId) shouldBe emptyList()
+    }
+
+    // -------------------------------------------------------------------------
+    // listByUserInNamespace — POST /api/cases/by-user/in-namespace
+    // -------------------------------------------------------------------------
+
+    "listByUserInNamespace returns only cases in the requested namespace" {
+        val caseInNs = caseEntity(title = "in ns")
+        val namespaceExternalId = "ext-ns-1"
+        val namespace = io.whozoss.agentos.namespace.Namespace(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(id = namespaceId),
+            name = "test-ns",
+            externalId = namespaceExternalId,
+        )
+        every { userService.findByExternalId(caller.externalId) } returns caller
+        every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(caseInNs)
+
+        val result = controller.listByUserInNamespace(
+            ListByUserInNamespaceRequest(userExternalId = caller.externalId, namespaceExternalId = namespaceExternalId)
+        )
+
+        result.map { it.id } shouldBe listOf(caseInNs.metadata.id)
+        verify(exactly = 1) { caseService.findConcerningUserInNamespace(callerId, namespaceId) }
+        verify(exactly = 0) { caseService.findConcerningUser(any()) }
+    }
+
+    "listByUserInNamespace returns empty list when user has no cases in the namespace" {
+        val namespaceExternalId = "ext-ns-empty"
+        val namespace = io.whozoss.agentos.namespace.Namespace(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(id = namespaceId),
+            name = "test-ns",
+            externalId = namespaceExternalId,
+        )
+        every { userService.findByExternalId(caller.externalId) } returns caller
+        every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns emptyList()
+
+        controller.listByUserInNamespace(
+            ListByUserInNamespaceRequest(userExternalId = caller.externalId, namespaceExternalId = namespaceExternalId)
+        ) shouldBe emptyList()
+    }
+
+    "listByUserInNamespace throws 404 when no user matches the external id" {
+        every { userService.findByExternalId("unknown@example.com") } returns null
+
+        shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
+            controller.listByUserInNamespace(
+                ListByUserInNamespaceRequest(userExternalId = "unknown@example.com", namespaceExternalId = "any")
+            )
+        }
+    }
+
+    "listByUserInNamespace throws 404 when no namespace matches the namespaceExternalId" {
+        every { userService.findByExternalId(caller.externalId) } returns caller
+        every { namespaceService.findByExternalId("unknown-ns") } returns null
+
+        shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
+            controller.listByUserInNamespace(
+                ListByUserInNamespaceRequest(userExternalId = caller.externalId, namespaceExternalId = "unknown-ns")
+            )
+        }
     }
 
     "listByParent short-circuits for super-admin (hasPermission WRITE returns true via bypass)" {
