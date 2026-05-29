@@ -80,9 +80,6 @@ class ConfirmationManager(
                 Task:
                 Analyze the end of the conversation. Has the user *already* explicitly agreed to or requested this specific action/update?
 
-                Conversation History:
-                ${historyToString(history).putBetween(TAG_CONVERSATION)}
-
                 Return "$CHOICE_NO" if ANY of the following are true:
                 - The assistant proposed a general suggestion without details and the user just agreed to the general suggestion but hasn't seen the specific details yet
                 - There is any ambiguity about whether the user wants to proceed
@@ -94,9 +91,13 @@ class ConfirmationManager(
 
                 Has the user *already* explicitly agreed to or requested this specific action/update? put it between <$TAG_DECISION></$TAG_DECISION>:
                 <$TAG_DECISION>
+                
+                Also give me the reasoning behind yor decision. put it between <$TAG_REASONING></$TAG_REASONING>:
+                <$TAG_REASONING>
                 """.trimIndent()
 
-            val hasAlreadyConfirmed = callDecision(chatClient, prompt).startsWith(CHOICE_YES)
+            val hasAlreadyConfirmed =
+                callDecision(chatClient = chatClient, prompt = prompt, history = history).startsWith(CHOICE_YES)
             if (hasAlreadyConfirmed) {
                 logger.info { "[ConfirmationManager] LLM says user already confirmed — skipping prompt" }
             } else {
@@ -124,6 +125,7 @@ class ConfirmationManager(
         pendingPayload: Any,
         specificInstructions: String,
     ): ConfirmationDecision {
+        logger.info { "[ConfirmationManager] Analyze confirmation." }
         val specificBlock =
             if (specificInstructions.isNotBlank()) {
                 """
@@ -138,8 +140,7 @@ class ConfirmationManager(
 
         val prompt =
             """
-            Based on the following conversation:
-            ${historyToString(history).putBetween(TAG_CONVERSATION)}
+            Based on the given conversation.
 
             The agent was awaiting confirmation for this pending action:
             $payloadSummary
@@ -157,7 +158,7 @@ class ConfirmationManager(
 
         val decision =
             try {
-                callDecision(chatClient, prompt)
+                callDecision(chatClient = chatClient, prompt = prompt, history = history)
             } catch (e: Exception) {
                 logger.warn(e) {
                     "[ConfirmationManager] analyzeConfirmation LLM call failed — treating as AMBIGUOUS"
@@ -193,15 +194,16 @@ class ConfirmationManager(
         history: List<Message>,
         fallbackLabel: String,
         pendingData: Any,
-    ): String {
-        return try {
+    ): String =
+        try {
+            logger.info { "[ConfirmationManager] Formulate question." }
+
             val payloadSummary = serializeSafely(pendingData)
             val prompt =
                 """
                 You are formulating a short, user-facing confirmation prompt for an action the agent is about to perform.
 
-                Conversation context:
-                ${historyToString(history).putBetween(TAG_CONVERSATION)}
+                You have the conversation context.
 
                 Action label (deterministic, for reference): $fallbackLabel
                 Pending data: $payloadSummary
@@ -213,7 +215,7 @@ class ConfirmationManager(
 
             val raw =
                 chatClient
-                    .prompt(Prompt(UserMessage(prompt)))
+                    .prompt(Prompt(history + UserMessage(prompt)))
                     .call()
                     .content()
                     .orEmpty()
@@ -229,18 +231,21 @@ class ConfirmationManager(
             logger.warn(e) { "[ConfirmationManager] formulateQuestion failed, falling back to label" }
             fallbackLabel
         }
-    }
 
     private fun callDecision(
         chatClient: ChatClient,
         prompt: String,
+        history: List<Message>,
     ): String {
+        logger.info { "[ConfirmationManager] Calling LLM to make a decision." }
+        logger.debug { "[ConfirmationManager] decision prompt=$prompt" }
         val raw =
             chatClient
-                .prompt(Prompt(UserMessage(prompt)))
+                .prompt(Prompt(history + UserMessage(prompt)))
                 .call()
                 .content()
                 .orEmpty()
+        logger.debug { "[ConfirmationManager] raw return of call decision=$raw" }
         return extractTag(raw, DECISION_TAG_REGEX).trim().lowercase()
     }
 
@@ -295,12 +300,10 @@ class ConfirmationManager(
             "$role: ${msg.text ?: msg.toString()}"
         }
 
-    private fun String.putBetween(tag: String): String = "\n<$tag>\n${this.trim()}\n</$tag>\n"
-
     companion object : KLogging() {
         private const val TAG_DECISION = "decision"
-        private const val TAG_CONVERSATION = "conversation"
         private const val TAG_QUESTION = "question"
+        private const val TAG_REASONING = "reasoning"
         private const val CHOICE_YES = "yes"
         private const val CHOICE_NO = "no"
         private const val CHOICE_UNCLEAR = "unclear"
