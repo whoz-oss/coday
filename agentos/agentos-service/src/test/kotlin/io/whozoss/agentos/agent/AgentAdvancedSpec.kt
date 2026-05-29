@@ -1241,6 +1241,188 @@ class AgentAdvancedSpec :
             verify(exactly = 1) { mockGenerator.generate(any(), any(), any(), any(), any()) }
         }
 
+        // -------------------------------------------------------------------------
+        // generateParameters retry logic
+        // -------------------------------------------------------------------------
+
+        "generateParameters: succeeds on first attempt when LLM returns valid JSON" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "TEST__tool"
+            every { mockTool.description } returns "A test tool"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
+            every { mockTool.paramType } returns String::class.java
+            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("ok")
+
+            // First call returns valid JSON; second call (generateFinalResponse) returns streaming
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"hello"}"""
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Call the tool", toolName = "TEST__tool",
+                ),
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Done", toolName = "Answer",
+                ),
+            )
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = listOf(mockTool),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "RetryAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                maxIterations = 5,
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Tool was called exactly once (no retry needed)
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].args shouldBe """{"value":"hello"}"""
+            events.filterIsInstance<WarnEvent>().filter { it.message.contains("invalid JSON") } shouldHaveSize 0
+        }
+
+        "generateParameters: succeeds on retry when first attempt returns invalid JSON" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "TEST__tool"
+            every { mockTool.description } returns "A test tool"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
+            every { mockTool.paramType } returns String::class.java
+            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("ok")
+
+            // First call returns invalid JSON, second returns valid JSON
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany listOf(
+                "not valid json at all",
+                """{"value":"hello"}""",
+            )
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Call the tool", toolName = "TEST__tool",
+                ),
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Done", toolName = "Answer",
+                ),
+            )
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = listOf(mockTool),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "RetryAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                maxIterations = 5,
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Tool was executed with the valid JSON from the second attempt
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].args shouldBe """{"value":"hello"}"""
+            // No error event: retry succeeded before exhausting all attempts
+            events.filterIsInstance<WarnEvent>().filter { it.message.contains("all") && it.message.contains("attempts") } shouldHaveSize 0
+        }
+
+        "generateParameters: falls back to last raw result when all retries fail" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "TEST__tool"
+            every { mockTool.description } returns "A test tool"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
+            every { mockTool.paramType } returns String::class.java
+            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("ok")
+
+            // All MAX_PARAMETER_RETRIES + 1 attempts return invalid JSON
+            val invalidResponses = (1..AgentAdvanced.MAX_PARAMETER_ATTEMPTS).map { "not json attempt $it" }
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany invalidResponses
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Call the tool", toolName = "TEST__tool",
+                ),
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Done", toolName = "Answer",
+                ),
+            )
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = listOf(mockTool),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "RetryAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                maxIterations = 5,
+            )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Tool was still called with the last (invalid) raw result — degraded but non-blocking
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            // The args should be the last raw value returned by the LLM
+            toolRequests[0].args shouldBe "not json attempt ${AgentAdvanced.MAX_PARAMETER_ATTEMPTS}"
+            // Agent completed its run (no crash)
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
         "ToolNotFoundException: unknown tool name in intention surfaces as WarnEvent, no tool execution" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
