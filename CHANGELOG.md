@@ -1,3 +1,18 @@
+## 0.166.2 (2026-05-29)
+
+### 🚀 Features
+
+- **cases:** add namespace-scoped endpoint for listing cases by user ([#919](https://github.com/whoz-oss/coday/pull/919))
+
+### 🩹 Fixes
+
+- **cases:** add namespace-scoped endpoint for listing cases by user ([5ee68b28](https://github.com/whoz-oss/coday/commit/5ee68b28))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.166.1 (2026-05-29)
 
 ### 🩹 Fixes
