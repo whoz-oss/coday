@@ -1,3 +1,13 @@
+## 0.166.3 (2026-05-29)
+
+### 🩹 Fixes
+
+- #WZ-32233 Use spring cloud eureka client implementation instead … ([#923](https://github.com/whoz-oss/coday/pull/923))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
 ## 0.166.2 (2026-05-29)
 
 ### 🚀 Features
