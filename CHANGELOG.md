@@ -1,3 +1,13 @@
+## 0.166.6 (2026-05-29)
+
+### 🩹 Fixes
+
+- #32262 tool repetition detection now compares args alongside tool name ([#926](https://github.com/whoz-oss/coday/pull/926), [#32262](https://github.com/whoz-oss/coday/issues/32262))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.166.5 (2026-05-29)
 
 ### 🩹 Fixes
