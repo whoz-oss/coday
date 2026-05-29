@@ -1,3 +1,13 @@
+## 0.166.1 (2026-05-29)
+
+### 🩹 Fixes
+
+- remove complex masking logic causing partial updates ([#922](https://github.com/whoz-oss/coday/pull/922))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.166.0 (2026-05-28)
 
 ### 🚀 Features
