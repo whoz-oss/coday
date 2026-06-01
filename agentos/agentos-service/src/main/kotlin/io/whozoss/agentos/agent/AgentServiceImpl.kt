@@ -54,17 +54,17 @@ class AgentServiceImpl(
         namespaceId: UUID,
         userId: UUID?,
     ): String? =
-        when {
-            userId != null -> {
-                agentConfigService
-                    .findAvailableByNamespaceIdAndUserId(namespaceId, userId, namePart)
-                    .firstOrNull()
-                    ?.name
-            }
-
-            else -> {
-                agentConfigService.findByName(namespaceId, namePart)?.name
-            }
+        if (userId != null) {
+            agentConfigService
+                .findAvailableByNamespaceIdAndUserId(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    agentName = namePart,
+                )
+                .firstOrNull()
+                ?.name
+        } else {
+            agentConfigService.findByName(namespaceId, namePart)?.name
         }
 
     // -------------------------------------------------------------------------

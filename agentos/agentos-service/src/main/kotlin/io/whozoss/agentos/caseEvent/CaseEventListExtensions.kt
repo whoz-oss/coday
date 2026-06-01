@@ -1,6 +1,9 @@
 package io.whozoss.agentos.caseEvent
 
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import java.util.UUID
 
 /**
  * Inserts [event] into this chronologically-sorted list while maintaining ascending timestamp order.
@@ -13,8 +16,8 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
  *
  * ### Binary search contract
  * The comparator returns:
- * - negative  → existing element is ≤ target  → search right (keep going toward higher indices)
- * - positive  → existing element is strictly > target  → search left
+ * - negative → existing element is ≤ target → search right (keep going toward higher indices)
+ * - positive → existing element is strictly > target → search left
  *
  * By never returning 0, [binarySearch] always yields a negative value `-(insertionPoint + 1)`,
  * where `insertionPoint` is the index of the first element strictly greater than [event].
@@ -28,3 +31,15 @@ internal fun MutableList<CaseEvent>.insertChronologically(event: CaseEvent) {
     // insertionPoint = -raw - 1  →  first index where timestamp is strictly greater.
     add(-raw - 1, event)
 }
+
+/**
+ * Extracts the UUID of the last user who sent a [MessageEvent] in this event list.
+ *
+ * Returns null when no user message is found or when the actor id is not a valid UUID.
+ */
+internal fun List<CaseEvent>.lastUserIdOrNull(): UUID? =
+    filterIsInstance<MessageEvent>()
+        .lastOrNull { it.actor.role == ActorRole.USER }
+        ?.actor
+        ?.id
+        ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
