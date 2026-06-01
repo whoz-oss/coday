@@ -5,6 +5,7 @@ import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -49,9 +50,9 @@ class CaseServiceImpl(
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
-    // ========================================
+    // ======================================================
     // EntityService
-    // ========================================
+    // ======================================================
 
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
@@ -91,8 +92,10 @@ class CaseServiceImpl(
     override fun findConcerningUser(userId: UUID): List<Case> = caseRepository.findConcerningUser(userId)
 
     @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
-    override fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
-        caseRepository.findConcerningUserInNamespace(userId, namespaceId)
+    override fun findConcerningUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case> = caseRepository.findConcerningUserInNamespace(userId, namespaceId)
 
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
@@ -106,9 +109,9 @@ class CaseServiceImpl(
         return caseRepository.deleteByParent(parentId)
     }
 
-    // ========================================
+    // ======================================================
     // Runtime lifecycle
-    // ========================================
+    // ======================================================
 
     override fun getCaseRuntime(caseId: UUID): CaseRuntime = activeRuntimes.computeIfAbsent(caseId) { rehydrate(it) }
 
@@ -162,9 +165,9 @@ class CaseServiceImpl(
             inputEvents = inputEvents,
         )
 
-    // ========================================
+    // ======================================================
     // Message handling (called by controller)
-    // ========================================
+    // ======================================================
 
     override fun addMessage(
         caseId: UUID,
@@ -179,9 +182,9 @@ class CaseServiceImpl(
         scope.launch { runtime.run() }
     }
 
-    // ========================================
+    // ======================================================
     // Agent selection (business logic)
-    // ========================================
+    // ======================================================
 
     /**
      * Resolves which agent should handle a message and returns the ordered list of
@@ -193,7 +196,7 @@ class CaseServiceImpl(
      * 2. Last selected agent in this case (from [pastEvents]) — preserves continuity
      *    across turns. If the agent is no longer available (deleted, disabled), falls
      *    back to the namespace default with a [WarnEvent].
-     * 3. Namespace default agent — [Namespace.defaultAgentName] resolved by name.
+     * 3. Namespace default agent — [io.whozoss.agentos.namespace.Namespace.defaultAgentName] resolved by name.
      *
      * Returns a single [WarnEvent] (no [AgentSelectedEvent]) when no default agent
      * is configured on the namespace, signalling the runtime to stop cleanly.
@@ -216,6 +219,7 @@ class CaseServiceImpl(
                 ?.let { MENTION_REGEX.find(it)?.groupValues?.get(1) }
 
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
+        val userId = pastEvents.lastUserIdOrNull()
         val lastSelectedName =
             pastEvents
                 .take(lastUserMessageIndex.coerceAtLeast(0))
@@ -225,7 +229,12 @@ class CaseServiceImpl(
 
         return when {
             mentionedName != null -> {
-                val resolvedName = agentService.resolveAgentName(mentionedName, namespaceId)
+                val resolvedName =
+                    agentService.resolveAgentName(
+                        namePart = mentionedName,
+                        namespaceId = namespaceId,
+                        userId = userId,
+                    )
                 when {
                     resolvedName != null -> {
                         logger.info { "Agent mention resolved: @$mentionedName -> $resolvedName" }
@@ -233,21 +242,30 @@ class CaseServiceImpl(
                     }
 
                     else -> {
-                        logger.warn { "Agent '@$mentionedName' not found, falling back to default" }
+                        logger.warn { "Agent '@$mentionedName' not found or not accessible, falling back to default" }
                         listOf(
                             WarnEvent(
                                 namespaceId = namespaceId,
                                 caseId = caseId,
-                                message = "Agent '$mentionedName' not found",
+                                message = "Agent '$mentionedName' not found or not accessible",
                             ),
                         ) +
-                            selectDefaultAgent(namespaceId, caseId)
+                            selectDefaultAgent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                userId = userId,
+                            )
                     }
                 }
             }
 
             lastSelectedName != null -> {
-                val stillAvailable = agentService.resolveAgentName(lastSelectedName, namespaceId) != null
+                val stillAvailable =
+                    agentService.resolveAgentName(
+                        namePart = lastSelectedName,
+                        namespaceId = namespaceId,
+                        userId = userId,
+                    ) != null
                 when {
                     stillAvailable -> {
                         logger.info { "Re-using last selected agent: $lastSelectedName" }
@@ -263,24 +281,32 @@ class CaseServiceImpl(
                                 message = "Agent '$lastSelectedName' is no longer available",
                             ),
                         ) +
-                            selectDefaultAgent(namespaceId, caseId)
+                            selectDefaultAgent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                userId = userId,
+                            )
                     }
                 }
             }
 
             else -> {
-                selectDefaultAgent(namespaceId, caseId)
+                selectDefaultAgent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    userId = userId,
+                )
             }
         }
     }
 
     /**
-     * Resolves the namespace default agent by name from [Namespace.defaultAgentName].
+     * Resolves the namespace default agent by name from [io.whozoss.agentos.namespace.Namespace.defaultAgentName].
      *
      * Returns a single [AgentSelectedEvent] when the default is configured and resolvable.
      * Returns a single [WarnEvent] (no [AgentSelectedEvent]) when:
-     * - [Namespace.defaultAgentName] is null (no default configured)
-     * - the configured name no longer matches any [AgentConfig] in the namespace
+     * - [io.whozoss.agentos.namespace.Namespace.defaultAgentName] is null (no default configured)
+     * - the configured name no longer matches any [io.whozoss.agentos.agentConfig.AgentConfig] in the namespace
      *
      * In both error cases the runtime will stop cleanly on the [WarnEvent] with no
      * [AgentSelectedEvent] following it.
@@ -288,6 +314,7 @@ class CaseServiceImpl(
     private fun selectDefaultAgent(
         namespaceId: UUID,
         caseId: UUID,
+        userId: UUID?,
     ): List<CaseEvent> {
         val namespaceLevelDefault = namespaceService.findById(namespaceId)?.defaultAgentName
         val effectiveDefaultName = namespaceLevelDefault ?: agentConfigProperties.agentName
@@ -305,7 +332,12 @@ class CaseServiceImpl(
             }
 
             else -> {
-                val resolvedName = agentService.resolveAgentName(effectiveDefaultName, namespaceId)
+                val resolvedName =
+                    agentService.resolveAgentName(
+                        namePart = effectiveDefaultName,
+                        namespaceId = namespaceId,
+                        userId = userId,
+                    )
                 when {
                     resolvedName != null -> {
                         val source = if (namespaceLevelDefault != null) "namespace" else "environment"
@@ -319,7 +351,9 @@ class CaseServiceImpl(
                             WarnEvent(
                                 namespaceId = namespaceId,
                                 caseId = caseId,
-                                message = "Default agent '$effectiveDefaultName' is not available. Use @agentName to address an agent explicitly.",
+                                message =
+                                    "Default agent '$effectiveDefaultName' is not available. " +
+                                        "Use @agentName to address an agent explicitly.",
                             ),
                         )
                     }
@@ -339,9 +373,9 @@ class CaseServiceImpl(
         agentName = agentName,
     )
 
-    // ========================================
+    // ======================================================
     // Agent execution (business logic)
-    // ========================================
+    // ======================================================
 
     private suspend fun runAgent(
         agentName: String,
@@ -408,9 +442,9 @@ class CaseServiceImpl(
             else -> caseEventService.create(event)
         }
 
-    // ========================================
+    // ======================================================
     // Status transitions
-    // ========================================
+    // ======================================================
 
     /**
      * Persists the new status, emits a [CaseStatusEvent] to SSE clients,
@@ -452,9 +486,9 @@ class CaseServiceImpl(
         }
     }
 
-    // ========================================
+    // ======================================================
     // Execution control
-    // ========================================
+    // ======================================================
 
     override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> =
         activeRuntimes.values.filter { it.namespaceId == namespaceId }
@@ -477,9 +511,9 @@ class CaseServiceImpl(
         handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
-    // ========================================
+    // ======================================================
     // Lifecycle
-    // ========================================
+    // ======================================================
 
     @PreDestroy
     fun shutdown() {
