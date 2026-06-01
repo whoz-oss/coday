@@ -1,3 +1,13 @@
+## 0.167.0 (2026-06-01)
+
+### 🚀 Features
+
+- agent-config-inspect component with definition view and cross-links ([#933](https://github.com/whoz-oss/coday/pull/933))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.166.9 (2026-06-01)
 
 ### 🩹 Fixes
