@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -20,6 +21,10 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.util.AttemptFailure
+import io.whozoss.agentos.util.AttemptResult
+import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
@@ -35,6 +40,7 @@ class AgentAdvanced(
     override val name: String,
     private val context: AgentAdvancedContext,
     private val intentionGenerator: AgentIntentionGenerator,
+    private val objectMapper: ObjectMapper,
     private val userId: UUID? = null,
     private val userExternalId: String? = null,
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
@@ -876,7 +882,7 @@ class AgentAdvanced(
             context.tools.firstOrNull { it.name == intentionEvent.toolName }
                 ?: throw ToolNotFoundException(intentionEvent.toolName)
 
-        val parametersPrompt =
+        val basePrompt =
             """
 Generate the parameters for the tool call below. You must generate a JSON object corresponding to the given input json schema.
 
@@ -892,29 +898,100 @@ Intention: ${intentionEvent.intention}
 **Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
             """.trimIndent()
         val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-        val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(parametersPrompt)
+        val baseMessages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall)
 
-        logger.debug { "[$name] generateParameters for '${tool.name}' — sending ${messages.size} messages" }
-        logger.trace { "[$name] generateParameters prompt:\n$parametersPrompt" }
+        logger.debug { "[$name] generateParameters for '${tool.name}' — sending ${baseMessages.size + 1} messages" }
+        logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
 
-        val rawParameters =
+        return retryWithFallback<String, ToolRequestEvent>(
+            maxAttempts = MAX_PARAMETER_ATTEMPTS,
+            fallback = { lastRaw ->
+                logger.error {
+                    "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Falling back to last raw result."
+                }
+                ToolRequestEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = tool.name,
+                    args = lastRaw,
+                )
+            },
+        ) { previousRaw ->
+            attemptParameterGeneration(
+                basePrompt = basePrompt,
+                baseMessages = baseMessages,
+                toolName = tool.name,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = toolRequestId,
+                previousRaw = previousRaw,
+            )
+        }
+    }
+
+    private fun attemptParameterGeneration(
+        basePrompt: String,
+        baseMessages: List<org.springframework.ai.chat.messages.Message>,
+        toolName: String,
+        namespaceId: UUID,
+        caseId: UUID,
+        toolRequestId: String,
+        previousRaw: String?,
+    ): AttemptResult<String, ToolRequestEvent> {
+        val prompt =
+            if (previousRaw == null) {
+                basePrompt
+            } else {
+                """
+$basePrompt
+
+PREVIOUS FAILED ATTEMPT(S):
+The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
+---
+$previousRaw
+---
+Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
+                """.trimIndent()
+            }
+
+        val raw = callLlmForParameters(baseMessages + UserMessage(prompt), toolName)
+
+        logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
+
+        return if (isValidJson(raw)) {
+            AttemptSuccess(
+                ToolRequestEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = toolName,
+                    args = raw,
+                ),
+            )
+        } else {
+            logger.warn { "[$name] generateParameters: invalid JSON for '$toolName'. Raw: $raw" }
+            AttemptFailure(raw)
+        }
+    }
+
+    private fun callLlmForParameters(
+        messages: List<org.springframework.ai.chat.messages.Message>,
+        toolName: String,
+    ): String {
+        val raw =
             context.chatClient
                 .prompt(Prompt(messages))
                 .call()
                 .content()
                 ?.trim() ?: "{}"
-        val parameters = stripJsonFence(rawParameters)
-
-        logger.trace { "[$name] generateParameters raw response for '${tool.name}': $parameters" }
-
-        return ToolRequestEvent(
-            namespaceId = namespaceId,
-            caseId = caseId,
-            toolRequestId = toolRequestId,
-            toolName = tool.name,
-            args = parameters,
-        )
+        return stripJsonFence(raw)
     }
+
+    private fun isValidJson(raw: String): Boolean =
+        runCatching {
+            objectMapper.readTree(raw)
+        }.isSuccess
 
     private fun stripJsonFence(raw: String): String =
         JSON_FENCE_REGEX
@@ -990,6 +1067,7 @@ Intention: ${intentionEvent.intention}
 
         /** How many identical (toolName, args) calls within the window trigger a warning. */
         internal const val REPETITION_THRESHOLD = 3
+        internal const val MAX_PARAMETER_ATTEMPTS = 3
 
         private val JSON_FENCE_REGEX =
             Regex(
