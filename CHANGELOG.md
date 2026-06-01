@@ -1,3 +1,13 @@
+## 0.166.7 (2026-06-01)
+
+### 🩹 Fixes
+
+- align agent resolution and find mechanism ([#929](https://github.com/whoz-oss/coday/pull/929))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.166.6 (2026-05-29)
 
 ### 🩹 Fixes
