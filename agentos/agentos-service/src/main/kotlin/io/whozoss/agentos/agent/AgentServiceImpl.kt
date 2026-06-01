@@ -22,14 +22,6 @@ import java.util.UUID
  * Implementation of [AgentService] that resolves agents from namespace-scoped
  * [AgentConfig] entities.
  *
- * ## Resolution strategy for [findAgentByName]
- *
- * Look up an [AgentConfig] in the namespace whose `name` matches [namePart]
- * (case-insensitive).
- * - If found: use the config's `name` as agent identity, its `instructions` as
- *   base system prompt, and resolve the model via `config.modelName`
- *   (alias-first, then apiName).
- * - If not found: throws [IllegalArgumentException].
  */
 @Service
 class AgentServiceImpl(
@@ -60,7 +52,20 @@ class AgentServiceImpl(
     override fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
-    ): String? = agentConfigService.findByName(namespaceId, namePart)?.name
+        userId: UUID?,
+    ): String? =
+        when {
+            userId != null -> {
+                agentConfigService
+                    .findAvailableByNamespaceIdAndUserId(namespaceId, userId, namePart)
+                    .firstOrNull()
+                    ?.name
+            }
+
+            else -> {
+                agentConfigService.findByName(namespaceId, namePart)?.name
+            }
+        }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
@@ -174,13 +179,14 @@ class AgentServiceImpl(
 
         return if (advancedExecution) {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
-            val advancedContext = AgentAdvancedContext(
-                chatClient = chatClient,
-                tools = tools.toList(),
-                instructions = instructions,
-                agentId = agentId,
-                confirmationManager = confirmationManager,
-            )
+            val advancedContext =
+                AgentAdvancedContext(
+                    chatClient = chatClient,
+                    tools = tools.toList(),
+                    instructions = instructions,
+                    agentId = agentId,
+                    confirmationManager = confirmationManager,
+                )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
                 name = agentName,

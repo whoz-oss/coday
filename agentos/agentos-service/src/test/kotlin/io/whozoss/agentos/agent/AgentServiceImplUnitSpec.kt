@@ -573,7 +573,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // resolveAgentName
         // -------------------------------------------------------------------------
 
-        "resolveAgentName returns AgentConfig name when one matches" {
+        "resolveAgentName returns AgentConfig name when one matches (no userId)" {
             val config = agentConfig(name = "my-agent")
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
 
@@ -582,10 +582,33 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 0) { aiModelService.findAiModel(any(), any()) }
         }
 
-        "resolveAgentName returns null when no AgentConfig matches" {
+        "resolveAgentName returns null when no AgentConfig matches (no userId)" {
             every { agentConfigService.findByName(namespaceId, "unknown") } returns null
 
             agentService.resolveAgentName("unknown", namespaceId) shouldBe null
+        }
+
+        "resolveAgentName with userId delegates to findAvailableByNamespaceIdAndUserId" {
+            val userId = UUID.randomUUID()
+            val config = agentConfig(name = "my-agent")
+            every {
+                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "my-agent")
+            } returns listOf(config)
+
+            agentService.resolveAgentName("my-agent", namespaceId, userId) shouldBe "my-agent"
+
+            verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
+        }
+
+        "resolveAgentName with userId returns null when agent not accessible to user" {
+            val userId = UUID.randomUUID()
+            every {
+                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "restricted")
+            } returns emptyList()
+
+            agentService.resolveAgentName("restricted", namespaceId, userId) shouldBe null
+
+            verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
         }
     }
 }

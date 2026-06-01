@@ -32,10 +32,18 @@ interface AgentService {
      * Resolve the canonical name for [namePart] within [namespaceId] by
      * [io.whozoss.agentos.agentConfig.AgentConfig] name matching,
      * without instantiating a full Agent.
-     * Returns null if no [io.whozoss.agentos.agentConfig.AgentConfig] matches.
+     *
+     * When [userId] is non-null, only agents accessible to that user
+     * (via group or namespace membership) are considered — same semantics as
+     * [io.whozoss.agentos.agentConfig.AgentConfigService.findAvailableByNamespaceIdAndUserId].
+     * When [userId] is null (system / anonymous call), falls back to a plain
+     * namespace-wide name lookup.
+     *
+     * Returns null if no matching [io.whozoss.agentos.agentConfig.AgentConfig] is found.
      */
     fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
+        userId: UUID? = null,
     ): String?
 }
