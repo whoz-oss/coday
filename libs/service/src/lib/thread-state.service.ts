@@ -35,6 +35,16 @@ export class ThreadStateService implements Killable {
   }
 
   async kill(): Promise<void> {
+    // Save the thread before marking as killed to handle race conditions
+    // where autoSave() is called after isKilled is set
+    const thread = this.activeThread$.value
+    if (thread && thread.messagesLength > 0) {
+      try {
+        await this.threadRepository.save(this.projectId, thread)
+      } catch (error) {
+        console.log('Kill-save failed:', error instanceof Error ? error.message : error)
+      }
+    }
     this.isKilled = true
     this.activeThread$.complete()
   }
@@ -104,7 +114,6 @@ export class ThreadStateService implements Killable {
     const thread = this.activeThread$.value
     if (!thread || thread.messagesLength == 0) {
       // skip saving a thread that has no messages
-      console.log(`Autosave of an empty or falsy thread aborted, threadId: ${thread?.id}, user: ${this.username}`)
       return
     }
 

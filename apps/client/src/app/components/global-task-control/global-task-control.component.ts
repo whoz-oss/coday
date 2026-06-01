@@ -26,6 +26,9 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { buildCodayEvent, ChoiceEvent, InviteEvent, ThinkingEvent, ThreadUpdateEvent } from '@coday/model'
 import { TaskCardComponent } from '../task-control/task-card/task-card.component'
 import { NewTaskDialogComponent } from '../new-task-dialog/new-task-dialog.component'
+import { QuickSchedulerDialogComponent } from '../quick-scheduler-dialog/quick-scheduler-dialog.component'
+import { GlobalSchedulersDialogComponent } from '../global-schedulers-dialog/global-schedulers-dialog.component'
+// GlobalSchedulersDialogComponent is opened via MatDialog — no need to add to imports array
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component'
 import { OptionsPanelComponent } from '../options-panel/options-panel.component'
 import { ThreadComponent } from '../thread/thread.component'
@@ -271,6 +274,20 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected openUserConfig(): void {
     this.configState.openUserConfigEditor()
+  }
+
+  protected openQuickSchedulerDialog(): void {
+    this.dialog.open(QuickSchedulerDialogComponent, {
+      width: '480px',
+      disableClose: false,
+    })
+  }
+
+  protected openGlobalSchedulersDialog(): void {
+    this.dialog.open(GlobalSchedulersDialogComponent, {
+      width: '600px',
+      maxHeight: '80vh',
+    })
   }
 
   protected openNewTaskDialog(): void {
