@@ -169,7 +169,7 @@ class AgentServiceImpl(
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
 
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
-        val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
+        val instructions = buildInstructions(agentName = agentName, baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
         logger.trace { "Final instructions for '$agentName':\n$instructions" }
 
         return if (advancedExecution) {
@@ -221,6 +221,7 @@ class AgentServiceImpl(
      * never compacted away by the provider, regardless of conversation length.
      */
     private fun buildInstructions(
+        agentName: String,
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
         context: AgentExecutionContext,
@@ -262,6 +263,30 @@ class AgentServiceImpl(
                 }
             }
 
+        val availableAgentsBlock =
+            when {
+                agentIntegrations == null || REDIRECT_INTEGRATION_NAME !in agentIntegrations -> null
+                else -> {
+                    val allConfigs =
+                        if (context.userId != null) {
+                            agentConfigService.findAvailableByNamespaceIdAndUserId(context.namespaceId, context.userId)
+                        } else {
+                            agentConfigService.findByParent(context.namespaceId)
+                        }
+                    val others = allConfigs.filter { !it.name.equals(agentName, ignoreCase = true) }
+                    others.takeIf { it.isNotEmpty() }?.let { agents ->
+                        buildString {
+                            appendLine()
+                            appendLine("## Available agents")
+                            agents.forEach { agent ->
+                                val suffix = agent.description?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                appendLine("- ${agent.name}$suffix")
+                            }
+                        }.trimEnd()
+                    }
+                }
+            }
+
         val userBlock =
             context.userId?.let { userId ->
                 userService.findById(userId)?.let { user ->
@@ -285,9 +310,11 @@ class AgentServiceImpl(
                 }
             }
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, namespaceBlock, integrationsBlock, userBlock)
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, namespaceBlock, integrationsBlock, availableAgentsBlock, userBlock)
             .joinToString("\n")
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private const val REDIRECT_INTEGRATION_NAME = "SwitchAgentAll"
+    }
 }

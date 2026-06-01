@@ -570,6 +570,149 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Available agents block injection into instructions (WZ-32259)
+        // -------------------------------------------------------------------------
+
+        "findAgentByName injects available agents block when SwitchAgentAll is in integrations" {
+            val localAgentConfigService = mockk<AgentConfigService>()
+            val localService =
+                AgentServiceImpl(
+                    chatClientProvider,
+                    toolResolverService,
+                    aiModelService,
+                    aiProviderService,
+                    namespaceService,
+                    integrationConfigService,
+                    userService,
+                    aiProviderReconciliationService,
+                    localAgentConfigService,
+                    intentionGenerator,
+                    confirmationManager,
+                )
+            val orchestratorConfig = agentConfig(name = "Astra", modelName = "sonnet")
+                .copy(integrations = mapOf("SwitchAgentAll" to listOf("redirect")))
+            val castingManager = AgentConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "CastingManager",
+                description = "Talent-to-project matching specialist: identifies best candidates via casting strategies.",
+            )
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { localAgentConfigService.findByName(namespaceId, "Astra") } returns orchestratorConfig
+            every { localAgentConfigService.findByParent(namespaceId) } returns listOf(orchestratorConfig, castingManager)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = localService.findAgentByName("Astra", context) as AgentSimple
+
+            agent.instructions shouldContain "## Available agents"
+            agent.instructions shouldContain "CastingManager: Talent-to-project matching specialist: identifies best candidates via casting strategies."
+        }
+
+        "findAgentByName omits available agents block when SwitchAgentAll is not in integrations" {
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("Whoz" to null))
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions shouldNotContain "## Available agents"
+        }
+
+        "findAgentByName excludes the current agent from the available agents block" {
+            val localAgentConfigService = mockk<AgentConfigService>()
+            val localService =
+                AgentServiceImpl(
+                    chatClientProvider,
+                    toolResolverService,
+                    aiModelService,
+                    aiProviderService,
+                    namespaceService,
+                    integrationConfigService,
+                    userService,
+                    aiProviderReconciliationService,
+                    localAgentConfigService,
+                    intentionGenerator,
+                    confirmationManager,
+                )
+            val orchestratorConfig = agentConfig(name = "Astra", modelName = "sonnet")
+                .copy(integrations = mapOf("SwitchAgentAll" to listOf("redirect")))
+            val profileCaretaker = AgentConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "ProfileCaretaker",
+                description = "Profile quality guardian for Whoz talent profiles.",
+            )
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { localAgentConfigService.findByName(namespaceId, "Astra") } returns orchestratorConfig
+            every { localAgentConfigService.findByParent(namespaceId) } returns listOf(orchestratorConfig, profileCaretaker)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = localService.findAgentByName("Astra", context) as AgentSimple
+
+            agent.instructions shouldContain "ProfileCaretaker"
+            agent.instructions shouldNotContain "- Astra"
+        }
+
+        "findAgentByName lists agent without description suffix when description is null" {
+            val localAgentConfigService = mockk<AgentConfigService>()
+            val localService =
+                AgentServiceImpl(
+                    chatClientProvider,
+                    toolResolverService,
+                    aiModelService,
+                    aiProviderService,
+                    namespaceService,
+                    integrationConfigService,
+                    userService,
+                    aiProviderReconciliationService,
+                    localAgentConfigService,
+                    intentionGenerator,
+                    confirmationManager,
+                )
+            val orchestratorConfig = agentConfig(name = "Astra", modelName = "sonnet")
+                .copy(integrations = mapOf("SwitchAgentAll" to listOf("redirect")))
+            // DemandBuilder exists in production but has no description configured in this namespace
+            val demandBuilder = AgentConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "DemandBuilder",
+                description = null,
+            )
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { localAgentConfigService.findByName(namespaceId, "Astra") } returns orchestratorConfig
+            every { localAgentConfigService.findByParent(namespaceId) } returns listOf(orchestratorConfig, demandBuilder)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = localService.findAgentByName("Astra", context) as AgentSimple
+
+            agent.instructions shouldContain "- DemandBuilder"
+            agent.instructions shouldNotContain "- DemandBuilder:"
+            agent.instructions shouldNotContain "null"
+        }
+
+        // -------------------------------------------------------------------------
         // resolveAgentName
         // -------------------------------------------------------------------------
 
