@@ -69,6 +69,7 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = AgentFinishedEvent::class, name = "AgentFinishedEvent"),
     JsonSubTypes.Type(value = AgentRunningEvent::class, name = "AgentRunningEvent"),
     JsonSubTypes.Type(value = WarnEvent::class, name = "WarnEvent"),
+    JsonSubTypes.Type(value = ErrorEvent::class, name = "ErrorEvent"),
     JsonSubTypes.Type(value = QuestionEvent::class, name = "QuestionEvent"),
     JsonSubTypes.Type(value = AnswerEvent::class, name = "AnswerEvent"),
     JsonSubTypes.Type(value = IntentionGeneratedEvent::class, name = "IntentionGeneratedEvent"),
@@ -122,6 +123,16 @@ data class WarnEvent(
     val message: String,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.WARN
+}
+
+data class ErrorEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val message: String,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.ERROR
 }
 
 /**
@@ -232,7 +243,8 @@ data class ThinkingEvent(
     override val namespaceId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
-) : CaseEvent, TransientCaseEvent {
+) : CaseEvent,
+    TransientCaseEvent {
     override val type: CaseEventType = CaseEventType.THINKING
 }
 
@@ -329,7 +341,8 @@ data class TextChunkEvent(
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
     val chunk: String,
-) : CaseEvent, TransientCaseEvent {
+) : CaseEvent,
+    TransientCaseEvent {
     override val type: CaseEventType = CaseEventType.TEXT_CHUNK
 }
 

@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import kotlinx.coroutines.flow.FlowCollector
 import mu.KLogger
@@ -30,7 +31,7 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorEvents(
 ) {
     logger.error(e) { "LLM provider rejected request for case $caseId" }
     emit(
-        WarnEvent(
+        ErrorEvent(
             namespaceId = namespaceId,
             caseId = caseId,
             message = "The AI provider rejected the request and the agent cannot continue: ${e.message}",

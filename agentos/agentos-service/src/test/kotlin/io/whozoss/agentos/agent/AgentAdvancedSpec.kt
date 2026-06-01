@@ -9,8 +9,6 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import org.springframework.ai.retry.NonTransientAiException
-import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -19,9 +17,11 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import reactor.core.publisher.Flux
 import java.nio.file.Files
 import java.util.*
@@ -39,7 +39,9 @@ internal class TestRemoveTool(
     override val name: String = "FILES__remove",
     override val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
 ) : StandardTool<TestRemoveTool.Input> {
-    data class Input(val path: String? = null)
+    data class Input(
+        val path: String? = null,
+    )
 
     override val description: String = "Remove a file"
     override val inputSchema: String = """{"type":"object","properties":{"path":{"type":"string"}}}"""
@@ -57,8 +59,7 @@ internal class TestRemoveTool(
         return ToolExecutionResult.success("File $path deleted successfully")
     }
 
-    override fun getConfirmationInstructions(): String =
-        "Be strict: explicit confirmation only after the assistant's question."
+    override fun getConfirmationInstructions(): String = "Be strict: explicit confirmation only after the assistant's question."
 
     // The orchestrator invokes executeWithJson (parses JSON then calls execute) for the
     // post-confirmation path. onRejected: default returns "Action cancelled.".
@@ -538,31 +539,34 @@ class AgentAdvancedSpec :
             val argsA = """{"q":"B2"}"""
             val argsB = """{"q":"E2"}"""
             // A appears 3 times in the window of 5 — threshold reached
-            val calls = listOf(
-                "toolA" to argsA,
-                "toolB" to argsB,
-                "toolA" to argsA,
-                "toolB" to argsB,
-                "toolA" to argsA,
-            )
-            val events = calls.mapIndexed { i, (tool, args) ->
+            val calls =
                 listOf(
-                    ToolRequestEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "req-$i",
-                        toolName = tool,
-                        args = args,
-                    ),
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "req-$i",
-                        toolName = tool,
-                        output = MessageContent.Text("result"),
-                    ),
+                    "toolA" to argsA,
+                    "toolB" to argsB,
+                    "toolA" to argsA,
+                    "toolB" to argsB,
+                    "toolA" to argsA,
                 )
-            }.flatten()
+            val events =
+                calls
+                    .mapIndexed { i, (tool, args) ->
+                        listOf(
+                            ToolRequestEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                toolRequestId = "req-$i",
+                                toolName = tool,
+                                args = args,
+                            ),
+                            ToolResponseEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                toolRequestId = "req-$i",
+                                toolName = tool,
+                                output = MessageContent.Text("result"),
+                            ),
+                        )
+                    }.flatten()
 
             agent.detectRepetitionLoop(events) shouldBe "toolA"
         }
@@ -571,30 +575,32 @@ class AgentAdvancedSpec :
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val argsList = listOf(
-                """{"qualificationNameInput":"B2","rootCategory":"GRADE"}""",
-                """{"qualificationNameInput":"E2","rootCategory":"GRADE"}""",
-                """{"qualificationNameInput":"E4","rootCategory":"GRADE"}""",
-            )
+            val argsList =
+                listOf(
+                    """{"qualificationNameInput":"B2","rootCategory":"GRADE"}""",
+                    """{"qualificationNameInput":"E2","rootCategory":"GRADE"}""",
+                    """{"qualificationNameInput":"E4","rootCategory":"GRADE"}""",
+                )
             val events =
-                argsList.mapIndexed { i, args ->
-                    listOf(
-                        ToolRequestEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "SearchQualifications",
-                            args = args,
-                        ),
-                        ToolResponseEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "SearchQualifications",
-                            output = MessageContent.Text("result $i"),
-                        ),
-                    )
-                }.flatten()
+                argsList
+                    .mapIndexed { i, args ->
+                        listOf(
+                            ToolRequestEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                toolRequestId = "req-$i",
+                                toolName = "SearchQualifications",
+                                args = args,
+                            ),
+                            ToolResponseEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                toolRequestId = "req-$i",
+                                toolName = "SearchQualifications",
+                                output = MessageContent.Text("result $i"),
+                            ),
+                        )
+                    }.flatten()
 
             agent.detectRepetitionLoop(events) shouldBe null
         }
@@ -633,31 +639,34 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             // 5 calls: FILES__ReadFile appears twice, JIRA__GetIssue three times but with different args each time
-            val calls = listOf(
-                "FILES__ReadFile" to """{"path":"a.txt"}""",
-                "JIRA__GetIssue" to """{"id":"WZ-1"}""",
-                "FILES__ReadFile" to """{"path":"a.txt"}""",
-                "JIRA__GetIssue" to """{"id":"WZ-2"}""",
-                "JIRA__GetIssue" to """{"id":"WZ-3"}""",
-            )
-            val events = calls.mapIndexed { i, (tool, args) ->
+            val calls =
                 listOf(
-                    ToolRequestEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "req-$i",
-                        toolName = tool,
-                        args = args,
-                    ),
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "req-$i",
-                        toolName = tool,
-                        output = MessageContent.Text("content"),
-                    ),
+                    "FILES__ReadFile" to """{"path":"a.txt"}""",
+                    "JIRA__GetIssue" to """{"id":"WZ-1"}""",
+                    "FILES__ReadFile" to """{"path":"a.txt"}""",
+                    "JIRA__GetIssue" to """{"id":"WZ-2"}""",
+                    "JIRA__GetIssue" to """{"id":"WZ-3"}""",
                 )
-            }.flatten()
+            val events =
+                calls
+                    .mapIndexed { i, (tool, args) ->
+                        listOf(
+                            ToolRequestEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                toolRequestId = "req-$i",
+                                toolName = tool,
+                                args = args,
+                            ),
+                            ToolResponseEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                toolRequestId = "req-$i",
+                                toolName = tool,
+                                output = MessageContent.Text("content"),
+                            ),
+                        )
+                    }.flatten()
 
             agent.detectRepetitionLoop(events) shouldBe null
         }
@@ -968,16 +977,20 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            val tool = object : StandardTool<Map<String, Any>> {
-                override val name = "TEST__failing"
-                override val description = "throws on execute"
-                override val inputSchema = "{}"
-                override val version = "1.0.0"
-                override val paramType = null
-                override val confirmationMode = ConfirmationMode.INFER
-                override suspend fun execute(input: Map<String, Any>?, context: ToolContext): ToolExecutionResult =
-                    throw RuntimeException("boom")
-            }
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__failing"
+                    override val description = "throws on execute"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw RuntimeException("boom")
+                }
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
@@ -1058,19 +1071,25 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            val tool = object : StandardTool<Map<String, Any>> {
-                override val name = "FAILING__remove"
-                override val description = "always throws on executeWithJson"
-                override val inputSchema = "{}"
-                override val version = "1.0.0"
-                override val paramType = null
-                override val confirmationMode = ConfirmationMode.EVERY_TIME
-                override suspend fun execute(input: Map<String, Any>?, context: ToolContext): ToolExecutionResult =
-                    ToolExecutionResult.success("ok")
-                override suspend fun executeWithJson(json: String?, context: ToolContext): ToolExecutionResult {
-                    throw RuntimeException("disk full")
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "FAILING__remove"
+                    override val description = "always throws on executeWithJson"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.EVERY_TIME
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("ok")
+
+                    override suspend fun executeWithJson(
+                        json: String?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw RuntimeException("disk full")
                 }
-            }
             val pending =
                 PendingConfirmationEvent(
                     namespaceId = namespaceId,
@@ -1159,7 +1178,7 @@ class AgentAdvancedSpec :
             events.filterIsInstance<WarnEvent>().any { it.message.contains("Cannot resolve pending confirmation") } shouldBe true
         }
 
-        "NonTransientAiException from LLM during generateParameters surfaces as WarnEvent + AgentFinishedEvent, no loop" {
+        "NonTransientAiException from LLM during generateParameters surfaces as ErrorEvent + AgentFinishedEvent, no loop" {
             // Regression guard for WZ-32274: a 400 from the LLM provider on the
             // generateParameters call must terminate the run immediately instead of
             // looping until maxIterations is exhausted.
@@ -1182,35 +1201,38 @@ class AgentAdvancedSpec :
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
                 mockGenerator.generate(any(), any(), any(), any(), any())
-            } returns IntentionGeneratedEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                agentId = agentId,
-                intention = "Read the file.",
-                toolName = "FILES__ReadFile",
-            )
+            } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "Read the file.",
+                    toolName = "FILES__ReadFile",
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(mockTool),
-                instructions = null,
-                agentId = agentId,
-                confirmationManager = mockk(relaxed = true),
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "TestAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                maxIterations = 10,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    maxIterations = 10,
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
-            // Must emit exactly one WarnEvent mentioning the provider error
-            val warnEvents = events.filterIsInstance<WarnEvent>()
-            warnEvents shouldHaveSize 1
-            warnEvents[0].message shouldContain "AI provider rejected"
+            // Must emit exactly one ErrorEvent mentioning the provider error
+            val errorEvents = events.filterIsInstance<ErrorEvent>()
+            errorEvents shouldHaveSize 1
+            errorEvents[0].message shouldContain "AI provider rejected"
 
             // Must terminate cleanly with AgentFinishedEvent
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
