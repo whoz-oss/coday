@@ -1,3 +1,13 @@
+## 0.167.2 (2026-06-01)
+
+### 🩹 Fixes
+
+- remove duplicated agent running event ([#936](https://github.com/whoz-oss/coday/pull/936))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.167.1 (2026-06-01)
 
 ### 🚀 Features
