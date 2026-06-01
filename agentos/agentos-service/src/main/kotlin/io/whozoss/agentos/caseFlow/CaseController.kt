@@ -60,6 +60,7 @@ class CaseController(
             status = entity.status,
             title = entity.title,
             created = entity.metadata.created,
+            context = entity.context,
         )
 
     override fun toDomain(resource: CaseResource): Case {
@@ -69,6 +70,7 @@ class CaseController(
             namespaceId = resource.namespaceId,
             status = resource.status,
             title = resource.title ?: "Case ${metadata.id}",
+            context = resource.context,
         )
     }
 
@@ -86,6 +88,7 @@ class CaseController(
     ): Case =
         existing.copy(
             title = resource.title ?: existing.title,
+            context = resource.context ?: existing.context,
         )
 
     @GetMapping("/{id}")

@@ -22,23 +22,28 @@ data class AgentAdvancedContext(
     val agentId: UUID,
     val confirmationManager: ConfirmationManager,
 ) {
-    internal fun buildMessages(events: List<CaseEvent>): List<Message> {
-        val history = convertEventsToMessages(events)
+    internal fun buildMessages(
+        events: List<CaseEvent>,
+        caseContext: Map<String, Any?>? = null,
+    ): List<Message> {
+        val history = convertEventsToMessages(events, caseContext = caseContext)
         return if (instructions != null) history + listOf(UserMessage(instructions)) else history
     }
 
     /**
      * Convert case events to Spring AI messages for the LLM prompt.
      *
-     * When the last user [MessageEvent] carries a non-null [MessageEvent.sessionContext],
-     * it is injected as a [UserMessage] immediately before that message to maintain the
-     * alternating user/assistant pattern expected by most LLM APIs. Session context on
-     * earlier messages is ignored.
+     * When the last user [MessageEvent] carries a non-null [MessageEvent.sessionContext]
+     * or when [caseContext] is non-null, the merged context is injected as a [UserMessage]
+     * immediately before that message to maintain the alternating user/assistant pattern
+     * expected by most LLM APIs. [MessageEvent.sessionContext] takes precedence over
+     * [caseContext] on key conflicts. Context on earlier messages is ignored.
      */
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
         maxDetailedToolCalls: Int = 6,
         maxDetailedMessagesWithSteps: Int = 3,
+        caseContext: Map<String, Any?>? = null,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
@@ -53,10 +58,12 @@ data class AgentAdvancedContext(
             when (event) {
                 is MessageEvent -> {
                     val prefix: List<Message> =
-                        event
-                            .sessionContextPromptText()
-                            .takeIf { index == lastUserMsgIndex }
-                            ?.let { listOf(UserMessage(it)) } ?: emptyList()
+                        if (index == lastUserMsgIndex) {
+                            event.sessionContextPromptText(caseContext)
+                                ?.let { listOf(UserMessage(it)) } ?: emptyList()
+                        } else {
+                            emptyList()
+                        }
                     prefix + listOf(event.toSpringAiMessage(this.agentId.toString()))
                 }
 

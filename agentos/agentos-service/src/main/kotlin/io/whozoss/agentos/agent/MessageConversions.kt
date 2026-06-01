@@ -28,20 +28,31 @@ internal fun String.stripConversationTags(): String =
         .let { USER_TAG_REGEX.replace(it, "$1") }
 
 /**
- * Render the [MessageEvent.sessionContext] as a human-readable prompt fragment.
+ * Render the merged context as a human-readable prompt fragment.
  *
- * Formats the opaque context map as a simple key: value list inside an XML tag so the
- * LLM can identify it as structured metadata rather than conversational content.
- * Returns null when [MessageEvent.sessionContext] is null.
+ * Merges [caseContext] (stable case-level metadata) with [MessageEvent.sessionContext]
+ * (per-message context), with [MessageEvent.sessionContext] taking precedence on key
+ * conflicts. The result is formatted as a simple key: value list inside an XML tag so
+ * the LLM can identify it as structured metadata rather than conversational content.
+ *
+ * Returns null when both [caseContext] and [MessageEvent.sessionContext] are null.
  *
  * Keys and values are XML-escaped to prevent prompt injection via client-controlled
  * context values (e.g. a value containing `</session-context>` must not be able to
  * break the XML structure seen by the LLM).
  */
-internal fun MessageEvent.sessionContextPromptText(): String? =
-    sessionContext?.let { ctx ->
-        val entries = ctx.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
-        "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
+internal fun MessageEvent.sessionContextPromptText(caseContext: Map<String, Any?>? = null): String? {
+    // Capture into a local val so the compiler can smart-cast across the when branches
+    // (cross-module public API properties are not eligible for smart cast directly).
+    val msgContext = sessionContext
+    val merged = when {
+        caseContext == null && msgContext == null -> return null
+        caseContext == null -> msgContext!!
+        msgContext == null -> caseContext
+        else -> caseContext + msgContext  // msgContext (message) wins on key conflict
+    }
+    val entries = merged.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
+    return "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
 }
     /** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
 private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
