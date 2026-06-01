@@ -5,7 +5,6 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
@@ -54,15 +53,6 @@ class AgentAdvanced(
         flow {
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
-
-            emit(
-                AgentRunningEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    agentId = id,
-                    agentName = name,
-                ),
-            )
 
             val accumulatedEvents = events.toMutableList()
 
