@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -13,10 +14,12 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -24,6 +27,7 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import reactor.core.publisher.Flux
 import java.util.UUID
@@ -165,7 +169,7 @@ class AgentSimpleToolCallbackUnitSpec :
                     ): ToolExecutionResult {
                         receivedArgs += json
                         return ToolExecutionResult.success(
-                            """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}"""
+                            """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}""",
                         )
                     }
                 }
@@ -347,6 +351,28 @@ class AgentSimpleToolCallbackUnitSpec :
 
             events shouldHaveAtLeastSize 3
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
+        }
+
+        "NonTransientAiException from LLM provider surfaces as ErrorEvent + AgentFinishedEvent, no generic error" {
+            // Regression guard for WZ-32274: a 4xx from the provider must be caught
+            // specifically so the agent terminates cleanly and the user gets a clear message.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(any<List<ToolCallback>>()).stream() } returns mockStreamSpec
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } throws NonTransientAiException("400 - invalid_request_error")
+
+            val agent = makeAgent(agentId, mockChatClient, emptyList())
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "hello"))).toList()
+
+            val errorEvents = events.filterIsInstance<ErrorEvent>()
+            errorEvents shouldHaveSize 1
+            errorEvents[0].message shouldContain "AI provider rejected"
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
         "convertEventsToMessages should not crash when history contains a ToolRequestEvent with null args" {

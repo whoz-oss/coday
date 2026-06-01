@@ -27,6 +27,7 @@ import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
 
 class AgentAdvanced(
@@ -188,6 +189,8 @@ class AgentAdvanced(
             } catch (e: AgentInterrupt) {
                 // Not an error: a tool requested a structured interruption of this agent run.
                 emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+            } catch (e: NonTransientAiException) {
+                emitProviderErrorEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: ConfirmationConfigurationException) {
                 // DI wiring bug — surface loudly so prod logs catch it. Still emit a WarnEvent
                 // so the per-case lifecycle terminates cleanly, but the operator-facing signal

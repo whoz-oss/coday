@@ -1137,6 +1137,7 @@ paths:
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
                   - $ref: "#/components/schemas/ConfirmationResolvedEvent"
+                  - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
@@ -1643,6 +1644,7 @@ paths:
                 - $ref: "#/components/schemas/AnswerEvent"
                 - $ref: "#/components/schemas/CaseStatusEvent"
                 - $ref: "#/components/schemas/ConfirmationResolvedEvent"
+                - $ref: "#/components/schemas/ErrorEvent"
                 - $ref: "#/components/schemas/IntentionGeneratedEvent"
                 - $ref: "#/components/schemas/MessageEvent"
                 - $ref: "#/components/schemas/PendingConfirmationEvent"
@@ -1680,6 +1682,7 @@ paths:
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
                   - $ref: "#/components/schemas/ConfirmationResolvedEvent"
+                  - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
@@ -2354,6 +2357,21 @@ components:
       - id
       - modified
       - removed
+    ErrorEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          message:
+            type: string
+      required:
+      - caseId
+      - id
+      - message
+      - metadata
+      - namespaceId
+      - timestamp
+      - type
     Image:
       allOf:
       - $ref: "#/components/schemas/MessageContent"

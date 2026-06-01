@@ -34,12 +34,15 @@ model/answer-event.ts
 model/case-event.ts
 model/case-status-event.ts
 model/case.ts
+model/confirmation-resolved-event.ts
 model/entity-metadata.ts
+model/error-event.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts
 model/intention-generated-event.ts
+model/list-by-user-in-namespace-request.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
@@ -49,6 +52,7 @@ model/namespace-list-item.ts
 model/namespace-role-entry.ts
 model/namespace-user-list-item.ts
 model/namespace.ts
+model/pending-confirmation-event.ts
 model/plugin-action-response.ts
 model/plugin-info.ts
 model/plugin-upload-response.ts
