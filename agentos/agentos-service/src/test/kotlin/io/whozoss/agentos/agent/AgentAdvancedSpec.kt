@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -1229,7 +1230,7 @@ class AgentAdvancedSpec :
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } throws NonTransientAiException("400 - bad_request_error: messages: ...")
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "FILES__ReadFile"
             every { mockTool.description } returns "Read a file"
             every { mockTool.inputSchema } returns "{}"
@@ -1288,7 +1289,7 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "TEST__tool"
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
@@ -1305,32 +1306,41 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"hello"}"""
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Call the tool", toolName = "TEST__tool",
-                ),
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Done", toolName = "Answer",
-                ),
-            )
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the tool",
+                        toolName = "TEST__tool",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done",
+                        toolName = "Answer",
+                    ),
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(mockTool),
-                instructions = null,
-                agentId = agentId,
-                confirmationManager = mockk(relaxed = true),
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "RetryAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "RetryAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1346,7 +1356,7 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "TEST__tool"
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
@@ -1360,38 +1370,48 @@ class AgentAdvancedSpec :
             every { mockStreamSpec.content() } returns Flux.just("ok")
 
             // First call returns invalid JSON, second returns valid JSON
-            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany listOf(
-                "not valid json at all",
-                """{"value":"hello"}""",
-            )
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany
+                listOf(
+                    "not valid json at all",
+                    """{"value":"hello"}""",
+                )
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Call the tool", toolName = "TEST__tool",
-                ),
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Done", toolName = "Answer",
-                ),
-            )
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the tool",
+                        toolName = "TEST__tool",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done",
+                        toolName = "Answer",
+                    ),
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(mockTool),
-                instructions = null,
-                agentId = agentId,
-                confirmationManager = mockk(relaxed = true),
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "RetryAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "RetryAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1408,7 +1428,7 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "TEST__tool"
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
@@ -1426,32 +1446,41 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany invalidResponses
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Call the tool", toolName = "TEST__tool",
-                ),
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Done", toolName = "Answer",
-                ),
-            )
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the tool",
+                        toolName = "TEST__tool",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done",
+                        toolName = "Answer",
+                    ),
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(mockTool),
-                instructions = null,
-                agentId = agentId,
-                confirmationManager = mockk(relaxed = true),
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "RetryAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "RetryAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1581,6 +1610,7 @@ class AgentAdvancedSpec :
                     name = "EnrichAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
@@ -1661,6 +1691,7 @@ class AgentAdvancedSpec :
                     name = "SimpleAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
@@ -1760,6 +1791,7 @@ class AgentAdvancedSpec :
                     name = "FallbackAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
@@ -1869,6 +1901,7 @@ class AgentAdvancedSpec :
                     name = "MultiPhaseAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
