@@ -40,6 +40,7 @@ class AgentAdvanced(
     override val name: String,
     private val context: AgentAdvancedContext,
     private val intentionGenerator: AgentIntentionGenerator,
+    private val objectMapper: ObjectMapper,
     private val userId: UUID? = null,
     private val userExternalId: String? = null,
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
@@ -988,12 +989,9 @@ Generate ONLY a valid JSON object matching the schema. No explanation, no markdo
     }
 
     private fun isValidJson(raw: String): Boolean =
-        try {
-            JSON_OBJECT_MAPPER.readTree(raw)
-            true
-        } catch (_: Exception) {
-            false
-        }
+        runCatching {
+            objectMapper.readTree(raw)
+        }.isSuccess
 
     private fun stripJsonFence(raw: String): String =
         JSON_FENCE_REGEX
@@ -1076,7 +1074,5 @@ Generate ONLY a valid JSON object matching the schema. No explanation, no markdo
                 """^```(?:json)?\s*(.*?)\s*```$""",
                 setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
             )
-
-        private val JSON_OBJECT_MAPPER = ObjectMapper()
     }
 }

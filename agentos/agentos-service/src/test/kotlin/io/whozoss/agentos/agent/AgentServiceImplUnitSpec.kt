@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -42,6 +43,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val agentConfigService: AgentConfigService = mockk()
     private val intentionGenerator: AgentIntentionGenerator = mockk(relaxed = true)
     private val confirmationManager: ConfirmationManager = mockk(relaxed = true)
+    private val testObjectMapper = ObjectMapper()
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -55,6 +57,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentConfigService,
             intentionGenerator,
             confirmationManager,
+            testObjectMapper,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -327,6 +330,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigService,
                     intentionGenerator,
                     confirmationManager,
+                    testObjectMapper,
                 )
             val configs =
                 listOf(

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
@@ -36,6 +37,7 @@ class AgentServiceImpl(
     private val agentConfigService: AgentConfigService,
     private val intentionGenerator: AgentIntentionGenerator,
     private val confirmationManager: ConfirmationManager,
+    private val objectMapper: ObjectMapper,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -192,6 +194,7 @@ class AgentServiceImpl(
                 name = agentName,
                 context = advancedContext,
                 intentionGenerator = intentionGenerator,
+                objectMapper = objectMapper,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,

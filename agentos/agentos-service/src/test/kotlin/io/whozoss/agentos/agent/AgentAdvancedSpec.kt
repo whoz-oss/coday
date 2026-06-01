@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -69,6 +70,8 @@ class AgentAdvancedSpec :
     StringSpec({
         timeout = 5000
 
+        val testObjectMapper = ObjectMapper()
+
         fun makeParserAgent(): AgentAdvanced {
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val agentId = UUID.randomUUID()
@@ -84,6 +87,7 @@ class AgentAdvancedSpec :
                 name = "ParserAgent",
                 context = context,
                 intentionGenerator = mockk(),
+                objectMapper = testObjectMapper,
             )
         }
 
@@ -152,6 +156,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
@@ -224,6 +229,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
@@ -292,6 +298,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
@@ -366,6 +373,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
 
@@ -466,6 +474,7 @@ class AgentAdvancedSpec :
                     name = "LoopAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 10,
                 )
 
@@ -734,6 +743,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "FILES__remove"),
+                    objectMapper = testObjectMapper,
                     maxIterations = 3,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -788,6 +798,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
+                    objectMapper = testObjectMapper,
                     maxIterations = 1,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
@@ -845,6 +856,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = intentionGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
@@ -908,6 +920,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
+                    objectMapper = testObjectMapper,
                     maxIterations = 1,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
@@ -962,6 +975,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -1023,6 +1037,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 5,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -1057,6 +1072,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
                     maxIterations = 1,
                 )
             val events = agent.run(initialUserMsg + pending).toList()
@@ -1114,6 +1130,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
+                    objectMapper = testObjectMapper,
                     maxIterations = 1,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userYes).toList()
@@ -1162,6 +1179,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
+                    objectMapper = testObjectMapper,
                     maxIterations = 1,
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending).toList()
@@ -1224,6 +1242,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
                     maxIterations = 10,
                 )
 
@@ -1290,6 +1309,7 @@ class AgentAdvancedSpec :
                 name = "RetryAgent",
                 context = context,
                 intentionGenerator = mockGenerator,
+                objectMapper = testObjectMapper,
                 maxIterations = 5,
             )
 
@@ -1350,6 +1370,7 @@ class AgentAdvancedSpec :
                 name = "RetryAgent",
                 context = context,
                 intentionGenerator = mockGenerator,
+                objectMapper = testObjectMapper,
                 maxIterations = 5,
             )
 
@@ -1409,6 +1430,7 @@ class AgentAdvancedSpec :
                 name = "RetryAgent",
                 context = context,
                 intentionGenerator = mockGenerator,
+                objectMapper = testObjectMapper,
                 maxIterations = 5,
             )
 
@@ -1434,6 +1456,7 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "DOES_NOT_EXIST"),
+                    objectMapper = testObjectMapper,
                     maxIterations = 1,
                 )
 
