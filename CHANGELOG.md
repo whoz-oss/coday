@@ -1,3 +1,15 @@
+## 0.166.9 (2026-06-01)
+
+### 🩹 Fixes
+
+- #WZ-32275 Retry if the LLM produces invalid JSON ([6eccc3e6](https://github.com/whoz-oss/coday/commit/6eccc3e6))
+- #WZ-32275 Retry if the LLM produces invalid JSON ([#927](https://github.com/whoz-oss/coday/pull/927))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
 ## 0.166.8 (2026-06-01)
 
 ### 🩹 Fixes
