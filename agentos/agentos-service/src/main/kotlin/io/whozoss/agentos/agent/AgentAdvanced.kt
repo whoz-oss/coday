@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.Flow
@@ -245,7 +246,9 @@ class AgentAdvanced(
                         "stop calling it and consider the next step toward achieving the user's goal. " +
                         "If you do not have enough information to proceed, use ${AgentIntentionGenerator.ANSWER_TOOL} to ask the user for further instructions."
                 if (!warningAlreadyEmitted) {
-                    logger.warn { "Repetition loop detected: $repeatedTool called $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls" }
+                    logger.warn {
+                        "Repetition loop detected: $repeatedTool called $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls"
+                    }
                     emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
                 }
                 msg
@@ -349,7 +352,7 @@ class AgentAdvanced(
      *   [GateOutcome.ContinueLoop]; otherwise behaves like [EVERY_TIME].
      */
     private suspend fun handleConfirmationGate(
-        tool: io.whozoss.agentos.sdk.tool.StandardTool<*>,
+        tool: StandardTool<*>,
         argsJson: String?,
         toolRequestId: String,
         parameters: ToolRequestEvent,
@@ -446,7 +449,7 @@ class AgentAdvanced(
      * @return always [GateOutcome.ContinueLoop] — the caller continues the intention loop normally.
      */
     private suspend fun executeUnderImplicitConsent(
-        tool: io.whozoss.agentos.sdk.tool.StandardTool<*>,
+        tool: StandardTool<*>,
         argsJson: String?,
         toolRequestId: String,
         parameters: ToolRequestEvent,
@@ -657,7 +660,7 @@ class AgentAdvanced(
      *   [ConfirmationResolution.Aborted] when the tool threw post-confirmation.
      */
     private suspend fun executePostConfirmation(
-        tool: io.whozoss.agentos.sdk.tool.StandardTool<*>,
+        tool: StandardTool<*>,
         confirmed: Boolean,
         pending: PendingConfirmationEvent,
         toolCtx: ToolContext,
@@ -862,7 +865,7 @@ class AgentAdvanced(
             ?.first
     }
 
-    private fun generateParameters(
+    private suspend fun generateParameters(
         accumulatedEvents: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         namespaceId: UUID,
@@ -872,6 +875,19 @@ class AgentAdvanced(
         val tool =
             context.tools.firstOrNull { it.name == intentionEvent.toolName }
                 ?: throw ToolNotFoundException(intentionEvent.toolName)
+
+        // Enrichment loop for multi-phase parameter preparation
+        val enrichmentContent =
+            if (tool.getIntermediatePhaseCount() > 0) {
+                runEnrichmentPhases(tool, accumulatedEvents, intentionEvent, namespaceId)
+            } else {
+                null
+            }
+
+        val enrichmentBlock =
+            enrichmentContent?.let {
+                "\n\nContext from preparation phases:\n$it"
+            } ?: ""
 
         val parametersPrompt =
             """
@@ -884,7 +900,7 @@ Input JSON Schema:
 ${tool.inputSchema}
 ```
 
-Intention: ${intentionEvent.intention}
+Intention: ${intentionEvent.intention}$enrichmentBlock
 
 **Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
             """.trimIndent()
@@ -911,6 +927,60 @@ Intention: ${intentionEvent.intention}
             toolName = tool.name,
             args = parameters,
         )
+    }
+
+    private suspend fun runEnrichmentPhases(
+        tool: StandardTool<*>,
+        accumulatedEvents: List<CaseEvent>,
+        intentionEvent: IntentionGeneratedEvent,
+        namespaceId: UUID,
+    ): String? {
+        var previousContent: String? = null
+
+        for (i in 0 until tool.getIntermediatePhaseCount()) {
+            val descriptor = tool.getIntermediatePhaseDescriptor(i, previousContent)
+
+            val fullPrompt =
+                """
+${descriptor.prompt}
+
+Input JSON Schema:
+```
+${descriptor.inputSchema}
+```
+
+Intention: ${intentionEvent.intention}
+
+**Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
+                """.trimIndent()
+
+            val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
+            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(fullPrompt)
+
+            logger.debug { "[$name] enrichment phase $i for '${tool.name}' — sending ${messages.size} messages" }
+
+            val rawJson =
+                context.chatClient
+                    .prompt(Prompt(messages))
+                    .call()
+                    .content()
+                    ?.trim() ?: "{}"
+            val phaseJson = stripJsonFence(rawJson)
+
+            logger.debug { "[$name] enrichment phase $i result for '${tool.name}': $phaseJson" }
+
+            val toolCtx = buildToolContext(tool.name, namespaceId)
+            val result = tool.enrich(i, phaseJson, toolCtx)
+
+            if (!result.success) {
+                logger.warn { "[$name] enrichment phase $i failed for '${tool.name}': ${result.errorMessage}" }
+                return null
+            }
+
+            previousContent = result.content
+        }
+
+        return previousContent
     }
 
     private fun stripJsonFence(raw: String): String =
