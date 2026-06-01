@@ -15,7 +15,6 @@ import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
@@ -399,18 +398,14 @@ class AgentAdvancedSpec :
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
-            // AgentRunningEvent + ThinkingEvent + IntentionGeneratedEvent
+            // ThinkingEvent + IntentionGeneratedEvent
             // + TextChunkEvent(x2) + MessageEvent + AgentFinishedEvent
-            events shouldHaveSize 7
+            events shouldHaveSize 6
 
-            val runningEvent = events[0] as? AgentRunningEvent
-            runningEvent shouldNotBe null
-            runningEvent!!.agentId shouldBe agentId
-
-            val thinkingEvent = events[1] as? ThinkingEvent
+            val thinkingEvent = events[0] as? ThinkingEvent
             thinkingEvent shouldNotBe null
 
-            val intentionEvent = events[2] as? IntentionGeneratedEvent
+            val intentionEvent = events[1] as? IntentionGeneratedEvent
             intentionEvent shouldNotBe null
             intentionEvent!!.agentId shouldBe agentId
             intentionEvent.intention shouldContain "No further tool calls needed"
