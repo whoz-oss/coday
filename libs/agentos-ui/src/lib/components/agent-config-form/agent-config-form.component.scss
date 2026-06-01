@@ -42,6 +42,16 @@
     letter-spacing: -0.02em;
   }
 
+  &__sibling-link {
+    font-size: 0.8125rem;
+    color: var(--color-primary, #007aff);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
   &__loading {
     color: var(--color-text-secondary, #6e6e73);
     font-size: 0.9rem;

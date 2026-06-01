@@ -7,6 +7,7 @@ import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -34,9 +35,10 @@ import java.util.UUID
 class AgentConfigControllerUnitSpec : StringSpec({
 
     val service = mockk<AgentConfigService>()
+    val agentService = mockk<AgentService>()
     val userService = mockk<UserService>()
     val permissionService = mockk<PermissionService>()
-    val controller = AgentConfigController(service, userService, permissionService)
+    val controller = AgentConfigController(service, agentService, userService, permissionService)
 
     val namespaceId = UUID.randomUUID()
     val callerId = UUID.randomUUID()

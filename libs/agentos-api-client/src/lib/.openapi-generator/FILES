@@ -25,6 +25,8 @@ model/actor.ts
 model/add-message-request.ts
 model/agent-config-search-request.ts
 model/agent-config.ts
+model/agent-definition-tool-summary.ts
+model/agent-definition.ts
 model/agent-finished-event.ts
 model/agent-running-event.ts
 model/agent-selected-event.ts

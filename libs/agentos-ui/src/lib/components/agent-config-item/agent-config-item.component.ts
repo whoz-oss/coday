@@ -29,6 +29,7 @@ export class AgentConfigItemComponent {
 
   protected readonly menuItems: KebabMenuItem[] = [
     { key: 'edit', label: 'Edit agent config', icon: 'edit' },
+    { key: 'inspect', label: 'Inspect definition', icon: 'search' },
     { key: 'delete', label: 'Delete agent config', icon: 'delete', variant: 'danger' },
   ]
 
@@ -36,6 +37,9 @@ export class AgentConfigItemComponent {
     switch (key) {
       case 'edit':
         this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', this.config.id, 'edit'])
+        break
+      case 'inspect':
+        this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', this.config.id, 'inspect'])
         break
       case 'delete':
         this.pendingDelete.set(true)
