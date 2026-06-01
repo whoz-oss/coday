@@ -1,3 +1,13 @@
+## 0.166.8 (2026-06-01)
+
+### 🩹 Fixes
+
+- #WZ-32274 stop agent loop on 4xx LLM provider error ([#928](https://github.com/whoz-oss/coday/pull/928))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.166.7 (2026-06-01)
 
 ### 🩹 Fixes
