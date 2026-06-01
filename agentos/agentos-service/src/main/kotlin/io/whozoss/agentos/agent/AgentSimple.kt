@@ -25,6 +25,7 @@ import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
@@ -227,6 +228,8 @@ class AgentSimple(
                     emit(toolEvent)
                 }
                 emitInterruptEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+            } catch (e: NonTransientAiException) {
+                emitProviderErrorEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(

@@ -70,6 +70,20 @@ class WarnEventNode(
     removed: Boolean? = null,
 ) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
+@Node("ErrorEvent")
+class ErrorEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    val message: String,
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
 @Node("AgentSelectedEvent")
 class AgentSelectedEventNode(
     id: String,

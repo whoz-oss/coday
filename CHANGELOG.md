@@ -1,3 +1,45 @@
+## 0.167.0 (2026-06-01)
+
+### 🚀 Features
+
+- agent-config-inspect component with definition view and cross-links ([#933](https://github.com/whoz-oss/coday/pull/933))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.166.9 (2026-06-01)
+
+### 🩹 Fixes
+
+- #WZ-32275 Retry if the LLM produces invalid JSON ([6eccc3e6](https://github.com/whoz-oss/coday/commit/6eccc3e6))
+- #WZ-32275 Retry if the LLM produces invalid JSON ([#927](https://github.com/whoz-oss/coday/pull/927))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.166.8 (2026-06-01)
+
+### 🩹 Fixes
+
+- #WZ-32274 stop agent loop on 4xx LLM provider error ([#928](https://github.com/whoz-oss/coday/pull/928))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.166.7 (2026-06-01)
+
+### 🩹 Fixes
+
+- align agent resolution and find mechanism ([#929](https://github.com/whoz-oss/coday/pull/929))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.166.6 (2026-05-29)
 
 ### 🩹 Fixes

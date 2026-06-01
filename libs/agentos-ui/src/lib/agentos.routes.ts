@@ -131,6 +131,14 @@ export const AGENTOS_ROUTES: Route[] = [
               ),
           },
           {
+            path: ':namespaceId/agent-configs/:agentConfigId/inspect',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-inspect/agent-config-inspect.component').then(
+                (m) => m.AgentConfigInspectComponent
+              ),
+          },
+          {
             path: ':namespaceId/agent-configs',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>

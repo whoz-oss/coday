@@ -10,13 +10,15 @@
 /* tslint:disable:no-unused-variable member-ordering */
 
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { AgentConfig } from '../model/agent-config'
 // @ts-ignore
 import { AgentConfigSearchRequest } from '../model/agent-config-search-request'
+// @ts-ignore
+import { AgentDefinition } from '../model/agent-definition'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -318,6 +320,84 @@ export class AgentConfigControllerService extends BaseService {
     return this.httpClient.request<Array<AgentConfig>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: requestBody,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param id
+   * @param withUserOverlay
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getDefinitionAgentConfig(
+    id: string,
+    withUserOverlay?: boolean,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<AgentDefinition>
+  public getDefinitionAgentConfig(
+    id: string,
+    withUserOverlay?: boolean,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<AgentDefinition>>
+  public getDefinitionAgentConfig(
+    id: string,
+    withUserOverlay?: boolean,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<AgentDefinition>>
+  public getDefinitionAgentConfig(
+    id: string,
+    withUserOverlay?: boolean,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling getDefinitionAgentConfig.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>withUserOverlay, 'withUserOverlay')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/agent-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/definition`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<AgentDefinition>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

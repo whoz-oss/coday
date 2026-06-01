@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
@@ -12,7 +13,9 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.tool.ToolResolverService
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -22,14 +25,6 @@ import java.util.UUID
  * Implementation of [AgentService] that resolves agents from namespace-scoped
  * [AgentConfig] entities.
  *
- * ## Resolution strategy for [findAgentByName]
- *
- * Look up an [AgentConfig] in the namespace whose `name` matches [namePart]
- * (case-insensitive).
- * - If found: use the config's `name` as agent identity, its `instructions` as
- *   base system prompt, and resolve the model via `config.modelName`
- *   (alias-first, then apiName).
- * - If not found: throws [IllegalArgumentException].
  */
 @Service
 class AgentServiceImpl(
@@ -44,6 +39,7 @@ class AgentServiceImpl(
     private val agentConfigService: AgentConfigService,
     private val intentionGenerator: AgentIntentionGenerator,
     private val confirmationManager: ConfirmationManager,
+    private val objectMapper: ObjectMapper,
 ) : AgentService {
     override fun findAgentByName(
         namePart: String,
@@ -54,31 +50,62 @@ class AgentServiceImpl(
                 ?: throw IllegalArgumentException(
                     "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
                 )
-        return createAgentFromConfig(agentConfig, context)
+        val definition = resolveAgentDefinition(agentConfig, context)
+        return instantiateAgent(definition, context)
+    }
+
+    override fun resolveDefinition(
+        agentConfigId: UUID,
+        namespaceId: UUID,
+        userId: UUID?,
+    ): ResolvedAgentDefinition {
+        val agentConfig =
+            agentConfigService.findById(agentConfigId)
+                ?: throw IllegalArgumentException(
+                    "No AgentConfig found for id '$agentConfigId' in namespace $namespaceId.",
+                )
+        val context =
+            AgentExecutionContext(
+                namespaceId = namespaceId,
+                userId = userId,
+            )
+        return resolveAgentDefinition(agentConfig, context)
     }
 
     override fun resolveAgentName(
         namePart: String,
         namespaceId: UUID,
-    ): String? = agentConfigService.findByName(namespaceId, namePart)?.name
+        userId: UUID?,
+    ): String? =
+        if (userId != null) {
+            agentConfigService
+                .findAvailableByNamespaceIdAndUserId(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    agentName = namePart,
+                )
+                .firstOrNull()
+                ?.name
+        } else {
+            agentConfigService.findByName(namespaceId, namePart)?.name
+        }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
     // -------------------------------------------------------------------------
 
     /**
-     * Build an [Agent] from an [AgentConfig].
+     * Phase 1: resolve all configuration for an [AgentConfig] into a [ResolvedAgentDefinition].
      *
-     * The config's [AgentConfig.modelName] is used to resolve the [AiModel] (alias
-     * first, then apiName). When [AgentConfig.modelName] is null, the namespace
-     * default model is used as a fallback.
+     * Performs model / provider overlay resolution, instruction building, and tool resolution.
+     * Does not touch the Spring AI chat client or instantiate any agent object.
      *
      * Throws [IllegalArgumentException] if no model can be resolved.
      */
-    private fun createAgentFromConfig(
+    private fun resolveAgentDefinition(
         config: AgentConfig,
         context: AgentExecutionContext,
-    ): Agent {
+    ): ResolvedAgentDefinition {
         val baseModel =
             config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
                 ?: findDefaultModelConfig(context.namespaceId)
@@ -87,14 +114,57 @@ class AgentServiceImpl(
                         "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
                 )
         val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId)
+        val instructions = buildInstructions(
+            baseInstructions = config.instructions,
+            agentIntegrations = config.integrations,
+            context = context,
+        )
+        val tools =
+            if (context.userId != null) {
+                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, config.integrations)
+            } else {
+                toolResolverService.resolveToolsForNamespace(context.namespaceId, config.integrations)
+            }
+        return ResolvedAgentDefinition(
+            agentConfigId = config.metadata.id,
+            name = config.name,
+            instructions = instructions.takeUnless { it.isBlank() },
+            resolvedModelApiName = modelConfig.apiModelName,
+            resolvedProviderName = providerConfig.name,
+            resolvedModelId = modelConfig.metadata.id,
+            resolvedProviderId = providerConfig.metadata.id,
+            resolvedModel = modelConfig,
+            resolvedProvider = providerConfig,
+            tools = tools,
+            advancedExecution = config.advancedExecution,
+            namespaceId = context.namespaceId,
+            userId = context.userId,
+        )
+    }
+
+    /**
+     * Phase 2: instantiate a live [Agent] from a [ResolvedAgentDefinition].
+     *
+     * Constructs the Spring AI chat client and the appropriate agent type
+     * ([AgentSimple] or [AgentAdvanced]). Requires the original [context] for
+     * the case-scoped providers that cannot be captured in the definition.
+     */
+    private fun instantiateAgent(
+        definition: ResolvedAgentDefinition,
+        context: AgentExecutionContext,
+    ): Agent {
+        val modelConfig = definition.resolvedModel
+        val providerConfig = definition.resolvedProvider
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
         return createAgentInstance(
-            config.name,
-            config.instructions,
-            config.integrations,
-            config.advancedExecution,
-            modelConfig,
-            providerConfig,
-            context,
+            agentName = definition.name,
+            resolvedInstructions = definition.instructions,
+            advancedExecution = definition.advancedExecution,
+            modelConfig = modelConfig,
+            providerConfig = providerConfig,
+            context = context,
+            resolvedTools = definition.tools,
+            resolvedUser = resolvedUser,
         )
     }
 
@@ -131,61 +201,48 @@ class AgentServiceImpl(
     // -------------------------------------------------------------------------
 
     /**
-     * Build a live [AgentSimple] or [AgentAdvanced] instance from the resolved entity pair, scoped to [context].
+     * Build a live [AgentSimple] or [AgentAdvanced] instance from fully-resolved inputs.
      *
-     * [agentName] is the logical name used to identify this agent.
-     * [baseInstructions] are the agent-level instructions from [AgentConfig], if any.
-     * [agentIntegrations] is the optional tool-access filter from [AgentConfig.integrations].
-     * The namespace description, integrations, and user context are always appended.
-     *
-     * When [context.userId] is non-null, uses [ToolResolverService.resolveToolsForRun] to apply
-     * 3-tier tool reconciliation while still honoring [agentIntegrations]. Falls back to
-     * [ToolResolverService.resolveToolsForNamespace] for anonymous/system runs
-     * (userId == null, legacy path, AC11).
+     * All parameters carry already-resolved values — this method only constructs
+     * the Spring AI chat client and the appropriate agent type.
+     * [resolvedInstructions] are the final system instructions (built by [resolveAgentDefinition]).
+     * [resolvedTools] is the pre-resolved and pre-filtered tool set.
+     * [resolvedUser] is the pre-resolved user (may be null for anonymous / system runs).
      */
     private fun createAgentInstance(
         agentName: String,
-        baseInstructions: String?,
-        agentIntegrations: Map<String, List<String>?>?,
+        resolvedInstructions: String?,
         advancedExecution: Boolean,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
+        resolvedTools: Collection<StandardTool<*>>,
+        resolvedUser: User?,
     ): Agent {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
-
-        val tools =
-            if (context.userId != null) {
-                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, agentIntegrations)
-            } else {
-                toolResolverService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
-            }
-        logger.info { "Loaded ${tools.size} tool(s) for agent '$agentName'" }
-        logger.debug { "Tools for '$agentName': ${tools.map { it.name }}" }
-        logger.trace { "Tools detail for '$agentName':\n" + tools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
-
-        // Resolve user identity once here so plugins receive it via ToolContext without
-        // needing access to UserService themselves.
-        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+        logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
+        logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
+        logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
+        logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
-        val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
-        logger.trace { "Final instructions for '$agentName':\n$instructions" }
 
         return if (advancedExecution) {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
-            val advancedContext = AgentAdvancedContext(
-                chatClient = chatClient,
-                tools = tools.toList(),
-                instructions = instructions,
-                agentId = agentId,
-                confirmationManager = confirmationManager,
-            )
+            val advancedContext =
+                AgentAdvancedContext(
+                    chatClient = chatClient,
+                    tools = resolvedTools.toList(),
+                    instructions = resolvedInstructions,
+                    agentId = agentId,
+                    confirmationManager = confirmationManager,
+                )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
                 name = agentName,
                 context = advancedContext,
                 intentionGenerator = intentionGenerator,
+                objectMapper = objectMapper,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
@@ -195,8 +252,8 @@ class AgentServiceImpl(
                 metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
                 name = agentName,
                 chatClient = chatClient,
-                tools = tools,
-                instructions = instructions,
+                tools = resolvedTools,
+                instructions = resolvedInstructions,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,

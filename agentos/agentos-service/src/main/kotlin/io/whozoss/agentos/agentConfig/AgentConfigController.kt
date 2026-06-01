@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
@@ -40,6 +41,7 @@ import java.util.UUID
 )
 class AgentConfigController(
     private val agentConfigService: AgentConfigService,
+    private val agentService: AgentService,
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<AgentConfig, UUID, AgentConfigResource>(agentConfigService, userService, permissionService) {
@@ -140,6 +142,53 @@ class AgentConfigController(
         agentConfigService
             .findAvailableByUserExternalId(agentConfigSearchRequest.namespaceId, agentConfigSearchRequest.userExternalId)
             .map { toResource(it) }
+
+    /**
+     * GET /api/agent-configs/{id}/definition
+     *
+     * Returns the fully-resolved definition of an agent config: effective instructions
+     * (with namespace / integration / user context injected), resolved model and provider,
+     * and the list of tools that would be made available to the agent.
+     *
+     * Useful for debugging agent configurations without starting a case.
+     *
+     * When [withUserOverlay] is `true`, the definition is resolved with the caller's user
+     * context (3-tier provider/tool overlays applied). When false (default), the definition
+     * is resolved without any user-specific overlay (namespace-only resolution).
+     */
+    @GetMapping("/{id}/definition")
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
+    @HideOnAccessDenied
+    fun getDefinition(
+        @PathVariable id: UUID,
+        @RequestParam(required = false, defaultValue = "false") withUserOverlay: Boolean,
+    ): AgentDefinitionResource {
+        val agentConfig = agentConfigService.findById(id)
+            ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val resolvedUserId = if (withUserOverlay) userService.getCurrentUser().metadata.id else null
+        val definition = agentService.resolveDefinition(
+            agentConfigId = id,
+            namespaceId = agentConfig.namespaceId,
+            userId = resolvedUserId,
+        )
+        return AgentDefinitionResource(
+            agentConfigId = definition.agentConfigId,
+            name = definition.name,
+            instructions = definition.instructions,
+            resolvedModelApiName = definition.resolvedModelApiName,
+            resolvedProviderName = definition.resolvedProviderName,
+            tools = definition.tools.map { tool ->
+                AgentDefinitionResource.ToolSummary(
+                    name = tool.name,
+                    description = tool.description,
+                    inputSchema = tool.inputSchema,
+                )
+            },
+            advancedExecution = definition.advancedExecution,
+            namespaceId = definition.namespaceId,
+            userId = definition.userId,
+        )
+    }
 
     companion object : KLogging()
 }
