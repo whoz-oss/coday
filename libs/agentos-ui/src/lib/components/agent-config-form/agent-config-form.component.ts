@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
-import { ActivatedRoute, Router } from '@angular/router'
+import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
@@ -44,7 +44,7 @@ interface IntegrationRow {
 @Component({
   selector: 'agentos-agent-config-form',
   standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './agent-config-form.component.html',
   styleUrl: './agent-config-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -92,6 +92,12 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
+
+  /** Route to the inspect view — only valid in edit mode (agentConfigId is present). */
+  protected inspectRoute(): string[] {
+    const agentConfigId = this.route.snapshot.paramMap.get('agentConfigId') ?? ''
+    return ['/agentos', this.namespaceId, 'agent-configs', agentConfigId, 'inspect']
+  }
 
   /** Integration rows built from the namespace's IntegrationConfig list. */
   protected readonly integrationRows = signal<IntegrationRow[]>([])
