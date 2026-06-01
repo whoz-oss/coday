@@ -1,3 +1,13 @@
+## 0.167.1 (2026-06-01)
+
+### 🚀 Features
+
+- **agentos:** implement multi-phase parameter enrichment for tools ([#31964](https://github.com/whoz-oss/coday/pull/31964), [#934](https://github.com/whoz-oss/coday/pull/934))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.167.0 (2026-06-01)
 
 ### 🚀 Features
