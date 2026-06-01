@@ -1748,11 +1748,12 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: userId
+      - name: withUserOverlay
         in: query
         required: false
         schema:
-          type: string
+          type: boolean
+          default: false
       responses:
         "200":
           description: OK

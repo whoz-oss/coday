@@ -331,34 +331,34 @@ export class AgentConfigControllerService extends BaseService {
 
   /**
    * @param id
-   * @param userId
+   * @param withUserOverlay
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public getDefinitionAgentConfig(
     id: string,
-    userId?: string,
+    withUserOverlay?: boolean,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<AgentDefinition>
   public getDefinitionAgentConfig(
     id: string,
-    userId?: string,
+    withUserOverlay?: boolean,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<AgentDefinition>>
   public getDefinitionAgentConfig(
     id: string,
-    userId?: string,
+    withUserOverlay?: boolean,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<AgentDefinition>>
   public getDefinitionAgentConfig(
     id: string,
-    userId?: string,
+    withUserOverlay?: boolean,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -368,7 +368,7 @@ export class AgentConfigControllerService extends BaseService {
     }
 
     let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
-    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>userId, 'userId')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>withUserOverlay, 'withUserOverlay')
 
     let localVarHeaders = this.defaultHeaders
 
