@@ -2,9 +2,6 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
@@ -24,40 +21,48 @@ class AgentIntentionGenerator {
         val toolNames = context.tools.map { it.name } + ANSWER_TOOL
         val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
 
-        val isFirstIteration = events.none { it is ToolRequestEvent }
-        val lastToolResponse = events.filterIsInstance<ToolResponseEvent>().lastOrNull()
-        val executionState =
-            when {
-                isFirstIteration -> "No tools have been called yet. This is the first iteration."
-                lastToolResponse?.success == true -> "Last tool '${lastToolResponse.toolName}' succeeded."
-                lastToolResponse?.success == false -> "Last tool '${lastToolResponse.toolName}' FAILED: ${(lastToolResponse.output as? MessageContent.Text)?.content}"
-                else -> "Previous steps completed."
-            }
-
         val prompt =
             """
-You must reason in 4 steps, then select the next tool.
-
 Available tools:
 $toolsDescription
 - $ANSWER_TOOL: produce the final answer to the user (use this when no more tool calls are needed)
 
-## Step 1 — Execution state
-$executionState
+### Objective
+Based on the full conversation history and current context, your objective is to determine the single most appropriate **next action**.
 
-## Step 2 — Agent constraints
-Review the instructions and ensure the next action stays within the agent's defined scope.
+### Reasoning Guidelines
+Before generating the output, analyze the situation using the following logic:
 
-## Step 3 — Capability check
-Does the required action fall within the available tools? If not, select $ANSWER_TOOL and explain why.
+**1. Analyze Context & Execution State:**
+*   Check the last tool execution. Did it succeed?
+    *   **Yes:** What is the logical sequential step?
+    *   **No/Missing Info:** If the tool failed and required more data, the next step is `${ANSWER_TOOL}` to ask for clarification.
+    *   **Goal Met:** If the `userGoal` is fully satisfied, use `${ANSWER_TOOL}` to confirm completion.
+    *   **Warning:** If there a warning, should it be passed on to the user 
 
-## Step 4 — Data prerequisites
-Is all the information required to call the next tool already available in the conversation history?
-If not, select $ANSWER_TOOL and ask the user for the missing information.
-${repetitionWarning?.let { "\n## WARNING — Repetition detected\n$it\n" } ?: ""}
-Now produce your response using EXACTLY these XML tags (no extra text outside the tags):
-<intention>your concise reasoning from the 4 steps above</intention>
-<toolName>one tool name from: $toolNames</toolName>
+**2. Validate Agent Constraints:**
+*   Review the **Current Active Agent's** workflow and instructions for guidance on next step.
+*   Check for prohibitions. If a restriction blocks the user's request, your action is `${ANSWER_TOOL}` to explain why.
+
+**3. Verify Capabilities (Agent Handoff):**
+*   Does the **Current Active Agent** possess the tool required for the next action?
+    *   **NO:** The next action must be to switch to the correct agent and if none can do the action to use `${ANSWER_TOOL}`.
+    *   **YES:** Proceed to the next check.
+
+**4. Check Data Prerequisites:**
+*   Does the intended tool require specific IDs or context ?
+*   Have these entities been referenced previously?
+    *   **NO:** The next action is `ReferencedXXX` to fetch the data.
+    *   **YES:** You are ready to call the execution tool.
+
+
+$repetitionWarning
+
+### Output Instructions
+You must output **only** the following XML block containing the results of your analysis:
+
+<intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
+<toolName>[The exact name of the tool to be called]</toolName>
             """.trimIndent()
 
         var lastException: Exception? = null
