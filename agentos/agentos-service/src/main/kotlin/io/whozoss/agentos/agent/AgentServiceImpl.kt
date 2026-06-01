@@ -246,6 +246,7 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
+                caseContext = context.caseContext,
             )
         } else {
             AgentSimple(
@@ -257,6 +258,7 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
+                caseContext = context.caseContext,
             )
         }
     }

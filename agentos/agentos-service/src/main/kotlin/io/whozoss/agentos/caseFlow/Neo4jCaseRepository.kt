@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
@@ -17,25 +18,26 @@ import java.util.UUID
 open class Neo4jCaseRepository(
     private val caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
+    private val objectMapper: ObjectMapper,
 ) : CaseRepository {
     override fun save(entity: Case): Case =
         caseNodeNeo4jRepository
-            .save(CaseNode.fromDomain(entity))
+            .save(CaseNode.fromDomain(entity, objectMapper))
             .also { childLinkService.link("Case", it.id, "Namespace", entity.namespaceId.toString()) }
             .also { it.createdBy?.let { createdBy -> childLinkService.link("Case", it.id, "User", createdBy, relationship = "CREATED_BY") } }
-            .toDomain()
+            .toDomain(objectMapper)
             .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }
 
     override fun findByIds(ids: Collection<UUID>): List<Case> =
         caseNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { it.removed != true }
-            .map { it.toDomain() }
+            .map { it.toDomain(objectMapper) }
 
     override fun findByParent(parentId: UUID): List<Case> =
         caseNodeNeo4jRepository
             .findActiveByNamespaceId(parentId.toString())
-            .map { it.toDomain() }
+            .map { it.toDomain(objectMapper) }
 
     override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
         caseNodeNeo4jRepository
@@ -43,12 +45,12 @@ open class Neo4jCaseRepository(
                 userId = userId.toString(),
                 namespaceId = namespaceId.toString(),
             )
-            .map { it.toDomain() }
+            .map { it.toDomain(objectMapper) }
 
     override fun findConcerningUser(userId: UUID): List<Case> =
         caseNodeNeo4jRepository
             .findConcerningUser(userId = userId.toString())
-            .map { it.toDomain() }
+            .map { it.toDomain(objectMapper) }
 
     override fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
         caseNodeNeo4jRepository
@@ -56,7 +58,7 @@ open class Neo4jCaseRepository(
                 userId = userId.toString(),
                 namespaceId = namespaceId.toString(),
             )
-            .map { it.toDomain() }
+            .map { it.toDomain(objectMapper) }
 
     override fun delete(id: UUID): Boolean =
         caseNodeNeo4jRepository
@@ -75,6 +77,9 @@ open class Neo4jCaseRepository(
         logger.debug { "[Neo4jCaseRepository] Soft-deleted ${active.size} cases under namespace $parentId" }
         return active.size
     }
+
+    // Note: deleteByParent only soft-deletes nodes without reading contextJson,
+    // so no objectMapper call is needed there.
 
     companion object : KLogging()
 }

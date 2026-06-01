@@ -17,10 +17,14 @@ import java.util.UUID
  *   of invocation. Evaluated lazily so tool calls during a single agent run see events
  *   produced by prior tool calls in the same turn (e.g. a read before a write).
  *   Ignored when [caseId] is null.
+ * @param caseContext Opaque key-value context supplied at case creation time. Merged with
+ *   the last user message's sessionContext in the LLM prompt (sessionContext wins on key
+ *   conflicts). Null when the case was created without a context.
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
     val caseId: UUID? = null,
     val userId: UUID? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
+    val caseContext: Map<String, Any?>? = null,
 )

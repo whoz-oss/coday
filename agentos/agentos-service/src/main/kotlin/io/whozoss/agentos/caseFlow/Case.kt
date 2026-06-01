@@ -22,4 +22,10 @@ data class Case(
     val namespaceId: UUID,
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String = "Case ${metadata.id}",
+    /**
+     * Opaque key-value context supplied by the integrating application at case creation time.
+     * Injected into every agent prompt alongside the last user message's [sessionContext],
+     * with [sessionContext] taking precedence on key conflicts.
+     */
+    val context: Map<String, Any?>? = null,
 ) : Entity

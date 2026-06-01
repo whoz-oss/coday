@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -25,10 +26,12 @@ data class CaseNode(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
+    /** JSON-serialised [Case.context] map. Null when no context was supplied at creation. */
+    val contextJson: String? = null,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     var namespace: NamespaceNode? = null,
 ) {
-    fun toDomain(): Case =
+    fun toDomain(objectMapper: ObjectMapper): Case =
         Case(
             metadata =
                 EntityMetadata(
@@ -42,10 +45,17 @@ data class CaseNode(
             namespaceId = UUID.fromString(namespaceId),
             status = CaseStatus.valueOf(status),
             title = title,
+            context = contextJson?.let {
+                @Suppress("UNCHECKED_CAST")
+                objectMapper.readValue(it, Map::class.java) as Map<String, Any?>
+            },
         )
 
     companion object {
-        fun fromDomain(case: Case): CaseNode =
+        fun fromDomain(
+            case: Case,
+            objectMapper: ObjectMapper,
+        ): CaseNode =
             CaseNode(
                 id = case.id.toString(),
                 namespaceId = case.namespaceId.toString(),
@@ -56,6 +66,7 @@ data class CaseNode(
                 modified = case.metadata.modified,
                 modifiedBy = case.metadata.modifiedBy,
                 removed = case.metadata.removed.takeIf { it },
+                contextJson = case.context?.let { objectMapper.writeValueAsString(it) },
             )
     }
 }

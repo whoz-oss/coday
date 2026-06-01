@@ -20,4 +20,6 @@ data class CaseResource(
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String? = null,
     val created: Instant? = null,
+    /** Opaque context supplied at case creation, merged with per-message sessionContext in agent prompts. */
+    val context: Map<String, Any?>? = null,
 )

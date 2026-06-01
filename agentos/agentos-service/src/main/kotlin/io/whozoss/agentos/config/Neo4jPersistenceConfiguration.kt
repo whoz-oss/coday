@@ -102,9 +102,10 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCaseRepository(
         caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
+        objectMapper: ObjectMapper,
     ): CaseRepository {
         logger.info { "[Persistence] Neo4jCaseRepository active" }
-        return Neo4jCaseRepository(caseNodeNeo4jRepository, childLinkService)
+        return Neo4jCaseRepository(caseNodeNeo4jRepository, childLinkService, objectMapper)
     }
 
     @Bean

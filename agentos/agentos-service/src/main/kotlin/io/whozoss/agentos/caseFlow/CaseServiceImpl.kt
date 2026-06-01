@@ -395,12 +395,14 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
+        val case = caseRepository.findByIds(listOf(caseId)).firstOrNull()
         val context =
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
                 caseId = caseId,
                 userId = userId,
                 caseEventsProvider = eventsProvider,
+                caseContext = case?.context,
             )
         agentService
             .findAgentByName(agentName, context)

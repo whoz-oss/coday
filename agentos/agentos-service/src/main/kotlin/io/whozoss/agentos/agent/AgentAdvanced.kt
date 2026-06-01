@@ -45,6 +45,8 @@ class AgentAdvanced(
     private val userExternalId: String? = null,
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     private val maxIterations: Int = 20,
+    /** Case-level context merged with per-message sessionContext in every prompt. */
+    private val caseContext: Map<String, Any?>? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -361,7 +363,7 @@ class AgentAdvanced(
         caseId: UUID,
         emitEvent: suspend (CaseEvent) -> Unit,
     ): GateOutcome {
-        val history = context.buildMessages(accumulatedEvents)
+        val history = context.buildMessages(accumulatedEvents, caseContext)
         val needsExplicit =
             when (tool.confirmationMode) {
                 ConfirmationMode.EVERY_TIME -> {
@@ -593,7 +595,7 @@ class AgentAdvanced(
                         // Slice the history shown to analyzeConfirmation to events at-or-after the pending.
                         // Prevents the LLM judge from picking up a "yes" from an unrelated earlier turn
                         // (defense-in-depth for tools with confirmationMode=EVERY_TIME).
-                        val historyFromPending = context.buildMessages(events.subList(pendingIndex, events.size))
+                        val historyFromPending = context.buildMessages(events.subList(pendingIndex, events.size), caseContext)
                         val decision =
                             context.confirmationManager.analyzeConfirmation(
                                 chatClient = context.chatClient,
@@ -612,7 +614,7 @@ class AgentAdvanced(
                                         history = historyFromPending,
                                         fallbackLabel = pending.toolName,
                                         pendingData = pending.inputJson,
-                                    )
+                                    ) // historyFromPending already includes caseContext via buildMessages
                                 val clarification =
                                     MessageEvent(
                                         namespaceId = namespaceId,
@@ -792,7 +794,7 @@ class AgentAdvanced(
         val finalPromptText = "Based on the above conversation and your analysis, provide your response to the user."
         val intentionContext =
             lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
-        val messages = context.buildMessages(accumulatedEvents) + UserMessage(intentionContext)
+        val messages = context.buildMessages(accumulatedEvents, caseContext) + UserMessage(intentionContext)
 
         logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$intentionContext" }
@@ -904,7 +906,7 @@ Intention: ${intentionEvent.intention}$enrichmentBlock
 **Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
             """.trimIndent()
         val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-        val baseMessages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall)
+        val baseMessages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall, caseContext)
 
         logger.debug { "[$name] generateParameters for '${tool.name}' — sending ${baseMessages.size + 1} messages" }
         logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
@@ -1025,7 +1027,7 @@ Intention: ${intentionEvent.intention}
                 """.trimIndent()
 
             val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(fullPrompt)
+            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall, caseContext) + UserMessage(fullPrompt)
 
             logger.debug { "[$name] enrichment phase $i for '${tool.name}' — sending ${messages.size} messages" }
 
