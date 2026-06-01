@@ -7,25 +7,43 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.*
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
+import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
+import io.whozoss.agentos.sdk.tool.EnrichmentResult
+import io.whozoss.agentos.sdk.tool.IntermediatePhaseDescriptor
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.withContext
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import reactor.core.publisher.Flux
 import java.nio.file.Files
-import java.util.*
+import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
@@ -47,7 +65,7 @@ internal class TestRemoveTool(
     override val description: String = "Remove a file"
     override val inputSchema: String = """{"type":"object","properties":{"path":{"type":"string"}}}"""
     override val version: String = "1.0.0"
-    override val paramType: Class<Input>? = Input::class.java
+    override val paramType: Class<Input> = Input::class.java
 
     override suspend fun execute(
         input: Input?,
@@ -56,7 +74,9 @@ internal class TestRemoveTool(
         val path = input?.path?.takeIf { it.isNotBlank() } ?: return ToolExecutionResult.error("Error: path required")
         val resolved = rootDir.resolve(path)
         if (Files.isDirectory(resolved)) return ToolExecutionResult.error("Error: Cannot remove directories: $path")
-        Files.deleteIfExists(resolved)
+        withContext(Dispatchers.IO) {
+            Files.deleteIfExists(resolved)
+        }
         return ToolExecutionResult.success("File $path deleted successfully")
     }
 
@@ -422,7 +442,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("Loop stopped.")
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "FILES__ReadFile"
             every { mockTool.description } returns "Read a file"
             every { mockTool.inputSchema } returns "{}"
@@ -750,7 +770,7 @@ class AgentAdvancedSpec :
 
             val toolReqIdx = events.indexOfFirst { it is ToolRequestEvent }
             val pendingIdx = events.indexOfFirst { it is PendingConfirmationEvent }
-            val agentMsgIdx = events.indexOfFirst { it is MessageEvent && (it as MessageEvent).actor.role == ActorRole.AGENT }
+            val agentMsgIdx = events.indexOfFirst { it is MessageEvent && it.actor.role == ActorRole.AGENT }
             val finishedIdx = events.indexOfFirst { it is AgentFinishedEvent }
 
             (toolReqIdx >= 0) shouldBe true
@@ -1210,7 +1230,7 @@ class AgentAdvancedSpec :
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } throws NonTransientAiException("400 - bad_request_error: messages: ...")
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "FILES__ReadFile"
             every { mockTool.description } returns "Read a file"
             every { mockTool.inputSchema } returns "{}"
@@ -1269,7 +1289,7 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "TEST__tool"
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
@@ -1286,32 +1306,41 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"hello"}"""
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Call the tool", toolName = "TEST__tool",
-                ),
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Done", toolName = "Answer",
-                ),
-            )
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the tool",
+                        toolName = "TEST__tool",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done",
+                        toolName = "Answer",
+                    ),
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(mockTool),
-                instructions = null,
-                agentId = agentId,
-                confirmationManager = mockk(relaxed = true),
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "RetryAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "RetryAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1327,7 +1356,7 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "TEST__tool"
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
@@ -1341,38 +1370,48 @@ class AgentAdvancedSpec :
             every { mockStreamSpec.content() } returns Flux.just("ok")
 
             // First call returns invalid JSON, second returns valid JSON
-            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany listOf(
-                "not valid json at all",
-                """{"value":"hello"}""",
-            )
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany
+                listOf(
+                    "not valid json at all",
+                    """{"value":"hello"}""",
+                )
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Call the tool", toolName = "TEST__tool",
-                ),
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Done", toolName = "Answer",
-                ),
-            )
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the tool",
+                        toolName = "TEST__tool",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done",
+                        toolName = "Answer",
+                    ),
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(mockTool),
-                instructions = null,
-                agentId = agentId,
-                confirmationManager = mockk(relaxed = true),
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "RetryAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "RetryAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1389,7 +1428,7 @@ class AgentAdvancedSpec :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "TEST__tool"
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
@@ -1407,32 +1446,41 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany invalidResponses
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Call the tool", toolName = "TEST__tool",
-                ),
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
-                    intention = "Done", toolName = "Answer",
-                ),
-            )
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the tool",
+                        toolName = "TEST__tool",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done",
+                        toolName = "Answer",
+                    ),
+                )
 
-            val context = AgentAdvancedContext(
-                chatClient = mockChatClient,
-                tools = listOf(mockTool),
-                instructions = null,
-                agentId = agentId,
-                confirmationManager = mockk(relaxed = true),
-            )
-            val agent = AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "RetryAgent",
-                context = context,
-                intentionGenerator = mockGenerator,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-            )
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "RetryAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1466,6 +1514,406 @@ class AgentAdvancedSpec :
             warn.message shouldContain "Unknown tool referenced"
             warn.message shouldContain "DOES_NOT_EXIST"
             events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
+        }
+
+        // -------------------------------------------------------------------------
+        // Enrichment (multi-phase parameter preparation) tests
+        // -------------------------------------------------------------------------
+
+        "enrichment: tool with intermediatePhaseCount=1 triggers enrich() and injects content into final prompt" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            var enrichCalledWith: String? = null
+
+            // A tool that declares one enrichment phase
+            val enrichableTool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__enrichable"
+                    override val description = "Tool with enrichment"
+                    override val inputSchema = """{"type":"object","properties":{"data":{"type":"string"}}}"""
+                    override val version = "1.0.0"
+                    override val paramType = null
+
+                    override suspend fun getIntermediatePhaseCount(): Int = 1
+
+                    override suspend fun getIntermediatePhaseDescriptor(
+                        phaseIndex: Int,
+                        previousContent: String?,
+                    ) = IntermediatePhaseDescriptor(
+                        inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}""",
+                        prompt = "Identify the entity.",
+                    )
+
+                    override suspend fun enrich(
+                        phaseIndex: Int,
+                        phaseParametersJson: String,
+                        context: ToolContext,
+                    ): EnrichmentResult {
+                        enrichCalledWith = phaseParametersJson
+                        return EnrichmentResult(success = true, content = "Entity details: name=Foo, status=active")
+                    }
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ) = ToolExecutionResult.success("done")
+                }
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("OK.")
+
+            // LLM calls: 1) enrichment phase JSON, 2) final params JSON
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany
+                listOf(
+                    """{"id":"123"}""",
+                    """{"data":"enriched"}""",
+                )
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Use the enrichable tool.",
+                        toolName = "TEST__enrichable",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(enrichableTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "EnrichAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Tool was executed successfully
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            toolResponses shouldHaveSize 1
+            toolResponses[0].success shouldBe true
+            (toolResponses[0].output as MessageContent.Text).content shouldBe "done"
+
+            // enrich() was called with the phase-0 LLM output
+            enrichCalledWith shouldNotBe null
+            enrichCalledWith!! shouldContain "123"
+
+            // The generated parameters (ToolRequestEvent.args) should reflect the
+            // second LLM call — the one that received the enrichment context.
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].args shouldNotBe null
+            toolRequests[0].args!! shouldContain "enriched"
+
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "enrichment: tool with intermediatePhaseCount=0 skips enrichment entirely" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val simpleTool = mockk<StandardTool<String>>(relaxed = true)
+            every { simpleTool.name } returns "TEST__simple"
+            every { simpleTool.description } returns "Simple tool"
+            every { simpleTool.inputSchema } returns """{"type":"object"}"""
+            every { simpleTool.paramType } returns String::class.java
+            coEvery { simpleTool.getIntermediatePhaseCount() } returns 0
+            coEvery { simpleTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("ok")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Done.")
+            // Only ONE LLM call for params (no enrichment phase)
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Use simple tool.",
+                        toolName = "TEST__simple",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(simpleTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "SimpleAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Tool executed
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            toolResponses shouldHaveSize 1
+            toolResponses[0].success shouldBe true
+
+            // getIntermediatePhaseDescriptor should never be called for a 0-phase tool
+            coVerify(exactly = 0) { simpleTool.getIntermediatePhaseDescriptor(any(), any()) }
+
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "enrichment: failed enrich() falls back to single-phase generation without crashing" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val failingEnrichTool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__failenrich"
+                    override val description = "Tool with failing enrichment"
+                    override val inputSchema = """{"type":"object","properties":{"x":{"type":"string"}}}"""
+                    override val version = "1.0.0"
+                    override val paramType = null
+
+                    override suspend fun getIntermediatePhaseCount(): Int = 1
+
+                    override suspend fun getIntermediatePhaseDescriptor(
+                        phaseIndex: Int,
+                        previousContent: String?,
+                    ) = IntermediatePhaseDescriptor(
+                        inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}""",
+                        prompt = "Identify.",
+                    )
+
+                    override suspend fun enrich(
+                        phaseIndex: Int,
+                        phaseParametersJson: String,
+                        context: ToolContext,
+                    ) = EnrichmentResult(success = false, errorMessage = "Service unavailable")
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ) = ToolExecutionResult.success("executed anyway")
+                }
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("OK.")
+            // LLM calls: 1) enrichment phase JSON (before enrich fails), 2) final params (fallback)
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany
+                listOf(
+                    """{"id":"456"}""",
+                    """{"x":"fallback"}""",
+                )
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Use failenrich tool.",
+                        toolName = "TEST__failenrich",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(failingEnrichTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "FallbackAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Tool still executed — enrichment failure is not fatal
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            toolResponses shouldHaveSize 1
+            toolResponses[0].success shouldBe true
+            (toolResponses[0].output as MessageContent.Text).content shouldBe "executed anyway"
+
+            // No WarnEvent for enrichment failure (it's a graceful fallback, not a user-facing warning)
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "enrichment: multi-phase tool chains previousContent across phases" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val receivedPreviousContents = mutableListOf<String?>()
+
+            val multiPhaseTool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__multiphase"
+                    override val description = "Tool with 2 enrichment phases"
+                    override val inputSchema = """{"type":"object","properties":{"final":{"type":"string"}}}"""
+                    override val version = "1.0.0"
+                    override val paramType = null
+
+                    override suspend fun getIntermediatePhaseCount(): Int = 2
+
+                    override suspend fun getIntermediatePhaseDescriptor(
+                        phaseIndex: Int,
+                        previousContent: String?,
+                    ): IntermediatePhaseDescriptor {
+                        receivedPreviousContents.add(previousContent)
+                        return IntermediatePhaseDescriptor(
+                            inputSchema = """{"type":"object","properties":{"p":{"type":"string"}}}""",
+                            prompt = "Phase $phaseIndex prompt.",
+                        )
+                    }
+
+                    override suspend fun enrich(
+                        phaseIndex: Int,
+                        phaseParametersJson: String,
+                        context: ToolContext,
+                    ): EnrichmentResult =
+                        when (phaseIndex) {
+                            0 -> EnrichmentResult(success = true, content = "phase-0-data")
+                            1 -> EnrichmentResult(success = true, content = "phase-1-data")
+                            else -> EnrichmentResult(success = false, errorMessage = "unexpected phase")
+                        }
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ) = ToolExecutionResult.success("multi-phase done")
+                }
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("OK.")
+            // LLM calls: 1) phase-0 JSON, 2) phase-1 JSON, 3) final params
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returnsMany
+                listOf(
+                    """{"p":"a"}""",
+                    """{"p":"b"}""",
+                    """{"final":"result"}""",
+                )
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Use multiphase tool.",
+                        toolName = "TEST__multiphase",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(multiPhaseTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "MultiPhaseAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Phase 0 receives null previousContent, phase 1 receives phase-0 output
+            receivedPreviousContents shouldHaveSize 2
+            receivedPreviousContents[0] shouldBe null
+            receivedPreviousContents[1] shouldBe "phase-0-data"
+
+            events.filterIsInstance<ToolResponseEvent>().single().success shouldBe true
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
         "detectRepetitionLoop returns null when window contains a synthetic ToolResponseEvent" {
