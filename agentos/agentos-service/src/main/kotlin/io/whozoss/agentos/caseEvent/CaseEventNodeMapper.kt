@@ -9,6 +9,7 @@ import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
@@ -44,6 +45,7 @@ class CaseEventNodeMapper(
         when (node) {
             is CaseStatusEventNode -> toDomain(node)
             is WarnEventNode -> toDomain(node)
+            is ErrorEventNode -> toDomain(node)
             is AgentSelectedEventNode -> toDomain(node)
             is AgentFinishedEventNode -> toDomain(node)
             is AgentRunningEventNode -> toDomain(node)
@@ -64,6 +66,7 @@ class CaseEventNodeMapper(
         when (event) {
             is CaseStatusEvent -> fromDomain(event)
             is WarnEvent -> fromDomain(event)
+            is ErrorEvent -> fromDomain(event)
             is AgentSelectedEvent -> fromDomain(event)
             is AgentFinishedEvent -> fromDomain(event)
             is AgentRunningEvent -> fromDomain(event)
@@ -85,7 +88,7 @@ class CaseEventNodeMapper(
         removed: Boolean?,
     ): CaseEventNode =
         when (node) {
-            is CaseStatusEventNode ->
+            is CaseStatusEventNode -> {
                 CaseStatusEventNode(
                     node.id,
                     node.caseId,
@@ -98,7 +101,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is WarnEventNode ->
+            }
+
+            is WarnEventNode -> {
                 WarnEventNode(
                     node.id,
                     node.caseId,
@@ -111,7 +116,24 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is AgentSelectedEventNode ->
+            }
+
+            is ErrorEventNode -> {
+                ErrorEventNode(
+                    node.id,
+                    node.caseId,
+                    node.namespaceId,
+                    node.timestamp,
+                    node.message,
+                    node.created,
+                    node.createdBy,
+                    node.modified,
+                    node.modifiedBy,
+                    removed,
+                )
+            }
+
+            is AgentSelectedEventNode -> {
                 AgentSelectedEventNode(
                     node.id,
                     node.caseId,
@@ -125,7 +147,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is AgentFinishedEventNode ->
+            }
+
+            is AgentFinishedEventNode -> {
                 AgentFinishedEventNode(
                     node.id,
                     node.caseId,
@@ -139,7 +163,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is AgentRunningEventNode ->
+            }
+
+            is AgentRunningEventNode -> {
                 AgentRunningEventNode(
                     node.id,
                     node.caseId,
@@ -153,7 +179,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is MessageEventNode ->
+            }
+
+            is MessageEventNode -> {
                 MessageEventNode(
                     node.id,
                     node.caseId,
@@ -170,7 +198,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is ToolRequestEventNode ->
+            }
+
+            is ToolRequestEventNode -> {
                 ToolRequestEventNode(
                     node.id,
                     node.caseId,
@@ -185,7 +215,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is ToolResponseEventNode ->
+            }
+
+            is ToolResponseEventNode -> {
                 ToolResponseEventNode(
                     node.id,
                     node.caseId,
@@ -203,7 +235,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is ThinkingEventNode ->
+            }
+
+            is ThinkingEventNode -> {
                 ThinkingEventNode(
                     node.id,
                     node.caseId,
@@ -215,7 +249,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is QuestionEventNode ->
+            }
+
+            is QuestionEventNode -> {
                 QuestionEventNode(
                     node.id,
                     node.caseId,
@@ -231,7 +267,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is AnswerEventNode ->
+            }
+
+            is AnswerEventNode -> {
                 AnswerEventNode(
                     node.id,
                     node.caseId,
@@ -248,7 +286,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is IntentionGeneratedEventNode ->
+            }
+
+            is IntentionGeneratedEventNode -> {
                 IntentionGeneratedEventNode(
                     node.id,
                     node.caseId,
@@ -263,7 +303,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is ToolSelectedEventNode ->
+            }
+
+            is ToolSelectedEventNode -> {
                 ToolSelectedEventNode(
                     node.id,
                     node.caseId,
@@ -277,7 +319,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is TextChunkEventNode ->
+            }
+
+            is TextChunkEventNode -> {
                 TextChunkEventNode(
                     node.id,
                     node.caseId,
@@ -290,7 +334,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is PendingConfirmationEventNode ->
+            }
+
+            is PendingConfirmationEventNode -> {
                 PendingConfirmationEventNode(
                     node.id,
                     node.caseId,
@@ -306,7 +352,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is ConfirmationResolvedEventNode ->
+            }
+
+            is ConfirmationResolvedEventNode -> {
                 ConfirmationResolvedEventNode(
                     node.id,
                     node.caseId,
@@ -321,6 +369,7 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
+            }
         }
 
     // ─── toDomain ──────────────────────────────────────────────────────────────────────────────────────
