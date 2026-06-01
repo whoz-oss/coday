@@ -1,5 +1,7 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.tool.StandardTool
 import java.util.UUID
 
@@ -19,10 +21,10 @@ import java.util.UUID
  *   user context blocks have been injected. Null when no instructions are produced.
  * @param resolvedModelApiName The API-level model name, for display / inspection.
  * @param resolvedProviderName The provider name, for display / inspection.
- * @param resolvedModelId The UUID of the resolved [io.whozoss.agentos.sdk.aiProvider.AiModel],
- *   used by the instantiation phase to re-fetch the full entity for the chat client.
- * @param resolvedProviderId The UUID of the resolved [io.whozoss.agentos.sdk.aiProvider.AiProvider],
- *   used by the instantiation phase to re-fetch the full entity for the chat client.
+ * @param resolvedModelId The UUID of the resolved [io.whozoss.agentos.sdk.aiProvider.AiModel], for display / inspection.
+ * @param resolvedProviderId The UUID of the resolved [io.whozoss.agentos.sdk.aiProvider.AiProvider], for display / inspection.
+ * @param resolvedModel The fully-resolved [AiModel], passed directly to the instantiation phase.
+ * @param resolvedProvider The fully-resolved [AiProvider] (after overlay), passed directly to the instantiation phase.
  * @param tools The resolved tool set, filtered and scoped to this agent.
  * @param advancedExecution Whether the agent should run in advanced multi-step mode.
  * @param namespaceId The namespace this agent is scoped to.
@@ -36,6 +38,8 @@ data class ResolvedAgentDefinition(
     val resolvedProviderName: String,
     val resolvedModelId: UUID,
     val resolvedProviderId: UUID,
+    val resolvedModel: AiModel,
+    val resolvedProvider: AiProvider,
     val tools: Collection<StandardTool<*>>,
     val advancedExecution: Boolean,
     val namespaceId: UUID,

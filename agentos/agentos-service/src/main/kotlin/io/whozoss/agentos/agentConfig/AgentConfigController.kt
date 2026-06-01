@@ -152,20 +152,20 @@ class AgentConfigController(
      *
      * Useful for debugging agent configurations without starting a case.
      *
-     * When [userId] is `me`, the definition is resolved with the caller's user context
-     * (3-tier provider/tool overlays applied). When absent, the definition is resolved
-     * without any user-specific overlay (namespace-only resolution).
+     * When [withUserOverlay] is `true`, the definition is resolved with the caller's user
+     * context (3-tier provider/tool overlays applied). When false (default), the definition
+     * is resolved without any user-specific overlay (namespace-only resolution).
      */
     @GetMapping("/{id}/definition")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
     fun getDefinition(
         @PathVariable id: UUID,
-        @RequestParam(required = false) userId: String?,
+        @RequestParam(required = false, defaultValue = "false") withUserOverlay: Boolean,
     ): AgentDefinitionResource {
         val agentConfig = agentConfigService.findById(id)
             ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        val resolvedUserId = userId?.takeIf { it == "me" }?.let { userService.getCurrentUser().metadata.id }
+        val resolvedUserId = if (withUserOverlay) userService.getCurrentUser().metadata.id else null
         val definition = agentService.resolveDefinition(
             agentConfigId = id,
             namespaceId = agentConfig.namespaceId,

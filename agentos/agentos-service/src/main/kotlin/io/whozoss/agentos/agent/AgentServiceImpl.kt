@@ -65,7 +65,6 @@ class AgentServiceImpl(
         val context =
             AgentExecutionContext(
                 namespaceId = namespaceId,
-                caseId = agentConfig.metadata.id,
                 userId = userId,
             )
         return resolveAgentDefinition(agentConfig, context)
@@ -132,6 +131,8 @@ class AgentServiceImpl(
             resolvedProviderName = providerConfig.name,
             resolvedModelId = modelConfig.metadata.id,
             resolvedProviderId = providerConfig.metadata.id,
+            resolvedModel = modelConfig,
+            resolvedProvider = providerConfig,
             tools = tools,
             advancedExecution = config.advancedExecution,
             namespaceId = context.namespaceId,
@@ -150,8 +151,8 @@ class AgentServiceImpl(
         definition: ResolvedAgentDefinition,
         context: AgentExecutionContext,
     ): Agent {
-        val modelConfig = aiModelService.getById(definition.resolvedModelId)
-        val providerConfig = aiProviderService.getById(definition.resolvedProviderId)
+        val modelConfig = definition.resolvedModel
+        val providerConfig = definition.resolvedProvider
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
         return createAgentInstance(
             agentName = definition.name,
