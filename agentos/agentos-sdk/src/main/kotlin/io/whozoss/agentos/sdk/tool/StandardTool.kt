@@ -85,6 +85,17 @@ interface StandardTool<T> {
      * Default delegates to the static [confirmationMode] for backward compatibility:
      * existing plugins that only override [confirmationMode] keep working without change.
      *
+     * ⚠️ HOT PATH — called on **every** tool call by the orchestrator, including those that
+     * resolve to [ConfirmationMode.NONE]. Overrides MUST be:
+     *   - **cheap** : no HTTP, no DB call, no LLM. Pure local computation on `argsJson`
+     *     and `context.caseEvents` only.
+     *   - **side-effect-free** : the orchestrator may call this multiple times for the
+     *     same tool call (e.g. on retry). Mutating state, writing logs at INFO+, or
+     *     emitting events here will leak / duplicate / mislead.
+     *
+     * `suspend` is allowed (the orchestrator awaits) so simple async lookups stay possible,
+     * but in practice prefer plain Kotlin matching against `context.caseEvents`.
+     *
      * @param argsJson Raw JSON args produced by the LLM for the impending tool call
      * @param context Execution context (namespaceId, userId, caseEvents)
      */
@@ -105,6 +116,12 @@ interface StandardTool<T> {
      * Examples:
      *   "Hesitant replies ('pourquoi pas', 'I guess') are not affirmative consent."
      *   "Updates that overwrite non-empty fields require explicit user authorization."
+     *
+     * **Intentionally static** — no args, no context, no suspend. The LLM judge already
+     * sees the proposed args (`proposedData` in tour 1, `pendingPayload` in tour 2) and
+     * the full conversation history, so per-call branching of the prompt would be
+     * redundant. For args/context-driven *decisions* (e.g. bypass), override
+     * [getConfirmationMode] instead — keep this method as fixed criteria for the LLM.
      *
      * Plugin authors MUST NOT include user-controlled strings here.
      */
