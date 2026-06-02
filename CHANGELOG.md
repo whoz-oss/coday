@@ -1,3 +1,16 @@
+## 0.167.3 (2026-06-02)
+
+### 🚀 Features
+
+- **wz-32328:** realign intention prompt ([49bbd187](https://github.com/whoz-oss/coday/commit/49bbd187))
+- **wz-32328:** add execution state ([df238df6](https://github.com/whoz-oss/coday/commit/df238df6))
+- **wz-32328:** realign intention prompt ([#935](https://github.com/whoz-oss/coday/pull/935))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.167.2 (2026-06-01)
 
 ### 🩹 Fixes
