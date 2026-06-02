@@ -67,6 +67,8 @@ class AgentSimple(
     private val userExternalId: String? = null,
     /** Returns the live event list of the current case at the moment of invocation. */
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
+    /** Case-level context merged with per-message sessionContext in every prompt. */
+    private val caseContext: Map<String, Any?>? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -81,7 +83,7 @@ class AgentSimple(
 
             try {
                 // Convert events to messages
-                val messages = convertEventsToMessages(events)
+                val messages = convertEventsToMessages(events, caseContext)
 
                 // Add system instructions if provided
                 val allMessages =
@@ -261,7 +263,10 @@ class AgentSimple(
      * Session context on earlier messages is ignored — only the current turn's context
      * is relevant to the LLM.
      */
-    private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
+    private fun convertEventsToMessages(
+        events: List<CaseEvent>,
+        caseContext: Map<String, Any?>? = null,
+    ): List<Message> {
         val messages = mutableListOf<Message>()
         val toolCallsForCurrentMessage = mutableListOf<AssistantMessage.ToolCall>()
         val toolResponses = mutableMapOf<String, ToolResponseEvent>()
@@ -280,9 +285,10 @@ class AgentSimple(
         events.forEachIndexed { index, event ->
             when (event) {
                 is MessageEvent -> {
-                    // Inject session context as a UserMessage immediately before the last user message.
+                    // Inject merged context (caseContext + sessionContext) as a UserMessage
+                    // immediately before the last user message.
                     if (index == lastUserMessageIndex) {
-                        event.sessionContextPromptText()?.let { messages.add(UserMessage(it)) }
+                        event.sessionContextPromptText(caseContext)?.let { messages.add(UserMessage(it)) }
                     }
                     // If we have accumulated tool calls, create AssistantMessage with them
                     if (toolCallsForCurrentMessage.isNotEmpty()) {
