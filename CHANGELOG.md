@@ -1,3 +1,13 @@
+## 0.171.0 (2026-06-02)
+
+### 🚀 Features
+
+- lower the neo4j log level to stop being flooded ([#953](https://github.com/whoz-oss/coday/pull/953))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.170.0 (2026-06-02)
 
 ### 🚀 Features
