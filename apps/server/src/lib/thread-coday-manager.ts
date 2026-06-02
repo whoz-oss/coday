@@ -1,10 +1,12 @@
 import { Response } from 'express'
+import { filter } from 'rxjs'
 import { Coday } from '@coday/core'
 import { AiClientProvider } from '@coday/integrations-ai'
 import {
   ServerInteractor,
   CodayOptions,
   CodayLogger,
+  CodayEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
@@ -259,6 +261,58 @@ class ThreadCodayInstance {
     // after agent service initialization
 
     return true
+  }
+
+  /**
+   * Run a oneshot execution (scheduler, webhook, direct prompt).
+   * Encapsulates prepareCoday() + coday.run() + lifecycle management.
+   *
+   * @param options.awaitFinalAnswer If true, waits for completion and returns the last assistant MessageEvent
+   * @returns The last assistant MessageEvent if awaitFinalAnswer is true, undefined otherwise
+   */
+  async runOneshot(options?: { awaitFinalAnswer?: boolean }): Promise<MessageEvent | undefined> {
+    this.prepareCoday()
+
+    if (!this.coday) {
+      throw new Error(`prepareCoday() failed for thread ${this.threadId} — coday instance is undefined`)
+    }
+
+    // Notify project-level SSE clients that a new thread is starting.
+    // Without this, the frontend would not discover scheduler/webhook threads
+    // until the agent emits an InviteEvent or the thread name is set.
+    this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+
+    if (options?.awaitFinalAnswer) {
+      // Synchronous mode: wait for completion, collect assistant messages
+      const assistantMessages: MessageEvent[] = []
+      const subscription = this.coday.interactor.events
+        .pipe(
+          filter(
+            (event: CodayEvent) =>
+              event instanceof MessageEvent &&
+              (event as MessageEvent).role === 'assistant' &&
+              !!(event as MessageEvent).name
+          )
+        )
+        .subscribe((event) => assistantMessages.push(event as MessageEvent))
+
+      try {
+        await this.coday.run()
+        subscription.unsubscribe()
+        return assistantMessages[assistantMessages.length - 1]
+      } catch (error) {
+        subscription.unsubscribe()
+        throw error
+      }
+    } else {
+      // Fire-and-forget: start run in background, don't block caller.
+      // Cleanup is handled by the caller via .finally() on the returned promise.
+      this.coday.run().catch((error) => {
+        debugLog('THREAD_CODAY', `Error during oneshot run for thread ${this.threadId}:`, error)
+        console.error(`Oneshot run failed for thread ${this.threadId}:`, error)
+      })
+      return undefined
+    }
   }
 
   /**
