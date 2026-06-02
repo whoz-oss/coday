@@ -5,6 +5,9 @@ import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.util.AttemptFailure
+import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.retryWithFallback
 import mu.KLogging
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
@@ -82,10 +85,20 @@ Now generate the intention explaining your next step, then the toolName for that
         logger.debug { "Intention generation: building messages for LLM" }
         logger.trace { "Intention prompt:\n$prompt" }
 
-        var lastFailure: Pair<String?, AgentIntentionGenerationException>? = null
-
-        repeat(MAX_INTENTION_ATTEMPTS) { attempt ->
-            val retryHint = lastFailure?.let { (previousResponse, e) ->
+        return retryWithFallback<Pair<String?, AgentIntentionGenerationException>, IntentionGeneratedEvent>(
+            maxAttempts = MAX_INTENTION_ATTEMPTS,
+            fallback = { (_, lastException) ->
+                logger.error { "Intention generation failed after $MAX_INTENTION_ATTEMPTS attempts, falling back to $ANSWER_TOOL" }
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = context.agentId,
+                    intention = "Failed to plan next step after $MAX_INTENTION_ATTEMPTS attempts: ${lastException.message}",
+                    toolName = ANSWER_TOOL,
+                )
+            },
+        ) { previousFailure ->
+            val retryHint = previousFailure?.let { (previousResponse, e) ->
                 buildString {
                     if (previousResponse != null) {
                         appendLine("You previously generated:")
@@ -117,31 +130,23 @@ Now generate the intention explaining your next step, then the toolName for that
                     .call()
                     .content() ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
 
-                logger.trace { "Intention generation response (attempt ${attempt + 1}):\n$response" }
+                logger.trace { "Intention generation response:\n$response" }
 
                 val (intention, toolName) = parseIntentionAndTool(response, toolNames)
-
-                return IntentionGeneratedEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    agentId = context.agentId,
-                    intention = intention,
-                    toolName = toolName,
+                AttemptSuccess(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = context.agentId,
+                        intention = intention,
+                        toolName = toolName,
+                    )
                 )
             } catch (e: AgentIntentionGenerationException) {
-                lastFailure = e.response to e
-                logger.warn { "Intention generation attempt ${attempt + 1}/$MAX_INTENTION_ATTEMPTS failed: ${e.message}" }
+                logger.warn { "Intention generation attempt failed: ${e.message}" }
+                AttemptFailure(e.response to e)
             }
         }
-
-        logger.error { "Intention generation failed after $MAX_INTENTION_ATTEMPTS attempts, falling back to $ANSWER_TOOL" }
-        return IntentionGeneratedEvent(
-            namespaceId = namespaceId,
-            caseId = caseId,
-            agentId = context.agentId,
-            intention = "Failed to plan next step after $MAX_INTENTION_ATTEMPTS attempts: ${lastFailure?.second?.message}",
-            toolName = ANSWER_TOOL,
-        )
     }
 
     internal fun parseIntentionAndTool(
