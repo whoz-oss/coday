@@ -1,3 +1,13 @@
+## 0.168.0 (2026-06-02)
+
+### 🚀 Features
+
+- bump gemini and gpt models ([#938](https://github.com/whoz-oss/coday/pull/938))
+
+### ❤️ Thank You
+
+- David Palita
+
 ## 0.167.3 (2026-06-02)
 
 ### 🚀 Features
