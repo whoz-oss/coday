@@ -94,7 +94,8 @@ interface StandardTool<T> {
     ): ConfirmationMode = confirmationMode
 
     /**
-     * Tool-specific guidance injected as a structured `<tool_guidance>` block into BOTH:
+     * Tool-specific guidance injected as a labelled `Tool-specific confirmation guidance:`
+     * section into BOTH:
      *   1. the `shouldConfirm` prompt (tour 1 — decide whether to gate)
      *   2. the `analyzeConfirmation` prompt (tour 2 — parse the user's free-form reply)
      *

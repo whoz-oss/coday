@@ -54,10 +54,10 @@ class ConfirmationManager(
      * @param proposedData The structured data the tool is about to apply.
      * @param originalData Optional pre-change state (Update tools). When non-null, the
      *   LLM gets it so it can reason about the delta — matches the back Copilot signature.
-     * @param toolInstructions Optional tool-supplied guidance injected as a structured
-     *   `<tool_guidance>` block alongside the general decision rules. The LLM is told to
-     *   take it as additional context, not as overriding rules — so a poorly written
-     *   guidance cannot bypass the general safety criteria.
+     * @param toolInstructions Optional tool-supplied guidance injected as a labelled
+     *   `Tool-specific confirmation guidance:` section alongside the general decision
+     *   rules. The LLM is told to take it as additional context, not as overriding rules
+     *   — so a poorly written guidance cannot bypass the general safety criteria.
      */
     fun shouldConfirm(
         chatClient: ChatClient,
@@ -145,15 +145,7 @@ class ConfirmationManager(
         specificInstructions: String,
     ): ConfirmationDecision {
         logger.info { "[ConfirmationManager] Analyze confirmation." }
-        val specificBlock =
-            if (specificInstructions.isNotBlank()) {
-                """
-                |**Specific Context for this validation:**
-                |$specificInstructions
-                """.trimMargin()
-            } else {
-                ""
-            }
+        val specificBlock = buildToolGuidanceSection(specificInstructions)
 
         val payloadSummary = serializeSafely(pendingPayload)
 
