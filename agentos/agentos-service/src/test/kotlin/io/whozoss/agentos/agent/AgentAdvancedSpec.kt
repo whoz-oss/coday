@@ -16,6 +16,7 @@ import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
@@ -1210,6 +1211,86 @@ class AgentAdvancedSpec :
             agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
             toolInstructionsCaptured.captured shouldBe "Be strict: 'pourquoi pas' is not consent."
+        }
+
+        // Câblage : l'orchestrateur doit transmettre les args bruts générés par le LLM
+        // ET le caseEvents accumulé (non vide) au hook dynamique. Sans cela, un plugin
+        // ne peut pas faire de bypass programmatique (cas central de la PR).
+        "getConfirmationMode receives the LLM-generated args and the accumulated caseEvents" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val argsCaptured = java.util.concurrent.atomic.AtomicReference<String?>(null)
+            val eventsCaptured = java.util.concurrent.atomic.AtomicReference<List<CaseEvent>?>(null)
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__capturingTool"
+                    override val description = "captures args/ctx seen at getConfirmationMode"
+                    override val inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}"""
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.NONE
+
+                    override suspend fun getConfirmationMode(
+                        argsJson: String?,
+                        context: ToolContext?,
+                    ): ConfirmationMode {
+                        argsCaptured.set(argsJson)
+                        eventsCaptured.set(context?.caseEvents)
+                        // Returns EVERY_TIME so the orchestrator still routes through the gate
+                        // — we want the seam exercised even when the result is "confirm".
+                        return ConfirmationMode.EVERY_TIME
+                    }
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("captured")
+                }
+            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
+            every {
+                confirmationManager.formulateQuestion(any(), any(), any(), any())
+            } returns "confirm?"
+            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            // The args returned to the orchestrator by the LLM
+            val expectedArgs = """{"id":"abc-123"}"""
+            every { chatClient.prompt(any<Prompt>()).call().content() } returns expectedArgs
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "call capturing tool",
+                    toolName = "TEST__capturingTool",
+                )
+
+            // Wire caseEventsProvider explicitly so the hook sees the same events the
+            // orchestrator emits during this run — mimicking CaseRuntime in production.
+            val initialEvents = makeInitialEvents(namespaceId, caseId)
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 2,
+                    caseEventsProvider = { initialEvents },
+                )
+            agent.run(initialEvents).toList()
+
+            // args : verbatim from the LLM response — same string the orchestrator
+            // persists on the resulting ToolRequestEvent.
+            argsCaptured.get() shouldBe expectedArgs
+
+            // caseEvents : non-null, includes at least the initial USER MessageEvent
+            // from `caseEventsProvider`. Proves the hook is wired to the live event
+            // history exposed by the orchestrator, not to an empty/default snapshot.
+            val seenEvents = eventsCaptured.get()
+            seenEvents shouldNotBe null
+            seenEvents!!.filterIsInstance<MessageEvent>().any { it.actor.role == ActorRole.USER } shouldBe true
         }
 
         "AC7: reload session without user reply emits AgentFinished, no ConfirmationResolved, file untouched" {
