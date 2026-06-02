@@ -123,10 +123,9 @@ class ConfirmationManager(
             ""
         } else {
             """
+            |
             |Tool-specific confirmation guidance:
-            |<tool_guidance>
             |$toolInstructions
-            |</tool_guidance>
             """.trimMargin()
         }
 

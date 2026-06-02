@@ -79,11 +79,12 @@ class ConfirmationManagerSpec :
             ) shouldBe false
         }
 
-        // Le tool fournit des instructions custom via getConfirmationInstructions();
-        // ConfirmationManager les injecte comme bloc structuré <tool_guidance> dans le
-        // prompt envoyé au LLM-judge. La phrase "additional context, not overriding"
-        // désamorce un conflit avec les règles génériques.
-        "shouldConfirm injects toolInstructions as a structured tool_guidance block" {
+        // Le tool fournit des instructions custom via getConfirmationInstructions() ;
+        // ConfirmationManager les injecte comme une section nommée "Tool-specific
+        // confirmation guidance:" dans le prompt — même pattern que les autres sections
+        // contextuelles (Original object, Current Situation, Proposed changes…). La phrase
+        // "additional context, not overriding" désamorce un conflit avec les règles génériques.
+        "shouldConfirm injects toolInstructions as a labelled section" {
             val promptCaptured = slot<Prompt>()
             val chatClient = mockk<ChatClient>()
             val reqSpec = mockk<ChatClient.ChatClientRequestSpec>()
@@ -101,13 +102,12 @@ class ConfirmationManagerSpec :
             ) shouldBe true
 
             val promptText = promptCaptured.captured.instructions.joinToString("\n") { it.text ?: "" }
-            promptText shouldContain "<tool_guidance>"
+            promptText shouldContain "Tool-specific confirmation guidance:"
             promptText shouldContain "Hesitant phrasing like 'pourquoi pas' is not consent."
-            promptText shouldContain "</tool_guidance>"
             promptText shouldContain "additional context, not as overriding rules"
         }
 
-        "shouldConfirm omits the tool_guidance block when toolInstructions is blank" {
+        "shouldConfirm omits the tool guidance section when toolInstructions is blank" {
             val promptCaptured = slot<Prompt>()
             val chatClient = mockk<ChatClient>()
             val reqSpec = mockk<ChatClient.ChatClientRequestSpec>()
@@ -125,7 +125,6 @@ class ConfirmationManagerSpec :
             ) shouldBe false
 
             val promptText = promptCaptured.captured.instructions.joinToString("\n") { it.text ?: "" }
-            promptText shouldNotContain "<tool_guidance>"
             promptText shouldNotContain "Tool-specific confirmation guidance"
         }
 
