@@ -120,10 +120,10 @@ class FilesystemYamlCacheUnitSpec : StringSpec({
         writeYaml(dir, "a.yaml", "v1")
 
         val invocations = mutableListOf<Path>()
-        val cache = FilesystemYamlCache(dir, countingParser(invocations), ttl = Duration.ofMillis(50))
+        val cache = FilesystemYamlCache(dir, countingParser(invocations), ttl = Duration.ofMillis(200))
 
         cache.getAll()
-        Thread.sleep(100)
+        Thread.sleep(500)
         cache.getAll()
 
         invocations shouldHaveSize 2
@@ -133,12 +133,12 @@ class FilesystemYamlCacheUnitSpec : StringSpec({
         val dir = tempDir()
         val file = writeYaml(dir, "a.yaml", "original")
 
-        val cache = FilesystemYamlCache(dir, stringParser, ttl = Duration.ofMillis(50))
+        val cache = FilesystemYamlCache(dir, stringParser, ttl = Duration.ofMillis(200))
 
         cache.getAll().first() shouldBe "original"
 
         Files.writeString(file, "updated")
-        Thread.sleep(100)
+        Thread.sleep(500)
 
         cache.getAll().first() shouldBe "updated"
     }

@@ -51,7 +51,8 @@ class CaseRuntime(
     private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
     private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
-) : CaseEventEmitter by DefaultCaseEventEmitter() {
+    private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
+) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
     /**
@@ -112,6 +113,9 @@ class CaseRuntime(
     }
 
     fun isRunning(): Boolean = runInFlight.get()
+
+    /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
+    val subscriptionCount get() = emitter.subscriptionCount
 
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }

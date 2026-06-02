@@ -7,7 +7,6 @@ on:
 
 env:
   NX_MAX_WORKERS: 4
-  NX_MAX_WORKERS_JVM: 1
 
 defaults:
   run:

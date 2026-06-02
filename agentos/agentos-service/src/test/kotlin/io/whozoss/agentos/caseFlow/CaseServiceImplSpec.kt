@@ -47,6 +47,18 @@ import kotlinx.coroutines.withTimeout
 import java.util.UUID
 
 /**
+ * Suspends until [runtime]'s SSE flow has at least [count] active subscribers.
+ *
+ * [CaseRuntime] delegates [CaseEventEmitter] to [DefaultCaseEventEmitter], which
+ * implements [CaseEventEmitter.subscriptionCount]. The delegation propagates the
+ * property automatically, so [runtime.subscriptionCount] is safe to call here.
+ * This is race-free: [subscriptionCount] is updated synchronously on each subscribe.
+ */
+private suspend fun awaitSubscribers(runtime: CaseRuntime, count: Int = 1) {
+    runtime.subscriptionCount.first { it >= count }
+}
+
+/**
  * Integration tests for [CaseServiceImpl].
  *
  * These tests wire [CaseServiceImpl] with real in-memory repositories so that the
@@ -229,6 +241,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -254,6 +267,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.ERROR, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = actorWithNonUuidId,
@@ -276,6 +290,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.ERROR, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = actorWithUnknownUser,
@@ -320,6 +335,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -391,9 +407,10 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            // Yield so the collector coroutine has a chance to subscribe to the SharedFlow
-            // before the first status event is emitted.
-            delay(100)
+            // Wait until the collector coroutine is actually subscribed to the SharedFlow
+            // before sending the message. subscriptionCount is updated synchronously on
+            // subscribe, so this is race-free unlike an arbitrary delay.
+            awaitSubscribers(runtime)
 
             service.addMessage(
                 caseId = case.id,
@@ -437,7 +454,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            delay(100)
+            awaitSubscribers(runtime)
 
             service.killCase(case.id)
 
@@ -473,7 +490,7 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            delay(100)
+            awaitSubscribers(runtime)
 
             // Route the ERROR status change through handleStatusChange.
             service.update(case.copy(status = CaseStatus.ERROR))
@@ -549,7 +566,8 @@ class CaseServiceImplSpec :
                     }
                 }
 
-            delay(100) // give collectors time to subscribe
+            // Wait until both collectors (idleJob + chunkCollectJob) are subscribed.
+            awaitSubscribers(runtime, count = 2)
 
             service.addMessage(
                 caseId = case.id,
@@ -611,6 +629,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -665,6 +684,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -703,6 +723,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -729,6 +750,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -766,6 +788,7 @@ class CaseServiceImplSpec :
             val scope = CoroutineScope(Dispatchers.IO)
 
             val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -824,6 +847,7 @@ class CaseServiceImplSpec :
 
             // First turn: explicit @mention of the old agent — resolves and runs normally
             val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -834,6 +858,7 @@ class CaseServiceImplSpec :
 
             // Second turn: no @mention, old agent is gone -> WarnEvent + fallback to default
             val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -965,6 +990,7 @@ class CaseServiceImplSpec :
 
             // First message
             val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,
@@ -981,6 +1007,7 @@ class CaseServiceImplSpec :
 
             // Second message — subscribe before sending so the second IDLE is not missed.
             val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
                 actor = userActor,

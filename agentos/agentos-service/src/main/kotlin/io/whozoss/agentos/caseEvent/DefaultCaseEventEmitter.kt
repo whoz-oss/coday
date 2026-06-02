@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import mu.KLogging
 
@@ -23,6 +24,14 @@ class DefaultCaseEventEmitter : CaseEventEmitter {
         )
 
     override val events: SharedFlow<CaseEvent> = _events.asSharedFlow()
+
+    /**
+     * Current number of active collectors on this flow.
+     * Exposed as a [StateFlow] so callers can suspend until at least N subscribers
+     * are registered — useful for tests that need a deterministic subscription barrier
+     * before emitting on a hot flow with replay=0.
+     */
+    val subscriptionCount: StateFlow<Int> get() = _events.subscriptionCount
 
     /**
      * Emit an event to all collectors.
