@@ -508,6 +508,117 @@ class AgentAdvancedSpec :
         // detectRepetitionLoop unit tests
         // -------------------------------------------------------------------------
 
+        // -------------------------------------------------------------------------
+        // buildLanguageHint unit tests
+        // -------------------------------------------------------------------------
+
+        "buildLanguageHint returns null when no user messages" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                    content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
+                ),
+            )
+            agent.buildLanguageHint(events) shouldBe null
+        }
+
+        "buildLanguageHint returns hint with single message when it meets minChars" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val longMessage = "a".repeat(250)
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text(longMessage)),
+                ),
+            )
+            val hint = agent.buildLanguageHint(events)
+            hint shouldNotBe null
+            hint!! shouldContain longMessage
+            hint shouldContain "Respond in the same language"
+        }
+
+        "buildLanguageHint accumulates multiple short messages until minChars is reached" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            // Each message is 50 chars, minChars=200 → needs at least 4
+            val messages = (1..6).map { i ->
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("message-$i-" + "x".repeat(45))),
+                )
+            }
+            val hint = agent.buildLanguageHint(messages, targetChars = 200)
+            hint shouldNotBe null
+            // Should contain the last few messages (collected newest-first, displayed oldest-first)
+            hint!! shouldContain "message-6"
+            hint shouldContain "message-5"
+            // Should not need to go all the way back to message-1
+            hint shouldContain "Respond in the same language"
+        }
+
+        "buildLanguageHint returns a hint even when all messages combined are below targetChars" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("oui")),
+                ),
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("ok")),
+                ),
+            )
+            // Total = 5 chars, well below targetChars=200 — hint must still be produced
+            val hint = agent.buildLanguageHint(events)
+            hint shouldNotBe null
+            hint!! shouldContain "oui"
+            hint shouldContain "ok"
+            hint shouldContain "Respond in the same language"
+        }
+
+        "buildLanguageHint uses newest messages first when accumulating" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("old english message from the beginning")),
+                ),
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("cherche-moi des développeurs Angular à Paris avec 5 ans d'expérience")),
+                ),
+            )
+            val hint = agent.buildLanguageHint(events, targetChars = 50)
+            hint shouldNotBe null
+            // The latest message alone exceeds minChars=50, so only it should appear
+            hint!! shouldContain "Angular"
+            hint shouldContain "Respond in the same language"
+        }
+
         "detectRepetitionLoop returns null when fewer than REPETITION_WINDOW tool responses" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()

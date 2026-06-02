@@ -789,7 +789,10 @@ class AgentAdvanced(
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
     ) {
-        val finalPromptText = "Based on the above conversation and your analysis, provide your response to the user."
+        val languageHint = buildLanguageHint(accumulatedEvents)
+        val finalPromptText =
+            "Based on the above conversation and your analysis, provide your response to the user." +
+                (languageHint?.let { "\n\n$it" } ?: "")
         val intentionContext =
             lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
         val messages = context.buildMessages(accumulatedEvents) + UserMessage(intentionContext)
@@ -819,6 +822,44 @@ class AgentAdvanced(
                 )
             emitEvent(msg)
         }
+    }
+
+    /**
+     * Builds a language hint from the most recent user [MessageEvent]s in [events].
+     *
+     * Collects user messages from newest to oldest until the combined text reaches
+     * [minChars], then returns an instruction anchored on the actual user text so the
+     * LLM has a concrete language signal rather than an abstract directive.
+     *
+     * Returns `null` when no user messages are present (e.g. agent-only conversations),
+     * so the caller can omit the hint entirely rather than defaulting to a hardcoded
+     * language.
+     */
+    internal fun buildLanguageHint(
+        events: List<CaseEvent>,
+        targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
+    ): String? {
+        val userTexts =
+            events
+                .filterIsInstance<MessageEvent>()
+                .filter { it.actor.role == ActorRole.USER }
+                .flatMap { it.content.filterIsInstance<MessageContent.Text>() }
+                .map { it.content.trim() }
+                .filter { it.isNotEmpty() }
+                .reversed()
+
+        if (userTexts.isEmpty()) return null
+
+        val collected = mutableListOf<String>()
+        var total = 0
+        for (text in userTexts) {
+            collected.add(text)
+            total += text.length
+            if (total >= targetChars) break
+        }
+
+        val sample = collected.reversed().joinToString(" / ") { "\"$it\"" }
+        return "Respond in the same language the user is writing in (reference: $sample)."
     }
 
     internal fun detectRepetitionLoop(events: List<CaseEvent>): String? {
@@ -1124,6 +1165,13 @@ Intention: ${intentionEvent.intention}
     companion object : KLogging() {
         /** How many recent tool responses to inspect for repetition. */
         internal const val REPETITION_WINDOW = 5
+
+        /**
+         * Target character count for the language hint sample: collect user messages
+         * newest-first until this threshold is reached, or until all messages are
+         * exhausted — whichever comes first.
+         */
+        internal const val LANGUAGE_HINT_TARGET_CHARS = 200
 
         /** How many identical (toolName, args) calls within the window trigger a warning. */
         internal const val REPETITION_THRESHOLD = 3
