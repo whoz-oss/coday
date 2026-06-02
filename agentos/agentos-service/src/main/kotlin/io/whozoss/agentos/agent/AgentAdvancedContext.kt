@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import java.util.UUID
@@ -21,10 +22,34 @@ data class AgentAdvancedContext(
     val instructions: String?,
     val agentId: UUID,
     val confirmationManager: ConfirmationManager,
+    /** Namespace context block sent as a privileged system message, prepended before event history. */
+    val systemPrompt: String? = null,
 ) {
+    /**
+     * Build the message list for an LLM call.
+     *
+     * - [systemPrompt] (namespace context) is prepended as a [SystemMessage].
+     * - [instructions] (agent instructions + integrations + user) are appended to the
+     *   **last** [UserMessage] in the history rather than added as a separate message,
+     *   avoiding consecutive user messages which some providers reject or mishandle.
+     * - If the history has no user message yet (e.g. empty events), instructions are
+     *   appended as a new [UserMessage] so they are never silently dropped.
+     */
     internal fun buildMessages(events: List<CaseEvent>): List<Message> {
         val history = convertEventsToMessages(events)
-        return if (instructions != null) history + listOf(UserMessage(instructions)) else history
+        val withInstructions =
+            if (instructions != null) {
+                val lastUserIdx = history.indexOfLast { it is UserMessage }
+                if (lastUserIdx >= 0) {
+                    val merged = UserMessage(history[lastUserIdx].text + "\n\n" + instructions)
+                    history.toMutableList().also { it[lastUserIdx] = merged }
+                } else {
+                    history + listOf(UserMessage(instructions))
+                }
+            } else {
+                history
+            }
+        return if (systemPrompt != null) listOf(SystemMessage(systemPrompt)) + withInstructions else withInstructions
     }
 
     /**

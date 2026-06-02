@@ -532,7 +532,7 @@ class AgentAdvancedContextSpec :
         // buildMessages with/without instructions
         // -------------------------------------------------------------------------
 
-        "buildMessages prepends SystemMessage when instructions are provided" {
+        "buildMessages merges instructions into the last UserMessage" {
             val ctxWithInstructions =
                 AgentAdvancedContext(
                     chatClient = mockk(),
@@ -544,13 +544,34 @@ class AgentAdvancedContextSpec :
             val events = listOf(userMessage("hello"))
             val messages = ctxWithInstructions.buildMessages(events)
 
-            messages shouldHaveSize 2
+            // Instructions merged into the single user message — no extra message added
+            messages shouldHaveSize 1
             messages[0].shouldBeInstanceOf<UserMessage>()
+            (messages[0] as UserMessage).text shouldContain "hello"
+            (messages[0] as UserMessage).text shouldContain "You are helpful"
+        }
+
+        "buildMessages with instructions and no user message appends a new UserMessage" {
+            val ctxWithInstructions =
+                AgentAdvancedContext(
+                    chatClient = mockk(),
+                    tools = emptyList(),
+                    instructions = "You are helpful",
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            // Only an agent message — no UserMessage in history
+            val events = listOf(agentMessage(agentId, "Agent", "hello"))
+            val messages = ctxWithInstructions.buildMessages(events)
+
+            // No user message to merge into → instructions appended as a new UserMessage
+            messages shouldHaveSize 2
+            messages[0].shouldBeInstanceOf<AssistantMessage>()
             messages[1].shouldBeInstanceOf<UserMessage>()
             (messages[1] as UserMessage).text shouldBe "You are helpful"
         }
 
-        "buildMessages without instructions has added UserMessage" {
+        "buildMessages without instructions does not add any extra message" {
             val ctxNoInstructions =
                 AgentAdvancedContext(
                     chatClient = mockk(),

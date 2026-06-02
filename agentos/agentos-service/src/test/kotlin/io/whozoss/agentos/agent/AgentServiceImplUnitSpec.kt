@@ -252,8 +252,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
-            agent.instructions shouldContain namespace.name
-            agent.instructions shouldContain "Engineering namespace for backend services"
+            agent.systemPrompt shouldContain namespace.name
+            agent.systemPrompt shouldContain "Engineering namespace for backend services"
         }
 
         "findAgentByName includes namespace name but not null when namespace has no description" {
@@ -276,8 +276,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
-            agent.instructions shouldContain "engineering"
-            agent.instructions shouldNotContain "null"
+            agent.systemPrompt shouldContain "engineering"
+            agent.systemPrompt shouldNotContain "null"
 
             // restore default stub
             every { namespaceService.findById(namespaceId) } returns namespace

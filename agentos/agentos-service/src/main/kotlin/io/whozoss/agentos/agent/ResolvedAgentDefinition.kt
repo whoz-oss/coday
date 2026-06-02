@@ -17,8 +17,12 @@ import java.util.UUID
  *
  * @param agentConfigId The UUID of the source [io.whozoss.agentos.agentConfig.AgentConfig].
  * @param name The agent's display name.
- * @param instructions The final system instructions, after namespace / integration /
- *   user context blocks have been injected. Null when no instructions are produced.
+ * @param systemPrompt The namespace context block (`## Context: <name>`) to be sent as a
+ *   privileged system message, separate from the agent's own instructions. Null when no
+ *   namespace context is available.
+ * @param instructions The final system instructions (agent instructions + integrations +
+ *   user context), after namespace context has been extracted into [systemPrompt].
+ *   Null when no instructions are produced.
  * @param resolvedModelApiName The API-level model name, for display / inspection.
  * @param resolvedProviderName The provider name, for display / inspection.
  * @param resolvedModelId The UUID of the resolved [io.whozoss.agentos.sdk.aiProvider.AiModel], for display / inspection.
@@ -33,6 +37,7 @@ import java.util.UUID
 data class ResolvedAgentDefinition(
     val agentConfigId: UUID,
     val name: String,
+    val systemPrompt: String?,
     val instructions: String?,
     val resolvedModelApiName: String,
     val resolvedProviderName: String,
