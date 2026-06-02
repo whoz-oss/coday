@@ -6,6 +6,10 @@ on:
       - master
   workflow_dispatch:
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   NPM_CONFIG_PROVENANCE: true
   NX_MAX_WORKERS: 4
