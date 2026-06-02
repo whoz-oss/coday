@@ -59,7 +59,9 @@ class AgentSimple(
     override val name: String,
     private val chatClient: ChatClient,
     private val tools: Collection<StandardTool<*>>,
-    /** The effective system instructions passed to the LLM, after namespace context injection. */
+    /** The namespace context block, sent as the first part of the system message. */
+    val systemPrompt: String? = null,
+    /** The effective system instructions passed to the LLM (agent instructions + integrations + user). */
     val instructions: String? = null,
     /** AgentOS UUID of the user who initiated the case, or null when unresolvable. */
     private val userId: UUID? = null,
@@ -83,10 +85,15 @@ class AgentSimple(
                 // Convert events to messages
                 val messages = convertEventsToMessages(events)
 
-                // Add system instructions if provided
+                // Build the system message from systemPrompt + instructions (either or both may be null)
+                val effectiveSystemMessage =
+                    listOfNotNull(systemPrompt, instructions)
+                        .joinToString("\n")
+                        .takeUnless { it.isBlank() }
+                        ?.let { SystemMessage(it) }
                 val allMessages =
-                    if (instructions != null) {
-                        listOf(SystemMessage(instructions)) + messages
+                    if (effectiveSystemMessage != null) {
+                        listOf(effectiveSystemMessage) + messages
                     } else {
                         messages
                     }

@@ -114,6 +114,7 @@ class AgentServiceImpl(
                         "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
                 )
         val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId)
+        val namespaceSystemPrompt = buildNamespaceSystemPrompt(context.namespaceId)
         val instructions = buildInstructions(
             baseInstructions = config.instructions,
             agentIntegrations = config.integrations,
@@ -128,6 +129,7 @@ class AgentServiceImpl(
         return ResolvedAgentDefinition(
             agentConfigId = config.metadata.id,
             name = config.name,
+            systemPrompt = namespaceSystemPrompt.takeUnless { it.isBlank() },
             instructions = instructions.takeUnless { it.isBlank() },
             resolvedModelApiName = modelConfig.apiModelName,
             resolvedProviderName = providerConfig.name,
@@ -159,6 +161,7 @@ class AgentServiceImpl(
         return createAgentInstance(
             agentName = definition.name,
             resolvedInstructions = definition.instructions,
+            resolvedSystemPrompt = definition.systemPrompt,
             advancedExecution = definition.advancedExecution,
             modelConfig = modelConfig,
             providerConfig = providerConfig,
@@ -212,6 +215,7 @@ class AgentServiceImpl(
     private fun createAgentInstance(
         agentName: String,
         resolvedInstructions: String?,
+        resolvedSystemPrompt: String?,
         advancedExecution: Boolean,
         modelConfig: AiModel,
         providerConfig: AiProvider,
@@ -236,6 +240,7 @@ class AgentServiceImpl(
                     instructions = resolvedInstructions,
                     agentId = agentId,
                     confirmationManager = confirmationManager,
+                    systemPrompt = resolvedSystemPrompt,
                 )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
@@ -253,6 +258,7 @@ class AgentServiceImpl(
                 name = agentName,
                 chatClient = chatClient,
                 tools = resolvedTools,
+                systemPrompt = resolvedSystemPrompt,
                 instructions = resolvedInstructions,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
@@ -262,34 +268,37 @@ class AgentServiceImpl(
     }
 
     /**
-     * Compose the final system instructions for the agent.
+     * Build the namespace context block to be used as a system prompt, separate from
+     * the agent's own instructions. Describes the namespace the agent operates in.
+     */
+    private fun buildNamespaceSystemPrompt(namespaceId: UUID): String {
+        val namespace = namespaceService.findById(namespaceId)
+        return buildString {
+            appendLine("## Context: ${namespace?.name ?: namespaceId}")
+            namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+        }.trimEnd()
+    }
+
+    /**
+     * Compose the agent's instructions from [baseInstructions] (the agent's own instructions
+     * from [AgentConfig]), an integrations block, and a user context block.
      *
-     * Starts from [baseInstructions] (the agent's own instructions from [AgentConfig],
-     * may be null) and appends:
-     * 1. A namespace context block (always, when [context] is provided).
-     * 2. An integrations block listing the [IntegrationConfig] entries whose [name][io.whozoss.agentos.integrationConfig.IntegrationConfig.name]
-     *    appears in [agentIntegrations] AND that carry a non-null description. When
-     *    [agentIntegrations] is null (agent has no declared integrations), this block
-     *    is omitted entirely — the agent has no tools and should not be told about
-     *    integrations it cannot use.
-     * 3. A user context block (when [context.userId] resolves to a known [User]).
+     * The namespace context is intentionally NOT part of this — it is built separately
+     * by [buildNamespaceSystemPrompt] and sent as a system prompt.
      *
-     * All blocks are injected in the privileged system-prompt channel so they are
-     * never compacted away by the provider, regardless of conversation length.
+     * The integrations block lists [IntegrationConfig] entries whose
+     * [name][io.whozoss.agentos.integrationConfig.IntegrationConfig.name] appears in
+     * [agentIntegrations] AND that carry a non-null description. It is omitted entirely
+     * when [agentIntegrations] is null (agent has no declared integrations).
+     *
+     * The user context block is included when [context.userId] resolves to a known [User]
+     * with at least one human-readable field.
      */
     private fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
         context: AgentExecutionContext,
     ): String {
-        val namespace = namespaceService.findById(context.namespaceId)
-        val namespaceBlock =
-            buildString {
-                appendLine()
-                appendLine("""## Context: ${namespace?.name ?: context.namespaceId}""")
-                namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
-            }.trimEnd()
-
         val integrationsBlock =
             when {
                 agentIntegrations == null -> {
@@ -342,7 +351,7 @@ class AgentServiceImpl(
                 }
             }
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, namespaceBlock, integrationsBlock, userBlock)
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock)
             .joinToString("\n")
     }
 

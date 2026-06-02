@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
-import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
@@ -795,7 +794,7 @@ class AgentAdvanced(
                 (languageHint?.let { "\n\n$it" } ?: "")
         val intentionContext =
             lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
-        val messages = context.buildMessages(accumulatedEvents) + UserMessage(intentionContext)
+        val messages = context.buildMessages(accumulatedEvents, intentionContext)
 
         logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$intentionContext" }
@@ -948,9 +947,8 @@ Intention: ${intentionEvent.intention}$enrichmentBlock
 **Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
             """.trimIndent()
         val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-        val baseMessages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall)
 
-        logger.debug { "[$name] generateParameters for '${tool.name}' — sending ${baseMessages.size + 1} messages" }
+        logger.debug { "[$name] generateParameters for '${tool.name}'" }
         logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
 
         return retryWithFallback<String, ToolRequestEvent>(
@@ -970,7 +968,7 @@ Intention: ${intentionEvent.intention}$enrichmentBlock
         ) { previousRaw ->
             attemptParameterGeneration(
                 basePrompt = basePrompt,
-                baseMessages = baseMessages,
+                events = accumulatedEventsWithoutCurrentToolCall,
                 toolName = tool.name,
                 namespaceId = namespaceId,
                 caseId = caseId,
@@ -982,30 +980,27 @@ Intention: ${intentionEvent.intention}$enrichmentBlock
 
     private fun attemptParameterGeneration(
         basePrompt: String,
-        baseMessages: List<org.springframework.ai.chat.messages.Message>,
+        events: List<CaseEvent>,
         toolName: String,
         namespaceId: UUID,
         caseId: UUID,
         toolRequestId: String,
         previousRaw: String?,
     ): AttemptResult<String, ToolRequestEvent> {
-        val prompt =
-            if (previousRaw == null) {
-                basePrompt
-            } else {
-                """
-$basePrompt
+        val retryHint = previousRaw?.let {
+            """
+            PREVIOUS FAILED ATTEMPT(S):
+            The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
+            ---
+            $it
+            ---
+            Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
+            """.trimIndent()
+        }
+        val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
-PREVIOUS FAILED ATTEMPT(S):
-The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
----
-$previousRaw
----
-Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
-                """.trimIndent()
-            }
-
-        val raw = callLlmForParameters(baseMessages + UserMessage(prompt), toolName)
+        val messages = context.buildMessages(events, prompt)
+        val raw = callLlmForParameters(messages, toolName)
 
         logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
@@ -1069,7 +1064,7 @@ Intention: ${intentionEvent.intention}
                 """.trimIndent()
 
             val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(fullPrompt)
+            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall, fullPrompt)
 
             logger.debug { "[$name] enrichment phase $i for '${tool.name}' — sending ${messages.size} messages" }
 

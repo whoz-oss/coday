@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import java.util.UUID
@@ -21,10 +22,29 @@ data class AgentAdvancedContext(
     val instructions: String?,
     val agentId: UUID,
     val confirmationManager: ConfirmationManager,
+    /** Namespace context block sent as a privileged system message, prepended before event history. */
+    val systemPrompt: String? = null,
 ) {
-    internal fun buildMessages(events: List<CaseEvent>): List<Message> {
+    /**
+     * Build the complete message list for a single LLM call.
+     *
+     * - [systemPrompt] (namespace context) is prepended as a [SystemMessage].
+     * - [instructions] (agent instructions + integrations + user) and the caller's
+     *   [prompt] are both merged into the **last** [UserMessage] of the history,
+     *   avoiding consecutive user messages which many providers reject or mishandle.
+     * - If the history contains no [UserMessage] yet, a new one is appended so that
+     *   neither instructions nor prompt are silently dropped.
+     *
+     * @param events the accumulated case events to convert into history messages.
+     * @param prompt the immediate task prompt for this LLM call (intention, parameter
+     *   generation, final response, etc.). Null when the caller needs the base history
+     *   without any additional prompt (e.g. confirmation manager calls).
+     */
+    internal fun buildMessages(events: List<CaseEvent>, prompt: String? = null): List<Message> {
         val history = convertEventsToMessages(events)
-        return if (instructions != null) history + listOf(UserMessage(instructions)) else history
+        val operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
+        val messages = if (operationalMessage != null) history + UserMessage(operationalMessage) else history
+        return listOfNotNull(systemPrompt?.let { SystemMessage(it) }) + messages
     }
 
     /**
@@ -52,12 +72,13 @@ data class AgentAdvancedContext(
         return events.flatMapIndexed { index, event ->
             when (event) {
                 is MessageEvent -> {
-                    val prefix: List<Message> =
-                        event
-                            .sessionContextPromptText()
-                            .takeIf { index == lastUserMsgIndex }
-                            ?.let { listOf(UserMessage(it)) } ?: emptyList()
-                    prefix + listOf(event.toSpringAiMessage(this.agentId.toString()))
+                    val sessionContext = event.sessionContextPromptText().takeIf { index == lastUserMsgIndex }
+                    val message = event.toSpringAiMessage(this.agentId.toString())
+                    if (sessionContext != null && message is UserMessage) {
+                        listOf(UserMessage(sessionContext + "\n\n" + message.text))
+                    } else {
+                        listOfNotNull(sessionContext?.let { UserMessage(it) }, message)
+                    }
                 }
 
                 is ToolRequestEvent -> {
