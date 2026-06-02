@@ -2,6 +2,9 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
@@ -21,11 +24,22 @@ class AgentIntentionGenerator {
         val toolNames = context.tools.map { it.name } + ANSWER_TOOL
         val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
 
+        val isFirstIteration = events.none { it is ToolRequestEvent }
+        val lastToolResponse = events.filterIsInstance<ToolResponseEvent>().lastOrNull()
+        val executionState =
+            when {
+                isFirstIteration -> "No tools have been called yet. This is the first iteration."
+                lastToolResponse?.success == true -> "Last tool '${lastToolResponse.toolName}' executed without technical issue."
+                lastToolResponse?.success == false -> "Last tool '${lastToolResponse.toolName}' FAILED: ${(lastToolResponse.output as? MessageContent.Text)?.content}"
+                else -> ""
+            }
         val prompt =
             """
 Available tools:
 $toolsDescription
 - $ANSWER_TOOL: produce the final answer to the user (use this when no more tool calls are needed)
+
+$executionState
 
 ### Objective
 Based on the full conversation history and current context, your objective is to determine the single most appropriate **next action**.
