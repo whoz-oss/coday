@@ -38,7 +38,7 @@ class UserGroupServiceImpl(
             throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
         }
 
-    override fun findByIds(ids: Collection<UUID>): List<UserGroup> = userGroupRepository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<UserGroup> = userGroupRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<UserGroup> = userGroupRepository.findByParent(parentId)
 

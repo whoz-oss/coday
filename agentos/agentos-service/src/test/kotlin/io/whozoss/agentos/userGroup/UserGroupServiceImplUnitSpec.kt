@@ -293,7 +293,7 @@ class UserGroupServiceImplUnitSpec :
             val agentConfigRepository = mockk<AgentConfigRepository>()
             val userService = mockk<UserService>()
 
-            every { userGroupRepository.findByIds(listOf(groupId)) } returns listOf(existing)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
             every { agentConfigRepository.findByIds(setOf(agentId)) } returns listOf(agentConfig(agentId))
             every { userGroupRepository.save(any()) } returns updated
             every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
@@ -337,7 +337,7 @@ class UserGroupServiceImplUnitSpec :
                 )
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
-            every { userGroupRepository.findByIds(listOf(groupId)) } returns listOf(existing)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
             every { userGroupRepository.save(any()) } returns existing
             every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
 
@@ -367,7 +367,7 @@ class UserGroupServiceImplUnitSpec :
         "updateFromRequest throws 404 when group does not exist" {
             val groupId = randomUUID()
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
-            every { userGroupRepository.findByIds(listOf(groupId)) } returns emptyList()
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns emptyList()
 
             val service = buildService(userGroupRepository)
 
@@ -383,7 +383,7 @@ class UserGroupServiceImplUnitSpec :
 
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val agentConfigRepository = mockk<AgentConfigRepository>()
-            every { userGroupRepository.findByIds(listOf(groupId)) } returns listOf(existing)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
             every { agentConfigRepository.findByIds(setOf(agentId)) } returns listOf(agentConfig(agentId, nsId = randomUUID()))
 
             val service = buildService(userGroupRepository, agentConfigRepository = agentConfigRepository)

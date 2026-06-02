@@ -79,7 +79,7 @@ class CaseServiceImpl(
         }
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Case> = caseRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
