@@ -28,6 +28,16 @@ interface EntityRepository<T : Entity, P> {
     fun save(entity: T): T
 
     /**
+     * Find a single entity by its identifier.
+     *
+     * Excludes removed entities by default.
+     *
+     * @param id The unique identifier
+     * @return The entity if found and not removed, null otherwise
+     */
+    fun findById(id: UUID): T? = findByIds(listOf(id)).firstOrNull()
+
+    /**
      * Find multiple entities by their identifiers.
      *
      * Excludes removed entities by default.

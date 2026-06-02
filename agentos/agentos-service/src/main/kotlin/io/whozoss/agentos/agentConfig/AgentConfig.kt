@@ -62,4 +62,15 @@ data class AgentConfig(
      * Each consumer is responsible for serializing/deserializing its own structure.
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * Whether this agent is published and visible to end-users.
+     *
+     * Defaults to `false` — newly created agents are unpublished and must be
+     * explicitly published via the publish endpoint before they are accessible.
+     *
+     * Backward-compat: existing agents stored in Neo4j without this field are
+     * treated as published (`COALESCE(a.enabled, true)` in Cypher queries) so
+     * that previously available agents continue to work after the migration.
+     */
+    val enabled: Boolean = false,
 ) : Entity

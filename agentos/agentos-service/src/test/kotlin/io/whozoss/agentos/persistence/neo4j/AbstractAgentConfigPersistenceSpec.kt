@@ -20,12 +20,13 @@ import org.springframework.beans.factory.annotation.Autowired
 import java.util.UUID
 
 /**
- * Persistence contract tests for [AgentConfigRepository.findAvailableByNamespaceIdAndUserId].
+ * Persistence contract tests for [AgentConfigRepository] Cypher queries.
  *
- * The query is scoped to a namespace by its UUID, and the user is identified by their internal UUID.
- * Availability is the union of:
- * 1. Agents deployed on a [UserGroup] belonging to that namespace, of which the user is a member
- * 2. Agents deployed directly on that namespace, for a user holding MEMBER or ADMIN on it
+ * Covers:
+ * - [AgentConfigRepository.findByParent] with `enabledOnly` filter (enabled/disabled,
+ *   backward compatibility with null enabled, soft-delete, namespace scoping)
+ * - [AgentConfigRepository.findAvailableByNamespaceIdAndUserId] (user group membership,
+ *   namespace membership, union/deduplication, agent name filtering)
  */
 abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
@@ -247,6 +248,80 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             agentConfigRepo.delete(agent.id)
 
             agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
+        // findByParent with enabledOnly filter
+        // -------------------------------------------------------------------------
+
+        "findByParent with enabledOnly=false returns all active configs regardless of enabled status" {
+            val ns = namespaceRepo.save(namespace())
+            val enabled = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(enabled = true))
+            val disabled = agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(enabled = false))
+
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = false)
+
+            result.map { it.id } shouldContainExactlyInAnyOrder listOf(enabled.id, disabled.id)
+        }
+
+        "findByParent with enabledOnly=true returns only enabled configs" {
+            val ns = namespaceRepo.save(namespace())
+            val enabled = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(enabled = true))
+            agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(enabled = false))
+
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
+
+            result shouldHaveSize 1
+            result.first().id shouldBe enabled.id
+        }
+
+        "findByParent with enabledOnly=true treats null enabled as disabled" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = agentConfigRepo.save(agentConfig(ns.id, "legacy-agent"))
+            driver.session().use { session ->
+                session.run(
+                    "MATCH (a:AgentConfig {id: \$id}) REMOVE a.enabled",
+                    mapOf("id" to saved.id.toString()),
+                )
+            }
+
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
+
+            result.shouldBeEmpty()
+        }
+
+        "findByParent excludes soft-deleted configs" {
+            val ns = namespaceRepo.save(namespace())
+            val active = agentConfigRepo.save(agentConfig(ns.id, "active-agent"))
+            val toDelete = agentConfigRepo.save(agentConfig(ns.id, "deleted-agent"))
+            agentConfigRepo.delete(toDelete.id)
+
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = false)
+
+            result shouldHaveSize 1
+            result.first().id shouldBe active.id
+        }
+
+        "findByParent with enabledOnly=true excludes soft-deleted enabled configs" {
+            val ns = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "enabled-then-deleted").copy(enabled = true))
+            agentConfigRepo.delete(agent.id)
+
+            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
+
+            result.shouldBeEmpty()
+        }
+
+        "findByParent returns configs scoped to the given namespace only" {
+            val ns1 = namespaceRepo.save(namespace())
+            val ns2 = namespaceRepo.save(namespace())
+            val agentInNs1 = agentConfigRepo.save(agentConfig(ns1.id, "ns1-agent"))
+            agentConfigRepo.save(agentConfig(ns2.id, "ns2-agent"))
+
+            val result = agentConfigRepo.findByParent(ns1.id, enabledOnly = false)
+
+            result shouldHaveSize 1
+            result.first().id shouldBe agentInNs1.id
         }
 
         // -------------------------------------------------------------------------
