@@ -244,7 +244,10 @@ tasks.withType<Test> {
     // rejected with HTTP 400. Force a supported version until Testcontainers
     // is upgraded to 2.x (which ships docker-java 3.7+ defaulting to 1.44).
     systemProperty("api.version", "1.44")
-    // Emit full exception details for MockK/classloader failures in CI.
+    // Disable JVM fast-throw optimisation so MockK can read the ClassCastException
+    // message and auto-hint the correct type for mocked calls.
+    jvmArgs("-XX:-OmitStackTraceInFastThrow")
+    // Emit full exception details in CI logs.
     // Remove once the root cause of ClassCastException is confirmed.
     testLogging {
         showExceptions = true
