@@ -311,8 +311,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
-            agent.instructions shouldNotContain "## Integrations"
-            agent.instructions shouldNotContain "JIRA_PROD"
+            (agent.instructions ?: "") shouldNotContain "## Integrations"
+            (agent.instructions ?: "") shouldNotContain "JIRA_PROD"
         }
 
         "findAgentByName appends integrations block only for configs listed in agentConfig.integrations" {
@@ -392,7 +392,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
-            agent.instructions shouldNotContain "## Integrations"
+            (agent.instructions ?: "") shouldNotContain "## Integrations"
         }
 
         "findAgentByName resolves namespace by namespaceId from context" {
@@ -499,7 +499,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
-            agent.instructions shouldNotContain "## User"
+            (agent.instructions ?: "") shouldNotContain "## User"
             verify(exactly = 0) { userService.findById(any()) }
         }
 
@@ -531,9 +531,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             // No readable data available: the ## User block must be omitted entirely
             // rather than injecting an opaque UUID that confuses the LLM.
-            agent.instructions shouldNotContain "## User"
-            agent.instructions shouldNotContain userId.toString()
-            agent.instructions shouldNotContain "opaque-objectid-123"
+            (agent.instructions ?: "") shouldNotContain "## User"
+            (agent.instructions ?: "") shouldNotContain userId.toString()
+            (agent.instructions ?: "") shouldNotContain "opaque-objectid-123"
         }
 
         // -------------------------------------------------------------------------
