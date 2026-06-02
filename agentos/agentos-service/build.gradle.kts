@@ -247,14 +247,6 @@ tasks.withType<Test> {
     // Disable JVM fast-throw optimisation so MockK can read the ClassCastException
     // message and auto-hint the correct type for mocked calls.
     jvmArgs("-XX:-OmitStackTraceInFastThrow")
-    // Emit full exception details in CI logs.
-    // Remove once the root cause of ClassCastException is confirmed.
-    testLogging {
-        showExceptions = true
-        showCauses = true
-        showStackTraces = true
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-    }
 }
 
 // Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
