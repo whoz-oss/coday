@@ -386,6 +386,7 @@ class AgentAdvanced(
                         history = history,
                         actionLabel = "Tool ${tool.name}",
                         proposedData = argsJson ?: "{}",
+                        toolInstructions = tool.getConfirmationInstructions(),
                     )
                 }
 
@@ -611,7 +612,7 @@ class AgentAdvanced(
                                 chatClient = context.chatClient,
                                 history = historyFromPending,
                                 pendingPayload = pending.inputJson,
-                                specificInstructions = pending.analysisInstructions,
+                                toolInstructions = pending.analysisInstructions,
                             )
                         when (decision) {
                             ConfirmationDecision.AMBIGUOUS -> {

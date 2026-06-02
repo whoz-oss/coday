@@ -105,11 +105,25 @@ interface StandardTool<T> {
     ): ConfirmationMode = confirmationMode
 
     /**
-     * Instructions appended to the `analyzeConfirmation` prompt to guide the LLM judge
-     * when interpreting the user's free-form reply. For destructive actions this SHOULD
-     * be a strict prompt (e.g. "Require explicit confirmation: a bare 'ok' is not enough
-     * unless the previous turn clearly described the destructive action."). Plugin authors
-     * MUST NOT include user-controlled strings here.
+     * Tool-specific guidance injected as a labelled `Tool-specific confirmation guidance:`
+     * section into BOTH:
+     *   1. the `shouldConfirm` prompt (tour 1 — decide whether to gate)
+     *   2. the `analyzeConfirmation` prompt (tour 2 — parse the user's free-form reply)
+     *
+     * Write phase-agnostic criteria, not imperative overrides. The LLM combines this
+     * guidance with the general decision rules of the prompt template.
+     *
+     * Examples:
+     *   "Hesitant replies ('pourquoi pas', 'I guess') are not affirmative consent."
+     *   "Updates that overwrite non-empty fields require explicit user authorization."
+     *
+     * **Intentionally static** — no args, no context, no suspend. The LLM judge already
+     * sees the proposed args (`proposedData` in tour 1, `pendingPayload` in tour 2) and
+     * the full conversation history, so per-call branching of the prompt would be
+     * redundant. For args/context-driven *decisions* (e.g. bypass), override
+     * [getConfirmationMode] instead — keep this method as fixed criteria for the LLM.
+     *
+     * Plugin authors MUST NOT include user-controlled strings here.
      */
     fun getConfirmationInstructions(): String = ""
 

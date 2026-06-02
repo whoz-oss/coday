@@ -54,6 +54,10 @@ class ConfirmationManager(
      * @param proposedData The structured data the tool is about to apply.
      * @param originalData Optional pre-change state (Update tools). When non-null, the
      *   LLM gets it so it can reason about the delta — matches the back Copilot signature.
+     * @param toolInstructions Optional tool-supplied guidance injected as a labelled
+     *   `Tool-specific confirmation guidance:` section alongside the general decision
+     *   rules. The LLM is told to take it as additional context, not as overriding rules
+     *   — so a poorly written guidance cannot bypass the general safety criteria.
      */
     fun shouldConfirm(
         chatClient: ChatClient,
@@ -61,14 +65,17 @@ class ConfirmationManager(
         actionLabel: String,
         proposedData: Any,
         originalData: Any? = null,
+        toolInstructions: String = "",
     ): Boolean {
         logger.info { "[ConfirmationManager] shouldConfirm? actionLabel='$actionLabel'" }
         return try {
             val dataSummary = serializeSafely(proposedData)
             val originalSection = buildOriginalObjectSection(originalData)
+            val toolGuidanceSection = buildToolGuidanceSection(toolInstructions)
             val prompt =
                 """
                 $originalSection
+                $toolGuidanceSection
 
                 Current Situation:
                 The agent is about to execute the following action:
@@ -79,6 +86,7 @@ class ConfirmationManager(
 
                 Task:
                 Analyze the end of the conversation. Has the user *already* explicitly agreed to or requested this specific action/update?
+                Take any tool-specific guidance above as additional context, not as overriding rules — apply both the general criteria below and any specific considerations the tool provided.
 
                 Return "$CHOICE_NO" if ANY of the following are true:
                 - The assistant proposed a general suggestion without details and the user just agreed to the general suggestion but hasn't seen the specific details yet
@@ -91,7 +99,7 @@ class ConfirmationManager(
 
                 Has the user *already* explicitly agreed to or requested this specific action/update? put it between <$TAG_DECISION></$TAG_DECISION>:
                 <$TAG_DECISION>
-                
+
                 Also give me the reasoning behind yor decision. put it between <$TAG_REASONING></$TAG_REASONING>:
                 <$TAG_REASONING>
                 """.trimIndent()
@@ -110,12 +118,25 @@ class ConfirmationManager(
         }
     }
 
+    private fun buildToolGuidanceSection(toolInstructions: String): String =
+        if (toolInstructions.isBlank()) {
+            ""
+        } else {
+            """
+            |
+            |Tool-specific confirmation guidance:
+            |$toolInstructions
+            """.trimMargin()
+        }
+
     /**
      * @param chatClient The agent's ChatClient.
      * @param history The Spring AI conversation history that includes the latest user reply.
      * @param pendingPayload The payload that was emitted with the [PendingConfirmationEvent].
-     * @param specificInstructions Optional tool-supplied analysis instructions
-     *   (e.g. "Be strict: bare 'ok' is not enough for destructive actions").
+     * @param toolInstructions Optional tool-supplied guidance — same string and same
+     *   labelled section ("Tool-specific confirmation guidance:") as in [shouldConfirm].
+     *   Sourced from [StandardTool.getConfirmationInstructions], persisted on the
+     *   [PendingConfirmationEvent] and replayed here.
      * @return [ConfirmationDecision] — CONFIRMED on a clear yes, REJECTED on a clear no,
      *   AMBIGUOUS otherwise (undecodable LLM reply OR LLM call failure).
      */
@@ -123,18 +144,10 @@ class ConfirmationManager(
         chatClient: ChatClient,
         history: List<Message>,
         pendingPayload: Any,
-        specificInstructions: String,
+        toolInstructions: String = "",
     ): ConfirmationDecision {
         logger.info { "[ConfirmationManager] Analyze confirmation." }
-        val specificBlock =
-            if (specificInstructions.isNotBlank()) {
-                """
-                |**Specific Context for this validation:**
-                |$specificInstructions
-                """.trimMargin()
-            } else {
-                ""
-            }
+        val toolGuidanceSection = buildToolGuidanceSection(toolInstructions)
 
         val payloadSummary = serializeSafely(pendingPayload)
 
@@ -146,7 +159,7 @@ class ConfirmationManager(
             $payloadSummary
 
             And especially based on the last user message, I need to identify if the user confirms the validation (without any modification) or not.
-            $specificBlock
+            $toolGuidanceSection
 
             Decide between three outcomes and put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between <$TAG_DECISION></$TAG_DECISION> tags:
             - "$CHOICE_YES" — the user clearly confirms the validation without modification.

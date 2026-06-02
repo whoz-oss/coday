@@ -10,6 +10,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
@@ -960,7 +961,7 @@ class AgentAdvancedSpec :
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
             val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"safe.txt"}"""
 
@@ -1022,7 +1023,7 @@ class AgentAdvancedSpec :
                     ): ToolExecutionResult = throw RuntimeException("boom")
                 }
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
@@ -1136,9 +1137,80 @@ class AgentAdvancedSpec :
             events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
             // shouldConfirm n'est même pas appelé (mode = NONE → pas de gate)
             verify(exactly = 0) {
-                confirmationManager.shouldConfirm(any(), any(), any(), any(), any())
+                confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any())
             }
             executed.get() shouldBe true
+        }
+
+        // L'orchestrateur doit transmettre les instructions tool-spécifiques au LLM-judge
+        // pour que le prompt template intègre la guidance custom (e.g. "pourquoi pas not consent").
+        "INFER mode forwards tool.getConfirmationInstructions() to shouldConfirm.toolInstructions" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__withGuidance"
+                    override val description = "tool that injects guidance"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override fun getConfirmationInstructions(): String =
+                        "Be strict: 'pourquoi pas' is not consent."
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("ok")
+                }
+            val confirmationManager = mockk<ConfirmationManager>()
+            val toolInstructionsCaptured = slot<String>()
+            every {
+                confirmationManager.shouldConfirm(
+                    chatClient = any(),
+                    history = any(),
+                    actionLabel = any(),
+                    proposedData = any(),
+                    originalData = any(),
+                    toolInstructions = capture(toolInstructionsCaptured),
+                )
+            } returns false
+            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "call with guidance",
+                        toolName = "TEST__withGuidance",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "done",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+            agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            toolInstructionsCaptured.captured shouldBe "Be strict: 'pourquoi pas' is not consent."
         }
 
         // Câblage : l'orchestrateur doit transmettre les args bruts générés par le LLM
