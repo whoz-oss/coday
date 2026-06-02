@@ -244,6 +244,14 @@ tasks.withType<Test> {
     // rejected with HTTP 400. Force a supported version until Testcontainers
     // is upgraded to 2.x (which ships docker-java 3.7+ defaulting to 1.44).
     systemProperty("api.version", "1.44")
+    // Emit full exception details for MockK/classloader failures in CI.
+    // Remove once the root cause of ClassCastException is confirmed.
+    testLogging {
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 // Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
