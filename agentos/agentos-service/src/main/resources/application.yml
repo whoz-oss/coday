@@ -116,6 +116,11 @@ logging:
     io.whozoss.agentos.service: DEBUG
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
+    # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning)
+    # for optional node properties that are absent on some nodes. These are harmless
+    # — SDN queries all declared fields regardless of whether every node has them —
+    # but they flood the logs. Suppress at WARN, keep ERROR visible.
+    org.neo4j.driver: ERROR
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

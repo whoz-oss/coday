@@ -7,6 +7,7 @@ on:
 
 env:
   NX_MAX_WORKERS: 4
+  NX_MAX_WORKERS_JVM: 1
 
 defaults:
   run:
@@ -71,7 +72,7 @@ jobs:
         run: |
           AFFECTED_JVM=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm" --json --quiet | jq -r 'join(",")')
           if [ -n "$AFFECTED_JVM" ]; then
-            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS --verbose
+            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS_JVM --verbose
           else
             echo "No affected JVM projects"
           fi
