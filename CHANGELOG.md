@@ -1,3 +1,13 @@
+## 0.168.1 (2026-06-02)
+
+### 🩹 Fixes
+
+- #WZ-32242 inject language hint in final response prompt ([#941](https://github.com/whoz-oss/coday/pull/941))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.168.0 (2026-06-02)
 
 ### 🚀 Features
