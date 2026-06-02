@@ -66,7 +66,7 @@ class AiModelServiceImpl(
         return repository.save(entity)
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<AiModel> = repository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiModel> = repository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<AiModel> = repository.findByParent(parentId)
 

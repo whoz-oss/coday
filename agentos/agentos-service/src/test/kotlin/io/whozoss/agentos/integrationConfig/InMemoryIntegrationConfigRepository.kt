@@ -11,7 +11,7 @@ class InMemoryIntegrationConfigRepository : IntegrationConfigRepository {
     )
 
     override fun save(entity: IntegrationConfig): IntegrationConfig = delegate.save(entity)
-    override fun findByIds(ids: Collection<UUID>): List<IntegrationConfig> = delegate.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<IntegrationConfig> = delegate.findByIds(ids, withRemoved)
     override fun findByParent(parentId: UUID): List<IntegrationConfig> = findByNamespaceId(parentId)
     override fun delete(id: UUID): Boolean = delegate.delete(id)
     override fun deleteByParent(parentId: UUID): Int =

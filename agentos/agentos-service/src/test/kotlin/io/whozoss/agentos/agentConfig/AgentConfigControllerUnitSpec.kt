@@ -288,7 +288,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     "getById returns a resource when the entity is found" {
         val c = config()
-        every { service.findById(c.id) } returns c
+        every { service.findById(c.id, withRemoved = true) } returns c
 
         val result = controller.getById(c.id)
 
@@ -297,7 +297,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     "getById throws 404 when entity is not found" {
         val id = UUID.randomUUID()
-        every { service.findById(id) } returns null
+        every { service.findById(id, withRemoved = true) } returns null
 
         shouldThrow<ResourceNotFoundException> { controller.getById(id) }
     }

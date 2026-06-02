@@ -89,12 +89,16 @@ abstract class EntityController<E : Entity, ParentIdentifier, ResourceType>(
 
     /**
      * GET /{id} — get a single entity by its ID.
+     *
+     * Passes [withRemoved]=true so that a direct lookup by ID resolves the entity
+     * regardless of its removal state. This mirrors [EntityService.getById] semantics
+     * and allows callers to inspect or audit a soft-deleted entity via REST.
      */
     @GetMapping("/{id}", produces = [MediaType.APPLICATION_JSON_VALUE])
     open fun getById(
         @PathVariable id: UUID,
     ): ResourceType =
-        service.findById(id)
+        service.findById(id, withRemoved = true)
             ?.let { toResource(it) }
             ?: throw ResourceNotFoundException("Entity not found: $id")
 

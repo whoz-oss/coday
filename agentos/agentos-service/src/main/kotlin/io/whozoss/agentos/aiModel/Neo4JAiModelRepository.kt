@@ -31,10 +31,10 @@ open class Neo4JAiModelRepository(
                 }
             }
 
-    override fun findByIds(ids: Collection<UUID>): List<AiModel> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiModel> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<AiModel> =

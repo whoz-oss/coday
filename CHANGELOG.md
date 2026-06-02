@@ -1,3 +1,32 @@
+## 0.168.3 (2026-06-02)
+
+### 🩹 Fixes
+
+- wz-32164: introduce withRemoved ([2db3cadd](https://github.com/whoz-oss/coday/commit/2db3cadd))
+- wz-32164: open api ([6cb3077e](https://github.com/whoz-oss/coday/commit/6cb3077e))
+- wz-32164: open api ([2ad23229](https://github.com/whoz-oss/coday/commit/2ad23229))
+- wz-32164: introduce withRemoved ([#940](https://github.com/whoz-oss/coday/pull/940))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- thomas.martin @thomasmartin-whoz
+
+## 0.168.2 (2026-06-02)
+
+### 🚀 Features
+
+- **wz-32319:** put namespace description into systemprompt in advanced mode ([3ed44622](https://github.com/whoz-oss/coday/commit/3ed44622))
+- **wz-32319:** merge user messages and improve intention prompt ([8e9960bc](https://github.com/whoz-oss/coday/commit/8e9960bc))
+- **wz-32319:** fix tests ([dfbe15b1](https://github.com/whoz-oss/coday/commit/dfbe15b1))
+- **wz-32319:** use retryWithFallback ([bcb8d595](https://github.com/whoz-oss/coday/commit/bcb8d595))
+- **wz-32319:** put namespace description into systemprompt in advanc… ([#944](https://github.com/whoz-oss/coday/pull/944))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.168.1 (2026-06-02)
 
 ### 🩹 Fixes
