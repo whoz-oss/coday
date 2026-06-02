@@ -1,3 +1,13 @@
+## 0.171.2 (2026-06-02)
+
+### 🩹 Fixes
+
+- attempt to avoid flaky tests in publish ([#955](https://github.com/whoz-oss/coday/pull/955))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.171.1 (2026-06-02)
 
 ### 🩹 Fixes
