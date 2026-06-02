@@ -10,6 +10,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
@@ -959,7 +960,7 @@ class AgentAdvancedSpec :
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
             val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"safe.txt"}"""
 
@@ -1021,7 +1022,7 @@ class AgentAdvancedSpec :
                     ): ToolExecutionResult = throw RuntimeException("boom")
                 }
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
@@ -1062,6 +1063,153 @@ class AgentAdvancedSpec :
                 events.filterIsInstance<ToolResponseEvent>().single { it.toolName == "TEST__failing" }
             response.success shouldBe false
             (response.output as MessageContent.Text).content shouldContain "boom"
+        }
+
+        // Dynamique : un tool peut résoudre son mode au runtime via getConfirmationMode(args, ctx).
+        // Quand il retourne NONE, l'orchestrateur ne déclenche aucun gate de confirmation et
+        // exécute le tool directement, même si la val statique demande la confirmation.
+        // Cas d'usage central : bypass programmatique d'UpdateProfile quand CreateProfile a été
+        // appelé in-session pour le même profileId.
+        "Dynamic getConfirmationMode=NONE bypasses confirmation entirely" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val executed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__bypassable"
+                    override val description = "tool with dynamic NONE override"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.EVERY_TIME // static fallback
+
+                    // Always returns NONE dynamically — mimicking a bypass condition
+                    override suspend fun getConfirmationMode(
+                        argsJson: String?,
+                        context: ToolContext?,
+                    ): ConfirmationMode = ConfirmationMode.NONE
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult {
+                        executed.set(true)
+                        return ToolExecutionResult.success("done")
+                    }
+                }
+            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
+            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "call bypassable",
+                        toolName = "TEST__bypassable",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "done",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Aucun PendingConfirmation : le dynamique override la val EVERY_TIME
+            events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
+            // shouldConfirm n'est même pas appelé (mode = NONE → pas de gate)
+            verify(exactly = 0) {
+                confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any())
+            }
+            executed.get() shouldBe true
+        }
+
+        // L'orchestrateur doit transmettre les instructions tool-spécifiques au LLM-judge
+        // pour que le prompt template intègre la guidance custom (e.g. "pourquoi pas not consent").
+        "INFER mode forwards tool.getConfirmationInstructions() to shouldConfirm.toolInstructions" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__withGuidance"
+                    override val description = "tool that injects guidance"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override fun getConfirmationInstructions(): String =
+                        "Be strict: 'pourquoi pas' is not consent."
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("ok")
+                }
+            val confirmationManager = mockk<ConfirmationManager>()
+            val toolInstructionsCaptured = slot<String>()
+            every {
+                confirmationManager.shouldConfirm(
+                    chatClient = any(),
+                    history = any(),
+                    actionLabel = any(),
+                    proposedData = any(),
+                    originalData = any(),
+                    toolInstructions = capture(toolInstructionsCaptured),
+                )
+            } returns false
+            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "call with guidance",
+                        toolName = "TEST__withGuidance",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "done",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+            agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            toolInstructionsCaptured.captured shouldBe "Be strict: 'pourquoi pas' is not consent."
         }
 
         "AC7: reload session without user reply emits AgentFinished, no ConfirmationResolved, file untouched" {
@@ -1290,6 +1438,7 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -1357,6 +1506,7 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -1429,6 +1579,7 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)

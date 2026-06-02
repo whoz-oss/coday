@@ -289,10 +289,17 @@ class AgentAdvanced(
 
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
         val toolCtx = tool?.let { buildToolContext(it.name, namespaceId) }
+        val confirmationMode =
+            if (tool != null && toolCtx != null) {
+                tool.getConfirmationMode(parameters.args, toolCtx)
+            } else {
+                ConfirmationMode.NONE
+            }
         return when {
-            tool != null && toolCtx != null && tool.confirmationMode != ConfirmationMode.NONE -> {
+            tool != null && toolCtx != null && confirmationMode != ConfirmationMode.NONE -> {
                 handleConfirmationGate(
                     tool = tool,
+                    mode = confirmationMode,
                     argsJson = parameters.args,
                     toolRequestId = toolRequestId,
                     parameters = parameters,
@@ -342,7 +349,11 @@ class AgentAdvanced(
     }
 
     /**
-     * Handles the confirmation gate for a tool whose [confirmationMode] is not [NONE].
+     * Handles the confirmation gate for a tool whose resolved mode is not [NONE].
+     * The mode is resolved by the caller via [StandardTool.getConfirmationMode] and
+     * passed in as [mode], allowing the tool to return a dynamic mode based on args
+     * and case events (e.g. bypass when an in-session create makes a follow-up update
+     * implicit).
      *
      * - [ConfirmationMode.EVERY_TIME]: always emits a [PendingConfirmationEvent] +
      *   IN-CHANNEL [MessageEvent] and returns [GateOutcome.AwaitingConfirmation].
@@ -352,6 +363,7 @@ class AgentAdvanced(
      */
     private suspend fun handleConfirmationGate(
         tool: StandardTool<*>,
+        mode: ConfirmationMode,
         argsJson: String?,
         toolRequestId: String,
         parameters: ToolRequestEvent,
@@ -363,7 +375,7 @@ class AgentAdvanced(
     ): GateOutcome {
         val history = context.buildMessages(accumulatedEvents)
         val needsExplicit =
-            when (tool.confirmationMode) {
+            when (mode) {
                 ConfirmationMode.EVERY_TIME -> {
                     true
                 }
@@ -374,6 +386,7 @@ class AgentAdvanced(
                         history = history,
                         actionLabel = "Tool ${tool.name}",
                         proposedData = argsJson ?: "{}",
+                        toolInstructions = tool.getConfirmationInstructions(),
                     )
                 }
 

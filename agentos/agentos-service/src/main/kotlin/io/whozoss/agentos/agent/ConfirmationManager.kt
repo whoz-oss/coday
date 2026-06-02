@@ -54,6 +54,10 @@ class ConfirmationManager(
      * @param proposedData The structured data the tool is about to apply.
      * @param originalData Optional pre-change state (Update tools). When non-null, the
      *   LLM gets it so it can reason about the delta — matches the back Copilot signature.
+     * @param toolInstructions Optional tool-supplied guidance injected as a structured
+     *   `<tool_guidance>` block alongside the general decision rules. The LLM is told to
+     *   take it as additional context, not as overriding rules — so a poorly written
+     *   guidance cannot bypass the general safety criteria.
      */
     fun shouldConfirm(
         chatClient: ChatClient,
@@ -61,14 +65,17 @@ class ConfirmationManager(
         actionLabel: String,
         proposedData: Any,
         originalData: Any? = null,
+        toolInstructions: String = "",
     ): Boolean {
         logger.info { "[ConfirmationManager] shouldConfirm? actionLabel='$actionLabel'" }
         return try {
             val dataSummary = serializeSafely(proposedData)
             val originalSection = buildOriginalObjectSection(originalData)
+            val toolGuidanceSection = buildToolGuidanceSection(toolInstructions)
             val prompt =
                 """
                 $originalSection
+                $toolGuidanceSection
 
                 Current Situation:
                 The agent is about to execute the following action:
@@ -79,6 +86,7 @@ class ConfirmationManager(
 
                 Task:
                 Analyze the end of the conversation. Has the user *already* explicitly agreed to or requested this specific action/update?
+                Take any tool-specific guidance above as additional context, not as overriding rules — apply both the general criteria below and any specific considerations the tool provided.
 
                 Return "$CHOICE_NO" if ANY of the following are true:
                 - The assistant proposed a general suggestion without details and the user just agreed to the general suggestion but hasn't seen the specific details yet
@@ -91,7 +99,7 @@ class ConfirmationManager(
 
                 Has the user *already* explicitly agreed to or requested this specific action/update? put it between <$TAG_DECISION></$TAG_DECISION>:
                 <$TAG_DECISION>
-                
+
                 Also give me the reasoning behind yor decision. put it between <$TAG_REASONING></$TAG_REASONING>:
                 <$TAG_REASONING>
                 """.trimIndent()
@@ -109,6 +117,18 @@ class ConfirmationManager(
             true
         }
     }
+
+    private fun buildToolGuidanceSection(toolInstructions: String): String =
+        if (toolInstructions.isBlank()) {
+            ""
+        } else {
+            """
+            |Tool-specific confirmation guidance:
+            |<tool_guidance>
+            |$toolInstructions
+            |</tool_guidance>
+            """.trimMargin()
+        }
 
     /**
      * @param chatClient The agent's ChatClient.

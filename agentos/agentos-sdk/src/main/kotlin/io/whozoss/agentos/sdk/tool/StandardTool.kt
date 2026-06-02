@@ -62,7 +62,9 @@ interface StandardTool<T> {
     // through its standard [execute] path — same as a tool that never opted in.
 
     /**
-     * Declares how this tool participates in the user-confirmation flow.
+     * Static fallback for the confirmation mode. Read directly only by tools that
+     * don't need dynamic resolution. The orchestrator reads via [getConfirmationMode]
+     * which defaults to this value.
      *
      * - [ConfirmationMode.NONE]: no confirmation required — tool executes directly (default).
      * - [ConfirmationMode.INFER]: confirmation required, but the orchestrator may skip
@@ -74,11 +76,36 @@ interface StandardTool<T> {
     val confirmationMode: ConfirmationMode get() = ConfirmationMode.NONE
 
     /**
-     * Instructions appended to the `analyzeConfirmation` prompt to guide the LLM judge
-     * when interpreting the user's free-form reply. For destructive actions this SHOULD
-     * be a strict prompt (e.g. "Require explicit confirmation: a bare 'ok' is not enough
-     * unless the previous turn clearly described the destructive action."). Plugin authors
-     * MUST NOT include user-controlled strings here.
+     * Dynamic resolution of the confirmation mode. The orchestrator calls this with the
+     * proposed args and current case events before deciding whether to gate the tool call.
+     * Override to compute the mode from business logic — e.g. inspect prior tool calls in
+     * [ToolContext.caseEvents] to bypass confirmation when an in-session create makes a
+     * follow-up update implicit.
+     *
+     * Default delegates to the static [confirmationMode] for backward compatibility:
+     * existing plugins that only override [confirmationMode] keep working without change.
+     *
+     * @param argsJson Raw JSON args produced by the LLM for the impending tool call
+     * @param context Execution context (namespaceId, userId, caseEvents)
+     */
+    suspend fun getConfirmationMode(
+        argsJson: String? = null,
+        context: ToolContext? = null,
+    ): ConfirmationMode = confirmationMode
+
+    /**
+     * Tool-specific guidance injected as a structured `<tool_guidance>` block into BOTH:
+     *   1. the `shouldConfirm` prompt (tour 1 — decide whether to gate)
+     *   2. the `analyzeConfirmation` prompt (tour 2 — parse the user's free-form reply)
+     *
+     * Write phase-agnostic criteria, not imperative overrides. The LLM combines this
+     * guidance with the general decision rules of the prompt template.
+     *
+     * Examples:
+     *   "Hesitant replies ('pourquoi pas', 'I guess') are not affirmative consent."
+     *   "Updates that overwrite non-empty fields require explicit user authorization."
+     *
+     * Plugin authors MUST NOT include user-controlled strings here.
      */
     fun getConfirmationInstructions(): String = ""
 
