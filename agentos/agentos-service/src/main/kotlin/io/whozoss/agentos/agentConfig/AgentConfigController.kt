@@ -59,6 +59,10 @@ class AgentConfigController(
             integrations = entity.integrations,
             advancedExecution = entity.advancedExecution.takeIf { it },
             externalMetadata = entity.externalMetadata,
+            createdBy = entity.metadata.createdBy,
+            createdOn = entity.metadata.created,
+            updatedBy = entity.metadata.modifiedBy,
+            updatedOn = entity.metadata.modified,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
