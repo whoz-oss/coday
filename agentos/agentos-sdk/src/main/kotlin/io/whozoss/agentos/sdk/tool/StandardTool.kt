@@ -62,7 +62,9 @@ interface StandardTool<T> {
     // through its standard [execute] path — same as a tool that never opted in.
 
     /**
-     * Declares how this tool participates in the user-confirmation flow.
+     * Static fallback for the confirmation mode. Read directly only by tools that
+     * don't need dynamic resolution. The orchestrator reads via [getConfirmationMode]
+     * which defaults to this value.
      *
      * - [ConfirmationMode.NONE]: no confirmation required — tool executes directly (default).
      * - [ConfirmationMode.INFER]: confirmation required, but the orchestrator may skip
@@ -72,6 +74,35 @@ interface StandardTool<T> {
      *   is never trusted. Use this for irreversible side-effects (e.g. file deletion).
      */
     val confirmationMode: ConfirmationMode get() = ConfirmationMode.NONE
+
+    /**
+     * Dynamic resolution of the confirmation mode. The orchestrator calls this with the
+     * proposed args and current case events before deciding whether to gate the tool call.
+     * Override to compute the mode from business logic — e.g. inspect prior tool calls in
+     * [ToolContext.caseEvents] to bypass confirmation when an in-session create makes a
+     * follow-up update implicit.
+     *
+     * Default delegates to the static [confirmationMode] for backward compatibility:
+     * existing plugins that only override [confirmationMode] keep working without change.
+     *
+     * ⚠️ HOT PATH — called on **every** tool call by the orchestrator, including those that
+     * resolve to [ConfirmationMode.NONE]. Overrides MUST be:
+     *   - **cheap** : no HTTP, no DB call, no LLM. Pure local computation on `argsJson`
+     *     and `context.caseEvents` only.
+     *   - **side-effect-free** : the orchestrator may call this multiple times for the
+     *     same tool call (e.g. on retry). Mutating state, writing logs at INFO+, or
+     *     emitting events here will leak / duplicate / mislead.
+     *
+     * `suspend` is allowed (the orchestrator awaits) so simple async lookups stay possible,
+     * but in practice prefer plain Kotlin matching against `context.caseEvents`.
+     *
+     * @param argsJson Raw JSON args produced by the LLM for the impending tool call
+     * @param context Execution context (namespaceId, userId, caseEvents)
+     */
+    suspend fun getConfirmationMode(
+        argsJson: String? = null,
+        context: ToolContext? = null,
+    ): ConfirmationMode = confirmationMode
 
     /**
      * Instructions appended to the `analyzeConfirmation` prompt to guide the LLM judge
