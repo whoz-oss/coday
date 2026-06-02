@@ -27,7 +27,7 @@ class UserServiceImpl(
     @Transactional
     override fun update(entity: User): User = userRepository.save(entity)
 
-    override fun findByIds(ids: Collection<UUID>): List<User> = userRepository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<User> = userRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: String): List<User> = userRepository.findByParent(parentId)
 

@@ -18,7 +18,7 @@ class AgentConfigServiceImpl(
 
     override fun update(entity: AgentConfig): AgentConfig = agentConfigRepository.save(entity)
 
-    override fun findByIds(ids: Collection<UUID>): List<AgentConfig> = agentConfigRepository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AgentConfig> = agentConfigRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<AgentConfig> = agentConfigRepository.findByParent(parentId)
 

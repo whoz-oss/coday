@@ -176,7 +176,7 @@ class UserControllerSpec : StringSpec({
         val u = user()
         every { userService.getCurrentUser() } returns u
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
-        every { userService.findById(u.id) } returns u
+        every { userService.findById(u.id, withRemoved = true) } returns u
 
         val result = controller.getById(u.id)
 
@@ -188,7 +188,7 @@ class UserControllerSpec : StringSpec({
         val id = UUID.randomUUID()
         every { userService.getCurrentUser() } returns currentUser
         every { userService.findByIds(listOf(id)) } returns emptyList()
-        every { userService.findById(id) } returns null
+        every { userService.findById(id, withRemoved = true) } returns null
 
         val ex = runCatching { controller.getById(id) }.exceptionOrNull()
 

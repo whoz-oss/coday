@@ -14,8 +14,8 @@ spring:
   neo4j:
     uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
-#      username: ${NEO4J_USERNAME:neo4j} define these in application-neo4j-sprint-rc_transient.yml
-#      password: ${NEO4J_PASSWORD:agentos-dev}
+      username: ${NEO4J_USERNAME:neo4j} # define these in application-neo4j-sprint-rc_transient.yml
+      password: ${NEO4J_PASSWORD:agentos-dev}
   data:
     neo4j:
       repositories:

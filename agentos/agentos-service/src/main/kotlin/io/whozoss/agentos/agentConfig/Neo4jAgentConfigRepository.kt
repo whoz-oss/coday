@@ -23,10 +23,10 @@ open class Neo4jAgentConfigRepository(
             .toDomain()
             .also { logger.debug { "[Neo4jAgentConfigRepository] Saved agent config ${it.id} ('${entity.name}') under namespace ${entity.namespaceId}" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<AgentConfig> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AgentConfig> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<AgentConfig> =

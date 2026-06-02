@@ -31,10 +31,10 @@ open class Neo4jAiProviderRepository(
             .toDomain()
             .also { logger.debug { "[Neo4jAiProviderRepository] Saved AiProvider ${it.id} ('${entity.name}')" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<AiProvider> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiProvider> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     // findByParent by convention delegates to findByNamespaceId
