@@ -114,6 +114,120 @@ export class PromptExecutionService {
   }
 
   /**
+   * Execute a free-text instruction directly against a named agent.
+   * Used by quick schedulers that don't reference a pre-defined prompt.
+   */
+  async executeInstruction(
+    agentName: string,
+    instruction: string,
+    username: string,
+    executionMode: 'direct' | 'scheduled' | 'webhook',
+    options?: {
+      title?: string
+      awaitFinalAnswer?: boolean
+      projectName?: string
+    }
+  ): Promise<{ threadId: string; lastEvent?: MessageEvent }> {
+    if (!this.threadCodayManager || !this.threadService || !this.codayOptions || !this.logger) {
+      throw new Error('PromptExecutionService not initialized. Call initialize() first.')
+    }
+
+    const { title, awaitFinalAnswer = false, projectName } = options || {}
+
+    if (!projectName) {
+      throw new Error('projectName is required for executeInstruction')
+    }
+
+    if (!username) {
+      throw new Error('Username is required')
+    }
+
+    // Build the command: use @agentName syntax so Coday routes to the right agent
+    const command = `@${agentName} ${instruction}`.trim()
+
+    const thread = await this.threadService.createThread(projectName, username, title)
+    const threadId = thread.id
+    console.log(`[PROMPT_EXEC] Created new thread: ${threadId} for ${executionMode} instruction execution`)
+
+    const oneShotOptions: CodayOptions = {
+      ...this.codayOptions,
+      oneshot: true,
+      project: projectName,
+      thread: threadId,
+      prompts: [command],
+    }
+
+    const instance = this.threadCodayManager.createWithoutConnection(threadId, projectName, username, oneShotOptions)
+    instance.prepareCoday()
+
+    if (!instance.coday) {
+      throw new Error(`[PROMPT_EXEC] prepareCoday() failed for thread ${threadId} — coday instance is undefined`)
+    }
+
+    this.logger.logWebhook({
+      project: projectName,
+      title: title ?? 'Untitled',
+      username,
+      clientId: threadId,
+      promptCount: 1,
+      awaitFinalAnswer: !!awaitFinalAnswer,
+      promptName: agentName,
+      promptId: agentName,
+      executionMode,
+      webhookName: agentName,
+      webhookUuid: agentName,
+    })
+
+    console.log(`[PROMPT_EXEC] Starting instruction run for thread: ${threadId}, agent: ${agentName}`)
+
+    // Capture coday reference before async operations
+    const coday = instance.coday
+
+    if (awaitFinalAnswer) {
+      const assistantMessages: MessageEvent[] = []
+      const subscription = coday.interactor.events
+        .pipe(
+          filter(
+            (event: CodayEvent) =>
+              event instanceof MessageEvent &&
+              (event as MessageEvent).role === 'assistant' &&
+              !!(event as MessageEvent).name
+          )
+        )
+        .subscribe((event: MessageEvent) => assistantMessages.push(event))
+
+      try {
+        await coday.run()
+        subscription.unsubscribe()
+        const lastEvent = assistantMessages[assistantMessages.length - 1]
+        await this.threadCodayManager.cleanup(threadId)
+        return { threadId, lastEvent }
+      } catch (error) {
+        subscription.unsubscribe()
+        await this.threadCodayManager.cleanup(threadId)
+        throw error
+      }
+    } else {
+      // Fire-and-forget: run in background with proper cleanup
+      ;(async () => {
+        try {
+          await coday.run()
+          console.log(`[PROMPT_EXEC] Instruction run completed for thread: ${threadId}`)
+        } catch (error: unknown) {
+          console.error('[PROMPT_EXEC] Error during instruction run:', error)
+        } finally {
+          try {
+            await this.threadCodayManager!.cleanup(threadId)
+          } catch (error: unknown) {
+            console.error('[PROMPT_EXEC] Error cleaning up instruction thread:', error)
+          }
+        }
+      })()
+      return { threadId }
+    }
+  }
+
+  /**
    * Execute a prompt with given parameters and user context
    *
    * @param promptId - ID of the prompt to execute

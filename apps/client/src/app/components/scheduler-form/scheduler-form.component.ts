@@ -95,7 +95,7 @@ export class SchedulerFormComponent implements OnInit {
       // Load existing scheduler data
       this.schedulerId = this.data.scheduler.id
       this.name = this.data.scheduler.name
-      this.promptId = this.data.scheduler.promptId
+      this.promptId = this.data.scheduler.promptId ?? ''
       this.enabled = this.data.scheduler.enabled
 
       // Start timestamp - convert to datetime-local format (YYYY-MM-DDTHH:mm)

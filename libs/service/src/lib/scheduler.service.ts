@@ -19,6 +19,14 @@ interface PromptExecutionService {
     executionMode: 'direct' | 'scheduled' | 'webhook',
     options?: { title?: string; awaitFinalAnswer?: boolean; projectName?: string }
   ): Promise<{ threadId: string; lastEvent?: any }>
+
+  executeInstruction(
+    agentName: string,
+    instruction: string,
+    username: string,
+    executionMode: 'direct' | 'scheduled' | 'webhook',
+    options?: { title?: string; awaitFinalAnswer?: boolean; projectName?: string }
+  ): Promise<{ threadId: string; lastEvent?: any }>
 }
 
 /**
@@ -192,8 +200,26 @@ export class SchedulerService {
 
     console.log(`[SCHEDULER] Executing scheduler "${scheduler.name}" (${scheduler.id}) [${mode}]`)
 
-    // Execute prompt with scheduler parameters
-    // Use scheduler's createdBy as username for execution
+    const title = mode === 'scheduled' ? `Scheduled: ${scheduler.name}` : `Manual: ${scheduler.name}`
+
+    // Agent+instruction mode: execute free-text instruction directly
+    if (scheduler.agentName && scheduler.instruction) {
+      const result = await this.promptExecutionService.executeInstruction(
+        scheduler.agentName,
+        scheduler.instruction,
+        scheduler.createdBy,
+        'scheduled',
+        { title, awaitFinalAnswer: false, projectName }
+      )
+      console.log(`[SCHEDULER] Scheduler "${scheduler.name}" executed successfully. Thread: ${result.threadId}`)
+      return result.threadId
+    }
+
+    // Prompt mode: execute via promptId
+    if (!scheduler.promptId) {
+      throw new Error(`Scheduler "${scheduler.name}" has neither promptId nor agentName+instruction configured`)
+    }
+
     // Convert parameters: if it's {PARAMETERS: "value"}, extract the string
     let parameters: Record<string, unknown> | string | undefined = scheduler.parameters
     if (
@@ -211,11 +237,7 @@ export class SchedulerService {
       parameters,
       scheduler.createdBy,
       'scheduled',
-      {
-        title: mode === 'scheduled' ? `Scheduled: ${scheduler.name}` : `Manual: ${scheduler.name}`,
-        awaitFinalAnswer: false, // async execution
-        projectName, // Pass project name from scheduler context
-      }
+      { title, awaitFinalAnswer: false, projectName }
     )
 
     console.log(`[SCHEDULER] Scheduler "${scheduler.name}" executed successfully. Thread: ${result.threadId}`)
@@ -267,7 +289,7 @@ export class SchedulerService {
     this.logger.logTriggerExecution({
       triggerId: scheduler.id,
       triggerName: scheduler.name,
-      webhookUuid: scheduler.promptId,
+      webhookUuid: scheduler.promptId ?? scheduler.agentName ?? scheduler.id,
       projectName,
       success,
       threadId,
@@ -406,6 +428,8 @@ export class SchedulerService {
         name: scheduler.name,
         enabled: scheduler.enabled,
         promptId: scheduler.promptId,
+        agentName: scheduler.agentName,
+        instruction: scheduler.instruction,
         schedule: scheduler.schedule,
         parameters: scheduler.parameters,
         lastRun: scheduler.lastRun,
@@ -451,7 +475,9 @@ export class SchedulerService {
     projectName: string,
     data: {
       name: string
-      promptId: string
+      promptId?: string
+      agentName?: string
+      instruction?: string
       schedule: IntervalSchedule
       parameters?: Record<string, unknown>
       enabled?: boolean
@@ -464,10 +490,17 @@ export class SchedulerService {
       throw new Error(`Invalid schedule: ${validation.error}`)
     }
 
-    // Verify prompt exists (use getById to find it across all projects)
-    const promptResult = await this.promptService.getById(data.promptId)
-    if (!promptResult) {
-      throw new Error(`Prompt not found: ${data.promptId}`)
+    // Validate: must have either promptId OR agentName+instruction
+    if (!data.promptId && !(data.agentName && data.instruction)) {
+      throw new Error('Scheduler must have either a promptId or both agentName and instruction')
+    }
+
+    // Verify prompt exists when promptId is provided
+    if (data.promptId) {
+      const promptResult = await this.promptService.getById(data.promptId)
+      if (!promptResult) {
+        throw new Error(`Prompt not found: ${data.promptId}`)
+      }
     }
 
     const scheduler: Scheduler = {
@@ -475,6 +508,8 @@ export class SchedulerService {
       name: data.name,
       enabled: data.enabled ?? true,
       promptId: data.promptId,
+      agentName: data.agentName,
+      instruction: data.instruction,
       schedule: data.schedule,
       parameters: data.parameters,
       createdBy: username,
@@ -503,6 +538,8 @@ export class SchedulerService {
       name?: string
       enabled?: boolean
       promptId?: string
+      agentName?: string
+      instruction?: string
       schedule?: IntervalSchedule
       parameters?: Record<string, unknown>
     },
@@ -519,6 +556,8 @@ export class SchedulerService {
     if (updates.name !== undefined) scheduler.name = updates.name
     if (updates.enabled !== undefined) scheduler.enabled = updates.enabled
     if (updates.parameters !== undefined) scheduler.parameters = updates.parameters
+    if (updates.agentName !== undefined) scheduler.agentName = updates.agentName
+    if (updates.instruction !== undefined) scheduler.instruction = updates.instruction
 
     if (updates.promptId !== undefined) {
       const promptResult = await this.promptService.getById(updates.promptId)
@@ -600,7 +639,7 @@ export class SchedulerService {
     this.logger.logTriggerExecution({
       triggerId: scheduler.id,
       triggerName: scheduler.name,
-      webhookUuid: scheduler.promptId,
+      webhookUuid: scheduler.promptId ?? scheduler.agentName ?? scheduler.id,
       projectName,
       success: true,
       threadId,
