@@ -1,3 +1,17 @@
+## 0.171.1 (2026-06-02)
+
+### 🩹 Fixes
+
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([b3d10903](https://github.com/whoz-oss/coday/commit/b3d10903))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([f6bfa3f3](https://github.com/whoz-oss/coday/commit/f6bfa3f3))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([b6ec9167](https://github.com/whoz-oss/coday/commit/b6ec9167))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([#954](https://github.com/whoz-oss/coday/pull/954))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.171.0 (2026-06-02)
 
 ### 🚀 Features
