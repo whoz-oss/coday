@@ -1,3 +1,17 @@
+## 0.170.0 (2026-06-02)
+
+### 🚀 Features
+
+- add userId to AgentConfigSearchRequest.kt ([#952](https://github.com/whoz-oss/coday/pull/952))
+
+### 🩹 Fixes
+
+- remove some outdated docs and trigger the release after a fix ([#951](https://github.com/whoz-oss/coday/pull/951))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.168.3 (2026-06-02)
 
 ### 🩹 Fixes
