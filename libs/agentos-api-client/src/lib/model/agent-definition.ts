@@ -12,6 +12,7 @@ import { AgentDefinitionToolSummary } from './agent-definition-tool-summary'
 export interface AgentDefinition {
   agentConfigId: string
   name: string
+  systemPrompt?: string
   instructions?: string
   resolvedModelApiName: string
   resolvedProviderName: string

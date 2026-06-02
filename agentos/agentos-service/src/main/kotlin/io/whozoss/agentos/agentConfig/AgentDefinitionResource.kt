@@ -16,6 +16,8 @@ import java.util.UUID
 data class AgentDefinitionResource(
     val agentConfigId: UUID,
     val name: String,
+    /** Privileged namespace context block sent as a separate system message, before [instructions]. Null when no namespace context is available. */
+    val systemPrompt: String?,
     /** Final system instructions sent to the LLM, including injected namespace/integration/user blocks. */
     val instructions: String?,
     val resolvedModelApiName: String,

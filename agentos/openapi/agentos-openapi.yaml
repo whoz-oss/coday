@@ -2769,6 +2769,8 @@ components:
           format: uuid
         name:
           type: string
+        systemPrompt:
+          type: string
         instructions:
           type: string
         resolvedModelApiName:

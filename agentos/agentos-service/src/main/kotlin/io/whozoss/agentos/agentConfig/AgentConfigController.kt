@@ -174,6 +174,7 @@ class AgentConfigController(
         return AgentDefinitionResource(
             agentConfigId = definition.agentConfigId,
             name = definition.name,
+            systemPrompt = definition.systemPrompt,
             instructions = definition.instructions,
             resolvedModelApiName = definition.resolvedModelApiName,
             resolvedProviderName = definition.resolvedProviderName,
