@@ -244,6 +244,9 @@ tasks.withType<Test> {
     // rejected with HTTP 400. Force a supported version until Testcontainers
     // is upgraded to 2.x (which ships docker-java 3.7+ defaulting to 1.44).
     systemProperty("api.version", "1.44")
+    // Disable JVM fast-throw optimisation so MockK can read the ClassCastException
+    // message and auto-hint the correct type for mocked calls.
+    jvmArgs("-XX:-OmitStackTraceInFastThrow")
 }
 
 // Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
