@@ -48,8 +48,8 @@ logstashLogbackEncoder = "8.1"
 okhttp = "4.12.0"
 
 # AgentOS modules versions
-agentosSdk = "0.168.3"
-agentosService = "0.168.3"
+agentosSdk = "0.170.0"
+agentosService = "0.170.0"
 
 [libraries]
 # Kotlin
