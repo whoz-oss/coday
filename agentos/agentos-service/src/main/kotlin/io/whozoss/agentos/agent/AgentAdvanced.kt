@@ -839,24 +839,27 @@ class AgentAdvanced(
         events: List<CaseEvent>,
         targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
     ): String? {
-        val userTexts =
+        // Reverse the messages first so we collect newest-first, then extract text per message.
+        // Reversing after flatMap would operate on individual text blocks, not on messages.
+        val userMessages =
             events
                 .filterIsInstance<MessageEvent>()
                 .filter { it.actor.role == ActorRole.USER }
-                .flatMap { it.content.filterIsInstance<MessageContent.Text>() }
-                .map { it.content.trim() }
-                .filter { it.isNotEmpty() }
                 .reversed()
 
-        if (userTexts.isEmpty()) return null
+        if (userMessages.isEmpty()) return null
 
         val collected = mutableListOf<String>()
         var total = 0
-        for (text in userTexts) {
+        for (message in userMessages) {
+            val text = message.content.filterIsInstance<MessageContent.Text>().joinToString(" ") { it.content.trim() }.trim()
+            if (text.isEmpty()) continue
             collected.add(text)
             total += text.length
             if (total >= targetChars) break
         }
+
+        if (collected.isEmpty()) return null
 
         val sample = collected.reversed().joinToString(" / ") { "\"$it\"" }
         return "Respond in the same language the user is writing in (reference: $sample)."
