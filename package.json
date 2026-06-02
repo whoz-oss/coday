@@ -36,6 +36,7 @@
     "yargs": "catalog:"
   },
   "devDependencies": {
+    "@actions/cache": "catalog:dev",
     "@commitlint/cli": "catalog:dev",
     "@commitlint/config-conventional": "catalog:dev",
     "@eslint/eslintrc": "catalog:dev",
