@@ -208,15 +208,21 @@ export class PromptExecutionService {
         throw error
       }
     } else {
-      coday
-        .run()
-        .then(() => console.log(`[PROMPT_EXEC] Instruction run completed for thread: ${threadId}`))
-        .catch((error: unknown) => console.error('[PROMPT_EXEC] Error during instruction run:', error))
-        .finally(() => {
-          this.threadCodayManager!.cleanup(threadId).catch((error: unknown) =>
+      // Fire-and-forget: run in background with proper cleanup
+      ;(async () => {
+        try {
+          await coday.run()
+          console.log(`[PROMPT_EXEC] Instruction run completed for thread: ${threadId}`)
+        } catch (error: unknown) {
+          console.error('[PROMPT_EXEC] Error during instruction run:', error)
+        } finally {
+          try {
+            await this.threadCodayManager!.cleanup(threadId)
+          } catch (error: unknown) {
             console.error('[PROMPT_EXEC] Error cleaning up instruction thread:', error)
-          )
-        })
+          }
+        }
+      })()
       return { threadId }
     }
   }

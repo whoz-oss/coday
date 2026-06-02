@@ -114,6 +114,7 @@ export class ThreadStateService implements Killable {
     const thread = this.activeThread$.value
     if (!thread || thread.messagesLength == 0) {
       // skip saving a thread that has no messages
+      console.warn(`Autosave of an empty or falsy thread aborted, threadId: ${thread?.id}, user: ${this.username}`)
       return
     }
 

@@ -356,27 +356,26 @@ class ThreadCodayInstance {
       // messages with the empty disk version if the thread hasn't been saved yet.
       // Instead, update the cache entry directly and patch the on-disk file only if it
       // already has messages (i.e. autoSave has already run).
-      this.threadService
-        .getThread(this.projectName, this.threadId)
-        .then((thread) => {
-          if (!thread) return undefined
+      ;(async () => {
+        try {
+          const thread = await this.threadService.getThread(this.projectName, this.threadId)
+          if (!thread) return
           if (event.name) thread.name = event.name
           if (event.summary) thread.summary = event.summary
           // Only persist if the thread already has messages on disk — avoids overwriting
           // a future autoSave with an empty-messages snapshot.
           if (thread.messagesLength > 0) {
-            return this.threadService.updateThread(this.projectName, this.threadId, {
+            await this.threadService.updateThread(this.projectName, this.threadId, {
               name: event.name,
               summary: event.summary,
             })
           }
           // Thread has no messages yet — just update the in-memory cache without disk write
           // autoSave() will persist both messages and name/summary later.
-          return undefined
-        })
-        .catch((error) => {
+        } catch (error) {
           debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
-        })
+        }
+      })()
       // Notify project-level SSE clients so Mission Control refreshes automatically
       this.projectEventManager?.broadcast(this.projectName, event)
     }
