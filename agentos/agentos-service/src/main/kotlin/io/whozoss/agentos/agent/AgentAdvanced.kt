@@ -612,7 +612,7 @@ class AgentAdvanced(
                                 chatClient = context.chatClient,
                                 history = historyFromPending,
                                 pendingPayload = pending.inputJson,
-                                specificInstructions = pending.analysisInstructions,
+                                toolInstructions = pending.analysisInstructions,
                             )
                         when (decision) {
                             ConfirmationDecision.AMBIGUOUS -> {

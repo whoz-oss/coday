@@ -133,8 +133,10 @@ class ConfirmationManager(
      * @param chatClient The agent's ChatClient.
      * @param history The Spring AI conversation history that includes the latest user reply.
      * @param pendingPayload The payload that was emitted with the [PendingConfirmationEvent].
-     * @param specificInstructions Optional tool-supplied analysis instructions
-     *   (e.g. "Be strict: bare 'ok' is not enough for destructive actions").
+     * @param toolInstructions Optional tool-supplied guidance — same string and same
+     *   labelled section ("Tool-specific confirmation guidance:") as in [shouldConfirm].
+     *   Sourced from [StandardTool.getConfirmationInstructions], persisted on the
+     *   [PendingConfirmationEvent] and replayed here.
      * @return [ConfirmationDecision] — CONFIRMED on a clear yes, REJECTED on a clear no,
      *   AMBIGUOUS otherwise (undecodable LLM reply OR LLM call failure).
      */
@@ -142,10 +144,10 @@ class ConfirmationManager(
         chatClient: ChatClient,
         history: List<Message>,
         pendingPayload: Any,
-        specificInstructions: String,
+        toolInstructions: String = "",
     ): ConfirmationDecision {
         logger.info { "[ConfirmationManager] Analyze confirmation." }
-        val specificBlock = buildToolGuidanceSection(specificInstructions)
+        val toolGuidanceSection = buildToolGuidanceSection(toolInstructions)
 
         val payloadSummary = serializeSafely(pendingPayload)
 
@@ -157,7 +159,7 @@ class ConfirmationManager(
             $payloadSummary
 
             And especially based on the last user message, I need to identify if the user confirms the validation (without any modification) or not.
-            $specificBlock
+            $toolGuidanceSection
 
             Decide between three outcomes and put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between <$TAG_DECISION></$TAG_DECISION> tags:
             - "$CHOICE_YES" — the user clearly confirms the validation without modification.

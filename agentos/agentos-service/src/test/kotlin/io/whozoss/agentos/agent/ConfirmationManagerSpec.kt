@@ -136,7 +136,7 @@ class ConfirmationManagerSpec :
                 chatClient = chatClient,
                 history = listOf(UserMessage("oui supprime")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
-                specificInstructions = "",
+                toolInstructions = "",
             ) shouldBe ConfirmationDecision.CONFIRMED
         }
 
@@ -146,7 +146,7 @@ class ConfirmationManagerSpec :
                 chatClient = chatClient,
                 history = listOf(UserMessage("annule")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
-                specificInstructions = "",
+                toolInstructions = "",
             ) shouldBe ConfirmationDecision.REJECTED
         }
 
@@ -156,7 +156,7 @@ class ConfirmationManagerSpec :
                 chatClient = chatClient,
                 history = listOf(UserMessage("euh quoi ?")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
-                specificInstructions = "",
+                toolInstructions = "",
             ) shouldBe ConfirmationDecision.AMBIGUOUS
         }
 
@@ -167,7 +167,7 @@ class ConfirmationManagerSpec :
                 chatClient = chatClient,
                 history = emptyList(),
                 pendingPayload = mapOf("path" to "/tmp/x"),
-                specificInstructions = "",
+                toolInstructions = "",
             ) shouldBe ConfirmationDecision.AMBIGUOUS
         }
 
@@ -177,7 +177,7 @@ class ConfirmationManagerSpec :
                 chatClient = chatClient,
                 history = listOf(UserMessage("ok delete it")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
-                specificInstructions = "Be strict: a bare 'ok' is acceptable only if the previous turn described the deletion.",
+                toolInstructions = "Be strict: a bare 'ok' is acceptable only if the previous turn described the deletion.",
             ) shouldBe ConfirmationDecision.CONFIRMED
         }
 
@@ -187,7 +187,7 @@ class ConfirmationManagerSpec :
                 chatClient = chatClient,
                 history = listOf(UserMessage("idiomatic ambiguous reply")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
-                specificInstructions = "",
+                toolInstructions = "",
             ) shouldBe ConfirmationDecision.AMBIGUOUS
         }
 
@@ -199,7 +199,7 @@ class ConfirmationManagerSpec :
                 chatClient = chatClient,
                 history = emptyList(),
                 pendingPayload = mapOf("path" to "/tmp/x"),
-                specificInstructions = "",
+                toolInstructions = "",
             ) shouldBe ConfirmationDecision.CONFIRMED
         }
 
