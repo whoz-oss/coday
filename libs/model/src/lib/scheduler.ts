@@ -70,9 +70,23 @@ export interface Scheduler {
   enabled: boolean
 
   /**
-   * Reference to the prompt to execute
+   * Reference to the prompt to execute.
+   * Optional when agentName + instruction are provided instead.
    */
-  promptId: string
+  promptId?: string
+
+  /**
+   * Agent name to use for direct instruction execution (alternative to promptId).
+   * When set alongside instruction, the scheduler runs the instruction directly
+   * against this agent without requiring a pre-defined prompt.
+   */
+  agentName?: string
+
+  /**
+   * Free-text instruction to send to the agent (alternative to promptId).
+   * Used together with agentName for quick scheduler creation.
+   */
+  instruction?: string
 
   /**
    * Schedule configuration
@@ -129,7 +143,9 @@ export interface SchedulerInfo {
   id: string
   name: string
   enabled: boolean
-  promptId: string
+  promptId?: string
+  agentName?: string
+  instruction?: string
   schedule: IntervalSchedule
   parameters?: Record<string, unknown>
   lastRun?: string

@@ -177,10 +177,19 @@ export class SchedulerListComponent implements OnInit {
   }
 
   private buildDescription(scheduler: SchedulerInfo): string {
-    const promptName = this.getPromptName(scheduler.promptId)
+    let source: string
+    if (scheduler.promptId) {
+      source = this.getPromptName(scheduler.promptId)
+    } else if (scheduler.agentName && scheduler.instruction) {
+      const short = scheduler.instruction.length > 40 ? scheduler.instruction.slice(0, 40) + '…' : scheduler.instruction
+      source = `${scheduler.agentName}: ${short}`
+    } else {
+      console.error(`Scheduler "${scheduler.name}" (${scheduler.id}) has neither promptId nor agentName+instruction`)
+      source = 'Unknown source'
+    }
     const interval = this.formatInterval(scheduler.schedule.interval)
     const nextRun = scheduler.nextRun ? new Date(scheduler.nextRun).toLocaleString() : 'Expired'
-    return `${promptName} · ${interval} · Next: ${nextRun}`
+    return `${source} · ${interval} · Next: ${nextRun}`
   }
 
   private buildBadges(scheduler: SchedulerInfo) {

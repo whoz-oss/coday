@@ -233,7 +233,8 @@ export class Coday {
     const thread = this.context?.aiThread
     if (thread) thread.runStatus = RunStatus.STOPPED
     this.handlerLooper?.stop()
-    this.aiThreadService.autoSave()
+    // Note: autoSave is called explicitly in run() before stop(), so no need here.
+    // Calling it here would race with cleanup() killing the thread service.
   }
 
   /**
@@ -248,6 +249,11 @@ export class Coday {
       if (this.services.agent) {
         await this.services.agent.kill()
       }
+
+      // Save thread AFTER agent.kill() to ensure all tool responses are written to the thread,
+      // and BEFORE aiThreadService.kill() which sets isKilled=true blocking autoSave.
+      await this.aiThreadService.autoSave()
+
       this.aiThreadService.kill()
 
       // Reset AI client provider for fresh connections
