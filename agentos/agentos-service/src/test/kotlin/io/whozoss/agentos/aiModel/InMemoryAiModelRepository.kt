@@ -12,7 +12,7 @@ class InMemoryAiModelRepository : AiModelRepository {
     )
 
     override fun save(entity: AiModel): AiModel = delegate.save(entity)
-    override fun findByIds(ids: Collection<UUID>): List<AiModel> = delegate.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiModel> = delegate.findByIds(ids, withRemoved)
     override fun findByParent(parentId: UUID): List<AiModel> = delegate.findByParent(parentId)
     override fun delete(id: UUID): Boolean = delegate.delete(id)
     override fun deleteByParent(parentId: UUID): Int = delegate.deleteByParent(parentId)

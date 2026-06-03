@@ -23,7 +23,9 @@ export interface Scheduler {
   id: string
   name: string
   enabled: boolean
-  promptId: string
+  promptId?: string
+  agentName?: string
+  instruction?: string
   schedule: IntervalSchedule
   parameters?: Record<string, unknown>
   createdBy: string
@@ -37,7 +39,9 @@ export interface SchedulerInfo {
   id: string
   name: string
   enabled: boolean
-  promptId: string
+  promptId?: string
+  agentName?: string
+  instruction?: string
   schedule: IntervalSchedule
   parameters?: Record<string, unknown>
   lastRun?: string
@@ -89,12 +93,88 @@ export class SchedulerApiService {
    */
   createScheduler(scheduler: {
     name: string
-    promptId: string
+    promptId?: string
+    agentName?: string
+    instruction?: string
     schedule: IntervalSchedule
     parameters?: Record<string, unknown>
     enabled?: boolean
   }): Observable<Scheduler> {
     return this.http.post<Scheduler>(this.getBaseUrl(), scheduler)
+  }
+
+  /**
+   * List schedulers for a specific project (without requiring ProjectStateService)
+   */
+  listSchedulersForProject(projectName: string): Observable<SchedulerInfo[]> {
+    return this.http.get<SchedulerInfo[]>(`/api/projects/${projectName}/schedulers`)
+  }
+
+  /**
+   * Enable a scheduler for a specific project
+   */
+  enableSchedulerForProject(projectName: string, id: string): Observable<Scheduler> {
+    return this.http.post<Scheduler>(`/api/projects/${projectName}/schedulers/${id}/enable`, {})
+  }
+
+  /**
+   * Disable a scheduler for a specific project
+   */
+  disableSchedulerForProject(projectName: string, id: string): Observable<Scheduler> {
+    return this.http.post<Scheduler>(`/api/projects/${projectName}/schedulers/${id}/disable`, {})
+  }
+
+  /**
+   * Run a scheduler now for a specific project
+   */
+  runSchedulerNowForProject(
+    projectName: string,
+    id: string
+  ): Observable<{ success: boolean; message: string; threadId: string }> {
+    return this.http.post<{ success: boolean; message: string; threadId: string }>(
+      `/api/projects/${projectName}/schedulers/${id}/run-now`,
+      {}
+    )
+  }
+
+  /**
+   * Delete a scheduler for a specific project
+   */
+  deleteSchedulerForProject(projectName: string, id: string): Observable<{ success: boolean; message: string }> {
+    return this.http.delete<{ success: boolean; message: string }>(`/api/projects/${projectName}/schedulers/${id}`)
+  }
+
+  /**
+   * Update a scheduler for a specific project
+   */
+  updateSchedulerForProject(
+    projectName: string,
+    id: string,
+    updates: {
+      name?: string
+      enabled?: boolean
+      agentName?: string
+      instruction?: string
+      schedule?: IntervalSchedule
+    }
+  ): Observable<Scheduler> {
+    return this.http.put<Scheduler>(`/api/projects/${projectName}/schedulers/${id}`, updates)
+  }
+
+  /**
+   * Create a scheduler for a specific project (used by quick scheduler from home)
+   */
+  createSchedulerForProject(
+    projectName: string,
+    scheduler: {
+      name: string
+      agentName: string
+      instruction: string
+      schedule: IntervalSchedule
+      enabled?: boolean
+    }
+  ): Observable<Scheduler> {
+    return this.http.post<Scheduler>(`/api/projects/${projectName}/schedulers`, scheduler)
   }
 
   /**

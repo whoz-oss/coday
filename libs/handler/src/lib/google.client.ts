@@ -6,9 +6,9 @@ import { AiProviderConfig } from '@coday/model'
 export class GoogleClient extends OpenaiClient {
   override models = [
     {
-      name: 'gemini-3-pro-preview',
-      contextWindow: 1048576,
-      alias: 'BIG',
+      name: 'gemini-3.1-pro-preview',
+      contextWindow: 200000,
+      alias: 'BIGGEST',
       temperature: 0.8,
       maxOutputTokens: 65536,
       price: {
@@ -18,37 +18,27 @@ export class GoogleClient extends OpenaiClient {
       },
     },
     {
-      name: 'gemini-3-flash-preview',
+      name: 'gemini-3.5-flash',
+      alias: 'BIG',
+      contextWindow: 1000000,
+      temperature: 0.8,
+      maxOutputTokens: 65536,
+      price: {
+        inputMTokens: 1.5,
+        cacheRead: 0.15,
+        outputMTokens: 9.0,
+      },
+    },
+    {
+      name: 'gemini-3.1-flash-lite',
       alias: 'SMALL',
-      contextWindow: 1048576,
+      contextWindow: 1000000,
       temperature: 0.8,
       maxOutputTokens: 65536,
       price: {
-        inputMTokens: 0.5,
-        cacheRead: 0.05,
-        outputMTokens: 3.0,
-      },
-    },
-    {
-      name: 'gemini-2.5-pro',
-      contextWindow: 1048576,
-      temperature: 0.8,
-      maxOutputTokens: 65536,
-      price: {
-        inputMTokens: 1.25,
-        cacheRead: 0.125,
-        outputMTokens: 10.0,
-      },
-    },
-    {
-      name: 'gemini-2.5-flash',
-      contextWindow: 1048576,
-      temperature: 0.8,
-      maxOutputTokens: 65536,
-      price: {
-        inputMTokens: 0.3,
-        cacheRead: 0.03,
-        outputMTokens: 2.5,
+        inputMTokens: 0.25,
+        cacheRead: 0.025,
+        outputMTokens: 1.5,
       },
     },
   ]

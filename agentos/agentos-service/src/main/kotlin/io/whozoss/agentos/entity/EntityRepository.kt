@@ -30,12 +30,11 @@ interface EntityRepository<T : Entity, P> {
     /**
      * Find multiple entities by their identifiers.
      *
-     * Excludes removed entities by default.
-     *
      * @param ids Collection of unique identifiers
-     * @return List of found entities (may be smaller than input if some IDs don't exist or are removed)
+     * @param withRemoved when true, includes soft-deleted entities in the result; false by default
+     * @return List of found entities (may be smaller than input if some IDs don't exist)
      */
-    fun findByIds(ids: Collection<UUID>): List<T>
+    fun findByIds(ids: Collection<UUID>, withRemoved: Boolean = false): List<T>
 
     /**
      * Find all entities belonging to a parent.

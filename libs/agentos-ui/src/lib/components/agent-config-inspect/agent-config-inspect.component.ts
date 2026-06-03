@@ -39,6 +39,9 @@ export class AgentConfigInspectComponent implements OnInit {
   /** Tracks which tool rows are expanded (by tool name). */
   protected readonly expandedTools = signal<Set<string>>(new Set())
 
+  /** Whether the system prompt section is collapsed. */
+  protected readonly systemPromptCollapsed = signal(true)
+
   /** Whether the instructions section is collapsed. */
   protected readonly instructionsCollapsed = signal(true)
 
@@ -72,6 +75,10 @@ export class AgentConfigInspectComponent implements OnInit {
 
   protected isToolExpanded(tool: AgentDefinitionToolSummary): boolean {
     return this.expandedTools().has(tool.name)
+  }
+
+  protected toggleSystemPrompt(): void {
+    this.systemPromptCollapsed.update((v) => !v)
   }
 
   protected toggleInstructions(): void {

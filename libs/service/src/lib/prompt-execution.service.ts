@@ -1,8 +1,7 @@
 import type { CodayOptions, CodayLogger } from '@coday/model'
-import { CodayEvent, MessageEvent } from '@coday/model'
+import { MessageEvent } from '@coday/model'
 import type { ThreadService } from './thread.service'
 import { PromptService } from './prompt.service'
-import { filter } from 'rxjs'
 
 // ThreadCodayManager is in apps/server, so we use a type-only import to avoid circular dependencies
 // The actual instance will be injected via initialize()
@@ -114,6 +113,91 @@ export class PromptExecutionService {
   }
 
   /**
+   * Execute a free-text instruction directly against a named agent.
+   * Used by quick schedulers that don't reference a pre-defined prompt.
+   */
+  async executeInstruction(
+    agentName: string,
+    instruction: string,
+    username: string,
+    executionMode: 'direct' | 'scheduled' | 'webhook',
+    options?: {
+      title?: string
+      awaitFinalAnswer?: boolean
+      projectName?: string
+    }
+  ): Promise<{ threadId: string; lastEvent?: MessageEvent }> {
+    if (!this.threadCodayManager || !this.threadService || !this.codayOptions || !this.logger) {
+      throw new Error('PromptExecutionService not initialized. Call initialize() first.')
+    }
+
+    const { title, awaitFinalAnswer = false, projectName } = options || {}
+
+    if (!projectName) {
+      throw new Error('projectName is required for executeInstruction')
+    }
+
+    if (!username) {
+      throw new Error('Username is required')
+    }
+
+    // Build the command: use @agentName syntax so Coday routes to the right agent
+    const command = `@${agentName} ${instruction}`.trim()
+
+    const thread = await this.threadService.createThread(projectName, username, title)
+    const threadId = thread.id
+    console.log(`[PROMPT_EXEC] Created new thread: ${threadId} for ${executionMode} instruction execution`)
+
+    const oneShotOptions: CodayOptions = {
+      ...this.codayOptions,
+      oneshot: true,
+      project: projectName,
+      thread: threadId,
+      prompts: [command],
+    }
+
+    const instance = this.threadCodayManager.createWithoutConnection(threadId, projectName, username, oneShotOptions)
+
+    this.logger.logWebhook({
+      project: projectName,
+      title: title ?? 'Untitled',
+      username,
+      clientId: threadId,
+      promptCount: 1,
+      awaitFinalAnswer: !!awaitFinalAnswer,
+      promptName: agentName,
+      promptId: agentName,
+      executionMode,
+      webhookName: agentName,
+      webhookUuid: agentName,
+    })
+
+    console.log(`[PROMPT_EXEC] Starting instruction run for thread: ${threadId}, agent: ${agentName}`)
+
+    if (awaitFinalAnswer) {
+      try {
+        const lastEvent = await instance.runOneshot({ awaitFinalAnswer: true })
+        await this.threadCodayManager.cleanup(threadId)
+        return { threadId, lastEvent }
+      } catch (error) {
+        await this.threadCodayManager.cleanup(threadId)
+        throw error
+      }
+    } else {
+      // Fire-and-forget: runOneshot starts the background run
+      instance
+        .runOneshot({ awaitFinalAnswer: false })
+        .catch((error: unknown) => console.error('[PROMPT_EXEC] Error during instruction run:', error))
+        .finally(() => {
+          this.threadCodayManager!.cleanup(threadId).catch((error: unknown) =>
+            console.error('[PROMPT_EXEC] Error cleaning up instruction thread:', error)
+          )
+        })
+      return { threadId }
+    }
+  }
+
+  /**
    * Execute a prompt with given parameters and user context
    *
    * @param promptId - ID of the prompt to execute
@@ -205,11 +289,6 @@ export class PromptExecutionService {
     // Create a thread-based Coday instance for this prompt (without SSE connection)
     const instance = this.threadCodayManager.createWithoutConnection(threadId, projectName, username, oneShotOptions)
 
-    // IMPORTANT: Prepare Coday without starting run() to subscribe to events first
-    // Because interactor.events is a Subject (not ReplaySubject), we must subscribe BEFORE run() emits events
-    instance.prepareCoday()
-    const interactor = instance.coday!.interactor
-
     // Log successful prompt initiation
     const logData = {
       project: projectName,
@@ -233,35 +312,11 @@ export class PromptExecutionService {
 
     if (awaitFinalAnswer) {
       // Synchronous mode: wait for completion
-      // Collect all assistant messages during the run
-      const assistantMessages: MessageEvent[] = []
-      const subscription = interactor.events
-        .pipe(
-          filter((event: CodayEvent) => {
-            console.log(
-              `[PROMPT_EXEC] Received event type: ${event.type}, role: ${event instanceof MessageEvent ? event.role : 'N/A'}`
-            )
-            return event instanceof MessageEvent && event.role === 'assistant' && !!event.name
-          })
-        )
-        .subscribe((event: MessageEvent) => {
-          assistantMessages.push(event)
-        })
-
       try {
-        // Now start Coday run and wait for it to complete
-        await instance.coday!.run()
-        subscription.unsubscribe()
-
-        const lastEvent = assistantMessages[assistantMessages.length - 1]
-
-        // Cleanup the thread instance after completion
+        const lastEvent = await instance.runOneshot({ awaitFinalAnswer: true })
         await this.threadCodayManager.cleanup(threadId)
-
         return { threadId, lastEvent }
       } catch (error) {
-        subscription.unsubscribe()
-
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         this.logger.logWebhookError({
           error: `Prompt execution failed: ${errorMessage}`,
@@ -270,23 +325,18 @@ export class PromptExecutionService {
           clientId: threadId,
         })
         console.error('[PROMPT_EXEC] Error waiting for prompt completion:', error)
-
-        // Cleanup on error
         await this.threadCodayManager.cleanup(threadId)
-
         throw error
       }
     } else {
-      // Asynchronous mode: return immediately with thread ID
-      // Start Coday run in background and clean up the oneshot instance immediately after.
+      // Asynchronous mode: return immediately with thread ID.
+      // runOneshot starts the background run; cleanup happens in .finally() once it resolves.
       // This is critical: if the instance is left alive after run() completes, a subsequent
       // SSE connection (user opening the thread) would find the exhausted Coday instance
       // (context=null after cleanup) and re-run the prompts instead of replaying history.
       instance
-        .coday!.run()
-        .catch((error: unknown) => {
-          console.error('[PROMPT_EXEC] Error during prompt Coday run:', error)
-        })
+        .runOneshot({ awaitFinalAnswer: false })
+        .catch((error: unknown) => console.error('[PROMPT_EXEC] Error during prompt Coday run:', error))
         .finally(() => {
           this.threadCodayManager!.cleanup(threadId).catch((error: unknown) => {
             console.error('[PROMPT_EXEC] Error cleaning up prompt thread after run:', error)

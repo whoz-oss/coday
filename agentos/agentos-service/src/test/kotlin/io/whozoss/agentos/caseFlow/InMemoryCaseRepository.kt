@@ -15,7 +15,7 @@ class InMemoryCaseRepository : CaseRepository {
     // Delegate all EntityRepository methods to the shared instance so that
     // findAccessibleByUser can call findAll() on the same store.
     override fun save(entity: Case) = delegate.save(entity)
-    override fun findByIds(ids: Collection<UUID>) = delegate.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean) = delegate.findByIds(ids, withRemoved)
     override fun findByParent(parentId: UUID) = delegate.findByParent(parentId)
     override fun delete(id: UUID) = delegate.delete(id)
     override fun deleteByParent(parentId: UUID) = delegate.deleteByParent(parentId)

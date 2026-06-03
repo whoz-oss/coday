@@ -105,7 +105,7 @@ class AgentIntentionGeneratorSpec :
             toolName shouldBe "FILES__ReadFile"
         }
 
-        "parseIntentionAndTool — unknown tool name falls back to Answer" {
+        "parseIntentionAndTool — unknown tool name throws UnknownTool with tool name and response" {
             val generator = makeGenerator()
             val response =
                 """
@@ -113,28 +113,31 @@ class AgentIntentionGeneratorSpec :
                 <toolName>UNKNOWN__Tool</toolName>
                 """.trimIndent()
 
-            val (_, toolName) = generator.parseIntentionAndTool(response, validTools)
-
-            toolName shouldBe "Answer"
+            val ex = shouldThrow<AgentIntentionGenerationException.UnknownTool> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+            ex.toolName shouldBe "UNKNOWN__Tool"
+            ex.response shouldBe response
         }
 
-        "parseIntentionAndTool — missing toolName tag throws AgentIntentionGenerationException" {
+        "parseIntentionAndTool — missing toolName tag throws InvalidFormat with response" {
             val generator = makeGenerator()
             val response = "<intention>No tool tag present.</intention>"
 
-            shouldThrow<AgentIntentionGenerationException> {
+            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
                 generator.parseIntentionAndTool(response, validTools)
             }
+            ex.response shouldBe response
         }
 
-        "parseIntentionAndTool — missing intention tag uses full response as intention" {
+        "parseIntentionAndTool — missing intention tag throws InvalidFormat with response" {
             val generator = makeGenerator()
             val response = "<toolName>Answer</toolName>"
 
-            val (intention, toolName) = generator.parseIntentionAndTool(response, validTools)
-
-            intention shouldBe response.trim()
-            toolName shouldBe "Answer"
+            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+            ex.response shouldBe response
         }
 
         "parseIntentionAndTool — completely empty response throws AgentIntentionGenerationException" {
@@ -183,16 +186,14 @@ class AgentIntentionGeneratorSpec :
             result.intention shouldContain "All good on retry"
         }
 
-        "generate retries on LLM service failure and succeeds on second attempt" {
+        "generate retries on malformed response and succeeds on second attempt with unknown tool" {
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            var callCount = 0
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
-            } answers {
-                callCount++
-                if (callCount == 1) throw RuntimeException("Service unavailable")
-                "<intention>Recovered after failure.</intention><toolName>Answer</toolName>"
-            }
+            } returnsMany listOf(
+                "<intention>Trying unknown tool.</intention><toolName>UNKNOWN__Tool</toolName>",
+                "<intention>Recovered on retry.</intention><toolName>Answer</toolName>",
+            )
 
             val context = makeContext(mockChatClient)
             val generator = makeGenerator()
@@ -202,10 +203,10 @@ class AgentIntentionGeneratorSpec :
             val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
-            result.intention shouldContain "Recovered after failure"
+            result.intention shouldContain "Recovered on retry"
         }
 
-        "generate falls back to Answer after all retry attempts exhausted" {
+        "generate falls back to Answer after all retry attempts exhausted with meaningful intention" {
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
@@ -219,23 +220,7 @@ class AgentIntentionGeneratorSpec :
             val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
-            result.intention shouldBe "This is always malformed with no XML tags"
-        }
-
-        "generate falls back to Answer after repeated LLM failures" {
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            every {
-                mockChatClient.prompt(any<Prompt>()).call().content()
-            } throws RuntimeException("Persistent service failure")
-
-            val context = makeContext(mockChatClient)
-            val generator = makeGenerator()
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-
-            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
-
-            result.toolName shouldBe "Answer"
-            result.intention shouldBe "Unable to generate intention"
+            result.intention shouldContain "Failed to plan next step after"
+            result.intention shouldContain "Missing <toolName> tag"
         }
     })

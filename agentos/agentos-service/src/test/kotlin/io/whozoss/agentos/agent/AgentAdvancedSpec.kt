@@ -510,6 +510,117 @@ class AgentAdvancedSpec :
         // detectRepetitionLoop unit tests
         // -------------------------------------------------------------------------
 
+        // -------------------------------------------------------------------------
+        // buildLanguageHint unit tests
+        // -------------------------------------------------------------------------
+
+        "buildLanguageHint returns null when no user messages" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                    content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
+                ),
+            )
+            agent.buildLanguageHint(events) shouldBe null
+        }
+
+        "buildLanguageHint returns hint with single message when it meets minChars" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val longMessage = "a".repeat(250)
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text(longMessage)),
+                ),
+            )
+            val hint = agent.buildLanguageHint(events)
+            hint shouldNotBe null
+            hint!! shouldContain longMessage
+            hint shouldContain "Respond in the same language"
+        }
+
+        "buildLanguageHint accumulates multiple short messages until minChars is reached" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            // Each message is 50 chars, minChars=200 → needs at least 4
+            val messages = (1..6).map { i ->
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("message-$i-" + "x".repeat(45))),
+                )
+            }
+            val hint = agent.buildLanguageHint(messages, targetChars = 200)
+            hint shouldNotBe null
+            // Should contain the last few messages (collected newest-first, displayed oldest-first)
+            hint!! shouldContain "message-6"
+            hint shouldContain "message-5"
+            // Should not need to go all the way back to message-1
+            hint shouldContain "Respond in the same language"
+        }
+
+        "buildLanguageHint returns a hint even when all messages combined are below targetChars" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("oui")),
+                ),
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("ok")),
+                ),
+            )
+            // Total = 5 chars, well below targetChars=200 — hint must still be produced
+            val hint = agent.buildLanguageHint(events)
+            hint shouldNotBe null
+            hint!! shouldContain "oui"
+            hint shouldContain "ok"
+            hint shouldContain "Respond in the same language"
+        }
+
+        "buildLanguageHint uses newest messages first when accumulating" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("old english message from the beginning")),
+                ),
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text("cherche-moi des développeurs Angular à Paris avec 5 ans d'expérience")),
+                ),
+            )
+            val hint = agent.buildLanguageHint(events, targetChars = 50)
+            hint shouldNotBe null
+            // The latest message alone exceeds minChars=50, so only it should appear
+            hint!! shouldContain "Angular"
+            hint shouldContain "Respond in the same language"
+        }
+
         "detectRepetitionLoop returns null when fewer than REPETITION_WINDOW tool responses" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
@@ -1649,7 +1760,80 @@ class AgentAdvancedSpec :
             events.filterIsInstance<WarnEvent>().filter { it.message.contains("all") && it.message.contains("attempts") } shouldHaveSize 0
         }
 
-        "generateParameters: falls back to last raw result when all retries fail" {
+        "generateParameters: extracts JSON from canonical <parameter> tags on first attempt" {
+            // The prompt now asks the LLM to wrap its output in <parameter>...</parameter>.
+            // stripJsonFence must extract the content on the first attempt with no retry.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "ReadEntities"
+            every { mockTool.description } returns "Read entities by id"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
+            every { mockTool.paramType } returns String::class.java
+            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("entity data")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("done")
+
+            // LLM correctly wraps JSON in <parameter> tags as instructed
+            val response = """<parameter>{"entitiesId":["6790ca2213906f27c141a80b","698c66db04182c7fb1dbd119"]}</parameter>"""
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns response
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Read the entity profiles.",
+                        toolName = "ReadEntities",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // JSON was extracted from the <parameter> tags and passed to the tool
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].args shouldContain "6790ca2213906f27c141a80b"
+            toolRequests[0].args shouldContain "698c66db04182c7fb1dbd119"
+            // No retry: extraction succeeded on the first attempt
+            events.filterIsInstance<WarnEvent>().filter { it.message.contains("invalid JSON") } shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "generateParameters: falls back to null args when all retries produce invalid JSON" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
@@ -1711,12 +1895,16 @@ class AgentAdvancedSpec :
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
-            // Tool was still called with the last (invalid) raw result — degraded but non-blocking
+            // args must be null — passing invalid output to the tool would cause a server-side
+            // error (HTTP 500) instead of a clean failure the LLM can reason about.
             val toolRequests = events.filterIsInstance<ToolRequestEvent>()
             toolRequests shouldHaveSize 1
-            // The args should be the last raw value returned by the LLM
-            toolRequests[0].args shouldBe "not json attempt ${AgentAdvanced.MAX_PARAMETER_ATTEMPTS}"
-            // Agent completed its run (no crash)
+            toolRequests[0].args shouldBe null
+            // A WarnEvent must be emitted so the failure is visible in the case event stream
+            val warns = events.filterIsInstance<WarnEvent>().filter { it.message.contains("TEST__tool") }
+            warns shouldHaveSize 1
+            warns[0].message shouldContain "Failed to generate valid JSON parameters"
+            // The loop continues — the LLM sees the failure and can adapt
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 

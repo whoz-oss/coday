@@ -44,6 +44,29 @@
         </dl>
       </section>
 
+      <!-- System Prompt -->
+      @if (def.systemPrompt) {
+        <section class="agent-config-inspect__section">
+          <button
+            class="agent-config-inspect__collapsible"
+            type="button"
+            (click)="toggleSystemPrompt()"
+            [attr.aria-expanded]="!systemPromptCollapsed()"
+          >
+            <h2 class="agent-config-inspect__section-title">System Prompt</h2>
+            <span
+              class="agent-config-inspect__chevron"
+              [class.agent-config-inspect__chevron--open]="!systemPromptCollapsed()"
+            >
+              &#9660;
+            </span>
+          </button>
+          @if (!systemPromptCollapsed()) {
+            <pre class="agent-config-inspect__instructions">{{ def.systemPrompt }}</pre>
+          }
+        </section>
+      }
+
       <!-- Instructions -->
       @if (def.instructions) {
         <section class="agent-config-inspect__section">

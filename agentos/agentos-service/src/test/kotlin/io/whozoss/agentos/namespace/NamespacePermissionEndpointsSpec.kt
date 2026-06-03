@@ -67,8 +67,8 @@ class NamespacePermissionEndpointsSpec :
             )
 
         fun stubExistence() {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            every { userService.findById(targetUserId) } returns target
+            every { namespaceService.findById(namespaceId, false) } returns namespace
+            every { userService.findById(targetUserId, false) } returns target
             every { userService.getCurrentUser() } returns caller
         }
 
@@ -95,15 +95,15 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "grantAdmin returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId) } returns null
+            every { namespaceService.findById(namespaceId, false) } returns null
 
             shouldThrow<ResourceNotFoundException> { controller.grantAdmin(namespaceId, targetUserId) }
             verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
         }
 
         "grantAdmin returns 404 when target user not found" {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            every { userService.findById(targetUserId) } returns null
+            every { namespaceService.findById(namespaceId, false) } returns namespace
+            every { userService.findById(targetUserId, false) } returns null
 
             shouldThrow<ResourceNotFoundException> { controller.grantAdmin(namespaceId, targetUserId) }
             verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
@@ -140,7 +140,7 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "revokeAdmin returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId) } returns null
+            every { namespaceService.findById(namespaceId, false) } returns null
 
             shouldThrow<ResourceNotFoundException> { controller.revokeAdmin(namespaceId, targetUserId) }
         }
@@ -175,8 +175,8 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "grantMember returns 404 when target user not found" {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            every { userService.findById(targetUserId) } returns null
+            every { namespaceService.findById(namespaceId, false) } returns namespace
+            every { userService.findById(targetUserId, false) } returns null
 
             shouldThrow<ResourceNotFoundException> { controller.grantMember(namespaceId, targetUserId) }
         }
@@ -224,7 +224,7 @@ class NamespacePermissionEndpointsSpec :
         // -------------------------------------------------------------------------
 
         "listNamespaceUsers returns list with ADMIN/MEMBER roles" {
-            every { namespaceService.findById(namespaceId) } returns namespace
+            every { namespaceService.findById(namespaceId, false) } returns namespace
             val adminId = UUID.randomUUID()
             val memberId = UUID.randomUUID()
             val adminUser = User(metadata = EntityMetadata(id = adminId), externalId = "a", email = "a")
@@ -252,7 +252,7 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "listNamespaceUsers deduplicates users with both ADMIN and MEMBER (role=ADMIN)" {
-            every { namespaceService.findById(namespaceId) } returns namespace
+            every { namespaceService.findById(namespaceId, false) } returns namespace
             val dualId = UUID.randomUUID()
             val dualUser = User(metadata = EntityMetadata(id = dualId), externalId = "d", email = "d")
             every {
@@ -279,7 +279,7 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "listNamespaceUsers returns empty list when no user has a direct relation" {
-            every { namespaceService.findById(namespaceId) } returns namespace
+            every { namespaceService.findById(namespaceId, false) } returns namespace
             every {
                 permissionService.listUsersWithPermission(
                     EntityType.NAMESPACE,
@@ -299,7 +299,7 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "listNamespaceUsers returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId) } returns null
+            every { namespaceService.findById(namespaceId, false) } returns null
 
             shouldThrow<ResourceNotFoundException> { controller.listNamespaceUsers(namespaceId) }
         }

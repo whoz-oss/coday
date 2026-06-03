@@ -5,8 +5,10 @@ import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.util.AttemptFailure
+import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.retryWithFallback
 import mu.KLogging
-import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -20,7 +22,6 @@ class AgentIntentionGenerator {
         caseId: UUID,
         repetitionWarning: String? = null,
     ): IntentionGeneratedEvent {
-        val messages = context.buildMessages(events)
         val toolNames = context.tools.map { it.name } + ANSWER_TOOL
         val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
 
@@ -70,71 +71,95 @@ Before generating the output, analyze the situation using the following logic:
     *   **YES:** You are ready to call the execution tool.
 
 
-$repetitionWarning
+${repetitionWarning ?: ""}
 
 ### Output Instructions
-You must output **only** the following XML block containing the results of your analysis:
+You must output **only** the following XML block, (any deviation from the following expected xml would result in a error):
 
 <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
 <toolName>[The exact name of the tool to be called]</toolName>
+
+Now generate the intention explaining your next step, then the toolName for that step.
             """.trimIndent()
 
-        var lastException: Exception? = null
-        var lastResponse: String? = null
-
-        logger.debug { "Intention generation: sending ${messages.size + 1} messages to LLM" }
+        logger.debug { "Intention generation: building messages for LLM" }
         logger.trace { "Intention prompt:\n$prompt" }
 
-        repeat(MAX_INTENTION_ATTEMPTS) { attempt ->
-            try {
-                val response =
-                    context.chatClient
-                        .prompt(Prompt(messages + UserMessage(prompt)))
-                        .call()
-                        .content() ?: throw AgentIntentionGenerationException("Null LLM response")
-
-                logger.trace { "Intention generation response:\n$response" }
-                lastResponse = response
-                val (intention, toolName) = parseIntentionAndTool(response, toolNames)
-
-                return IntentionGeneratedEvent(
+        return retryWithFallback<Pair<String?, AgentIntentionGenerationException>, IntentionGeneratedEvent>(
+            maxAttempts = MAX_INTENTION_ATTEMPTS,
+            fallback = { (_, lastException) ->
+                logger.error { "Intention generation failed after $MAX_INTENTION_ATTEMPTS attempts, falling back to $ANSWER_TOOL" }
+                IntentionGeneratedEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     agentId = context.agentId,
-                    intention = intention,
-                    toolName = toolName,
+                    intention = "Failed to plan next step after $MAX_INTENTION_ATTEMPTS attempts: ${lastException.message}",
+                    toolName = ANSWER_TOOL,
                 )
-            } catch (e: Exception) {
-                lastException = e
-                if (attempt < MAX_INTENTION_ATTEMPTS - 1) {
-                    logger.warn { "Intention generation attempt ${attempt + 1} failed: ${e.message}, retrying..." }
-                }
+            },
+        ) { previousFailure ->
+            val retryHint = previousFailure?.let { (previousResponse, e) ->
+                buildString {
+                    if (previousResponse != null) {
+                        appendLine("You previously generated:")
+                        appendLine(previousResponse)
+                        appendLine()
+                    }
+                    when (e) {
+                        is AgentIntentionGenerationException.InvalidFormat ->
+                            append(
+                                """
+                                This does not match the expected XML output that should correspond to the following:
+                                <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
+                                <toolName>[The exact name of the tool to be called]</toolName>
+                                """.trimIndent()
+                            )
+                        is AgentIntentionGenerationException.UnknownTool ->
+                            append("This does not match the expected XML output because the tool '${e.toolName}' does not exist. Valid tools are: ${toolNames.joinToString()}")
+                    }
+                    appendLine()
+                    append("Correct the error and output only the valid XML block described above.")
+                }.trim()
+            }
+            val fullPrompt = listOfNotNull(prompt, retryHint).joinToString("\n\n")
+
+            try {
+                val messages = context.buildMessages(events, fullPrompt)
+                val response = context.chatClient
+                    .prompt(Prompt(messages))
+                    .call()
+                    .content() ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
+
+                logger.trace { "Intention generation response:\n$response" }
+
+                val (intention, toolName) = parseIntentionAndTool(response, toolNames)
+                AttemptSuccess(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = context.agentId,
+                        intention = intention,
+                        toolName = toolName,
+                    )
+                )
+            } catch (e: AgentIntentionGenerationException) {
+                logger.warn { "Intention generation attempt failed: ${e.message}" }
+                AttemptFailure(e.response to e)
             }
         }
-
-        logger.warn {
-            "Intention generation failed after $MAX_INTENTION_ATTEMPTS " +
-                "attempts: ${lastException?.message}, falling back to $ANSWER_TOOL" +
-                (lastResponse?.let { "\nLast LLM response was:\n$it" } ?: "")
-        }
-        return IntentionGeneratedEvent(
-            namespaceId = namespaceId,
-            caseId = caseId,
-            agentId = context.agentId,
-            intention = lastResponse?.trim() ?: "Unable to generate intention",
-            toolName = ANSWER_TOOL,
-        )
     }
 
     internal fun parseIntentionAndTool(
         response: String,
         validToolNames: List<String>,
     ): Pair<String, String> {
-        if (response.isBlank()) throw AgentIntentionGenerationException("Empty LLM response")
-        val rawTool =
-            extractFromTag(response, "toolName") ?: throw AgentIntentionGenerationException("Missing <toolName> tag in LLM response")
-        val intention = extractFromTag(response, "intention") ?: response.trim()
-        val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) } ?: ANSWER_TOOL
+        if (response.isBlank()) throw AgentIntentionGenerationException.InvalidFormat("Empty LLM response")
+        val rawTool = extractFromTag(response, "toolName")
+            ?: throw AgentIntentionGenerationException.InvalidFormat("Missing <toolName> tag", response)
+        val intention = extractFromTag(response, "intention")
+            ?: throw AgentIntentionGenerationException.InvalidFormat("Missing <intention> tag", response)
+        val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) }
+            ?: throw AgentIntentionGenerationException.UnknownTool(rawTool.trim(), response)
         return intention to toolName
     }
 
@@ -150,6 +175,6 @@ You must output **only** the following XML block containing the results of your 
 
     companion object : KLogging() {
         const val ANSWER_TOOL = "Answer"
-        private const val MAX_INTENTION_ATTEMPTS = 2
+        private const val MAX_INTENTION_ATTEMPTS = 3
     }
 }

@@ -27,10 +27,10 @@ open class Neo4jUserRepository(
             .toDomain()
             .also { logger.debug { "[Neo4jUserRepository] Saved user ${it.id} (${entity.email})" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<User> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<User> =
         userNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     /**

@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
-import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
@@ -281,6 +280,7 @@ class AgentAdvanced(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 toolRequestId = toolRequestId,
+                emitEvent = emitEvent,
             )
         emitEvent(parameters)
         accumulatedEvents.add(parameters)
@@ -802,10 +802,13 @@ class AgentAdvanced(
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
     ) {
-        val finalPromptText = "Based on the above conversation and your analysis, provide your response to the user."
+        val languageHint = buildLanguageHint(accumulatedEvents)
+        val finalPromptText =
+            "Based on the above conversation and your analysis, provide your response to the user." +
+                (languageHint?.let { "\n\n$it" } ?: "")
         val intentionContext =
             lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
-        val messages = context.buildMessages(accumulatedEvents) + UserMessage(intentionContext)
+        val messages = context.buildMessages(accumulatedEvents, intentionContext)
 
         logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$intentionContext" }
@@ -832,6 +835,47 @@ class AgentAdvanced(
                 )
             emitEvent(msg)
         }
+    }
+
+    /**
+     * Builds a language hint from the most recent user [MessageEvent]s in [events].
+     *
+     * Collects user messages from newest to oldest until the combined text reaches
+     * [minChars], then returns an instruction anchored on the actual user text so the
+     * LLM has a concrete language signal rather than an abstract directive.
+     *
+     * Returns `null` when no user messages are present (e.g. agent-only conversations),
+     * so the caller can omit the hint entirely rather than defaulting to a hardcoded
+     * language.
+     */
+    internal fun buildLanguageHint(
+        events: List<CaseEvent>,
+        targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
+    ): String? {
+        // Reverse the messages first so we collect newest-first, then extract text per message.
+        // Reversing after flatMap would operate on individual text blocks, not on messages.
+        val userMessages =
+            events
+                .filterIsInstance<MessageEvent>()
+                .filter { it.actor.role == ActorRole.USER }
+                .reversed()
+
+        if (userMessages.isEmpty()) return null
+
+        val collected = mutableListOf<String>()
+        var total = 0
+        for (message in userMessages) {
+            val text = message.content.filterIsInstance<MessageContent.Text>().joinToString(" ") { it.content.trim() }.trim()
+            if (text.isEmpty()) continue
+            collected.add(text)
+            total += text.length
+            if (total >= targetChars) break
+        }
+
+        if (collected.isEmpty()) return null
+
+        val sample = collected.reversed().joinToString(" / ") { "\"$it\"" }
+        return "Respond in the same language the user is writing in (reference: $sample)."
     }
 
     internal fun detectRepetitionLoop(events: List<CaseEvent>): String? {
@@ -883,6 +927,7 @@ class AgentAdvanced(
         namespaceId: UUID,
         caseId: UUID,
         toolRequestId: String,
+        emitEvent: suspend (CaseEvent) -> Unit,
     ): ToolRequestEvent {
         val tool =
             context.tools.firstOrNull { it.name == intentionEvent.toolName }
@@ -907,39 +952,48 @@ Generate the parameters for the tool call below. You must generate a JSON object
 
 Tool: ${tool.name}
 Description: ${tool.description}
-Input JSON Schema: 
+Input JSON Schema:
 ```
 ${tool.inputSchema}
 ```
 
 Intention: ${intentionEvent.intention}$enrichmentBlock
 
-**Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
+Output requirements:
+- Wrap the JSON object in <parameter> tags: <parameter>{ ... }</parameter>
+- Inside the tags, start your response with `{` and end it with `}`.
+- Do not emit any text, whitespace, or tokens before `{` or after `}` inside the tags.
+- Do not use XML, tool-call wrappers, function tags, markdown, code fences, or any structural syntax other than JSON.
+- Do not include comments, explanations, or reasoning.
+- Only include properties defined in the schema.
             """.trimIndent()
         val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-        val baseMessages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall)
 
-        logger.debug { "[$name] generateParameters for '${tool.name}' — sending ${baseMessages.size + 1} messages" }
+        logger.debug { "[$name] generateParameters for '${tool.name}'" }
         logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
 
-        return retryWithFallback<String, ToolRequestEvent>(
+        val result = retryWithFallback<String, ToolRequestEvent>(
             maxAttempts = MAX_PARAMETER_ATTEMPTS,
             fallback = { lastRaw ->
                 logger.error {
-                    "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Falling back to last raw result."
+                    "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Last raw: $lastRaw"
                 }
+                // Do NOT pass the invalid output to the tool — it would cause a server-side
+                // error (e.g. HTTP 500) instead of a clean failure the agent can reason about.
+                // args=null signals the failure; the WarnEvent is emitted below after returning
+                // from retryWithFallback (fallback lambda is not suspend).
                 ToolRequestEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     toolRequestId = toolRequestId,
                     toolName = tool.name,
-                    args = lastRaw,
+                    args = null,
                 )
             },
         ) { previousRaw ->
             attemptParameterGeneration(
                 basePrompt = basePrompt,
-                baseMessages = baseMessages,
+                events = accumulatedEventsWithoutCurrentToolCall,
                 toolName = tool.name,
                 namespaceId = namespaceId,
                 caseId = caseId,
@@ -947,34 +1001,40 @@ Intention: ${intentionEvent.intention}$enrichmentBlock
                 previousRaw = previousRaw,
             )
         }
+
+        // args=null means all retries were exhausted — emit a WarnEvent so the failure
+        // is visible in the case event stream (cannot be done inside the non-suspend fallback).
+        if (result.args == null) {
+            val message = "Failed to generate valid JSON parameters for '${tool.name}' after $MAX_PARAMETER_ATTEMPTS attempts."
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = message))
+        }
+
+        return result
     }
 
     private fun attemptParameterGeneration(
         basePrompt: String,
-        baseMessages: List<org.springframework.ai.chat.messages.Message>,
+        events: List<CaseEvent>,
         toolName: String,
         namespaceId: UUID,
         caseId: UUID,
         toolRequestId: String,
         previousRaw: String?,
     ): AttemptResult<String, ToolRequestEvent> {
-        val prompt =
-            if (previousRaw == null) {
-                basePrompt
-            } else {
-                """
-$basePrompt
+        val retryHint = previousRaw?.let {
+            """
+            PREVIOUS FAILED ATTEMPT(S):
+            The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
+            ---
+            $it
+            ---
+            Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
+            """.trimIndent()
+        }
+        val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
-PREVIOUS FAILED ATTEMPT(S):
-The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
----
-$previousRaw
----
-Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
-                """.trimIndent()
-            }
-
-        val raw = callLlmForParameters(baseMessages + UserMessage(prompt), toolName)
+        val messages = context.buildMessages(events, prompt)
+        val raw = callLlmForParameters(messages, toolName)
 
         logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
@@ -1038,7 +1098,7 @@ Intention: ${intentionEvent.intention}
                 """.trimIndent()
 
             val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall) + UserMessage(fullPrompt)
+            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall, fullPrompt)
 
             logger.debug { "[$name] enrichment phase $i for '${tool.name}' — sending ${messages.size} messages" }
 
@@ -1066,12 +1126,22 @@ Intention: ${intentionEvent.intention}
         return previousContent
     }
 
+    /**
+     * Strips formatting wrappers around a JSON payload, in priority order:
+     * 1. `<parameter>...</parameter>` tags — the canonical format requested in the prompt
+     * 2. Markdown code fences ` ```json ... ``` ` — tolerated as a fallback
+     * 3. Raw string — last resort if neither wrapper is present
+     */
     private fun stripJsonFence(raw: String): String =
-        JSON_FENCE_REGEX
-            .matchEntire(raw)
+        PARAMETER_TAG_REGEX.find(raw)
             ?.groupValues
             ?.get(1)
-            ?.trim() ?: raw
+            ?.trim()
+            ?: JSON_FENCE_REGEX.matchEntire(raw)
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+            ?: raw
 
     private suspend fun executeTool(
         toolRequest: ToolRequestEvent,
@@ -1138,9 +1208,26 @@ Intention: ${intentionEvent.intention}
         /** How many recent tool responses to inspect for repetition. */
         internal const val REPETITION_WINDOW = 5
 
+        /**
+         * Target character count for the language hint sample: collect user messages
+         * newest-first until this threshold is reached, or until all messages are
+         * exhausted — whichever comes first.
+         */
+        internal const val LANGUAGE_HINT_TARGET_CHARS = 200
+
         /** How many identical (toolName, args) calls within the window trigger a warning. */
         internal const val REPETITION_THRESHOLD = 3
         internal const val MAX_PARAMETER_ATTEMPTS = 3
+
+        /**
+         * Matches JSON content inside `<parameter>...</parameter>` tags.
+         * This is the canonical output format requested in the parameter generation prompt.
+         */
+        private val PARAMETER_TAG_REGEX =
+            Regex(
+                """<parameter>\s*(.*?)\s*</parameter>""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
 
         private val JSON_FENCE_REGEX =
             Regex(

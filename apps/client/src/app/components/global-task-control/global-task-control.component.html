@@ -25,6 +25,21 @@
     </mat-form-field>
 
     <div class="gtc-toolbar-actions">
+      <button mat-icon-button [matMenuTriggerFor]="schedulerMenu" matTooltip="Schedulers" aria-label="Schedulers">
+        <mat-icon>schedule</mat-icon>
+      </button>
+
+      <mat-menu #schedulerMenu="matMenu">
+        <button mat-menu-item (click)="openGlobalSchedulersDialog()">
+          <mat-icon>list</mat-icon>
+          <span>View schedulers</span>
+        </button>
+        <button mat-menu-item (click)="openQuickSchedulerDialog()">
+          <mat-icon>add</mat-icon>
+          <span>New scheduler</span>
+        </button>
+      </mat-menu>
+
       <button
         mat-icon-button
         [matMenuTriggerFor]="controlCenterMenu"

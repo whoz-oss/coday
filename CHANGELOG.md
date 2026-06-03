@@ -1,3 +1,124 @@
+## 0.172.1 (2026-06-03)
+
+### 🩹 Fixes
+
+- #wz-32400 tool parameter generation output in XML ([#956](https://github.com/whoz-oss/coday/pull/956))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.172.0 (2026-06-03)
+
+### 🚀 Features
+
+- #930 add home scheduler dialogs and support agent instruction execution ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 refactor background thread execution and add scheduler fallback logging ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 centralize oneshot prompt execution in thread manager ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 add home scheduler dialogs and support agent instruction e… ([#931](https://github.com/whoz-oss/coday/pull/931), [#930](https://github.com/whoz-oss/coday/issues/930))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.171.2 (2026-06-02)
+
+### 🩹 Fixes
+
+- attempt to avoid flaky tests in publish ([#955](https://github.com/whoz-oss/coday/pull/955))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.171.1 (2026-06-02)
+
+### 🩹 Fixes
+
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([b3d10903](https://github.com/whoz-oss/coday/commit/b3d10903))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([f6bfa3f3](https://github.com/whoz-oss/coday/commit/f6bfa3f3))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([b6ec9167](https://github.com/whoz-oss/coday/commit/b6ec9167))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([#954](https://github.com/whoz-oss/coday/pull/954))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.171.0 (2026-06-02)
+
+### 🚀 Features
+
+- lower the neo4j log level to stop being flooded ([#953](https://github.com/whoz-oss/coday/pull/953))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.170.0 (2026-06-02)
+
+### 🚀 Features
+
+- add userId to AgentConfigSearchRequest.kt ([#952](https://github.com/whoz-oss/coday/pull/952))
+
+### 🩹 Fixes
+
+- remove some outdated docs and trigger the release after a fix ([#951](https://github.com/whoz-oss/coday/pull/951))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.168.3 (2026-06-02)
+
+### 🩹 Fixes
+
+- wz-32164: introduce withRemoved ([2db3cadd](https://github.com/whoz-oss/coday/commit/2db3cadd))
+- wz-32164: open api ([6cb3077e](https://github.com/whoz-oss/coday/commit/6cb3077e))
+- wz-32164: open api ([2ad23229](https://github.com/whoz-oss/coday/commit/2ad23229))
+- wz-32164: introduce withRemoved ([#940](https://github.com/whoz-oss/coday/pull/940))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- thomas.martin @thomasmartin-whoz
+
+## 0.168.2 (2026-06-02)
+
+### 🚀 Features
+
+- **wz-32319:** put namespace description into systemprompt in advanced mode ([3ed44622](https://github.com/whoz-oss/coday/commit/3ed44622))
+- **wz-32319:** merge user messages and improve intention prompt ([8e9960bc](https://github.com/whoz-oss/coday/commit/8e9960bc))
+- **wz-32319:** fix tests ([dfbe15b1](https://github.com/whoz-oss/coday/commit/dfbe15b1))
+- **wz-32319:** use retryWithFallback ([bcb8d595](https://github.com/whoz-oss/coday/commit/bcb8d595))
+- **wz-32319:** put namespace description into systemprompt in advanc… ([#944](https://github.com/whoz-oss/coday/pull/944))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.168.1 (2026-06-02)
+
+### 🩹 Fixes
+
+- #WZ-32242 inject language hint in final response prompt ([#941](https://github.com/whoz-oss/coday/pull/941))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.168.0 (2026-06-02)
+
+### 🚀 Features
+
+- bump gemini and gpt models ([#938](https://github.com/whoz-oss/coday/pull/938))
+
+### ❤️ Thank You
+
+- David Palita
+
 ## 0.167.3 (2026-06-02)
 
 ### 🚀 Features

@@ -26,10 +26,10 @@ open class Neo4jUserGroupRepository(
                 if (!entity.metadata.removed) neo4jRepository.setActive(it.id)
             }.toDomain()
 
-    override fun findByIds(ids: Collection<UUID>): List<UserGroup> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<UserGroup> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<UserGroup> =

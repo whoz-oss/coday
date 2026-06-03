@@ -51,7 +51,7 @@ class NamespaceServiceImpl(
         throw ConflictException("A namespace with externalId '${entity.externalId}' already exists", e)
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<Namespace> = namespaceRepository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Namespace> = namespaceRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: String): List<Namespace> = namespaceRepository.findByParent(parentId)
 

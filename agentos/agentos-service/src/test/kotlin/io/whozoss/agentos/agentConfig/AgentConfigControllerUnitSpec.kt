@@ -8,11 +8,16 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
@@ -31,6 +36,7 @@ import java.util.UUID
  *   `getById` (found / not-found), `getByIds`, `listByParent`, `create`, `delete`
  * - `update` mass-assignment guard (server-owned `namespaceId` preserved)
  * - `update` 404-on-missing path
+ * - `getDefinition` field mapping including [systemPrompt], user overlay flag, tool summaries, 404
  */
 class AgentConfigControllerUnitSpec : StringSpec({
 
@@ -89,6 +95,45 @@ class AgentConfigControllerUnitSpec : StringSpec({
         instructions = instructions,
         modelName = modelName,
         externalMetadata = externalMetadata,
+    )
+
+    fun resolvedDefinition(
+        agentConfigId: UUID = UUID.randomUUID(),
+        name: String = "my-agent",
+        systemPrompt: String? = "## Context: engineering",
+        instructions: String? = "Be helpful.",
+        resolvedModelApiName: String = "claude-sonnet-4-5",
+        resolvedProviderName: String = "anthropic-prod",
+        advancedExecution: Boolean = false,
+        nsId: UUID = namespaceId,
+        userId: UUID? = null,
+    ) = ResolvedAgentDefinition(
+        agentConfigId = agentConfigId,
+        name = name,
+        systemPrompt = systemPrompt,
+        instructions = instructions,
+        resolvedModelApiName = resolvedModelApiName,
+        resolvedProviderName = resolvedProviderName,
+        resolvedModelId = UUID.randomUUID(),
+        resolvedProviderId = UUID.randomUUID(),
+        resolvedModel = AiModel(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            aiProviderId = UUID.randomUUID(),
+            namespaceId = nsId,
+            apiModelName = resolvedModelApiName,
+        ),
+        resolvedProvider = AiProvider(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            namespaceId = nsId,
+            name = resolvedProviderName,
+            apiType = AiApiType.Anthropic,
+            baseUrl = "https://api.anthropic.com",
+            apiKey = "sk-ant-test",
+        ),
+        tools = emptyList(),
+        advancedExecution = advancedExecution,
+        namespaceId = nsId,
+        userId = userId,
     )
 
     beforeTest { clearAllMocks() }
@@ -243,7 +288,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     "getById returns a resource when the entity is found" {
         val c = config()
-        every { service.findById(c.id) } returns c
+        every { service.findById(c.id, withRemoved = true) } returns c
 
         val result = controller.getById(c.id)
 
@@ -252,7 +297,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     "getById throws 404 when entity is not found" {
         val id = UUID.randomUUID()
-        every { service.findById(id) } returns null
+        every { service.findById(id, withRemoved = true) } returns null
 
         shouldThrow<ResourceNotFoundException> { controller.getById(id) }
     }
@@ -414,14 +459,14 @@ class AgentConfigControllerUnitSpec : StringSpec({
     "search returns mapped resources for given namespaceId and userExternalId" {
         val c1 = config(name = "agent-a")
         val c2 = config(name = "agent-b")
-        val namespaceId = UUID.randomUUID()
-        val request = AgentConfigSearchRequest(namespaceId = namespaceId, userExternalId = "alice@example.com")
-        every { service.findAvailableByUserExternalId(namespaceId, "alice@example.com") } returns listOf(c1, c2)
+        val searchNsId = UUID.randomUUID()
+        val request = AgentConfigSearchRequest(namespaceId = searchNsId, userExternalId = "alice@example.com")
+        every { service.findAvailableByUserExternalId(searchNsId, "alice@example.com") } returns listOf(c1, c2)
 
         val result = controller.search(request)
 
         result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-        verify(exactly = 1) { service.findAvailableByUserExternalId(namespaceId, "alice@example.com") }
+        verify(exactly = 1) { service.findAvailableByUserExternalId(searchNsId, "alice@example.com") }
     }
 
     "search returns empty list when service returns no agents" {
@@ -449,5 +494,89 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { service.delete(id) } returns false
 
         shouldThrow<ResourceNotFoundException> { controller.delete(id) }
+    }
+
+    // -------------------------------------------------------------------------
+    // getDefinition
+    // -------------------------------------------------------------------------
+
+    "getDefinition maps all fields including systemPrompt from ResolvedAgentDefinition" {
+        val configId = UUID.randomUUID()
+        val agentConfig = config(id = configId)
+        val definition = resolvedDefinition(
+            agentConfigId = configId,
+            systemPrompt = "## Context: engineering",
+            instructions = "Be helpful.",
+        )
+        every { service.findById(configId) } returns agentConfig
+        every { userService.getCurrentUser() } returns superAdmin
+        every { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+
+        val result = controller.getDefinition(configId, withUserOverlay = false)
+
+        result.agentConfigId shouldBe configId
+        result.name shouldBe definition.name
+        result.systemPrompt shouldBe "## Context: engineering"
+        result.instructions shouldBe "Be helpful."
+        result.resolvedModelApiName shouldBe definition.resolvedModelApiName
+        result.resolvedProviderName shouldBe definition.resolvedProviderName
+        result.advancedExecution shouldBe false
+        result.namespaceId shouldBe namespaceId
+        result.userId shouldBe null
+    }
+
+    "getDefinition maps null systemPrompt when no namespace context is available" {
+        val configId = UUID.randomUUID()
+        val agentConfig = config(id = configId)
+        val definition = resolvedDefinition(agentConfigId = configId, systemPrompt = null)
+        every { service.findById(configId) } returns agentConfig
+        every { userService.getCurrentUser() } returns superAdmin
+        every { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+
+        val result = controller.getDefinition(configId, withUserOverlay = false)
+
+        result.systemPrompt shouldBe null
+    }
+
+    "getDefinition resolves with userId when withUserOverlay=true" {
+        val configId = UUID.randomUUID()
+        val agentConfig = config(id = configId)
+        val definition = resolvedDefinition(agentConfigId = configId, userId = callerId)
+        every { service.findById(configId) } returns agentConfig
+        every { userService.getCurrentUser() } returns superAdmin
+        every { agentService.resolveDefinition(configId, namespaceId, callerId) } returns definition
+
+        val result = controller.getDefinition(configId, withUserOverlay = true)
+
+        result.userId shouldBe callerId
+        verify(exactly = 1) { agentService.resolveDefinition(configId, namespaceId, callerId) }
+    }
+
+    "getDefinition maps tool summaries" {
+        val configId = UUID.randomUUID()
+        val agentConfig = config(id = configId)
+        val tool = mockk<StandardTool<*>> {
+            every { name } returns "get-issue"
+            every { description } returns "Fetches a Jira issue"
+            every { inputSchema } returns "{\"type\":\"object\"}"
+        }
+        val definition = resolvedDefinition(agentConfigId = configId).copy(tools = listOf(tool))
+        every { service.findById(configId) } returns agentConfig
+        every { userService.getCurrentUser() } returns superAdmin
+        every { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+
+        val result = controller.getDefinition(configId, withUserOverlay = false)
+
+        result.tools.size shouldBe 1
+        result.tools[0].name shouldBe "get-issue"
+        result.tools[0].description shouldBe "Fetches a Jira issue"
+        result.tools[0].inputSchema shouldBe "{\"type\":\"object\"}"
+    }
+
+    "getDefinition throws 404 when AgentConfig is not found" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns null
+
+        shouldThrow<ResourceNotFoundException> { controller.getDefinition(id, withUserOverlay = false) }
     }
 })

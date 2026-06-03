@@ -43,10 +43,10 @@ open class Neo4jIntegrationConfigRepository(
                 }
             }
 
-    override fun findByIds(ids: Collection<UUID>): List<IntegrationConfig> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<IntegrationConfig> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain(objectMapper) }
 
     // findByParent by convention delegates to findByNamespaceId (Epic 4 behaviour preserved).

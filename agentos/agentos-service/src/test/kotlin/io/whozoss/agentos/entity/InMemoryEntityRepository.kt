@@ -52,8 +52,8 @@ class InMemoryEntityRepository<T : Entity, P>(
         return entity
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<T> =
-        ids.mapNotNull { entitiesById[it] }.filter { !it.metadata.removed }
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<T> =
+        ids.mapNotNull { entitiesById[it] }.filter { withRemoved || !it.metadata.removed }
 
     override fun findByParent(parentId: P): List<T> =
         (entityIdsByParentId[parentId] ?: return emptyList())

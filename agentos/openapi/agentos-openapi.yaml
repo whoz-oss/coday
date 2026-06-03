@@ -2650,6 +2650,8 @@ components:
         userExternalId:
           type: string
           minLength: 1
+        userId:
+          type: string
       required:
       - namespaceId
       - userExternalId
@@ -2768,6 +2770,8 @@ components:
           type: string
           format: uuid
         name:
+          type: string
+        systemPrompt:
           type: string
         instructions:
           type: string

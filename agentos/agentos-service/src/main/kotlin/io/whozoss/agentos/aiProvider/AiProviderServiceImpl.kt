@@ -49,7 +49,7 @@ class AiProviderServiceImpl(
         return saveOrConflict(entity)
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<AiProvider> = repository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiProvider> = repository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<AiProvider> = repository.findByParent(parentId)
 

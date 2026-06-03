@@ -33,10 +33,10 @@ open class Neo4jCaseEventRepository(
             .let { mapper.toDomain(it) }
             .also { logger.debug { "[Neo4jCaseEventRepository] Saved ${entity.type.value} event ${entity.id} for case ${entity.caseId}" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<CaseEvent> =
         caseEventNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { mapper.toDomain(it) }
 
     override fun findByParent(parentId: UUID): List<CaseEvent> =

@@ -1,10 +1,12 @@
 import { Response } from 'express'
+import { filter } from 'rxjs'
 import { Coday } from '@coday/core'
 import { AiClientProvider } from '@coday/integrations-ai'
 import {
   ServerInteractor,
   CodayOptions,
   CodayLogger,
+  CodayEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
@@ -80,31 +82,36 @@ class ThreadCodayInstance {
     this.isOneshot = false // Mark as interactive session
     debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
 
-    // If Coday is already running, replay the thread history for this new connection
-    if (this.coday) {
-      debugLog('THREAD_CODAY', `Replaying thread history for new connection to ${this.threadId}`)
-      this.replayThreadHistory(response)
-    }
+    // Always replay thread history for new connections — even if the one-shot Coday
+    // instance has already been cleaned up. In that case we read directly from ThreadService.
+    debugLog('THREAD_CODAY', `Replaying thread history for new connection to ${this.threadId}`)
+    this.replayThreadHistory(response)
   }
 
   /**
-   * Replay the thread history for a specific connection
-   * @param response Express response object for SSE
+   * Replay the thread history for a specific connection.
+   * Works whether or not the Coday instance is still alive:
+   * - If alive: reads from the in-memory AiThread (most up-to-date)
+   * - If cleaned up (one-shot finished): reads directly from ThreadService on disk
    */
   private async replayThreadHistory(response: Response): Promise<void> {
-    if (!this.coday) return
-
     try {
-      // Get the thread from Coday
-      const thread = this.coday.context?.aiThread
-      if (!thread) {
-        debugLog('THREAD_CODAY', `No thread found for replay in ${this.threadId}`)
-        return
+      let messages: any[]
+
+      if (this.coday?.context?.aiThread) {
+        // Live instance — read from in-memory thread
+        const result = await this.coday.context.aiThread.getMessages(undefined, undefined)
+        messages = result.messages
+      } else {
+        // Instance already cleaned up (e.g. one-shot finished) — read from disk
+        const thread = await this.threadService.getThread(this.projectName, this.threadId)
+        if (!thread) {
+          debugLog('THREAD_CODAY', `No thread found on disk for replay in ${this.threadId}`)
+          return
+        }
+        messages = thread.getAllMessages()
       }
 
-      // Get all messages from the thread (it's async)
-      const result = await thread.getMessages(undefined, undefined)
-      const messages = result.messages
       debugLog('THREAD_CODAY', `Replaying ${messages.length} messages for thread ${this.threadId}`)
 
       // Send each message to the new connection.
@@ -128,7 +135,7 @@ class ThreadCodayInstance {
         // the registry already knows about this invite, we're just re-sending it to the new SSE client.
         this.isReplaying = true
         try {
-          this.coday.interactor.replayLastQuestion()
+          this.coday?.interactor.replayLastQuestion()
         } finally {
           this.isReplaying = false
         }
@@ -257,6 +264,58 @@ class ThreadCodayInstance {
   }
 
   /**
+   * Run a oneshot execution (scheduler, webhook, direct prompt).
+   * Encapsulates prepareCoday() + coday.run() + lifecycle management.
+   *
+   * @param options.awaitFinalAnswer If true, waits for completion and returns the last assistant MessageEvent
+   * @returns The last assistant MessageEvent if awaitFinalAnswer is true, undefined otherwise
+   */
+  async runOneshot(options?: { awaitFinalAnswer?: boolean }): Promise<MessageEvent | undefined> {
+    this.prepareCoday()
+
+    if (!this.coday) {
+      throw new Error(`prepareCoday() failed for thread ${this.threadId} — coday instance is undefined`)
+    }
+
+    // Notify project-level SSE clients that a new thread is starting.
+    // Without this, the frontend would not discover scheduler/webhook threads
+    // until the agent emits an InviteEvent or the thread name is set.
+    this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+
+    if (options?.awaitFinalAnswer) {
+      // Synchronous mode: wait for completion, collect assistant messages
+      const assistantMessages: MessageEvent[] = []
+      const subscription = this.coday.interactor.events
+        .pipe(
+          filter(
+            (event: CodayEvent) =>
+              event instanceof MessageEvent &&
+              (event as MessageEvent).role === 'assistant' &&
+              !!(event as MessageEvent).name
+          )
+        )
+        .subscribe((event) => assistantMessages.push(event as MessageEvent))
+
+      try {
+        await this.coday.run()
+        subscription.unsubscribe()
+        return assistantMessages[assistantMessages.length - 1]
+      } catch (error) {
+        subscription.unsubscribe()
+        throw error
+      }
+    } else {
+      // Fire-and-forget: start run in background, don't block caller.
+      // Cleanup is handled by the caller via .finally() on the returned promise.
+      this.coday.run().catch((error) => {
+        debugLog('THREAD_CODAY', `Error during oneshot run for thread ${this.threadId}:`, error)
+        console.error(`Oneshot run failed for thread ${this.threadId}:`, error)
+      })
+      return undefined
+    }
+  }
+
+  /**
    * Start the Coday instance for this thread
    * @returns true if new instance was created and started, false if already running
    */
@@ -346,12 +405,31 @@ class ThreadCodayInstance {
     // If this is a ThreadUpdateEvent with a name, update the thread service cache
     if (event instanceof ThreadUpdateEvent && (event.name || event.summary)) {
       debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} name/summary`)
-      // Update the thread service cache asynchronously (don't block event broadcasting)
-      this.threadService
-        .updateThread(this.projectName, this.threadId, { name: event.name, summary: event.summary })
-        .catch((error) => {
+      // Update only the metadata (name/summary) in the thread service cache.
+      // IMPORTANT: do NOT reload from disk and re-save — that would overwrite the in-memory
+      // messages with the empty disk version if the thread hasn't been saved yet.
+      // Instead, update the cache entry directly and patch the on-disk file only if it
+      // already has messages (i.e. autoSave has already run).
+      ;(async () => {
+        try {
+          const thread = await this.threadService.getThread(this.projectName, this.threadId)
+          if (!thread) return
+          if (event.name) thread.name = event.name
+          if (event.summary) thread.summary = event.summary
+          // Only persist if the thread already has messages on disk — avoids overwriting
+          // a future autoSave with an empty-messages snapshot.
+          if (thread.messagesLength > 0) {
+            await this.threadService.updateThread(this.projectName, this.threadId, {
+              name: event.name,
+              summary: event.summary,
+            })
+          }
+          // Thread has no messages yet — just update the in-memory cache without disk write
+          // autoSave() will persist both messages and name/summary later.
+        } catch (error) {
           debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
-        })
+        }
+      })()
       // Notify project-level SSE clients so Mission Control refreshes automatically
       this.projectEventManager?.broadcast(this.projectName, event)
     }
@@ -438,9 +516,12 @@ class ThreadCodayInstance {
     }
     this.connections.clear()
 
-    // Run post-processing before killing Coday (need AiClient + thread still alive)
+    // Run post-processing before killing Coday.
+    // Coday.run() calls cleanup() which nullifies context, so we must grab the thread
+    // from aiThreadService (still alive at this point) rather than coday.context.
     if (this.coday) {
-      const thread = this.coday.context?.aiThread
+      const aiThreadService = this.coday.aiThreadService
+      const thread = this.coday.context?.aiThread ?? aiThreadService?.getCurrentThread()
       const aiClientProvider: AiClientProvider | undefined = this.coday.aiClientProvider
       const aiClient = aiClientProvider?.getClient(undefined, 'SMALL') ?? aiClientProvider?.getClient(undefined)
       if (thread && aiClient) {
