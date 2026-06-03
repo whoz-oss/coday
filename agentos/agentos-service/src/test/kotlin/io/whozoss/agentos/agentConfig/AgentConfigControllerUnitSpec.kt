@@ -116,6 +116,8 @@ class AgentConfigControllerUnitSpec : StringSpec({
             description = "Writes code",
             instructions = "Write clean code.",
             modelName = "claude-3-opus",
+            createdOn = c.metadata.created,
+            updatedOn = c.metadata.modified,
         )
     }
 
