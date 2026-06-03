@@ -15,6 +15,8 @@ import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { AiProvider } from '../model/ai-provider'
+// @ts-ignore
+import { GetByIdsRequest } from '../model/get-by-ids-request'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -251,36 +253,36 @@ export class AiProviderControllerService extends BaseService {
   }
 
   /**
-   * @param requestBody
+   * @param getByIdsRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public getByIdsAiProvider(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<AiProvider>>
   public getByIdsAiProvider(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<AiProvider>>>
   public getByIdsAiProvider(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<AiProvider>>>
   public getByIdsAiProvider(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIdsAiProvider.')
+    if (getByIdsRequest === null || getByIdsRequest === undefined) {
+      throw new Error('Required parameter getByIdsRequest was null or undefined when calling getByIdsAiProvider.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -317,7 +319,7 @@ export class AiProviderControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<AiProvider>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: requestBody,
+      body: getByIdsRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
