@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -204,9 +205,9 @@ class UserControllerSpec : StringSpec({
         val u1 = user(email = "a@x.com")
         val u2 = user(email = "b@x.com")
         every { userService.getCurrentUser() } returns adminUser
-        every { userService.findByIds(listOf(u1.id, u2.id)) } returns listOf(u1, u2)
+        every { userService.findByIds(listOf(u1.id, u2.id), false) } returns listOf(u1, u2)
 
-        val result = controller.getByIds(listOf(u1.id, u2.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(u1.id, u2.id)))
 
         result shouldBe listOf(controller.toResource(u1), controller.toResource(u2))
     }
