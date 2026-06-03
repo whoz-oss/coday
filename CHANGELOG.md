@@ -1,3 +1,13 @@
+## 0.172.4 (2026-06-03)
+
+### 🚀 Features
+
+- **entity:** expose withRemoved on POST /by-ids and removed field on CaseResource ([#960](https://github.com/whoz-oss/coday/pull/960), [#959](https://github.com/whoz-oss/coday/issues/959))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.172.3 (2026-06-03)
 
 ### 🩹 Fixes
