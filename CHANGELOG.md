@@ -1,3 +1,13 @@
+## 0.172.1 (2026-06-03)
+
+### 🩹 Fixes
+
+- #wz-32400 tool parameter generation output in XML ([#956](https://github.com/whoz-oss/coday/pull/956))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.172.0 (2026-06-03)
 
 ### 🚀 Features
