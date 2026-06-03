@@ -280,6 +280,7 @@ class AgentAdvanced(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 toolRequestId = toolRequestId,
+                emitEvent = emitEvent,
             )
         emitEvent(parameters)
         accumulatedEvents.add(parameters)
@@ -913,6 +914,7 @@ class AgentAdvanced(
         namespaceId: UUID,
         caseId: UUID,
         toolRequestId: String,
+        emitEvent: suspend (CaseEvent) -> Unit,
     ): ToolRequestEvent {
         val tool =
             context.tools.firstOrNull { it.name == intentionEvent.toolName }
@@ -937,32 +939,42 @@ Generate the parameters for the tool call below. You must generate a JSON object
 
 Tool: ${tool.name}
 Description: ${tool.description}
-Input JSON Schema: 
+Input JSON Schema:
 ```
 ${tool.inputSchema}
 ```
 
 Intention: ${intentionEvent.intention}$enrichmentBlock
 
-**Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
+Output requirements:
+- Wrap the JSON object in <parameter> tags: <parameter>{ ... }</parameter>
+- Inside the tags, start your response with `{` and end it with `}`.
+- Do not emit any text, whitespace, or tokens before `{` or after `}` inside the tags.
+- Do not use XML, tool-call wrappers, function tags, markdown, code fences, or any structural syntax other than JSON.
+- Do not include comments, explanations, or reasoning.
+- Only include properties defined in the schema.
             """.trimIndent()
         val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
 
         logger.debug { "[$name] generateParameters for '${tool.name}'" }
         logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
 
-        return retryWithFallback<String, ToolRequestEvent>(
+        val result = retryWithFallback<String, ToolRequestEvent>(
             maxAttempts = MAX_PARAMETER_ATTEMPTS,
             fallback = { lastRaw ->
                 logger.error {
-                    "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Falling back to last raw result."
+                    "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Last raw: $lastRaw"
                 }
+                // Do NOT pass the invalid output to the tool — it would cause a server-side
+                // error (e.g. HTTP 500) instead of a clean failure the agent can reason about.
+                // args=null signals the failure; the WarnEvent is emitted below after returning
+                // from retryWithFallback (fallback lambda is not suspend).
                 ToolRequestEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     toolRequestId = toolRequestId,
                     toolName = tool.name,
-                    args = lastRaw,
+                    args = null,
                 )
             },
         ) { previousRaw ->
@@ -976,6 +988,15 @@ Intention: ${intentionEvent.intention}$enrichmentBlock
                 previousRaw = previousRaw,
             )
         }
+
+        // args=null means all retries were exhausted — emit a WarnEvent so the failure
+        // is visible in the case event stream (cannot be done inside the non-suspend fallback).
+        if (result.args == null) {
+            val message = "Failed to generate valid JSON parameters for '${tool.name}' after $MAX_PARAMETER_ATTEMPTS attempts."
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = message))
+        }
+
+        return result
     }
 
     private fun attemptParameterGeneration(
@@ -1092,12 +1113,22 @@ Intention: ${intentionEvent.intention}
         return previousContent
     }
 
+    /**
+     * Strips formatting wrappers around a JSON payload, in priority order:
+     * 1. `<parameter>...</parameter>` tags — the canonical format requested in the prompt
+     * 2. Markdown code fences ` ```json ... ``` ` — tolerated as a fallback
+     * 3. Raw string — last resort if neither wrapper is present
+     */
     private fun stripJsonFence(raw: String): String =
-        JSON_FENCE_REGEX
-            .matchEntire(raw)
+        PARAMETER_TAG_REGEX.find(raw)
             ?.groupValues
             ?.get(1)
-            ?.trim() ?: raw
+            ?.trim()
+            ?: JSON_FENCE_REGEX.matchEntire(raw)
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+            ?: raw
 
     private suspend fun executeTool(
         toolRequest: ToolRequestEvent,
@@ -1174,6 +1205,16 @@ Intention: ${intentionEvent.intention}
         /** How many identical (toolName, args) calls within the window trigger a warning. */
         internal const val REPETITION_THRESHOLD = 3
         internal const val MAX_PARAMETER_ATTEMPTS = 3
+
+        /**
+         * Matches JSON content inside `<parameter>...</parameter>` tags.
+         * This is the canonical output format requested in the parameter generation prompt.
+         */
+        private val PARAMETER_TAG_REGEX =
+            Regex(
+                """<parameter>\s*(.*?)\s*</parameter>""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
 
         private val JSON_FENCE_REGEX =
             Regex(
