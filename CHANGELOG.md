@@ -1,3 +1,14 @@
+## 0.172.5 (2026-06-03)
+
+### 🩹 Fixes
+
+- update api-client ([#962](https://github.com/whoz-oss/coday/pull/962))
+- move tool description into expandable body in agent-config-inspect ([#957](https://github.com/whoz-oss/coday/pull/957))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.172.4 (2026-06-03)
 
 ### 🚀 Features
