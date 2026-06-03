@@ -1529,7 +1529,80 @@ class AgentAdvancedSpec :
             events.filterIsInstance<WarnEvent>().filter { it.message.contains("all") && it.message.contains("attempts") } shouldHaveSize 0
         }
 
-        "generateParameters: falls back to last raw result when all retries fail" {
+        "generateParameters: extracts JSON from canonical <parameter> tags on first attempt" {
+            // The prompt now asks the LLM to wrap its output in <parameter>...</parameter>.
+            // stripJsonFence must extract the content on the first attempt with no retry.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "ReadEntities"
+            every { mockTool.description } returns "Read entities by id"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
+            every { mockTool.paramType } returns String::class.java
+            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("entity data")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("done")
+
+            // LLM correctly wraps JSON in <parameter> tags as instructed
+            val response = """<parameter>{"entitiesId":["6790ca2213906f27c141a80b","698c66db04182c7fb1dbd119"]}</parameter>"""
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns response
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Read the entity profiles.",
+                        toolName = "ReadEntities",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // JSON was extracted from the <parameter> tags and passed to the tool
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].args shouldContain "6790ca2213906f27c141a80b"
+            toolRequests[0].args shouldContain "698c66db04182c7fb1dbd119"
+            // No retry: extraction succeeded on the first attempt
+            events.filterIsInstance<WarnEvent>().filter { it.message.contains("invalid JSON") } shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "generateParameters: falls back to null args when all retries produce invalid JSON" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
@@ -1590,12 +1663,16 @@ class AgentAdvancedSpec :
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
-            // Tool was still called with the last (invalid) raw result — degraded but non-blocking
+            // args must be null — passing invalid output to the tool would cause a server-side
+            // error (HTTP 500) instead of a clean failure the LLM can reason about.
             val toolRequests = events.filterIsInstance<ToolRequestEvent>()
             toolRequests shouldHaveSize 1
-            // The args should be the last raw value returned by the LLM
-            toolRequests[0].args shouldBe "not json attempt ${AgentAdvanced.MAX_PARAMETER_ATTEMPTS}"
-            // Agent completed its run (no crash)
+            toolRequests[0].args shouldBe null
+            // A WarnEvent must be emitted so the failure is visible in the case event stream
+            val warns = events.filterIsInstance<WarnEvent>().filter { it.message.contains("TEST__tool") }
+            warns shouldHaveSize 1
+            warns[0].message shouldContain "Failed to generate valid JSON parameters"
+            // The loop continues — the LLM sees the failure and can adapt
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
