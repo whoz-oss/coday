@@ -789,16 +789,45 @@ class AgentAdvanced(
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
     ) {
-        val languageHint = buildLanguageHint(accumulatedEvents)
-        val finalPromptText =
-            "Based on the above conversation and your analysis, provide your response to the user." +
-                (languageHint?.let { "\n\n$it" } ?: "")
-        val intentionContext =
-            lastIntention?.let { "Your analysis: ${it.intention}\n\n$finalPromptText" } ?: finalPromptText
-        val messages = context.buildMessages(accumulatedEvents, intentionContext)
+        val userFullName = accumulatedEvents
+            .filterIsInstance<MessageEvent>()
+            .lastOrNull()
+            ?.sessionContext
+            ?.get("userContext")
+            ?.let { it as? Map<String, String> }
+            ?.let { ctx ->
+                listOfNotNull(ctx["firstName"], ctx["lastName"])
+                    .joinToString(" ")
+                    .ifBlank { null }
+            }
+
+        // Build the final prompt in clear, composable sections
+        val prompt = buildString {
+            lastIntention?.let {
+                appendLine("Your analysis: ${it.intention}")
+                appendLine()
+            }
+
+            appendLine("Based on the above conversation and your analysis, provide your response to the user.")
+
+            buildLanguageHint(accumulatedEvents)?.let {
+                appendLine()
+                appendLine(it)
+            }
+
+            appendLine()
+            appendLine("- Base your response solely on the content of this conversation history. If information is missing, say so explicitly.")
+            appendLine("- Do not discriminate based on gender, ethnicity, religion, age, physical appearance, or any other protected attribute. If the user's request implies such a step, clarify with the user that this cannot be done.")
+            appendLine("- Do not reference technical IDs unless explicitly asked. Instead, use a readable format such as the object's name, title, or a markdown representation.\n")
+            userFullName?.let {
+                appendLine("Now, continue your conversation with $it.")
+            } ?: appendLine("Now, continue your conversation with the user.")
+        }
+
+        val messages = context.buildMessages(accumulatedEvents, prompt)
 
         logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
-        logger.trace { "[$name] generateFinalResponse intentionContext:\n$intentionContext" }
+        logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
 
         val contentBuilder = StringBuilder()
         context.chatClient
@@ -1081,7 +1110,12 @@ ${descriptor.inputSchema}
 
 Intention: ${intentionEvent.intention}
 
-**Generate ONLY the JSON object matching the input schema above. No explanation, no markdown fences.**
+Generate ONLY the JSON object matching the input schema above, Output requirements:
+- Start your response with the character `{` and end it with `}`.
+- Do not emit any text, whitespace, or tokens before `{` or after `}`.
+- Do not use XML, tool-call wrappers, function tags, markdown, code fences, or any structural syntax other than JSON.
+- Do not include comments, explanations, or reasoning.
+- Only include properties defined in the schema.
                 """.trimIndent()
 
             val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
