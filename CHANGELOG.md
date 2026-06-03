@@ -1,3 +1,13 @@
+## 0.172.3 (2026-06-03)
+
+### 🩹 Fixes
+
+- tentative fix for CI release workflow exit code 130 ([#961](https://github.com/whoz-oss/coday/pull/961))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.172.2 (2026-06-03)
 
 ### 🚀 Features
