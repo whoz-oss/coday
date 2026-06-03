@@ -1,6 +1,5 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.springframework.stereotype.Component
@@ -9,38 +8,23 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Primary implementation of [IntegrationTypeRegistry].
  *
- * Merges two sources of [IntegrationTypeDescriptor]s:
- * 1. **Plugin-contributed** — registered at runtime via [registerFromPlugin] as each
- *    [ToolPlugin] is loaded. A plugin descriptor always takes precedence over a temporary
- *    hardcoded entry for the same [IntegrationTypeDescriptor.type].
- * 2. **Temporary hardcoded fallback** — the static descriptors in [HardcodedIntegrationTypeRegistry]
- *    are scaffolding used during frontend development, before the real plugins exist.
- *    They will be removed once the corresponding plugins ship.
+ * Descriptors are contributed at runtime via [registerFromPlugin] as each [ToolPlugin] is
+ * loaded by [io.whozoss.agentos.tool.ToolRegistryService].
  *
  * Thread-safety: [ConcurrentHashMap] is used so that plugin registration (which happens
- * during [io.whozoss.agentos.tool.ToolRegistryService]'s @PostConstruct) is safe even if
- * a read arrives concurrently.
+ * during @PostConstruct) is safe even if a read arrives concurrently.
  */
 @Component
-class CompositeIntegrationTypeRegistry(
-    private val hardcoded: HardcodedIntegrationTypeRegistry,
-    private val objectMapper: ObjectMapper,
-) : IntegrationTypeRegistry {
+class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
 
     /** Descriptors contributed by loaded plugins, keyed by integrationType. */
     private val pluginDescriptors = ConcurrentHashMap<String, IntegrationTypeDescriptor>()
 
-    override fun listTypes(): List<IntegrationTypeDescriptor> {
-        val merged = mutableMapOf<String, IntegrationTypeDescriptor>()
-        // Start with hardcoded fallbacks
-        hardcoded.listTypes().forEach { merged[it.type] = it }
-        // Plugin-contributed entries override hardcoded ones for the same type
-        pluginDescriptors.forEach { (type, descriptor) -> merged[type] = descriptor }
-        return merged.values.sortedBy { it.type }
-    }
+    override fun listTypes(): List<IntegrationTypeDescriptor> =
+        pluginDescriptors.values.sortedBy { it.type }
 
     override fun findByType(type: String): IntegrationTypeDescriptor? =
-        pluginDescriptors[type] ?: hardcoded.findByType(type)
+        pluginDescriptors[type]
 
     override fun registerFromPlugin(plugin: ToolPlugin) {
         val schema = plugin.configSchema ?: run {
