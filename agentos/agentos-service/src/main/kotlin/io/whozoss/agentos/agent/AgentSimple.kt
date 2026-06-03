@@ -25,13 +25,13 @@ import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
-import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
@@ -455,9 +455,8 @@ class AgentSimple(
                         } else {
                             all.filter { event ->
                                 when (event) {
-                                    is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
                                     is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
-                                    else -> true
+                                    else -> false
                                 }
                             }
                         }

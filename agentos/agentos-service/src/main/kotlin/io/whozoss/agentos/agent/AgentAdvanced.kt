@@ -773,9 +773,8 @@ class AgentAdvanced(
         } else {
             all.filter { event ->
                 when (event) {
-                    is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
                     is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
-                    else -> true
+                    else -> false
                 }
             }
         }
@@ -789,40 +788,48 @@ class AgentAdvanced(
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
     ) {
-        val userFullName = accumulatedEvents
-            .filterIsInstance<MessageEvent>()
-            .lastOrNull()
-            ?.sessionContext
-            ?.get("userContext")
-            ?.let { it as? Map<String, String> }
-            ?.let { ctx ->
-                listOfNotNull(ctx["firstName"], ctx["lastName"])
-                    .joinToString(" ")
-                    .ifBlank { null }
-            }
+        val userFullName =
+            accumulatedEvents
+                .filterIsInstance<MessageEvent>()
+                .lastOrNull()
+                ?.sessionContext
+                ?.get("userContext")
+                ?.let { it as? Map<String, String> }
+                ?.let { ctx ->
+                    listOfNotNull(ctx["firstName"], ctx["lastName"])
+                        .joinToString(" ")
+                        .ifBlank { null }
+                }
 
         // Build the final prompt in clear, composable sections
-        val prompt = buildString {
-            lastIntention?.let {
-                appendLine("Your analysis: ${it.intention}")
+        val prompt =
+            buildString {
+                lastIntention?.let {
+                    appendLine("Your analysis: ${it.intention}")
+                    appendLine()
+                }
+
+                appendLine("Based on the above conversation and your analysis, provide your response to the user.")
+
+                buildLanguageHint(accumulatedEvents)?.let {
+                    appendLine()
+                    appendLine(it)
+                }
+
                 appendLine()
+                appendLine(
+                    "- Base your response solely on the content of this conversation history. If information is missing, say so explicitly.",
+                )
+                appendLine(
+                    "- Do not discriminate based on gender, ethnicity, religion, age, physical appearance, or any other protected attribute. If the user's request implies such a step, clarify with the user that this cannot be done.",
+                )
+                appendLine(
+                    "- Do not reference technical IDs unless explicitly asked. Instead, use a readable format such as the object's name, title, or a markdown representation.\n",
+                )
+                userFullName?.let {
+                    appendLine("Now, continue your conversation with $it.")
+                } ?: appendLine("Now, continue your conversation with the user.")
             }
-
-            appendLine("Based on the above conversation and your analysis, provide your response to the user.")
-
-            buildLanguageHint(accumulatedEvents)?.let {
-                appendLine()
-                appendLine(it)
-            }
-
-            appendLine()
-            appendLine("- Base your response solely on the content of this conversation history. If information is missing, say so explicitly.")
-            appendLine("- Do not discriminate based on gender, ethnicity, religion, age, physical appearance, or any other protected attribute. If the user's request implies such a step, clarify with the user that this cannot be done.")
-            appendLine("- Do not reference technical IDs unless explicitly asked. Instead, use a readable format such as the object's name, title, or a markdown representation.\n")
-            userFullName?.let {
-                appendLine("Now, continue your conversation with $it.")
-            } ?: appendLine("Now, continue your conversation with the user.")
-        }
 
         val messages = context.buildMessages(accumulatedEvents, prompt)
 
@@ -881,7 +888,11 @@ class AgentAdvanced(
         val collected = mutableListOf<String>()
         var total = 0
         for (message in userMessages) {
-            val text = message.content.filterIsInstance<MessageContent.Text>().joinToString(" ") { it.content.trim() }.trim()
+            val text =
+                message.content
+                    .filterIsInstance<MessageContent.Text>()
+                    .joinToString(" ") { it.content.trim() }
+                    .trim()
             if (text.isEmpty()) continue
             collected.add(text)
             total += text.length
@@ -988,35 +999,36 @@ Output requirements:
         logger.debug { "[$name] generateParameters for '${tool.name}'" }
         logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
 
-        val result = retryWithFallback<String, ToolRequestEvent>(
-            maxAttempts = MAX_PARAMETER_ATTEMPTS,
-            fallback = { lastRaw ->
-                logger.error {
-                    "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Last raw: $lastRaw"
-                }
-                // Do NOT pass the invalid output to the tool — it would cause a server-side
-                // error (e.g. HTTP 500) instead of a clean failure the agent can reason about.
-                // args=null signals the failure; the WarnEvent is emitted below after returning
-                // from retryWithFallback (fallback lambda is not suspend).
-                ToolRequestEvent(
+        val result =
+            retryWithFallback<String, ToolRequestEvent>(
+                maxAttempts = MAX_PARAMETER_ATTEMPTS,
+                fallback = { lastRaw ->
+                    logger.error {
+                        "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Last raw: $lastRaw"
+                    }
+                    // Do NOT pass the invalid output to the tool — it would cause a server-side
+                    // error (e.g. HTTP 500) instead of a clean failure the agent can reason about.
+                    // args=null signals the failure; the WarnEvent is emitted below after returning
+                    // from retryWithFallback (fallback lambda is not suspend).
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequestId,
+                        toolName = tool.name,
+                        args = null,
+                    )
+                },
+            ) { previousRaw ->
+                attemptParameterGeneration(
+                    basePrompt = basePrompt,
+                    events = accumulatedEventsWithoutCurrentToolCall,
+                    toolName = tool.name,
                     namespaceId = namespaceId,
                     caseId = caseId,
                     toolRequestId = toolRequestId,
-                    toolName = tool.name,
-                    args = null,
+                    previousRaw = previousRaw,
                 )
-            },
-        ) { previousRaw ->
-            attemptParameterGeneration(
-                basePrompt = basePrompt,
-                events = accumulatedEventsWithoutCurrentToolCall,
-                toolName = tool.name,
-                namespaceId = namespaceId,
-                caseId = caseId,
-                toolRequestId = toolRequestId,
-                previousRaw = previousRaw,
-            )
-        }
+            }
 
         // args=null means all retries were exhausted — emit a WarnEvent so the failure
         // is visible in the case event stream (cannot be done inside the non-suspend fallback).
@@ -1037,16 +1049,17 @@ Output requirements:
         toolRequestId: String,
         previousRaw: String?,
     ): AttemptResult<String, ToolRequestEvent> {
-        val retryHint = previousRaw?.let {
-            """
-            PREVIOUS FAILED ATTEMPT(S):
-            The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
-            ---
-            $it
-            ---
-            Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
-            """.trimIndent()
-        }
+        val retryHint =
+            previousRaw?.let {
+                """
+                PREVIOUS FAILED ATTEMPT(S):
+                The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
+                ---
+                $it
+                ---
+                Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
+                """.trimIndent()
+            }
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
         val messages = context.buildMessages(events, prompt)
@@ -1154,11 +1167,13 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
      * 3. Raw string — last resort if neither wrapper is present
      */
     private fun stripJsonFence(raw: String): String =
-        PARAMETER_TAG_REGEX.find(raw)
+        PARAMETER_TAG_REGEX
+            .find(raw)
             ?.groupValues
             ?.get(1)
             ?.trim()
-            ?: JSON_FENCE_REGEX.matchEntire(raw)
+            ?: JSON_FENCE_REGEX
+                .matchEntire(raw)
                 ?.groupValues
                 ?.get(1)
                 ?.trim()
