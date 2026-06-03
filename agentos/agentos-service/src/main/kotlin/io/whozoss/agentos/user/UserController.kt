@@ -2,6 +2,7 @@ package io.whozoss.agentos.user
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -101,8 +102,9 @@ class UserController(
     @PostMapping("/by-ids")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     override fun getByIds(
-        @RequestBody ids: List<UUID>,
+        @RequestBody request: GetByIdsRequest,
     ): List<UserResource> {
+        val ids = request.ids
         if (ids.size > EntityController.MAX_BATCH_SIZE) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
@@ -110,7 +112,7 @@ class UserController(
             )
         }
         if (ids.isEmpty()) return emptyList()
-        return userService.findByIds(ids).map(::toResource)
+        return userService.findByIds(ids, request.withRemoved).map(::toResource)
     }
 
     @PostMapping

@@ -3,6 +3,7 @@ package io.whozoss.agentos.integrationConfig
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
@@ -150,7 +151,8 @@ class IntegrationConfigController(
         produces = [MediaType.APPLICATION_JSON_VALUE],
     )
     @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<IntegrationConfigResource> {
+    override fun getByIds(@RequestBody request: GetByIdsRequest): List<IntegrationConfigResource> {
+        val ids = request.ids
         if (ids.isEmpty()) return emptyList()
 
         val currentUser = userService.getCurrentUser()
@@ -167,7 +169,7 @@ class IntegrationConfigController(
         }
 
         val callerId = currentUser.id
-        val rows = integrationConfigService.findByIds(ids)
+        val rows = integrationConfigService.findByIds(ids, request.withRemoved)
         val byId: Map<UUID, IntegrationConfig> = rows
             .filter { it.id in membershipVisibleIds || it.userId == callerId }
             .associateBy { it.id }
