@@ -214,7 +214,7 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/namespaces/by-ids")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""["${a.id}", "${b.id}"]"""),
+                    .content("""{ "ids": ["${a.id}", "${b.id}"] }"""),
             )
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
@@ -224,7 +224,7 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/namespaces/by-ids")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""[]"""),
+                    .content("""{ "ids": [] }"""),
             )
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
