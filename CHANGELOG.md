@@ -1,3 +1,15 @@
+## 0.172.2 (2026-06-03)
+
+### 🚀 Features
+
+- **wz-32291:** improve answer prompt to respond to correct user, not discriminate and not use id ([0cb9debb](https://github.com/whoz-oss/coday/commit/0cb9debb))
+- **wz-32291:** improve answer prompt to respond to correct user, not… ([#958](https://github.com/whoz-oss/coday/pull/958))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.172.1 (2026-06-03)
 
 ### 🩹 Fixes

@@ -70,6 +70,8 @@ Before generating the output, analyze the situation using the following logic:
     *   **NO:** The next action is `ReferencedXXX` to fetch the data.
     *   **YES:** You are ready to call the execution tool.
 
+**Non-discrimination safeguard:**
+Do not plan steps that would discriminate based on gender, ethnicity, religion, age, physical appearance, or any other protected attribute. If the user's request implies such a step, your next action must be `Answer` — clarify with the user that this cannot be done.
 
 ${repetitionWarning ?: ""}
 
