@@ -208,7 +208,6 @@ export class AgentConfigFormComponent implements OnInit {
         // per integration to mean "all tools allowed". The spec does not yet express
         // this nullable value because springdoc does not emit nullable:true on Map
         // additionalProperties for Kotlin nullable generics. Cast is intentional.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result[name] = null as any
       } else {
         result[name] = rawTools
