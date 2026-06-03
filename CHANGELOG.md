@@ -1,3 +1,17 @@
+## 0.172.0 (2026-06-03)
+
+### 🚀 Features
+
+- #930 add home scheduler dialogs and support agent instruction execution ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 refactor background thread execution and add scheduler fallback logging ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 centralize oneshot prompt execution in thread manager ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 add home scheduler dialogs and support agent instruction e… ([#931](https://github.com/whoz-oss/coday/pull/931), [#930](https://github.com/whoz-oss/coday/issues/930))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.171.2 (2026-06-02)
 
 ### 🩹 Fixes
