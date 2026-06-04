@@ -32,36 +32,31 @@ class ReadCaseTool(
     override val paramType: Class<Input> = Input::class.java
     override val inputSchema: String = INPUT_SCHEMA
 
-    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
-        if (input == null) {
-            return ToolExecutionResult.error(
+    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult =
+        when (input) {
+            null -> ToolExecutionResult.error(
                 output = "Missing required parameter: caseId",
                 errorType = "INVALID_INPUT",
             )
+            else -> when (val targetCaseId = runCatching { UUID.fromString(input.caseId) }.getOrNull()) {
+                null -> ToolExecutionResult.error(
+                    output = "Invalid caseId '${input.caseId}': must be a valid UUID",
+                    errorType = "INVALID_INPUT",
+                )
+                else -> when (val events = caseEventsLoader(targetCaseId, context.namespaceId)) {
+                    null -> ToolExecutionResult.error(
+                        output = "Case '${input.caseId}' not found or is not accessible in this namespace",
+                        errorType = "NOT_FOUND",
+                    )
+                    else -> when {
+                        events.isEmpty() -> ToolExecutionResult.success("Case has no events")
+                        else -> ToolExecutionResult.success(
+                            CaseTranscriptFormatter.format(events, includesTechnicalEvents)
+                        )
+                    }
+                }
+            }
         }
-
-        val targetCaseId = try {
-            UUID.fromString(input.caseId)
-        } catch (e: IllegalArgumentException) {
-            return ToolExecutionResult.error(
-                output = "Invalid caseId '${input.caseId}': must be a valid UUID",
-                errorType = "INVALID_INPUT",
-            )
-        }
-
-        val events = caseEventsLoader(targetCaseId, context.namespaceId)
-            ?: return ToolExecutionResult.error(
-                output = "Case '${input.caseId}' not found or is not accessible in this namespace",
-                errorType = "NOT_FOUND",
-            )
-
-        if (events.isEmpty()) {
-            return ToolExecutionResult.success("Case has no events")
-        }
-
-        val transcript = CaseTranscriptFormatter.format(events, includesTechnicalEvents)
-        return ToolExecutionResult.success(transcript)
-    }
 
     companion object {
         private const val INTEGRATION_TYPE = "CASE"
