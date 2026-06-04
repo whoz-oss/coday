@@ -184,6 +184,7 @@ class AgentIntentionGeneratorSpec :
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "All good on retry"
+            result.isFailedIntention shouldBe false
         }
 
         "generate retries on malformed response and succeeds on second attempt with unknown tool" {
@@ -204,6 +205,7 @@ class AgentIntentionGeneratorSpec :
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Recovered on retry"
+            result.isFailedIntention shouldBe false
         }
 
         "generate falls back to Answer after all retry attempts exhausted with meaningful intention" {
@@ -222,5 +224,6 @@ class AgentIntentionGeneratorSpec :
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Failed to plan next step after"
             result.intention shouldContain "Missing <toolName> tag"
+            result.isFailedIntention shouldBe true
         }
     })

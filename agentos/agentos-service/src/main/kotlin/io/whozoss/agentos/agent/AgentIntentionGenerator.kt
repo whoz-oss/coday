@@ -98,6 +98,7 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
                     agentId = context.agentId,
                     intention = "Failed to plan next step after $MAX_INTENTION_ATTEMPTS attempts: ${lastException.message}",
                     toolName = ANSWER_TOOL,
+                    isFailedIntention = true,
                 )
             },
         ) { previousFailure ->
