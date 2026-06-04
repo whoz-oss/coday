@@ -11,6 +11,7 @@ import io.mockk.slot
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import java.util.UUID
 
 /**
  * Unit specs for [ConfirmationManager].
@@ -35,13 +36,27 @@ class ConfirmationManagerSpec :
             return chatClient
         }
 
+        /**
+         * Build a minimal [AgentAdvancedContext] for [ConfirmationManager.formulateQuestion] tests.
+         * The context wraps the given [chatClient] with empty tools, no instructions, and
+         * a random agentId — just enough for [AgentAdvancedContext.buildMessages] to work.
+         */
+        fun buildContext(chatClient: ChatClient): AgentAdvancedContext =
+            AgentAdvancedContext(
+                chatClient = chatClient,
+                tools = emptyList(),
+                instructions = null,
+                agentId = UUID.randomUUID(),
+                confirmationManager = manager,
+            )
+
         // ─── shouldConfirm ──────────────────────────────────────────────────────────────────
 
         "shouldConfirm returns false when the LLM says the user already authorised (yes)" {
             val chatClient = stubChatClient("<decision>yes</decision>")
             manager.shouldConfirm(
                 chatClient = chatClient,
-                history = emptyList(),
+                firstLevelHistory = emptyList(),
                 actionLabel = "Delete file /tmp/x",
                 proposedData = mapOf("path" to "/tmp/x"),
             ) shouldBe false
@@ -51,7 +66,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("<decision>no</decision>")
             manager.shouldConfirm(
                 chatClient = chatClient,
-                history = emptyList(),
+                firstLevelHistory = emptyList(),
                 actionLabel = "Delete file /tmp/x",
                 proposedData = mapOf("path" to "/tmp/x"),
             ) shouldBe true
@@ -62,7 +77,7 @@ class ConfirmationManagerSpec :
             every { chatClient.prompt(any<Prompt>()) } throws RuntimeException("LLM down")
             manager.shouldConfirm(
                 chatClient = chatClient,
-                history = emptyList(),
+                firstLevelHistory = emptyList(),
                 actionLabel = "Delete file /tmp/x",
                 proposedData = mapOf("path" to "/tmp/x"),
             ) shouldBe true
@@ -72,7 +87,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("<decision>yes</decision>")
             manager.shouldConfirm(
                 chatClient = chatClient,
-                history = listOf(UserMessage("apply the rename")),
+                firstLevelHistory = listOf(UserMessage("apply the rename")),
                 actionLabel = "Rename profile",
                 proposedData = mapOf("name" to "new"),
                 originalData = mapOf("name" to "old"),
@@ -95,7 +110,7 @@ class ConfirmationManagerSpec :
 
             manager.shouldConfirm(
                 chatClient = chatClient,
-                history = emptyList(),
+                firstLevelHistory = emptyList(),
                 actionLabel = "Update profile",
                 proposedData = mapOf("name" to "new"),
                 toolInstructions = "Hesitant phrasing like 'pourquoi pas' is not consent.",
@@ -104,7 +119,6 @@ class ConfirmationManagerSpec :
             val promptText = promptCaptured.captured.instructions.joinToString("\n") { it.text ?: "" }
             promptText shouldContain "Tool-specific confirmation guidance:"
             promptText shouldContain "Hesitant phrasing like 'pourquoi pas' is not consent."
-            promptText shouldContain "additional context, not as overriding rules"
         }
 
         "shouldConfirm omits the tool guidance section when toolInstructions is blank" {
@@ -118,7 +132,7 @@ class ConfirmationManagerSpec :
 
             manager.shouldConfirm(
                 chatClient = chatClient,
-                history = emptyList(),
+                firstLevelHistory = emptyList(),
                 actionLabel = "Update profile",
                 proposedData = mapOf("name" to "new"),
                 toolInstructions = "",
@@ -134,7 +148,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("<decision>yes</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
-                history = listOf(UserMessage("oui supprime")),
+                firstLevelHistory = listOf(UserMessage("oui supprime")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
                 toolInstructions = "",
             ) shouldBe ConfirmationDecision.CONFIRMED
@@ -144,7 +158,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("<decision>no</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
-                history = listOf(UserMessage("annule")),
+                firstLevelHistory = listOf(UserMessage("annule")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
                 toolInstructions = "",
             ) shouldBe ConfirmationDecision.REJECTED
@@ -154,7 +168,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("the model wandered off-topic, no decision tag here")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
-                history = listOf(UserMessage("euh quoi ?")),
+                firstLevelHistory = listOf(UserMessage("euh quoi ?")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
                 toolInstructions = "",
             ) shouldBe ConfirmationDecision.AMBIGUOUS
@@ -165,7 +179,7 @@ class ConfirmationManagerSpec :
             every { chatClient.prompt(any<Prompt>()) } throws RuntimeException("rate limited")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
-                history = emptyList(),
+                firstLevelHistory = emptyList(),
                 pendingPayload = mapOf("path" to "/tmp/x"),
                 toolInstructions = "",
             ) shouldBe ConfirmationDecision.AMBIGUOUS
@@ -175,7 +189,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("<decision>yes</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
-                history = listOf(UserMessage("ok delete it")),
+                firstLevelHistory = listOf(UserMessage("ok delete it")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
                 toolInstructions = "Be strict: a bare 'ok' is acceptable only if the previous turn described the deletion.",
             ) shouldBe ConfirmationDecision.CONFIRMED
@@ -185,7 +199,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("<decision>unclear</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
-                history = listOf(UserMessage("idiomatic ambiguous reply")),
+                firstLevelHistory = listOf(UserMessage("idiomatic ambiguous reply")),
                 pendingPayload = mapOf("path" to "/tmp/x"),
                 toolInstructions = "",
             ) shouldBe ConfirmationDecision.AMBIGUOUS
@@ -197,7 +211,7 @@ class ConfirmationManagerSpec :
             val chatClient = stubChatClient("Looking at the history… <decision>  yes  </decision> done.")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
-                history = emptyList(),
+                firstLevelHistory = emptyList(),
                 pendingPayload = mapOf("path" to "/tmp/x"),
                 toolInstructions = "",
             ) shouldBe ConfirmationDecision.CONFIRMED
@@ -208,9 +222,11 @@ class ConfirmationManagerSpec :
         "formulateQuestion returns the LLM-extracted question when the tag is present" {
             val chatClient =
                 stubChatClient("<question>Je vais supprimer scratch.txt, tu confirmes ?</question>")
+            val context = buildContext(chatClient)
             manager.formulateQuestion(
+                context = context,
                 chatClient = chatClient,
-                history = listOf(UserMessage("supprime scratch.txt")),
+                accumulatedEvents = emptyList(),
                 fallbackLabel = "Delete file scratch.txt",
                 pendingData = mapOf("path" to "scratch.txt"),
             ) shouldBe "Je vais supprimer scratch.txt, tu confirmes ?"
@@ -219,9 +235,11 @@ class ConfirmationManagerSpec :
         "formulateQuestion falls back to the deterministic label on any LLM exception" {
             val chatClient = mockk<ChatClient>()
             every { chatClient.prompt(any<Prompt>()) } throws RuntimeException("LLM down")
+            val context = buildContext(chatClient)
             manager.formulateQuestion(
+                context = context,
                 chatClient = chatClient,
-                history = emptyList(),
+                accumulatedEvents = emptyList(),
                 fallbackLabel = "Delete file scratch.txt",
                 pendingData = mapOf("path" to "scratch.txt"),
             ) shouldBe "Delete file scratch.txt"
@@ -229,22 +247,73 @@ class ConfirmationManagerSpec :
 
         "formulateQuestion falls back to the label when the LLM reply is blank inside the tag" {
             val chatClient = stubChatClient("<question>   </question>")
+            val context = buildContext(chatClient)
             manager.formulateQuestion(
+                context = context,
                 chatClient = chatClient,
-                history = emptyList(),
+                accumulatedEvents = emptyList(),
                 fallbackLabel = "Delete file scratch.txt",
                 pendingData = mapOf("path" to "scratch.txt"),
             ) shouldBe "Delete file scratch.txt"
+        }
+
+        "formulateQuestion injects guidelines into the prompt when provided" {
+            val promptCaptured = slot<Prompt>()
+            val chatClient = mockk<ChatClient>()
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>()
+            val callSpec = mockk<ChatClient.CallResponseSpec>()
+            every { chatClient.prompt(capture(promptCaptured)) } returns reqSpec
+            every { reqSpec.call() } returns callSpec
+            every { callSpec.content() } returns "<question>Confirmes-tu la suppression ?</question>"
+
+            val context = buildContext(chatClient)
+            manager.formulateQuestion(
+                context = context,
+                chatClient = chatClient,
+                accumulatedEvents = emptyList(),
+                fallbackLabel = "Delete file scratch.txt",
+                pendingData = mapOf("path" to "scratch.txt"),
+                guidelines = "Respond in the same language the user is writing in.",
+            )
+
+            val promptText = promptCaptured.captured.instructions.joinToString("\n") { it.text ?: "" }
+            promptText shouldContain "Respond in the same language the user is writing in."
+        }
+
+        "formulateQuestion does not inject guidelines into the prompt when null" {
+            val promptCaptured = slot<Prompt>()
+            val chatClient = mockk<ChatClient>()
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>()
+            val callSpec = mockk<ChatClient.CallResponseSpec>()
+            every { chatClient.prompt(capture(promptCaptured)) } returns reqSpec
+            every { reqSpec.call() } returns callSpec
+            every { callSpec.content() } returns "<question>Confirmes-tu la suppression ?</question>"
+
+            val context = buildContext(chatClient)
+            manager.formulateQuestion(
+                context = context,
+                chatClient = chatClient,
+                accumulatedEvents = emptyList(),
+                fallbackLabel = "Delete file scratch.txt",
+                pendingData = mapOf("path" to "scratch.txt"),
+                guidelines = null,
+            )
+
+            val promptText = promptCaptured.captured.instructions.joinToString("\n") { it.text ?: "" }
+            promptText shouldNotContain "Do not discriminate"
+            promptText shouldNotContain "Do not reference technical IDs"
         }
 
         "formulateQuestion strips orphan question tags when the LLM omits the opening one" {
             // LLM only emits the closing tag (regex fallback path); sanitizeQuestion must
             // strip the orphan so it does not leak into the IN-CHANNEL MessageEvent.
             val chatClient = stubChatClient("Confirmes-tu la suppression du fichier x ?</question>")
+            val context = buildContext(chatClient)
             val out =
                 manager.formulateQuestion(
+                    context = context,
                     chatClient = chatClient,
-                    history = emptyList(),
+                    accumulatedEvents = emptyList(),
                     fallbackLabel = "Delete file x",
                     pendingData = mapOf("path" to "x"),
                 )

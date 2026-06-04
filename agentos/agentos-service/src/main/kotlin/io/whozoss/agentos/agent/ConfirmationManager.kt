@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
@@ -48,7 +49,7 @@ class ConfirmationManager(
 ) {
     /**
      * @param chatClient The agent's ChatClient (same model parity as the main turn).
-     * @param history The Spring AI conversation history to inspect. Stringified into the
+     * @param firstLevelHistory The Spring AI conversation history to inspect. Stringified into the
      *   prompt — kept as `List<Message>` for caller convenience.
      * @param actionLabel Short human-readable description of the action ("Delete file X").
      * @param proposedData The structured data the tool is about to apply.
@@ -61,7 +62,7 @@ class ConfirmationManager(
      */
     fun shouldConfirm(
         chatClient: ChatClient,
-        history: List<Message>,
+        firstLevelHistory: List<Message>,
         actionLabel: String,
         proposedData: Any,
         originalData: Any? = null,
@@ -86,26 +87,24 @@ class ConfirmationManager(
 
                 Task:
                 Analyze the end of the conversation. Has the user *already* explicitly agreed to or requested this specific action/update?
-                Take any tool-specific guidance above as additional context, not as overriding rules — apply both the general criteria below and any specific considerations the tool provided.
+                Take the following conversation history: 
+                <conversationHistory>
+                $firstLevelHistory
+                </conversationHistory>
 
                 Return "$CHOICE_NO" if ANY of the following are true:
-                - The assistant proposed a general suggestion without details and the user just agreed to the general suggestion but hasn't seen the specific details yet
-                - There is any ambiguity about whether the user wants to proceed
-                - The data content includes changes beyond what the user explicitly and specifically requested or beyond what the assistant has proposed to the user
-                - The user's request matched multiple possible targets (e.g. several files match the user's description, a partial name, or a glob/wildcard) and the assistant had to pick one specific target — even a reasonable pick is NOT implicit authorisation, the user must explicitly confirm WHICH target
-                - The action is irreversible or destructive (deletion, overwrite, irreversible state change) and the user's last explicit confirmation in the conversation does not name the EXACT same target as the proposed data
-
+                      - The assistant proposed a general suggestion without details and the user just agreed to the general suggestion but hasn't seen the specific details yet
+                      - There is any ambiguity about whether the user wants to proceed
+                      - The data content includes changes beyond what the user explicitly and specifically requested or beyond what the assistant has proposed to the user
                 Else return "$CHOICE_YES"
 
-                Has the user *already* explicitly agreed to or requested this specific action/update? put it between <$TAG_DECISION></$TAG_DECISION>:
-                <$TAG_DECISION>
-
-                Also give me the reasoning behind yor decision. put it between <$TAG_REASONING></$TAG_REASONING>:
-                <$TAG_REASONING>
+                First give me the reasoning behind yor decision. put it between <$TAG_REASONING></$TAG_REASONING>:
+                
+                Then answer the question: has the user *already* explicitly agreed to or requested this specific action/update? put it between <$TAG_DECISION></$TAG_DECISION>
                 """.trimIndent()
 
             val hasAlreadyConfirmed =
-                callDecision(chatClient = chatClient, prompt = prompt, history = history).startsWith(CHOICE_YES)
+                callDecision(chatClient = chatClient, prompt = prompt).startsWith(CHOICE_YES)
             if (hasAlreadyConfirmed) {
                 logger.info { "[ConfirmationManager] LLM says user already confirmed — skipping prompt" }
             } else {
@@ -142,7 +141,7 @@ class ConfirmationManager(
      */
     fun analyzeConfirmation(
         chatClient: ChatClient,
-        history: List<Message>,
+        firstLevelHistory: List<Message>,
         pendingPayload: Any,
         toolInstructions: String = "",
     ): ConfirmationDecision {
@@ -158,6 +157,11 @@ class ConfirmationManager(
             The agent was awaiting confirmation for this pending action:
             $payloadSummary
 
+            Using following conversation history: 
+                <conversationHistory>
+                $firstLevelHistory
+                </conversationHistory>
+                
             And especially based on the last user message, I need to identify if the user confirms the validation (without any modification) or not.
             $toolGuidanceSection
 
@@ -171,7 +175,7 @@ class ConfirmationManager(
 
         val decision =
             try {
-                callDecision(chatClient = chatClient, prompt = prompt, history = history)
+                callDecision(chatClient = chatClient, prompt = prompt)
             } catch (e: Exception) {
                 logger.warn(e) {
                     "[ConfirmationManager] analyzeConfirmation LLM call failed — treating as AMBIGUOUS"
@@ -201,12 +205,18 @@ class ConfirmationManager(
      * @param history The conversation history the LLM should match in tone/language.
      * @param fallbackLabel Deterministic tool-supplied label, used if extraction fails.
      * @param pendingData Structured action data, serialised into the prompt for grounding.
+     * @param guidelines Optional user-facing communication guidelines (language hint,
+     *   non-discrimination rule, no-technical-IDs rule) assembled by the caller via
+     *   [AgentAdvanced.buildUserFacingGuidelines]. When non-null, injected into the prompt
+     *   so the generated question follows the same rules as the final agent response.
      */
     fun formulateQuestion(
+        context: AgentAdvancedContext,
         chatClient: ChatClient,
-        history: List<Message>,
+        accumulatedEvents: List<CaseEvent>,
         fallbackLabel: String,
         pendingData: Any,
+        guidelines: String? = null,
     ): String =
         try {
             logger.info { "[ConfirmationManager] Formulate question." }
@@ -221,14 +231,23 @@ class ConfirmationManager(
                 Action label (deterministic, for reference): $fallbackLabel
                 Pending data: $payloadSummary
 
-                Write ONE short sentence asking the user to confirm. Match the language and register of the conversation. Do not add alternatives, explanations, or speculation. Reply between <$TAG_QUESTION></$TAG_QUESTION> tags.
-
-                <$TAG_QUESTION>
-                """.trimIndent()
-
+                """ + // Then force the LLM to use the same language as the user.
+                    """
+                First Write the language in which you ask the question between <userlang></userlang> tags
+                """ +
+                    """
+                    Second precise the action as clearly and concisely as possible and ask the user to confirm. Do not add alternatives, explanations, or speculation.
+                    Reply between <$TAG_QUESTION></$TAG_QUESTION> tags.
+                    ${
+                        guidelines?.let {
+                            "\n$it"
+                        } ?: ""
+                    }
+                    """.trimIndent()
+            val historyWithPrompt = context.buildMessages(accumulatedEvents, prompt)
             val raw =
                 chatClient
-                    .prompt(Prompt(history + UserMessage(prompt)))
+                    .prompt(Prompt(historyWithPrompt))
                     .call()
                     .content()
                     .orEmpty()
@@ -248,13 +267,12 @@ class ConfirmationManager(
     private fun callDecision(
         chatClient: ChatClient,
         prompt: String,
-        history: List<Message>,
     ): String {
         logger.info { "[ConfirmationManager] Calling LLM to make a decision." }
         logger.debug { "[ConfirmationManager] decision prompt=$prompt" }
         val raw =
             chatClient
-                .prompt(Prompt(history + UserMessage(prompt)))
+                .prompt(Prompt(UserMessage(prompt)))
                 .call()
                 .content()
                 .orEmpty()

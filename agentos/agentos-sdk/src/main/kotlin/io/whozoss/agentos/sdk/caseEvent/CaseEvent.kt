@@ -39,6 +39,8 @@ enum class CaseEventType(
     CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
     ;
 
+    fun isFirstLevel(): Boolean = this in listOf(MESSAGE, QUESTION, ANSWER)
+
     companion object {
         @JvmStatic
         @JsonCreator

@@ -16,8 +16,8 @@ import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
@@ -518,14 +518,15 @@ class AgentAdvancedSpec :
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("agent1", "Astra", ActorRole.AGENT),
-                    content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
+                    ),
+                )
             agent.buildLanguageHint(events) shouldBe null
         }
 
@@ -534,14 +535,15 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val longMessage = "a".repeat(250)
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text(longMessage)),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text(longMessage)),
+                    ),
+                )
             val hint = agent.buildLanguageHint(events)
             hint shouldNotBe null
             hint!! shouldContain longMessage
@@ -553,14 +555,15 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             // Each message is 50 chars, minChars=200 → needs at least 4
-            val messages = (1..6).map { i ->
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("message-$i-" + "x".repeat(45))),
-                )
-            }
+            val messages =
+                (1..6).map { i ->
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("message-$i-" + "x".repeat(45))),
+                    )
+                }
             val hint = agent.buildLanguageHint(messages, targetChars = 200)
             hint shouldNotBe null
             // Should contain the last few messages (collected newest-first, displayed oldest-first)
@@ -574,20 +577,21 @@ class AgentAdvancedSpec :
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("oui")),
-                ),
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("ok")),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("oui")),
+                    ),
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("ok")),
+                    ),
+                )
             // Total = 5 chars, well below targetChars=200 — hint must still be produced
             val hint = agent.buildLanguageHint(events)
             hint shouldNotBe null
@@ -600,20 +604,21 @@ class AgentAdvancedSpec :
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("old english message from the beginning")),
-                ),
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("cherche-moi des développeurs Angular à Paris avec 5 ans d'expérience")),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("old english message from the beginning")),
+                    ),
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("cherche-moi des développeurs Angular à Paris avec 5 ans d'expérience")),
+                    ),
+                )
             val hint = agent.buildLanguageHint(events, targetChars = 50)
             hint shouldNotBe null
             // The latest message alone exceeds minChars=50, so only it should appear
@@ -861,7 +866,7 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any()) } returns "Voulez-vous supprimer old.txt?"
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns "Voulez-vous supprimer old.txt?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"old.txt"}"""
 
@@ -1040,7 +1045,7 @@ class AgentAdvancedSpec :
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns
                 ConfirmationDecision.AMBIGUOUS
             val clarificationText = "Pour \u00eatre s\u00fbr \u2014 veux-tu vraiment supprimer old.txt ? Oui ou non."
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any()) } returns clarificationText
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns clarificationText
             val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
@@ -1186,7 +1191,9 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            val executed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val executed =
+                java.util.concurrent.atomic
+                    .AtomicBoolean(false)
             val tool =
                 object : StandardTool<Map<String, Any>> {
                     override val name = "TEST__bypassable"
@@ -1268,8 +1275,7 @@ class AgentAdvancedSpec :
                     override val paramType = null
                     override val confirmationMode = ConfirmationMode.INFER
 
-                    override fun getConfirmationInstructions(): String =
-                        "Be strict: 'pourquoi pas' is not consent."
+                    override fun getConfirmationInstructions(): String = "Be strict: 'pourquoi pas' is not consent."
 
                     override suspend fun execute(
                         input: Map<String, Any>?,
@@ -1281,7 +1287,7 @@ class AgentAdvancedSpec :
             every {
                 confirmationManager.shouldConfirm(
                     chatClient = any(),
-                    history = any(),
+                    firstLevelHistory = any(),
                     actionLabel = any(),
                     proposedData = any(),
                     originalData = any(),
@@ -1331,8 +1337,12 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            val argsCaptured = java.util.concurrent.atomic.AtomicReference<String?>(null)
-            val eventsCaptured = java.util.concurrent.atomic.AtomicReference<List<CaseEvent>?>(null)
+            val argsCaptured =
+                java.util.concurrent.atomic
+                    .AtomicReference<String?>(null)
+            val eventsCaptured =
+                java.util.concurrent.atomic
+                    .AtomicReference<List<CaseEvent>?>(null)
             val tool =
                 object : StandardTool<Map<String, Any>> {
                     override val name = "TEST__capturingTool"
@@ -1360,7 +1370,7 @@ class AgentAdvancedSpec :
                 }
             val confirmationManager = mockk<ConfirmationManager>()
             every {
-                confirmationManager.formulateQuestion(any(), any(), any(), any())
+                confirmationManager.formulateQuestion(any(), any(), any(), any(), any())
             } returns "confirm?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             // The args returned to the orchestrator by the LLM
@@ -1770,7 +1780,8 @@ class AgentAdvancedSpec :
             val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "ReadEntities"
             every { mockTool.description } returns "Read entities by id"
-            every { mockTool.inputSchema } returns """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
+            every { mockTool.inputSchema } returns
+                """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("entity data")
