@@ -1,3 +1,13 @@
+## 0.173.0 (2026-06-04)
+
+### 🚀 Features
+
+- add case plugin with ReadCaseTool ([#966](https://github.com/whoz-oss/coday/pull/966))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.172.6 (2026-06-04)
 
 ### 🩹 Fixes
