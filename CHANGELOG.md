@@ -1,3 +1,15 @@
+## 0.173.5 (2026-06-04)
+
+### 🚀 Features
+
+- **wz-32291:** improve answer so it doesn't greet to often ([67d51247](https://github.com/whoz-oss/coday/commit/67d51247))
+- **wz-32291:** improve answer so it doesn't greet to often ([#975](https://github.com/whoz-oss/coday/pull/975))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.173.4 (2026-06-04)
 
 ### 🩹 Fixes

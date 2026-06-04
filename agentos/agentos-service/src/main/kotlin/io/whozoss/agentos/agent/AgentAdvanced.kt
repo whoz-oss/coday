@@ -826,6 +826,8 @@ class AgentAdvanced(
                         .ifBlank { null }
                 }
 
+        val alreadyGreeted = accumulatedEvents.count { it is MessageEvent } > 2
+
         // Build the final prompt in clear, composable sections
         val prompt =
             buildString {
@@ -854,6 +856,11 @@ class AgentAdvanced(
                 appendLine(
                     "- Base your response solely on the content of this conversation history. If information is missing, say so explicitly.",
                 )
+                if (alreadyGreeted) {
+                    appendLine(
+                        "- The conversation is already in progress. Do not greet the user again, continue naturally from the last exchange.",
+                    )
+                }
                 userFullName?.let {
                     appendLine("Now, continue your conversation with $it.")
                 } ?: appendLine("Now, continue your conversation with the user.")
