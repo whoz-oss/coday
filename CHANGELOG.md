@@ -1,3 +1,13 @@
+## 0.173.2 (2026-06-04)
+
+### 🩹 Fixes
+
+- search files with fileContent + fileTypes now correctly filters by extension ([#970](https://github.com/whoz-oss/coday/pull/970))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.173.1 (2026-06-04)
 
 ### 🩹 Fixes
