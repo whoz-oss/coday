@@ -97,6 +97,7 @@ Now generate the intention explaining your next step, then the toolName for that
                     agentId = context.agentId,
                     intention = "Failed to plan next step after $MAX_INTENTION_ATTEMPTS attempts: ${lastException.message}",
                     toolName = ANSWER_TOOL,
+                    isFailedIntention = true,
                 )
             },
         ) { previousFailure ->

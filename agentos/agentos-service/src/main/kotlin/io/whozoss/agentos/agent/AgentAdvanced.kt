@@ -804,7 +804,16 @@ class AgentAdvanced(
         // Build the final prompt in clear, composable sections
         val prompt = buildString {
             lastIntention?.let {
-                appendLine("Your analysis: ${it.intention}")
+                if (it.isFailedIntention) {
+                    appendLine("Your analysis:")
+                    appendLine()
+                    appendLine("The system encountered an internal error and was unable to determine the next action to perform.")
+                    appendLine("Part or all of the requested operation was not performed.")
+                    appendLine()
+                    appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
+                } else {
+                    appendLine("Your analysis: ${it.intention}")
+                }
                 appendLine()
             }
 
