@@ -373,7 +373,6 @@ class AgentAdvanced(
         caseId: UUID,
         emitEvent: suspend (CaseEvent) -> Unit,
     ): GateOutcome {
-        val history = context.buildMessages(accumulatedEvents)
         val firstLevelHistory = context.buildMessages(accumulatedEvents.filter { it.type.isFirstLevel() })
         val needsExplicit =
             when (mode) {
@@ -430,7 +429,7 @@ class AgentAdvanced(
                         toolRequestId = toolRequestId,
                         toolName = parameters.toolName,
                         inputJson = argsJson ?: "{}",
-                        analysisInstructions = tool.getConfirmationInstructions(),
+                        toolsCAInstructions = tool.getConfirmationInstructions(),
                     ),
                 )
                 // IN-CHANNEL: emit a MessageEvent so the LLM sees the pause naturally
@@ -622,7 +621,7 @@ class AgentAdvanced(
                                 chatClient = context.chatClient,
                                 firstLevelHistory = firstLevelHistoryFromPending,
                                 pendingPayload = pending.inputJson,
-                                toolInstructions = pending.analysisInstructions,
+                                toolInstructions = pending.toolsCAInstructions,
                             )
                         when (decision) {
                             ConfirmationDecision.AMBIGUOUS -> {
@@ -832,15 +831,15 @@ class AgentAdvanced(
             buildString {
                 lastIntention?.let {
                     if (it.isFailedIntention) {
-                    appendLine("Your analysis:")
-                    appendLine()
-                    appendLine("The system encountered an internal error and was unable to determine the next action to perform.")
-                    appendLine("Part or all of the requested operation was not performed.")
-                    appendLine()
-                    appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
-                } else {
-                    appendLine("Your analysis: ${it.intention}")
-                }
+                        appendLine("Your analysis:")
+                        appendLine()
+                        appendLine("The system encountered an internal error and was unable to determine the next action to perform.")
+                        appendLine("Part or all of the requested operation was not performed.")
+                        appendLine()
+                        appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
+                    } else {
+                        appendLine("Your analysis: ${it.intention}")
+                    }
                     appendLine()
                 }
 

@@ -1182,11 +1182,11 @@ class AgentAdvancedSpec :
             (response.output as MessageContent.Text).content shouldContain "boom"
         }
 
-        // Dynamique : un tool peut résoudre son mode au runtime via getConfirmationMode(args, ctx).
-        // Quand il retourne NONE, l'orchestrateur ne déclenche aucun gate de confirmation et
-        // exécute le tool directement, même si la val statique demande la confirmation.
-        // Cas d'usage central : bypass programmatique d'UpdateProfile quand CreateProfile a été
-        // appelé in-session pour le même profileId.
+        // Dynamic: a tool can resolve its mode at runtime via getConfirmationMode(args, ctx).
+        // When it returns NONE, the orchestrator skips the confirmation gate and executes
+        // the tool directly, even if the static val requires confirmation.
+        // Core use case: programmatic bypass of UpdateProfile when CreateProfile was
+        // called in-session for the same profileId.
         "Dynamic getConfirmationMode=NONE bypasses confirmation entirely" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1251,17 +1251,17 @@ class AgentAdvancedSpec :
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
-            // Aucun PendingConfirmation : le dynamique override la val EVERY_TIME
+            // No PendingConfirmation: the dynamic override trumps the static EVERY_TIME val
             events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
-            // shouldConfirm n'est même pas appelé (mode = NONE → pas de gate)
+            // shouldConfirm is never called (mode = NONE → no gate)
             verify(exactly = 0) {
                 confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any())
             }
             executed.get() shouldBe true
         }
 
-        // L'orchestrateur doit transmettre les instructions tool-spécifiques au LLM-judge
-        // pour que le prompt template intègre la guidance custom (e.g. "pourquoi pas not consent").
+        // The orchestrator must forward tool-specific instructions to the LLM judge
+        // so the prompt template includes the custom guidance (e.g. "pourquoi pas not consent").
         "INFER mode forwards tool.getConfirmationInstructions() to shouldConfirm.toolInstructions" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1330,9 +1330,9 @@ class AgentAdvancedSpec :
             toolInstructionsCaptured.captured shouldBe "Be strict: 'pourquoi pas' is not consent."
         }
 
-        // Câblage : l'orchestrateur doit transmettre les args bruts générés par le LLM
-        // ET le caseEvents accumulé (non vide) au hook dynamique. Sans cela, un plugin
-        // ne peut pas faire de bypass programmatique (cas central de la PR).
+        // Wiring: the orchestrator must forward the raw LLM-generated args AND the
+        // accumulated (non-empty) caseEvents to the dynamic hook. Without this, a plugin
+        // cannot perform a programmatic bypass (core use case of this PR).
         "getConfirmationMode receives the LLM-generated args and the accumulated caseEvents" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()

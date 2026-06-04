@@ -68,9 +68,9 @@ class StandardToolSpec : StringSpec() {
             ).output shouldBe "America/New_York"
         }
 
-        // getConfirmationMode(args, ctx) default = lit la val statique confirmationMode.
-        // Garantit la backward-compat : un plugin existant qui n'override que la val
-        // continue de fonctionner sans changement après cette extension.
+        // getConfirmationMode(args, ctx) defaults to the static confirmationMode val.
+        // Ensures backward compatibility: an existing plugin that only overrides the val
+        // keeps working unchanged after this extension.
         "getConfirmationMode default delegates to static confirmationMode" {
             val noneTool =
                 object : StandardTool<Unit> {
@@ -102,10 +102,10 @@ class StandardToolSpec : StringSpec() {
             everyTimeTool.getConfirmationMode("{}", dummyContext) shouldBe ConfirmationMode.EVERY_TIME
         }
 
-        // Override dynamique : un plugin peut décider du mode à partir des args/events,
-        // sans toucher à la val statique. C'est le mécanisme central de la PR — utilisé
-        // par CopilotStandardTool pour bypasser la confirmation quand un CreateProfile
-        // in-session rend un UpdateProfile implicite.
+        // Dynamic override: a plugin can decide the mode based on args/events without
+        // touching the static val. This is the core mechanism of the PR — used by
+        // CopilotStandardTool to bypass confirmation when an in-session CreateProfile
+        // makes a subsequent UpdateProfile implicit.
         "getConfirmationMode dynamic override is honored" {
             val dynamicTool =
                 object : StandardTool<Unit> {

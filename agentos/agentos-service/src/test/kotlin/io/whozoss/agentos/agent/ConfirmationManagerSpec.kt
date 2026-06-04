@@ -94,11 +94,10 @@ class ConfirmationManagerSpec :
             ) shouldBe false
         }
 
-        // Le tool fournit des instructions custom via getConfirmationInstructions() ;
-        // ConfirmationManager les injecte comme une section nommée "Tool-specific
-        // confirmation guidance:" dans le prompt — même pattern que les autres sections
-        // contextuelles (Original object, Current Situation, Proposed changes…). La phrase
-        // "additional context, not overriding" désamorce un conflit avec les règles génériques.
+        // The tool provides custom instructions via getConfirmationInstructions();
+        // ConfirmationManager injects them as a labelled "Tool-specific confirmation
+        // guidance:" section in the prompt — same pattern as other contextual sections
+        // (Original object, Current Situation, Proposed changes…).
         "shouldConfirm injects toolInstructions as a labelled section" {
             val promptCaptured = slot<Prompt>()
             val chatClient = mockk<ChatClient>()

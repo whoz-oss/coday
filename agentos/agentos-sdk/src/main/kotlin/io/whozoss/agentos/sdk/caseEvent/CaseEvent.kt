@@ -370,7 +370,7 @@ data class TextChunkEvent(
  *   classloader-safe across plugin/service boundaries (no `Class.forName`). The owning
  *   tool receives it as-is via `StandardTool.executeWithJson(argsJson, ctx)` and
  *   parses on its own terms inside the plugin classloader.
- * @param analysisInstructions Optional tool-supplied instructions appended to the
+ * @param toolsCAInstructions Optional tool-supplied instructions appended to the
  *   `ConfirmationManager.analyzeConfirmation` prompt.
  */
 data class PendingConfirmationEvent(
@@ -381,7 +381,7 @@ data class PendingConfirmationEvent(
     val toolRequestId: String,
     val toolName: String,
     val inputJson: String,
-    val analysisInstructions: String = "",
+    val toolsCAInstructions: String = "",
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.PENDING_CONFIRMATION
 }
