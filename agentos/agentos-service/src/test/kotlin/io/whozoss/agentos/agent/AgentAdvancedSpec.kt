@@ -866,7 +866,7 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns "Voulez-vous supprimer old.txt?"
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns "Voulez-vous supprimer old.txt?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"old.txt"}"""
 
@@ -1045,7 +1045,7 @@ class AgentAdvancedSpec :
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns
                 ConfirmationDecision.AMBIGUOUS
             val clarificationText = "Pour \u00eatre s\u00fbr \u2014 veux-tu vraiment supprimer old.txt ? Oui ou non."
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns clarificationText
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns clarificationText
             val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
@@ -1370,7 +1370,7 @@ class AgentAdvancedSpec :
                 }
             val confirmationManager = mockk<ConfirmationManager>()
             every {
-                confirmationManager.formulateQuestion(any(), any(), any(), any(), any())
+                confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any())
             } returns "confirm?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             // The args returned to the orchestrator by the LLM
