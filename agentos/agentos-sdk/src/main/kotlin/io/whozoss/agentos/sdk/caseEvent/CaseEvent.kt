@@ -313,6 +313,14 @@ data class IntentionGeneratedEvent(
     val intention: String,
     /** Name of the tool selected by the LLM in the same call that produced [intention]. */
     val toolName: String,
+    /**
+     * When `true`, this event was produced by the fallback path of [AgentIntentionGenerator]
+     * after all retry attempts were exhausted. The [intention] describes the failure reason
+     * and the [toolName] is always [AgentIntentionGenerator.ANSWER_TOOL].
+     * [AgentAdvanced.generateFinalResponse] uses this flag to instruct the LLM to inform
+     * the user that the requested action was NOT performed.
+     */
+    val isFailedIntention: Boolean = false,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.INTENTION_GENERATED
 }

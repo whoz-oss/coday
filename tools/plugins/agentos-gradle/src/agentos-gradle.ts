@@ -9,7 +9,13 @@ const GRADLE_INPUTS = [
   '{workspaceRoot}/agentos/settings.gradle.kts',
 ]
 
-const SDK_DEPENDENCY = { target: 'build', projects: ['agentos-sdk'] }
+// For build/test targets: depend on agentos-sdk:build (compile + test) to ensure
+// the SDK is fully verified before downstream compilation or testing.
+const SDK_BUILD_DEPENDENCY = { target: 'build', projects: ['agentos-sdk'] }
+
+// For assemble/publish targets: depend on agentos-sdk:assemble only.
+// SDK tests already ran in validate.yml on every PR — no need to re-run them at publish time.
+const SDK_ASSEMBLE_DEPENDENCY = { target: 'assemble', projects: ['agentos-sdk'] }
 
 // Matches all build.gradle.kts files one level deep under agentos/
 // e.g. agentos/agentos-service/build.gradle.kts
@@ -58,7 +64,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               command: `./gradlew :${projectName}:build`,
               cwd: 'agentos',
             },
-            dependsOn: [SDK_DEPENDENCY],
+            dependsOn: [SDK_BUILD_DEPENDENCY],
           },
           assemble: {
             executor: 'nx:run-commands',
@@ -69,7 +75,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               command: `./gradlew :${projectName}:assemble`,
               cwd: 'agentos',
             },
-            dependsOn: [SDK_DEPENDENCY],
+            dependsOn: [SDK_ASSEMBLE_DEPENDENCY],
           },
           test: {
             executor: 'nx:run-commands',
@@ -81,7 +87,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               cwd: 'agentos',
               passWithNoTests: null,
             },
-            dependsOn: ['build', SDK_DEPENDENCY],
+            dependsOn: ['build', SDK_BUILD_DEPENDENCY],
           },
           clean: {
             executor: 'nx:run-commands',
@@ -93,6 +99,9 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
           },
           'nx-release-publish': {
             executor: 'nx:run-commands',
+            // Override targetDefaults["nx-release-publish"].dependsOn which defaults to ["build"].
+            // `assemble` (no tests) is sufficient — tests already ran in validate.yml on every PR.
+            dependsOn: ['assemble'],
             options: {
               command: `echo '${projectName} published via Gradle in CI'`,
             },
@@ -104,7 +113,9 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               command: `./gradlew :${projectName}:publish`,
               cwd: 'agentos',
             },
-            dependsOn: ['build'],
+            // `assemble` (no tests) is sufficient — tests already ran in validate.yml on every PR.
+            // Gradle's own `publish` task already depends on `assemble` internally.
+            dependsOn: ['assemble'],
           },
         },
       },

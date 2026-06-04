@@ -1,3 +1,59 @@
+## 0.173.4 (2026-06-04)
+
+### 🩹 Fixes
+
+- #WZ-32428 Avoid the LLM lying to the user in case of intention generation failure ([d29e7db0](https://github.com/whoz-oss/coday/commit/d29e7db0))
+- #WZ-32428 Avoid the LLM lying to the user in case of intention g… ([#972](https://github.com/whoz-oss/coday/pull/972))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.173.3 (2026-06-04)
+
+### 🩹 Fixes
+
+- remove hardcoded integration types ([#964](https://github.com/whoz-oss/coday/pull/964))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([0828d491](https://github.com/whoz-oss/coday/commit/0828d491))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([#971](https://github.com/whoz-oss/coday/pull/971), [#969](https://github.com/whoz-oss/coday/issues/969))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.173.2 (2026-06-04)
+
+### 🩹 Fixes
+
+- search files with fileContent + fileTypes now correctly filters by extension ([#970](https://github.com/whoz-oss/coday/pull/970))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.1 (2026-06-04)
+
+### 🩹 Fixes
+
+- flaky test tentative fix for CI ([#968](https://github.com/whoz-oss/coday/pull/968))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.0 (2026-06-04)
+
+### 🚀 Features
+
+- add case plugin with ReadCaseTool ([#966](https://github.com/whoz-oss/coday/pull/966))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.172.6 (2026-06-04)
 
 ### 🩹 Fixes
