@@ -1,3 +1,17 @@
+## 0.173.3 (2026-06-04)
+
+### 🩹 Fixes
+
+- remove hardcoded integration types ([#964](https://github.com/whoz-oss/coday/pull/964))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([0828d491](https://github.com/whoz-oss/coday/commit/0828d491))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([#971](https://github.com/whoz-oss/coday/pull/971), [#969](https://github.com/whoz-oss/coday/issues/969))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
 ## 0.173.2 (2026-06-04)
 
 ### 🩹 Fixes
