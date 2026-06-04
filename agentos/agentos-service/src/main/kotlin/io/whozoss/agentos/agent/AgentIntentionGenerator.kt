@@ -81,7 +81,7 @@ You must respond with **exactly** this XML structure and **nothing else** — no
 <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
 <toolName>[The exact name of the tool to be called]</toolName>
 
-The `<intention>` tag must come first, then `<toolName>`. Do not reorder them.
+You MUST start with the `<intention>` tag first, and THEN `<toolName>`. Do not reorder them.
 Do not wrap in code blocks. Do not add any text before or after the XML.
             """.trimIndent()
 
