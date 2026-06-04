@@ -12,7 +12,7 @@ import java.util.UUID
 class CaseToolPluginUnitSpec : StringSpec({
 
     val namespaceId: UUID = UUID.randomUUID()
-    val noopLoader: (UUID, UUID) -> List<CaseEvent>? = { _, _ -> emptyList() }
+    val noopLoader: (UUID, UUID, UUID?) -> List<CaseEvent>? = { _, _, _ -> emptyList() }
     val mapper = jacksonObjectMapper()
 
     fun context() = ToolContext(
@@ -102,5 +102,47 @@ class CaseToolPluginUnitSpec : StringSpec({
         val tools = plugin.provideTools(config = null, configName = null, context = context())
         val tool = tools.first() as ReadCaseTool
         tool.name shouldBe "ReadCase"
+    }
+
+    // -------------------------------------------------------------------------
+    // Permission enforcement via loader
+    // -------------------------------------------------------------------------
+
+    "tool returns NOT_FOUND when loader returns null due to permission denial" {
+        // The loader returns null when the user lacks READ on the target case.
+        // ReadCaseTool must not leak whether the case exists or is just inaccessible.
+        val unauthorisedLoader: (UUID, UUID, UUID?) -> List<CaseEvent>? = { _, _, _ -> null }
+        val userId = UUID.randomUUID()
+        val contextWithUser = ToolContext(
+            namespaceId = namespaceId,
+            userId = userId,
+            userExternalId = null,
+            caseEvents = emptyList(),
+        )
+        val plugin = CaseToolPlugin(unauthorisedLoader)
+        val tools = plugin.provideTools(config = null, context = contextWithUser)
+        val tool = tools.first() as ReadCaseTool
+
+        val result = tool.execute(ReadCaseTool.Input(caseId = UUID.randomUUID().toString()), contextWithUser)
+
+        result.success shouldBe false
+        result.errorType shouldBe "NOT_FOUND"
+    }
+
+    "tool returns NOT_FOUND for cross-namespace or anonymous case (loader returns null)" {
+        // The loader returns null for namespace mismatch, permission denial, or null userId.
+        // Same observable behaviour in all cases — no information leak.
+        val rejectingLoader: (UUID, UUID, UUID?) -> List<CaseEvent>? = { _, _, _ -> null }
+        val plugin = CaseToolPlugin(rejectingLoader)
+        val tools = plugin.provideTools(config = null, context = context())
+        val tool = tools.first() as ReadCaseTool
+
+        val result = tool.execute(
+            ReadCaseTool.Input(caseId = UUID.randomUUID().toString()),
+            ToolContext(namespaceId = namespaceId, userId = null, userExternalId = null, caseEvents = emptyList()),
+        )
+
+        result.success shouldBe false
+        result.errorType shouldBe "NOT_FOUND"
     }
 })

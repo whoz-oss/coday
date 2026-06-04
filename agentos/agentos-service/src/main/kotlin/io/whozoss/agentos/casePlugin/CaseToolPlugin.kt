@@ -28,7 +28,7 @@ import java.util.UUID
  *   its namespace does not match [namespaceId], enforcing namespace isolation.
  */
 class CaseToolPlugin(
-    private val caseEventsLoader: (caseId: UUID, namespaceId: UUID) -> List<CaseEvent>?,
+    private val caseEventsLoader: (caseId: UUID, namespaceId: UUID, userId: UUID?) -> List<CaseEvent>?,
 ) : ToolPlugin {
 
     override val integrationType: String = INTEGRATION_TYPE
@@ -50,7 +50,14 @@ class CaseToolPlugin(
             ?.asBoolean(true)
             ?: true
 
-        return listOf(ReadCaseTool(configName, includesTechnicalEvents, caseEventsLoader))
+        val userId = context.userId
+        return listOf(
+            ReadCaseTool(
+                configName = configName,
+                includesTechnicalEvents = includesTechnicalEvents,
+                caseEventsLoader = { caseId, ns -> caseEventsLoader(caseId, ns, userId) },
+            ),
+        )
     }
 
     companion object : KLogging() {
