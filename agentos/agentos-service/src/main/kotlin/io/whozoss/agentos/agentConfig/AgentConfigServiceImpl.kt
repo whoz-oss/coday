@@ -1,8 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.entity.stampCreated
-import io.whozoss.agentos.entity.stampModified
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -16,19 +14,11 @@ class AgentConfigServiceImpl(
     private val agentConfigRepository: AgentConfigRepository,
     private val userService: UserService,
 ) : AgentConfigService {
-    override fun create(entity: AgentConfig): AgentConfig {
-        val userId = userService.getCurrentUser().metadata.id.toString()
-        return agentConfigRepository.save(
-            entity.copy(metadata = entity.metadata.stampCreated(userId))
-        )
-    }
+    override fun create(entity: AgentConfig): AgentConfig =
+        agentConfigRepository.save(entity)
 
-    override fun update(entity: AgentConfig): AgentConfig {
-        val userId = userService.getCurrentUser().metadata.id.toString()
-        return agentConfigRepository.save(
-            entity.copy(metadata = entity.metadata.stampModified(userId))
-        )
-    }
+    override fun update(entity: AgentConfig): AgentConfig =
+        agentConfigRepository.save(entity)
 
     override fun findByIds(ids: Collection<UUID>): List<AgentConfig> = agentConfigRepository.findByIds(ids)
 

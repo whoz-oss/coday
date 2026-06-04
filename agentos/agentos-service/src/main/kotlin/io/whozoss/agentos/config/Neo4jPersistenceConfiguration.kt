@@ -41,6 +41,7 @@ import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.data.neo4j.config.EnableNeo4jAuditing
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 
 /**
@@ -59,6 +60,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
  *
  */
 @Configuration
+@EnableNeo4jAuditing
 @EnableConfigurationProperties(PersistenceConfigProperties::class)
 @ConditionalOnExpression(
     "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
