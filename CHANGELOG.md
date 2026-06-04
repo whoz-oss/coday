@@ -1,3 +1,15 @@
+## 0.173.4 (2026-06-04)
+
+### 🩹 Fixes
+
+- #WZ-32428 Avoid the LLM lying to the user in case of intention generation failure ([d29e7db0](https://github.com/whoz-oss/coday/commit/d29e7db0))
+- #WZ-32428 Avoid the LLM lying to the user in case of intention g… ([#972](https://github.com/whoz-oss/coday/pull/972))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
 ## 0.173.3 (2026-06-04)
 
 ### 🩹 Fixes
