@@ -18,6 +18,8 @@ import { AddMessageRequest } from '../model/add-message-request'
 // @ts-ignore
 import { Case } from '../model/case'
 // @ts-ignore
+import { GetByIdsRequest } from '../model/get-by-ids-request'
+// @ts-ignore
 import { ListByUserInNamespaceRequest } from '../model/list-by-user-in-namespace-request'
 
 // @ts-ignore
@@ -338,36 +340,36 @@ export class CaseControllerService extends BaseService {
   }
 
   /**
-   * @param requestBody
+   * @param getByIdsRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public getByIdsCase(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Case>>
   public getByIdsCase(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Case>>>
   public getByIdsCase(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Case>>>
   public getByIdsCase(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIdsCase.')
+    if (getByIdsRequest === null || getByIdsRequest === undefined) {
+      throw new Error('Required parameter getByIdsRequest was null or undefined when calling getByIdsCase.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -404,7 +406,7 @@ export class CaseControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<Case>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: requestBody,
+      body: getByIdsRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

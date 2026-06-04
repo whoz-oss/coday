@@ -3,6 +3,7 @@ package io.whozoss.agentos.aiProvider
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -167,8 +168,8 @@ class AiProviderController(
         produces = [MediaType.APPLICATION_JSON_VALUE],
     )
     @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<AiProviderResource> {
-
+    override fun getByIds(@RequestBody request: GetByIdsRequest): List<AiProviderResource> {
+        val ids = request.ids
         if (ids.isEmpty()) return emptyList()
 
         val currentUser = userService.getCurrentUser()
@@ -187,7 +188,7 @@ class AiProviderController(
         // Single DB fetch for all candidate rows ; filter for visibility via membership OR ownership.
         // Bounded by input size so the cost stays O(ids.size), not O(user's overlays).
         val callerId = currentUser.id
-        val rows = aiProviderService.findByIds(ids)
+        val rows = aiProviderService.findByIds(ids, request.withRemoved)
         val byId: Map<UUID, AiProvider> = rows
             .filter { it.metadata.id in membershipVisibleIds || it.userId == callerId }
             .associateBy { it.metadata.id }

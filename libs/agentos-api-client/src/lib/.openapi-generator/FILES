@@ -40,6 +40,7 @@ model/confirmation-resolved-event.ts
 model/entity-metadata.ts
 model/error-event.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
+model/get-by-ids-request.ts
 model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts
