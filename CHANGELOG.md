@@ -1,3 +1,13 @@
+## 0.172.6 (2026-06-04)
+
+### 🩹 Fixes
+
+- wz-32399: add logs to debug tool execution errors ([#965](https://github.com/whoz-oss/coday/pull/965))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.172.5 (2026-06-03)
 
 ### 🩹 Fixes
