@@ -555,10 +555,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -871,10 +868,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -982,10 +976,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1094,10 +1085,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1223,10 +1211,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1264,10 +1249,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1325,10 +1307,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1883,8 +1862,11 @@ components:
         created:
           type: string
           format: date-time
+        removed:
+          type: boolean
       required:
       - namespaceId
+      - removed
       - status
     AiProvider:
       type: object
@@ -2003,6 +1985,19 @@ components:
       required:
       - id
       - name
+    GetByIdsRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        withRemoved:
+          type: boolean
+      required:
+      - ids
+      - withRemoved
     UserGroupCreateRequest:
       type: object
       properties:

@@ -1,3 +1,44 @@
+## 0.172.6 (2026-06-04)
+
+### 🩹 Fixes
+
+- wz-32399: add logs to debug tool execution errors ([#965](https://github.com/whoz-oss/coday/pull/965))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.172.5 (2026-06-03)
+
+### 🩹 Fixes
+
+- update api-client ([#962](https://github.com/whoz-oss/coday/pull/962))
+- move tool description into expandable body in agent-config-inspect ([#957](https://github.com/whoz-oss/coday/pull/957))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.172.4 (2026-06-03)
+
+### 🚀 Features
+
+- **entity:** expose withRemoved on POST /by-ids and removed field on CaseResource ([#960](https://github.com/whoz-oss/coday/pull/960), [#959](https://github.com/whoz-oss/coday/issues/959))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.172.3 (2026-06-03)
+
+### 🩹 Fixes
+
+- tentative fix for CI release workflow exit code 130 ([#961](https://github.com/whoz-oss/coday/pull/961))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.172.2 (2026-06-03)
 
 ### 🚀 Features

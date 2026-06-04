@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import { AgentConfigControllerService, AgentDefinition, AgentDefinitionToolSummary } from '@whoz-oss/agentos-api-client'
+import { MarkdownPipe } from '../../pipes/markdown.pipe'
 
 /**
  * AgentConfigInspectComponent — read-only view of a resolved AgentDefinition.
@@ -18,7 +19,7 @@ import { AgentConfigControllerService, AgentDefinition, AgentDefinitionToolSumma
 @Component({
   selector: 'agentos-agent-config-inspect',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, MarkdownPipe],
   templateUrl: './agent-config-inspect.component.html',
   styleUrl: './agent-config-inspect.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

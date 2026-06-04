@@ -19,6 +19,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
+import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
@@ -310,9 +311,9 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val c1 = config(name = "agent-a")
         val c2 = config(name = "agent-b")
         every { userService.getCurrentUser() } returns superAdmin
-        every { service.findByIds(setOf(c1.id, c2.id)) } returns listOf(c1, c2)
+        every { service.findByIds(setOf(c1.id, c2.id), false) } returns listOf(c1, c2)
 
-        val result = controller.getByIds(listOf(c1.id, c2.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(c1.id, c2.id)))
 
         result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
     }
@@ -326,9 +327,9 @@ class AgentConfigControllerUnitSpec : StringSpec({
                 callerId.toString(), EntityType.AGENT_CONFIG, listOf(c1.id.toString(), c2.id.toString()), Action.READ,
             )
         } returns setOf(c1.id.toString())
-        every { service.findByIds(setOf(c1.id)) } returns listOf(c1)
+        every { service.findByIds(setOf(c1.id), false) } returns listOf(c1)
 
-        val result = controller.getByIds(listOf(c1.id, c2.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(c1.id, c2.id)))
 
         result shouldBe listOf(controller.toResource(c1))
     }
@@ -340,11 +341,11 @@ class AgentConfigControllerUnitSpec : StringSpec({
             permissionService.filterVisibleIds(any(), any(), any(), any())
         } returns emptySet()
 
-        controller.getByIds(listOf(c1.id)) shouldBe emptyList()
+        controller.getByIds(GetByIdsRequest(ids = listOf(c1.id))) shouldBe emptyList()
     }
 
     "getByIds short-circuits to empty list on empty input WITHOUT touching userService or permissionService" {
-        controller.getByIds(emptyList()) shouldBe emptyList()
+        controller.getByIds(GetByIdsRequest(ids = emptyList())) shouldBe emptyList()
         verify(exactly = 0) { userService.getCurrentUser() }
         verify(exactly = 0) { permissionService.filterVisibleIds(any(), any(), any(), any()) }
     }
