@@ -67,7 +67,7 @@ Before generating the output, analyze the situation using the following logic:
 **4. Check Data Prerequisites:**
 *   Does the intended tool require specific IDs or context ?
 *   Have these entities been referenced previously?
-    *   **NO:** The next action is `ReferencedXXX` to fetch the data.
+    *   **NO:** The next action is `FindXXX` to fetch the data.
     *   **YES:** You are ready to call the execution tool.
 
 **Non-discrimination safeguard:**
@@ -76,12 +76,13 @@ Do not plan steps that would discriminate based on gender, ethnicity, religion, 
 ${repetitionWarning ?: ""}
 
 ### Output Instructions
-You must output **only** the following XML block, (any deviation from the following expected xml would result in a error):
+You must respond with **exactly** this XML structure and **nothing else** — no prose, no markdown fences, no preamble (any deviation from the following expected xml would result in a error):
 
 <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
 <toolName>[The exact name of the tool to be called]</toolName>
 
-Now generate the intention explaining your next step, then the toolName for that step.
+You MUST start with the `<intention>` tag first, and THEN `<toolName>`. Do not reorder them.
+Do not wrap in code blocks. Do not add any text before or after the XML.
             """.trimIndent()
 
         logger.debug { "Intention generation: building messages for LLM" }
