@@ -2485,22 +2485,22 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          analysisInstructions:
-            type: string
           inputJson:
+            type: string
+          toolConfirmationInstructions:
             type: string
           toolName:
             type: string
           toolRequestId:
             type: string
       required:
-      - analysisInstructions
       - caseId
       - id
       - inputJson
       - metadata
       - namespaceId
       - timestamp
+      - toolConfirmationInstructions
       - toolName
       - toolRequestId
       - type

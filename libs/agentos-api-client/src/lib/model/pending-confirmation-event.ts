@@ -16,8 +16,8 @@ export interface PendingConfirmationEvent {
   namespaceId: string
   timestamp: string
   type: 'PendingConfirmationEvent'
-  analysisInstructions: string
   inputJson: string
+  toolConfirmationInstructions: string
   toolName: string
   toolRequestId: string
 }
