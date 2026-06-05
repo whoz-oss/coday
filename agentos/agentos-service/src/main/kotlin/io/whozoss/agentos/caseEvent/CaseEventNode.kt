@@ -297,7 +297,7 @@ class PendingConfirmationEventNode(
     val toolRequestId: String,
     val toolName: String,
     val inputJson: String,
-    val analysisInstructions: String = "",
+    val toolConfirmationInstructions: String? = "",
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

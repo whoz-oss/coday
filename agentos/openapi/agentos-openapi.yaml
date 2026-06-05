@@ -1971,9 +1971,21 @@ components:
         externalMetadata:
           type: object
           additionalProperties: {}
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
       required:
+      - createdOn
       - name
       - namespaceId
+      - updatedOn
     UserGroupSummary:
       type: object
       properties:
@@ -2420,6 +2432,8 @@ components:
             format: uuid
           intention:
             type: string
+          isFailedIntention:
+            type: boolean
           toolName:
             type: string
       required:
@@ -2427,6 +2441,7 @@ components:
       - caseId
       - id
       - intention
+      - isFailedIntention
       - metadata
       - namespaceId
       - timestamp
@@ -2470,22 +2485,22 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          analysisInstructions:
-            type: string
           inputJson:
+            type: string
+          toolConfirmationInstructions:
             type: string
           toolName:
             type: string
           toolRequestId:
             type: string
       required:
-      - analysisInstructions
       - caseId
       - id
       - inputJson
       - metadata
       - namespaceId
       - timestamp
+      - toolConfirmationInstructions
       - toolName
       - toolRequestId
       - type

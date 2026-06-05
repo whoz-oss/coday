@@ -1,3 +1,125 @@
+## 0.173.8 (2026-06-05)
+
+### 🚀 Features
+
+- **agentos:** inject tool guidance in shouldConfirm prompt ([#32284](https://github.com/whoz-oss/coday/pull/32284), [#945](https://github.com/whoz-oss/coday/pull/945), [#943](https://github.com/whoz-oss/coday/issues/943), [#939](https://github.com/whoz-oss/coday/issues/939), [#5076](https://github.com/whoz-oss/coday/issues/5076))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.173.7 (2026-06-05)
+
+### 🩹 Fixes
+
+- #WZ-32024 expose createdBy/updatedBy/createdOn/updatedOn in Agen… ([#946](https://github.com/whoz-oss/coday/pull/946))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.173.6 (2026-06-05)
+
+### 🩹 Fixes
+
+- #WZ-32472 Fail Intention Generation if the LLM produces two tools in one pass ([5109aa15](https://github.com/whoz-oss/coday/commit/5109aa15))
+- #WZ-32472 Fail Intention Generation if the LLM produces two tool… ([#976](https://github.com/whoz-oss/coday/pull/976))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.173.5 (2026-06-04)
+
+### 🚀 Features
+
+- **wz-32291:** improve answer so it doesn't greet to often ([67d51247](https://github.com/whoz-oss/coday/commit/67d51247))
+- **wz-32291:** improve answer so it doesn't greet to often ([#975](https://github.com/whoz-oss/coday/pull/975))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.173.4 (2026-06-04)
+
+### 🩹 Fixes
+
+- #WZ-32428 Avoid the LLM lying to the user in case of intention generation failure ([d29e7db0](https://github.com/whoz-oss/coday/commit/d29e7db0))
+- #WZ-32428 Avoid the LLM lying to the user in case of intention g… ([#972](https://github.com/whoz-oss/coday/pull/972))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.173.3 (2026-06-04)
+
+### 🩹 Fixes
+
+- remove hardcoded integration types ([#964](https://github.com/whoz-oss/coday/pull/964))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([0828d491](https://github.com/whoz-oss/coday/commit/0828d491))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([#971](https://github.com/whoz-oss/coday/pull/971), [#969](https://github.com/whoz-oss/coday/issues/969))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.173.2 (2026-06-04)
+
+### 🩹 Fixes
+
+- search files with fileContent + fileTypes now correctly filters by extension ([#970](https://github.com/whoz-oss/coday/pull/970))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.1 (2026-06-04)
+
+### 🩹 Fixes
+
+- flaky test tentative fix for CI ([#968](https://github.com/whoz-oss/coday/pull/968))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.0 (2026-06-04)
+
+### 🚀 Features
+
+- add case plugin with ReadCaseTool ([#966](https://github.com/whoz-oss/coday/pull/966))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.172.6 (2026-06-04)
+
+### 🩹 Fixes
+
+- wz-32399: add logs to debug tool execution errors ([#965](https://github.com/whoz-oss/coday/pull/965))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.172.5 (2026-06-03)
+
+### 🩹 Fixes
+
+- update api-client ([#962](https://github.com/whoz-oss/coday/pull/962))
+- move tool description into expandable body in agent-config-inspect ([#957](https://github.com/whoz-oss/coday/pull/957))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.172.4 (2026-06-03)
 
 ### 🚀 Features

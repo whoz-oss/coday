@@ -543,6 +543,12 @@ class CaseServiceImplSpec :
 
             // Subscribe to both the IDLE gate and text chunks BEFORE sending the message
             // so no events are missed on the hot SharedFlow (replay = 0).
+            //
+            // Both collectors run until the case reaches IDLE: the chunk collector stops
+            // on the AgentFinishedEvent (which immediately precedes IDLE), the idle
+            // collector stops on the CaseStatusEvent(IDLE). This avoids the race where
+            // chunkCollectJob.cancel() fires before the dispatcher has delivered all
+            // TextChunkEvents to the collector coroutine.
             val collectedChunks = mutableListOf<TextChunkEvent>()
             val collectorScope = CoroutineScope(Dispatchers.IO)
             val idleJob: Job =
@@ -554,15 +560,16 @@ class CaseServiceImplSpec :
                             .toList()
                     }
                 }
+            // Collect TextChunkEvents until AgentFinishedEvent signals the end of the
+            // agent turn. This bounds the collector without relying on external cancel().
             val chunkCollectJob: Job =
                 collectorScope.launch {
                     withTimeout(8_000) {
                         runtime.events
+                            .takeWhile { it !is AgentFinishedEvent }
                             .filterIsInstance<TextChunkEvent>()
-                            .takeWhile { event ->
-                                collectedChunks.add(event)
-                                true // keep collecting until the scope is cancelled
-                            }.toList()
+                            .toList()
+                            .also { collectedChunks.addAll(it) }
                     }
                 }
 
@@ -576,7 +583,7 @@ class CaseServiceImplSpec :
             )
 
             idleJob.join()
-            chunkCollectJob.cancel() // stop the infinite chunk collector once IDLE is reached
+            chunkCollectJob.join() // both collectors are self-terminating — no cancel() needed
 
             service.getById(case.id).status shouldBe CaseStatus.IDLE
 

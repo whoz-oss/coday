@@ -14,9 +14,11 @@ class AgentConfigServiceImpl(
     private val agentConfigRepository: AgentConfigRepository,
     private val userService: UserService,
 ) : AgentConfigService {
-    override fun create(entity: AgentConfig): AgentConfig = agentConfigRepository.save(entity)
+    override fun create(entity: AgentConfig): AgentConfig =
+        agentConfigRepository.save(entity)
 
-    override fun update(entity: AgentConfig): AgentConfig = agentConfigRepository.save(entity)
+    override fun update(entity: AgentConfig): AgentConfig =
+        agentConfigRepository.save(entity)
 
     override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AgentConfig> = agentConfigRepository.findByIds(ids, withRemoved)
 

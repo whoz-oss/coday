@@ -110,7 +110,6 @@
                   [attr.aria-expanded]="isToolExpanded(tool)"
                 >
                   <span class="agent-config-inspect__tool-name">{{ tool.name }}</span>
-                  <span class="agent-config-inspect__tool-description">{{ tool.description }}</span>
                   <span
                     class="agent-config-inspect__chevron"
                     [class.agent-config-inspect__chevron--open]="isToolExpanded(tool)"
@@ -119,7 +118,15 @@
                   </span>
                 </button>
                 @if (isToolExpanded(tool)) {
-                  <pre class="agent-config-inspect__schema">{{ formatSchema(tool.inputSchema) }}</pre>
+                  <div class="agent-config-inspect__tool-body">
+                    @if (tool.description) {
+                      <div
+                        class="agent-config-inspect__tool-description"
+                        [innerHTML]="tool.description | agentosMarkdown"
+                      ></div>
+                    }
+                    <pre class="agent-config-inspect__schema">{{ formatSchema(tool.inputSchema) }}</pre>
+                  </div>
                 }
               </li>
             }

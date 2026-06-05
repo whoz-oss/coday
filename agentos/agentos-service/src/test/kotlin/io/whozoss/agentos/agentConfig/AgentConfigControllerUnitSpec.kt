@@ -162,6 +162,8 @@ class AgentConfigControllerUnitSpec : StringSpec({
             description = "Writes code",
             instructions = "Write clean code.",
             modelName = "claude-3-opus",
+            createdOn = c.metadata.created,
+            updatedOn = c.metadata.modified,
         )
     }
 
@@ -206,6 +208,38 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val result = controller.toResource(c)
 
         result.externalMetadata shouldBe null
+    }
+
+    "toResource maps audit fields from EntityMetadata" {
+        val created = java.time.Instant.parse("2024-01-01T00:00:00Z")
+        val modified = java.time.Instant.parse("2024-06-01T12:00:00Z")
+        val c = config().copy(
+            metadata = EntityMetadata(
+                id = UUID.randomUUID(),
+                created = created,
+                createdBy = "user-abc",
+                modified = modified,
+                modifiedBy = "user-xyz",
+            )
+        )
+
+        val result = controller.toResource(c)
+
+        result.createdBy shouldBe "user-abc"
+        result.createdOn shouldBe created
+        result.updatedBy shouldBe "user-xyz"
+        result.updatedOn shouldBe modified
+    }
+
+    "toResource returns null createdBy and updatedBy when EntityMetadata has none" {
+        val c = config() // EntityMetadata defaults: createdBy=null, modifiedBy=null
+
+        val result = controller.toResource(c)
+
+        result.createdBy shouldBe null
+        result.createdOn shouldBe c.metadata.created
+        result.updatedBy shouldBe null
+        result.updatedOn shouldBe c.metadata.modified
     }
 
     // -------------------------------------------------------------------------

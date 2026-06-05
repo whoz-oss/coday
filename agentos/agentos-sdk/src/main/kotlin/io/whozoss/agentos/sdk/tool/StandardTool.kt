@@ -62,7 +62,9 @@ interface StandardTool<T> {
     // through its standard [execute] path — same as a tool that never opted in.
 
     /**
-     * Declares how this tool participates in the user-confirmation flow.
+     * Static fallback for the confirmation mode. Read directly only by tools that
+     * don't need dynamic resolution. The orchestrator reads via [getConfirmationMode]
+     * which defaults to this value.
      *
      * - [ConfirmationMode.NONE]: no confirmation required — tool executes directly (default).
      * - [ConfirmationMode.INFER]: confirmation required, but the orchestrator may skip
@@ -74,11 +76,54 @@ interface StandardTool<T> {
     val confirmationMode: ConfirmationMode get() = ConfirmationMode.NONE
 
     /**
-     * Instructions appended to the `analyzeConfirmation` prompt to guide the LLM judge
-     * when interpreting the user's free-form reply. For destructive actions this SHOULD
-     * be a strict prompt (e.g. "Require explicit confirmation: a bare 'ok' is not enough
-     * unless the previous turn clearly described the destructive action."). Plugin authors
-     * MUST NOT include user-controlled strings here.
+     * Dynamic resolution of the confirmation mode. The orchestrator calls this with the
+     * proposed args and current case events before deciding whether to gate the tool call.
+     * Override to compute the mode from business logic — e.g. inspect prior tool calls in
+     * [ToolContext.caseEvents] to bypass confirmation when an in-session create makes a
+     * follow-up update implicit.
+     *
+     * Default delegates to the static [confirmationMode] for backward compatibility:
+     * existing plugins that only override [confirmationMode] keep working without change.
+     *
+     * ⚠️ HOT PATH — called on **every** tool call by the orchestrator, including those that
+     * resolve to [ConfirmationMode.NONE]. Overrides MUST be:
+     *   - **cheap** : no HTTP, no DB call, no LLM. Pure local computation on `argsJson`
+     *     and `context.caseEvents` only.
+     *   - **side-effect-free** : the orchestrator may call this multiple times for the
+     *     same tool call (e.g. on retry). Mutating state, writing logs at INFO+, or
+     *     emitting events here will leak / duplicate / mislead.
+     *
+     * `suspend` is allowed (the orchestrator awaits) so simple async lookups stay possible,
+     * but in practice prefer plain Kotlin matching against `context.caseEvents`.
+     *
+     * @param argsJson Raw JSON args produced by the LLM for the impending tool call
+     * @param context Execution context (namespaceId, userId, caseEvents)
+     */
+    suspend fun getConfirmationMode(
+        argsJson: String? = null,
+        context: ToolContext? = null,
+    ): ConfirmationMode = confirmationMode
+
+    /**
+     * Tool-specific guidance injected as a labelled `Tool-specific confirmation guidance:`
+     * section into BOTH:
+     *   1. the `shouldConfirm` prompt (tour 1 — decide whether to gate)
+     *   2. the `analyzeConfirmation` prompt (tour 2 — parse the user's free-form reply)
+     *
+     * Write phase-agnostic criteria, not imperative overrides. The LLM combines this
+     * guidance with the general decision rules of the prompt template.
+     *
+     * Examples:
+     *   "Hesitant replies ('pourquoi pas', 'I guess') are not affirmative consent."
+     *   "Updates that overwrite non-empty fields require explicit user authorization."
+     *
+     * **Intentionally static** — no args, no context, no suspend. The LLM judge already
+     * sees the proposed args (`proposedData` in tour 1, `pendingPayload` in tour 2) and
+     * the full conversation history, so per-call branching of the prompt would be
+     * redundant. For args/context-driven *decisions* (e.g. bypass), override
+     * [getConfirmationMode] instead — keep this method as fixed criteria for the LLM.
+     *
+     * Plugin authors MUST NOT include user-controlled strings here.
      */
     fun getConfirmationInstructions(): String = ""
 

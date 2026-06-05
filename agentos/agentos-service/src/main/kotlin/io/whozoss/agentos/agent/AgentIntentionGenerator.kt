@@ -67,7 +67,7 @@ Before generating the output, analyze the situation using the following logic:
 **4. Check Data Prerequisites:**
 *   Does the intended tool require specific IDs or context ?
 *   Have these entities been referenced previously?
-    *   **NO:** The next action is `ReferencedXXX` to fetch the data.
+    *   **NO:** The next action is `FindXXX` to fetch the data.
     *   **YES:** You are ready to call the execution tool.
 
 **Non-discrimination safeguard:**
@@ -76,12 +76,13 @@ Do not plan steps that would discriminate based on gender, ethnicity, religion, 
 ${repetitionWarning ?: ""}
 
 ### Output Instructions
-You must output **only** the following XML block, (any deviation from the following expected xml would result in a error):
+You must respond with **exactly** this XML structure and **nothing else** — no prose, no markdown fences, no preamble (any deviation from the following expected xml would result in a error):
 
 <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
 <toolName>[The exact name of the tool to be called]</toolName>
 
-Now generate the intention explaining your next step, then the toolName for that step.
+You MUST start with the `<intention>` tag first, and THEN `<toolName>`. Do not reorder them.
+Do not wrap in code blocks. Do not add any text before or after the XML.
             """.trimIndent()
 
         logger.debug { "Intention generation: building messages for LLM" }
@@ -97,6 +98,7 @@ Now generate the intention explaining your next step, then the toolName for that
                     agentId = context.agentId,
                     intention = "Failed to plan next step after $MAX_INTENTION_ATTEMPTS attempts: ${lastException.message}",
                     toolName = ANSWER_TOOL,
+                    isFailedIntention = true,
                 )
             },
         ) { previousFailure ->
@@ -111,7 +113,7 @@ Now generate the intention explaining your next step, then the toolName for that
                         is AgentIntentionGenerationException.InvalidFormat ->
                             append(
                                 """
-                                This does not match the expected XML output that should correspond to the following:
+                                This does not match the expected XML output (${e.message}) that should correspond to the following:
                                 <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
                                 <toolName>[The exact name of the tool to be called]</toolName>
                                 """.trimIndent()
@@ -156,24 +158,24 @@ Now generate the intention explaining your next step, then the toolName for that
         validToolNames: List<String>,
     ): Pair<String, String> {
         if (response.isBlank()) throw AgentIntentionGenerationException.InvalidFormat("Empty LLM response")
-        val rawTool = extractFromTag(response, "toolName")
-            ?: throw AgentIntentionGenerationException.InvalidFormat("Missing <toolName> tag", response)
-        val intention = extractFromTag(response, "intention")
-            ?: throw AgentIntentionGenerationException.InvalidFormat("Missing <intention> tag", response)
-        val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) }
-            ?: throw AgentIntentionGenerationException.UnknownTool(rawTool.trim(), response)
-        return intention to toolName
+        try {
+            val rawTool = extractFromUniqueTag(response, "toolName")
+            val intention = extractFromUniqueTag(response, "intention")
+            val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) }
+                ?: throw AgentIntentionGenerationException.UnknownTool(rawTool.trim(), response)
+            return intention to toolName
+        } catch (e: IllegalArgumentException) {
+            throw AgentIntentionGenerationException.InvalidFormat(e.message ?: "Invalid intention format", response)
+        }
     }
 
-    private fun extractFromTag(
-        input: String,
-        tag: String,
-    ): String? =
-        Regex("""<$tag>(.*?)</$tag>""", RegexOption.DOT_MATCHES_ALL)
-            .find(input)
-            ?.groupValues
-            ?.get(1)
-            ?.trim()
+    private fun extractFromUniqueTag(input: String, tag: String): String {
+        val matches = Regex("""<$tag>(.*?)</$tag>""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(input)
+            .toList()
+        if (matches.size > 1) throw IllegalArgumentException("Multiple <$tag> tags found")
+        return matches.firstOrNull()?.groupValues?.get(1)?.trim() ?: throw IllegalArgumentException("Missing <$tag> tag")
+    }
 
     companion object : KLogging() {
         const val ANSWER_TOOL = "Answer"

@@ -10,12 +10,14 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
@@ -516,14 +518,15 @@ class AgentAdvancedSpec :
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("agent1", "Astra", ActorRole.AGENT),
-                    content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
+                    ),
+                )
             agent.buildLanguageHint(events) shouldBe null
         }
 
@@ -532,14 +535,15 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val longMessage = "a".repeat(250)
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text(longMessage)),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text(longMessage)),
+                    ),
+                )
             val hint = agent.buildLanguageHint(events)
             hint shouldNotBe null
             hint!! shouldContain longMessage
@@ -551,14 +555,15 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             // Each message is 50 chars, minChars=200 → needs at least 4
-            val messages = (1..6).map { i ->
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("message-$i-" + "x".repeat(45))),
-                )
-            }
+            val messages =
+                (1..6).map { i ->
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("message-$i-" + "x".repeat(45))),
+                    )
+                }
             val hint = agent.buildLanguageHint(messages, targetChars = 200)
             hint shouldNotBe null
             // Should contain the last few messages (collected newest-first, displayed oldest-first)
@@ -572,20 +577,21 @@ class AgentAdvancedSpec :
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("oui")),
-                ),
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("ok")),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("oui")),
+                    ),
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("ok")),
+                    ),
+                )
             // Total = 5 chars, well below targetChars=200 — hint must still be produced
             val hint = agent.buildLanguageHint(events)
             hint shouldNotBe null
@@ -598,20 +604,21 @@ class AgentAdvancedSpec :
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val events = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("old english message from the beginning")),
-                ),
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text("cherche-moi des développeurs Angular à Paris avec 5 ans d'expérience")),
-                ),
-            )
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("old english message from the beginning")),
+                    ),
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User One", ActorRole.USER),
+                        content = listOf(MessageContent.Text("cherche-moi des développeurs Angular à Paris avec 5 ans d'expérience")),
+                    ),
+                )
             val hint = agent.buildLanguageHint(events, targetChars = 50)
             hint shouldNotBe null
             // The latest message alone exceeds minChars=50, so only it should appear
@@ -859,7 +866,7 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any()) } returns "Voulez-vous supprimer old.txt?"
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns "Voulez-vous supprimer old.txt?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"old.txt"}"""
 
@@ -1038,7 +1045,7 @@ class AgentAdvancedSpec :
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns
                 ConfirmationDecision.AMBIGUOUS
             val clarificationText = "Pour \u00eatre s\u00fbr \u2014 veux-tu vraiment supprimer old.txt ? Oui ou non."
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any()) } returns clarificationText
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns clarificationText
             val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
@@ -1070,7 +1077,7 @@ class AgentAdvancedSpec :
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
             val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"safe.txt"}"""
 
@@ -1132,7 +1139,7 @@ class AgentAdvancedSpec :
                     ): ToolExecutionResult = throw RuntimeException("boom")
                 }
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
@@ -1173,6 +1180,238 @@ class AgentAdvancedSpec :
                 events.filterIsInstance<ToolResponseEvent>().single { it.toolName == "TEST__failing" }
             response.success shouldBe false
             (response.output as MessageContent.Text).content shouldContain "boom"
+        }
+
+        // Dynamic: a tool can resolve its mode at runtime via getConfirmationMode(args, ctx).
+        // When it returns NONE, the orchestrator skips the confirmation gate and executes
+        // the tool directly, even if the static val requires confirmation.
+        // Core use case: programmatic bypass of UpdateProfile when CreateProfile was
+        // called in-session for the same profileId.
+        "Dynamic getConfirmationMode=NONE bypasses confirmation entirely" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val executed =
+                java.util.concurrent.atomic
+                    .AtomicBoolean(false)
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__bypassable"
+                    override val description = "tool with dynamic NONE override"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.EVERY_TIME // static fallback
+
+                    // Always returns NONE dynamically — mimicking a bypass condition
+                    override suspend fun getConfirmationMode(
+                        argsJson: String?,
+                        context: ToolContext?,
+                    ): ConfirmationMode = ConfirmationMode.NONE
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult {
+                        executed.set(true)
+                        return ToolExecutionResult.success("done")
+                    }
+                }
+            val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
+            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "call bypassable",
+                        toolName = "TEST__bypassable",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "done",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // No PendingConfirmation: the dynamic override trumps the static EVERY_TIME val
+            events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
+            // shouldConfirm is never called (mode = NONE → no gate)
+            verify(exactly = 0) {
+                confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any())
+            }
+            executed.get() shouldBe true
+        }
+
+        // The orchestrator must forward tool-specific instructions to the LLM judge
+        // so the prompt template includes the custom guidance (e.g. "pourquoi pas not consent").
+        "INFER mode forwards tool.getConfirmationInstructions() to shouldConfirm.toolInstructions" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__withGuidance"
+                    override val description = "tool that injects guidance"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override fun getConfirmationInstructions(): String = "Be strict: 'pourquoi pas' is not consent."
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("ok")
+                }
+            val confirmationManager = mockk<ConfirmationManager>()
+            val toolInstructionsCaptured = slot<String>()
+            every {
+                confirmationManager.shouldConfirm(
+                    chatClient = any(),
+                    firstLevelHistory = any(),
+                    actionLabel = any(),
+                    proposedData = any(),
+                    originalData = any(),
+                    toolInstructions = capture(toolInstructionsCaptured),
+                )
+            } returns false
+            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "call with guidance",
+                        toolName = "TEST__withGuidance",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "done",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                )
+            agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            toolInstructionsCaptured.captured shouldBe "Be strict: 'pourquoi pas' is not consent."
+        }
+
+        // Wiring: the orchestrator must forward the raw LLM-generated args AND the
+        // accumulated (non-empty) caseEvents to the dynamic hook. Without this, a plugin
+        // cannot perform a programmatic bypass (core use case of this PR).
+        "getConfirmationMode receives the LLM-generated args and the accumulated caseEvents" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val argsCaptured =
+                java.util.concurrent.atomic
+                    .AtomicReference<String?>(null)
+            val eventsCaptured =
+                java.util.concurrent.atomic
+                    .AtomicReference<List<CaseEvent>?>(null)
+            val tool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__capturingTool"
+                    override val description = "captures args/ctx seen at getConfirmationMode"
+                    override val inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}"""
+                    override val version = "1.0.0"
+                    override val paramType = null
+                    override val confirmationMode = ConfirmationMode.NONE
+
+                    override suspend fun getConfirmationMode(
+                        argsJson: String?,
+                        context: ToolContext?,
+                    ): ConfirmationMode {
+                        argsCaptured.set(argsJson)
+                        eventsCaptured.set(context?.caseEvents)
+                        // Returns EVERY_TIME so the orchestrator still routes through the gate
+                        // — we want the seam exercised even when the result is "confirm".
+                        return ConfirmationMode.EVERY_TIME
+                    }
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("captured")
+                }
+            val confirmationManager = mockk<ConfirmationManager>()
+            every {
+                confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any())
+            } returns "confirm?"
+            val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            // The args returned to the orchestrator by the LLM
+            val expectedArgs = """{"id":"abc-123"}"""
+            every { chatClient.prompt(any<Prompt>()).call().content() } returns expectedArgs
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "call capturing tool",
+                    toolName = "TEST__capturingTool",
+                )
+
+            // Wire caseEventsProvider explicitly so the hook sees the same events the
+            // orchestrator emits during this run — mimicking CaseRuntime in production.
+            val initialEvents = makeInitialEvents(namespaceId, caseId)
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 2,
+                    caseEventsProvider = { initialEvents },
+                )
+            agent.run(initialEvents).toList()
+
+            // args : verbatim from the LLM response — same string the orchestrator
+            // persists on the resulting ToolRequestEvent.
+            argsCaptured.get() shouldBe expectedArgs
+
+            // caseEvents : non-null, includes at least the initial USER MessageEvent
+            // from `caseEventsProvider`. Proves the hook is wired to the live event
+            // history exposed by the orchestrator, not to an empty/default snapshot.
+            val seenEvents = eventsCaptured.get()
+            seenEvents shouldNotBe null
+            seenEvents!!.filterIsInstance<MessageEvent>().any { it.actor.role == ActorRole.USER } shouldBe true
         }
 
         "AC7: reload session without user reply emits AgentFinished, no ConfirmationResolved, file untouched" {
@@ -1401,6 +1640,7 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -1468,6 +1708,7 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -1539,7 +1780,8 @@ class AgentAdvancedSpec :
             val mockTool = mockk<StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "ReadEntities"
             every { mockTool.description } returns "Read entities by id"
-            every { mockTool.inputSchema } returns """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
+            every { mockTool.inputSchema } returns
+                """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("entity data")
@@ -1613,6 +1855,7 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
             every { mockTool.confirmationMode } returns ConfirmationMode.NONE
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)

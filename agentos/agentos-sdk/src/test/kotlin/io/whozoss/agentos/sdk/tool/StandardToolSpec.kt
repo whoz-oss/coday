@@ -67,5 +67,67 @@ class StandardToolSpec : StringSpec() {
                 dummyContext,
             ).output shouldBe "America/New_York"
         }
+
+        // getConfirmationMode(args, ctx) defaults to the static confirmationMode val.
+        // Ensures backward compatibility: an existing plugin that only overrides the val
+        // keeps working unchanged after this extension.
+        "getConfirmationMode default delegates to static confirmationMode" {
+            val noneTool =
+                object : StandardTool<Unit> {
+                    override val name = "None"
+                    override val description = ""
+                    override val version = "1.0"
+                    override val paramType: Class<Unit>? = null
+                    override val inputSchema = "{}"
+
+                    override suspend fun execute(input: Unit?, context: ToolContext) =
+                        ToolExecutionResult.success("")
+                    // confirmationMode = NONE (default)
+                }
+            val everyTimeTool =
+                object : StandardTool<Unit> {
+                    override val name = "EveryTime"
+                    override val description = ""
+                    override val version = "1.0"
+                    override val paramType: Class<Unit>? = null
+                    override val inputSchema = "{}"
+                    override val confirmationMode = ConfirmationMode.EVERY_TIME
+
+                    override suspend fun execute(input: Unit?, context: ToolContext) =
+                        ToolExecutionResult.success("")
+                }
+            noneTool.getConfirmationMode() shouldBe ConfirmationMode.NONE
+            noneTool.getConfirmationMode("{}", dummyContext) shouldBe ConfirmationMode.NONE
+            everyTimeTool.getConfirmationMode() shouldBe ConfirmationMode.EVERY_TIME
+            everyTimeTool.getConfirmationMode("{}", dummyContext) shouldBe ConfirmationMode.EVERY_TIME
+        }
+
+        // Dynamic override: a plugin can decide the mode based on args/events without
+        // touching the static val. This is the core mechanism of the PR — used by
+        // CopilotStandardTool to bypass confirmation when an in-session CreateProfile
+        // makes a subsequent UpdateProfile implicit.
+        "getConfirmationMode dynamic override is honored" {
+            val dynamicTool =
+                object : StandardTool<Unit> {
+                    override val name = "Dynamic"
+                    override val description = ""
+                    override val version = "1.0"
+                    override val paramType: Class<Unit>? = null
+                    override val inputSchema = "{}"
+                    override val confirmationMode = ConfirmationMode.EVERY_TIME // static fallback
+
+                    override suspend fun getConfirmationMode(
+                        argsJson: String?,
+                        context: ToolContext?,
+                    ): ConfirmationMode =
+                        if (argsJson?.contains("bypass") == true) ConfirmationMode.NONE
+                        else confirmationMode
+
+                    override suspend fun execute(input: Unit?, context: ToolContext) =
+                        ToolExecutionResult.success("")
+                }
+            dynamicTool.getConfirmationMode("{}", dummyContext) shouldBe ConfirmationMode.EVERY_TIME
+            dynamicTool.getConfirmationMode("""{"bypass":true}""", dummyContext) shouldBe ConfirmationMode.NONE
+        }
     }
 }

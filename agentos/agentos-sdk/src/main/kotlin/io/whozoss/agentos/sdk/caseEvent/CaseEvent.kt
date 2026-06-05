@@ -39,6 +39,8 @@ enum class CaseEventType(
     CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
     ;
 
+    fun isFirstLevel(): Boolean = this in listOf(MESSAGE, QUESTION, ANSWER)
+
     companion object {
         @JvmStatic
         @JsonCreator
@@ -311,6 +313,14 @@ data class IntentionGeneratedEvent(
     val intention: String,
     /** Name of the tool selected by the LLM in the same call that produced [intention]. */
     val toolName: String,
+    /**
+     * When `true`, this event was produced by the fallback path of [AgentIntentionGenerator]
+     * after all retry attempts were exhausted. The [intention] describes the failure reason
+     * and the [toolName] is always [AgentIntentionGenerator.ANSWER_TOOL].
+     * [AgentAdvanced.generateFinalResponse] uses this flag to instruct the LLM to inform
+     * the user that the requested action was NOT performed.
+     */
+    val isFailedIntention: Boolean = false,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.INTENTION_GENERATED
 }
@@ -360,7 +370,7 @@ data class TextChunkEvent(
  *   classloader-safe across plugin/service boundaries (no `Class.forName`). The owning
  *   tool receives it as-is via `StandardTool.executeWithJson(argsJson, ctx)` and
  *   parses on its own terms inside the plugin classloader.
- * @param analysisInstructions Optional tool-supplied instructions appended to the
+ * @param toolConfirmationInstructions Optional tool-supplied instructions appended to the
  *   `ConfirmationManager.analyzeConfirmation` prompt.
  */
 data class PendingConfirmationEvent(
@@ -371,7 +381,7 @@ data class PendingConfirmationEvent(
     val toolRequestId: String,
     val toolName: String,
     val inputJson: String,
-    val analysisInstructions: String = "",
+    val toolConfirmationInstructions: String = "",
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.PENDING_CONFIRMATION
 }

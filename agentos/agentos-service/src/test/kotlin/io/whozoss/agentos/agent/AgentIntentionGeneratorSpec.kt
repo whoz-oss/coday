@@ -140,6 +140,53 @@ class AgentIntentionGeneratorSpec :
             ex.response shouldBe response
         }
 
+        "parseIntentionAndTool — two toolName tags throws InvalidFormat" {
+            val generator = makeGenerator()
+            val response =
+                """
+                <intention>I need to read the file to answer the question.</intention>
+                <toolName>Answer</toolName>
+                <toolName>FILES__ReadFile</toolName>
+                """.trimIndent()
+
+            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+            ex.message shouldContain "Multiple <toolName> tags found"
+            ex.response shouldBe response
+        }
+
+        "parseIntentionAndTool — two intention tags throws InvalidFormat" {
+            val generator = makeGenerator()
+            val response =
+                """
+                <intention>First intention.</intention>
+                <intention>Second intention.</intention>
+                <toolName>Answer</toolName>
+                """.trimIndent()
+
+            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+            ex.message shouldContain "Multiple <intention> tags found"
+            ex.response shouldBe response
+        }
+
+        "parseIntentionAndTool — two toolName and two intention tags throws InvalidFormat" {
+            val generator = makeGenerator()
+            val response =
+                """
+                <intention>First intention.</intention>
+                <toolName>Answer</toolName>
+                <intention>Second intention.</intention>
+                <toolName>FILES__ReadFile</toolName>
+                """.trimIndent()
+
+            shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+        }
+
         "parseIntentionAndTool — completely empty response throws AgentIntentionGenerationException" {
             val generator = makeGenerator()
 
@@ -184,6 +231,7 @@ class AgentIntentionGeneratorSpec :
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "All good on retry"
+            result.isFailedIntention shouldBe false
         }
 
         "generate retries on malformed response and succeeds on second attempt with unknown tool" {
@@ -204,6 +252,7 @@ class AgentIntentionGeneratorSpec :
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Recovered on retry"
+            result.isFailedIntention shouldBe false
         }
 
         "generate falls back to Answer after all retry attempts exhausted with meaningful intention" {
@@ -222,5 +271,6 @@ class AgentIntentionGeneratorSpec :
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Failed to plan next step after"
             result.intention shouldContain "Missing <toolName> tag"
+            result.isFailedIntention shouldBe true
         }
     })

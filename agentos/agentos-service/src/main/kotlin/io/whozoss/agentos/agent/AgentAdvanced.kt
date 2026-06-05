@@ -289,10 +289,17 @@ class AgentAdvanced(
 
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
         val toolCtx = tool?.let { buildToolContext(it.name, namespaceId) }
+        val confirmationMode =
+            if (tool != null && toolCtx != null) {
+                tool.getConfirmationMode(parameters.args, toolCtx)
+            } else {
+                ConfirmationMode.NONE
+            }
         return when {
-            tool != null && toolCtx != null && tool.confirmationMode != ConfirmationMode.NONE -> {
+            tool != null && toolCtx != null && confirmationMode != ConfirmationMode.NONE -> {
                 handleConfirmationGate(
                     tool = tool,
+                    mode = confirmationMode,
                     argsJson = parameters.args,
                     toolRequestId = toolRequestId,
                     parameters = parameters,
@@ -342,7 +349,11 @@ class AgentAdvanced(
     }
 
     /**
-     * Handles the confirmation gate for a tool whose [confirmationMode] is not [NONE].
+     * Handles the confirmation gate for a tool whose resolved mode is not [NONE].
+     * The mode is resolved by the caller via [StandardTool.getConfirmationMode] and
+     * passed in as [mode], allowing the tool to return a dynamic mode based on args
+     * and case events (e.g. bypass when an in-session create makes a follow-up update
+     * implicit).
      *
      * - [ConfirmationMode.EVERY_TIME]: always emits a [PendingConfirmationEvent] +
      *   IN-CHANNEL [MessageEvent] and returns [GateOutcome.AwaitingConfirmation].
@@ -352,6 +363,7 @@ class AgentAdvanced(
      */
     private suspend fun handleConfirmationGate(
         tool: StandardTool<*>,
+        mode: ConfirmationMode,
         argsJson: String?,
         toolRequestId: String,
         parameters: ToolRequestEvent,
@@ -361,9 +373,9 @@ class AgentAdvanced(
         caseId: UUID,
         emitEvent: suspend (CaseEvent) -> Unit,
     ): GateOutcome {
-        val history = context.buildMessages(accumulatedEvents)
+        val firstLevelHistory = context.buildMessages(accumulatedEvents.filter { it.type.isFirstLevel() })
         val needsExplicit =
-            when (tool.confirmationMode) {
+            when (mode) {
                 ConfirmationMode.EVERY_TIME -> {
                     true
                 }
@@ -371,9 +383,10 @@ class AgentAdvanced(
                 ConfirmationMode.INFER -> {
                     context.confirmationManager.shouldConfirm(
                         chatClient = context.chatClient,
-                        history = history,
+                        firstLevelHistory = firstLevelHistory,
                         actionLabel = "Tool ${tool.name}",
                         proposedData = argsJson ?: "{}",
+                        toolInstructions = tool.getConfirmationInstructions(),
                     )
                 }
 
@@ -402,10 +415,12 @@ class AgentAdvanced(
                 // Explicit confirmation required — emit PendingConfirmationEvent + IN-CHANNEL question.
                 val question =
                     context.confirmationManager.formulateQuestion(
+                        context = context,
                         chatClient = context.chatClient,
-                        history = history,
+                        accumulatedEvents = accumulatedEvents,
                         fallbackLabel = tool.name,
                         pendingData = argsJson ?: "{}",
+                        guidelines = buildUserFacingGuidelines(accumulatedEvents),
                     )
                 emitEvent(
                     PendingConfirmationEvent(
@@ -414,7 +429,7 @@ class AgentAdvanced(
                         toolRequestId = toolRequestId,
                         toolName = parameters.toolName,
                         inputJson = argsJson ?: "{}",
-                        analysisInstructions = tool.getConfirmationInstructions(),
+                        toolConfirmationInstructions = tool.getConfirmationInstructions(),
                     ),
                 )
                 // IN-CHANNEL: emit a MessageEvent so the LLM sees the pause naturally
@@ -593,13 +608,20 @@ class AgentAdvanced(
                         // Slice the history shown to analyzeConfirmation to events at-or-after the pending.
                         // Prevents the LLM judge from picking up a "yes" from an unrelated earlier turn
                         // (defense-in-depth for tools with confirmationMode=EVERY_TIME).
-                        val historyFromPending = context.buildMessages(events.subList(pendingIndex, events.size))
+                        val caseEventsAtOrAfterPending =
+                            events.subList(
+                                pendingIndex,
+                                events.size,
+                            )
+                        val firstLevelCaseEventsAtOrAfterPending =
+                            caseEventsAtOrAfterPending.filter { it.type.isFirstLevel() }
+                        val firstLevelHistoryFromPending = context.buildMessages(firstLevelCaseEventsAtOrAfterPending)
                         val decision =
                             context.confirmationManager.analyzeConfirmation(
                                 chatClient = context.chatClient,
-                                history = historyFromPending,
+                                firstLevelHistory = firstLevelHistoryFromPending,
                                 pendingPayload = pending.inputJson,
-                                specificInstructions = pending.analysisInstructions,
+                                toolInstructions = pending.toolConfirmationInstructions,
                             )
                         when (decision) {
                             ConfirmationDecision.AMBIGUOUS -> {
@@ -608,10 +630,12 @@ class AgentAdvanced(
                                 // next user reply re-runs analyzeConfirmation against this new clarification.
                                 val clarificationQuestion =
                                     context.confirmationManager.formulateQuestion(
+                                        context = context,
                                         chatClient = context.chatClient,
-                                        history = historyFromPending,
+                                        accumulatedEvents = caseEventsAtOrAfterPending,
                                         fallbackLabel = pending.toolName,
                                         pendingData = pending.inputJson,
+                                        guidelines = buildUserFacingGuidelines(events),
                                     )
                                 val clarification =
                                     MessageEvent(
@@ -801,17 +825,28 @@ class AgentAdvanced(
                         .ifBlank { null }
                 }
 
+        val alreadyGreeted = accumulatedEvents.count { it is MessageEvent } > 2
+
         // Build the final prompt in clear, composable sections
         val prompt =
             buildString {
                 lastIntention?.let {
-                    appendLine("Your analysis: ${it.intention}")
+                    if (it.isFailedIntention) {
+                        appendLine("Your analysis:")
+                        appendLine()
+                        appendLine("The system encountered an internal error and was unable to determine the next action to perform.")
+                        appendLine("Part or all of the requested operation was not performed.")
+                        appendLine()
+                        appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
+                    } else {
+                        appendLine("Your analysis: ${it.intention}")
+                    }
                     appendLine()
                 }
 
                 appendLine("Based on the above conversation and your analysis, provide your response to the user.")
 
-                buildLanguageHint(accumulatedEvents)?.let {
+                buildUserFacingGuidelines(accumulatedEvents)?.let {
                     appendLine()
                     appendLine(it)
                 }
@@ -820,12 +855,11 @@ class AgentAdvanced(
                 appendLine(
                     "- Base your response solely on the content of this conversation history. If information is missing, say so explicitly.",
                 )
-                appendLine(
-                    "- Do not discriminate based on gender, ethnicity, religion, age, physical appearance, or any other protected attribute. If the user's request implies such a step, clarify with the user that this cannot be done.",
-                )
-                appendLine(
-                    "- Do not reference technical IDs unless explicitly asked. Instead, use a readable format such as the object's name, title, or a markdown representation.\n",
-                )
+                if (alreadyGreeted) {
+                    appendLine(
+                        "- The conversation is already in progress. Do not greet the user again, continue naturally from the last exchange.",
+                    )
+                }
                 userFullName?.let {
                     appendLine("Now, continue your conversation with $it.")
                 } ?: appendLine("Now, continue your conversation with the user.")
@@ -858,6 +892,35 @@ class AgentAdvanced(
                 )
             emitEvent(msg)
         }
+    }
+
+    /**
+     * Assembles the user-facing communication guidelines shared across any LLM-generated
+     * text shown to the user (final response, confirmation prompts, re-ask questions).
+     *
+     * Combines:
+     * - A language hint anchored on recent user messages (from [buildLanguageHint]).
+     * - A non-discrimination rule.
+     * - A no-technical-IDs rule.
+     *
+     * Returns `null` when no user messages are present and there is nothing to add
+     * (defensive — the static rules make a non-null result almost certain in practice).
+     */
+    internal fun buildUserFacingGuidelines(events: List<CaseEvent>): String? {
+        val lines =
+            buildList {
+                buildLanguageHint(events)?.let { add(it) }
+                add(
+                    "Do not discriminate based on gender, ethnicity, religion, age, physical appearance, " +
+                        "or any other protected attribute. If the user's request implies such a step, " +
+                        "clarify with the user that this cannot be done.",
+                )
+                add(
+                    "Do not reference technical IDs unless explicitly asked. Instead, use a readable format " +
+                        "such as the object's name, title, or a markdown representation.",
+                )
+            }
+        return lines.joinToString("\n").ifBlank { null }
     }
 
     /**
@@ -1033,7 +1096,8 @@ Output requirements:
         // args=null means all retries were exhausted — emit a WarnEvent so the failure
         // is visible in the case event stream (cannot be done inside the non-suspend fallback).
         if (result.args == null) {
-            val message = "Failed to generate valid JSON parameters for '${tool.name}' after $MAX_PARAMETER_ATTEMPTS attempts."
+            val message =
+                "Failed to generate valid JSON parameters for '${tool.name}' after $MAX_PARAMETER_ATTEMPTS attempts."
             emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = message))
         }
 
@@ -1226,6 +1290,9 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                     // before the interrupt propagates to the run() catch block.
                     throw e
                 } catch (e: Exception) {
+                    logger.warn(e) {
+                        "[AgentAdvanced] error during tool execution for ${tool.name}"
+                    }
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,

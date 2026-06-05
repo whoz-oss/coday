@@ -57,14 +57,29 @@ export const searchFiles = async ({
     // Use execFile (not exec) to bypass shell interpretation of glob characters.
     const args = [fileContent, resolvedSearchPath, '--color', 'never', '-l', '--fixed-strings']
     if (fileName) args.push('--glob', `*${fileName}*`)
-    for (const t of fileTypes ?? []) args.push('--glob', `*.${t}`)
-    return runRg(args, root, timeout, interactor)
+    // fileTypes: use a single brace-expansion glob for AND semantics with fileName
+    if (fileTypes && fileTypes.length > 0) {
+      const extPattern = fileTypes.length === 1 ? `*.${fileTypes[0]}` : `*.{${fileTypes.join(',')}}`
+      args.push('--glob', extPattern)
+    }
+    const result = await runRg(args, root, timeout, interactor)
+    // Post-filter by extension for AND semantics (ripgrep treats multiple --glob as OR)
+    if (fileTypes && fileTypes.length > 0) {
+      const extensions = new Set(fileTypes.map((t) => `.${t}`))
+      return { files: result.files.filter((f) => extensions.has(path.extname(f))) }
+    }
+    return result
   }
 
   // fileName only: use ripgrep --files with glob pattern (faster and timeout-reliable)
   const args = ['--files', resolvedSearchPath, '--color', 'never', '--glob', `*${fileName}*`]
-  for (const t of fileTypes ?? []) args.push('--glob', `*.${t}`)
-  return runRg(args, root, timeout, interactor)
+  const result = await runRg(args, root, timeout, interactor)
+  // If fileTypes are specified, filter results to only include matching extensions (AND logic)
+  if (fileTypes && fileTypes.length > 0) {
+    const extensions = new Set(fileTypes.map((t) => `.${t}`))
+    return { files: result.files.filter((f) => extensions.has(path.extname(f))) }
+  }
+  return result
 }
 
 /**
