@@ -140,6 +140,53 @@ class AgentIntentionGeneratorSpec :
             ex.response shouldBe response
         }
 
+        "parseIntentionAndTool — two toolName tags throws InvalidFormat" {
+            val generator = makeGenerator()
+            val response =
+                """
+                <intention>I need to read the file to answer the question.</intention>
+                <toolName>Answer</toolName>
+                <toolName>FILES__ReadFile</toolName>
+                """.trimIndent()
+
+            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+            ex.message shouldContain "Multiple <toolName> tags found"
+            ex.response shouldBe response
+        }
+
+        "parseIntentionAndTool — two intention tags throws InvalidFormat" {
+            val generator = makeGenerator()
+            val response =
+                """
+                <intention>First intention.</intention>
+                <intention>Second intention.</intention>
+                <toolName>Answer</toolName>
+                """.trimIndent()
+
+            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+            ex.message shouldContain "Multiple <intention> tags found"
+            ex.response shouldBe response
+        }
+
+        "parseIntentionAndTool — two toolName and two intention tags throws InvalidFormat" {
+            val generator = makeGenerator()
+            val response =
+                """
+                <intention>First intention.</intention>
+                <toolName>Answer</toolName>
+                <intention>Second intention.</intention>
+                <toolName>FILES__ReadFile</toolName>
+                """.trimIndent()
+
+            shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                generator.parseIntentionAndTool(response, validTools)
+            }
+        }
+
         "parseIntentionAndTool — completely empty response throws AgentIntentionGenerationException" {
             val generator = makeGenerator()
 
