@@ -1,6 +1,9 @@
 package io.whozoss.agentos.redirect
 
 import io.whozoss.agentos.agent.AgentInterrupt
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -96,7 +99,36 @@ class RedirectTool(
         return when {
             target == null -> ToolExecutionResult.error("Agent name is required.", errorType = "MISSING_INPUT")
             eligibleAgents.none { it.name == target } -> ToolExecutionResult.error("Agent does not exist.", errorType = "NOT_FOUND")
+            detectRedirectLoop(target, context) -> ToolExecutionResult.error(
+                "Redirect loop detected: '$target' has already been invoked during this turn. " +
+                    "Stop redirecting and answer the user directly.",
+                errorType = "REDIRECT_LOOP",
+            )
             else -> throw AgentInterrupt.Redirect(target)
         }
+    }
+
+    /**
+     * Returns `true` when a redirect loop is detected.
+     *
+     * A loop is detected when the same agent appears at least [REDIRECT_LOOP_THRESHOLD] times
+     * within the last [REDIRECT_LOOP_WINDOW] [AgentSelectedEvent]s since the last user
+     * [MessageEvent] (exclusive). The window cap prevents false positives on long but
+     * legitimate linear chains while still catching ping-pong and triangular cycles.
+     */
+    internal fun detectRedirectLoop(target: String, context: ToolContext): Boolean {
+        val events = context.caseEvents
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val eventsThisTurn = if (lastUserMessageIndex >= 0) events.drop(lastUserMessageIndex + 1) else events
+        val window = eventsThisTurn.filterIsInstance<AgentSelectedEvent>().takeLast(REDIRECT_LOOP_WINDOW)
+        return window.count { it.agentName == target } >= REDIRECT_LOOP_THRESHOLD
+    }
+
+    companion object {
+        /** How many recent agent selections to inspect for a redirect loop. */
+        internal const val REDIRECT_LOOP_WINDOW = 10
+
+        /** How many times the same agent must appear in the window to trigger loop detection. */
+        internal const val REDIRECT_LOOP_THRESHOLD = 2
     }
 }
