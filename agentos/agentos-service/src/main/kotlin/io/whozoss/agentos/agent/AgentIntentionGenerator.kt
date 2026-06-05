@@ -113,7 +113,7 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
                         is AgentIntentionGenerationException.InvalidFormat ->
                             append(
                                 """
-                                This does not match the expected XML output that should correspond to the following:
+                                This does not match the expected XML output (${e.message}) that should correspond to the following:
                                 <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
                                 <toolName>[The exact name of the tool to be called]</toolName>
                                 """.trimIndent()
@@ -158,24 +158,24 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
         validToolNames: List<String>,
     ): Pair<String, String> {
         if (response.isBlank()) throw AgentIntentionGenerationException.InvalidFormat("Empty LLM response")
-        val rawTool = extractFromTag(response, "toolName")
-            ?: throw AgentIntentionGenerationException.InvalidFormat("Missing <toolName> tag", response)
-        val intention = extractFromTag(response, "intention")
-            ?: throw AgentIntentionGenerationException.InvalidFormat("Missing <intention> tag", response)
-        val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) }
-            ?: throw AgentIntentionGenerationException.UnknownTool(rawTool.trim(), response)
-        return intention to toolName
+        try {
+            val rawTool = extractFromUniqueTag(response, "toolName")
+            val intention = extractFromUniqueTag(response, "intention")
+            val toolName = validToolNames.firstOrNull { it.equals(rawTool.trim(), ignoreCase = true) }
+                ?: throw AgentIntentionGenerationException.UnknownTool(rawTool.trim(), response)
+            return intention to toolName
+        } catch (e: IllegalArgumentException) {
+            throw AgentIntentionGenerationException.InvalidFormat(e.message ?: "Invalid intention format", response)
+        }
     }
 
-    private fun extractFromTag(
-        input: String,
-        tag: String,
-    ): String? =
-        Regex("""<$tag>(.*?)</$tag>""", RegexOption.DOT_MATCHES_ALL)
-            .find(input)
-            ?.groupValues
-            ?.get(1)
-            ?.trim()
+    private fun extractFromUniqueTag(input: String, tag: String): String {
+        val matches = Regex("""<$tag>(.*?)</$tag>""", RegexOption.DOT_MATCHES_ALL)
+            .findAll(input)
+            .toList()
+        if (matches.size > 1) throw IllegalArgumentException("Multiple <$tag> tags found")
+        return matches.firstOrNull()?.groupValues?.get(1)?.trim() ?: throw IllegalArgumentException("Missing <$tag> tag")
+    }
 
     companion object : KLogging() {
         const val ANSWER_TOOL = "Answer"
