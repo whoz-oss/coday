@@ -99,9 +99,8 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
           },
           'nx-release-publish': {
             executor: 'nx:run-commands',
-            // Override targetDefaults["nx-release-publish"].dependsOn which defaults to ["build"].
-            // `assemble` (no tests) is sufficient — tests already ran in validate.yml on every PR.
-            dependsOn: ['assemble'],
+            // No-op: real publishing happens via the `publish` target below, called by publish-agentos-artifacts in validate.yml CI workflow.
+            dependsOn: [],
             options: {
               command: `echo '${projectName} published via Gradle in CI'`,
             },
