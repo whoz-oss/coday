@@ -32,7 +32,7 @@ class CaseEventNodeMapperConfirmationSpec :
                     toolRequestId = "tool-req-42",
                     toolName = "FILES__remove",
                     inputJson = """{"path":"old.txt"}""",
-                    toolsCAInstructions = "Be strict on deletion.",
+                    toolConfirmationInstructions = "Be strict on deletion.",
                 )
 
             val node = nodeMapper.fromDomain(original)
@@ -45,7 +45,7 @@ class CaseEventNodeMapperConfirmationSpec :
             roundTripped.toolRequestId shouldBe original.toolRequestId
             roundTripped.toolName shouldBe original.toolName
             roundTripped.inputJson shouldBe original.inputJson
-            roundTripped.toolsCAInstructions shouldBe original.toolsCAInstructions
+            roundTripped.toolConfirmationInstructions shouldBe original.toolConfirmationInstructions
         }
 
         "PendingConfirmationEvent with default analysisInstructions round-trips correctly" {
@@ -62,7 +62,7 @@ class CaseEventNodeMapperConfirmationSpec :
             val roundTripped = nodeMapper.toDomain(node) as PendingConfirmationEvent
 
             roundTripped.inputJson shouldBe "{}"
-            roundTripped.toolsCAInstructions shouldBe ""
+            roundTripped.toolConfirmationInstructions shouldBe ""
         }
 
         "ConfirmationResolvedEvent (confirmed=true) survives the round-trip" {

@@ -2475,11 +2475,11 @@ components:
         properties:
           inputJson:
             type: string
+          toolConfirmationInstructions:
+            type: string
           toolName:
             type: string
           toolRequestId:
-            type: string
-          toolsCAInstructions:
             type: string
       required:
       - caseId
@@ -2488,9 +2488,9 @@ components:
       - metadata
       - namespaceId
       - timestamp
+      - toolConfirmationInstructions
       - toolName
       - toolRequestId
-      - toolsCAInstructions
       - type
     QuestionEvent:
       allOf:

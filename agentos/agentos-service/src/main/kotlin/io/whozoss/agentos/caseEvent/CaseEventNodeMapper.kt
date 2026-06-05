@@ -345,7 +345,7 @@ class CaseEventNodeMapper(
                     node.toolRequestId,
                     node.toolName,
                     node.inputJson,
-                    node.toolsCAInstructions,
+                    node.toolConfirmationInstructions,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -528,7 +528,7 @@ class CaseEventNodeMapper(
             toolRequestId = n.toolRequestId,
             toolName = n.toolName,
             inputJson = n.inputJson,
-            toolsCAInstructions = n.toolsCAInstructions ?: "",
+            toolConfirmationInstructions = n.toolConfirmationInstructions ?: "",
         )
 
     private fun toDomain(n: ConfirmationResolvedEventNode) =
@@ -772,7 +772,7 @@ class CaseEventNodeMapper(
             toolRequestId = e.toolRequestId,
             toolName = e.toolName,
             inputJson = e.inputJson,
-            toolsCAInstructions = e.toolsCAInstructions.ifEmpty { null },
+            toolConfirmationInstructions = e.toolConfirmationInstructions.ifEmpty { null },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

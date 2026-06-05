@@ -17,7 +17,7 @@ export interface PendingConfirmationEvent {
   timestamp: string
   type: 'PendingConfirmationEvent'
   inputJson: string
+  toolConfirmationInstructions: string
   toolName: string
   toolRequestId: string
-  toolsCAInstructions: string
 }

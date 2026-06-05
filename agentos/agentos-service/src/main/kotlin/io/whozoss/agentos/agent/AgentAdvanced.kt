@@ -429,7 +429,7 @@ class AgentAdvanced(
                         toolRequestId = toolRequestId,
                         toolName = parameters.toolName,
                         inputJson = argsJson ?: "{}",
-                        toolsCAInstructions = tool.getConfirmationInstructions(),
+                        toolConfirmationInstructions = tool.getConfirmationInstructions(),
                     ),
                 )
                 // IN-CHANNEL: emit a MessageEvent so the LLM sees the pause naturally
@@ -621,7 +621,7 @@ class AgentAdvanced(
                                 chatClient = context.chatClient,
                                 firstLevelHistory = firstLevelHistoryFromPending,
                                 pendingPayload = pending.inputJson,
-                                toolInstructions = pending.toolsCAInstructions,
+                                toolInstructions = pending.toolConfirmationInstructions,
                             )
                         when (decision) {
                             ConfirmationDecision.AMBIGUOUS -> {
