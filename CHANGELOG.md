@@ -1,3 +1,15 @@
+## 0.173.9 (2026-06-05)
+
+### 🩹 Fixes
+
+- remove redundant build dependsOn from JVM nx-release-publish no-op target ([2a23cb15](https://github.com/whoz-oss/coday/commit/2a23cb15))
+- remove redundant build dependsOn from JVM nx-release-publish no-op target ([#977](https://github.com/whoz-oss/coday/pull/977))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.173.8 (2026-06-05)
 
 ### 🚀 Features
