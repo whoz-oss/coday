@@ -13,6 +13,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.redirect.RedirectTool
+import io.whozoss.agentos.agent.RepetitionOutcome
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -2340,6 +2341,278 @@ class AgentAdvancedSpec :
 
             events.filterIsInstance<ToolResponseEvent>().single().success shouldBe true
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // WZ-32491 — Force-stop on double repetition warning
+        // -------------------------------------------------------------------------
+
+        "WZ-32491: force-stops loop when repetition is detected a second time after warning" {
+            // Scenario: tool is called 5 times (window full, threshold reached) → Warned emitted.
+            // On the next iteration the window is still full of the same tool → ForceStop triggered.
+            // The loop must exit WITHOUT calling intentionGenerator again and must emit
+            // a second WarnEvent containing the force-stop message.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Forced stop.")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "LOOP__tool"
+            every { mockTool.description } returns "loops forever"
+            every { mockTool.inputSchema } returns "{}"
+            every { mockTool.paramType } returns String::class.java
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("result")
+
+            // Generator always returns the same looping tool — simulates an agent that never
+            // heeds the repetition warning.
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "Keep calling the tool.",
+                    toolName = "LOOP__tool",
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "LoopAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    // High maxIterations: without the fix the agent would run until exhaustion.
+                    maxIterations = 50,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Two WarnEvents must have been emitted:
+            // 1) the repetition warning (Warned)
+            // 2) the force-stop warning (ForceStop)
+            val warnEvents = events.filterIsInstance<WarnEvent>()
+            warnEvents.size shouldBe 2
+            val forceStopWarn = warnEvents.last()
+            forceStopWarn.message shouldContain "Forcing loop termination"
+
+            // The run must have terminated cleanly with AgentFinishedEvent.
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+
+            // The loop must have exited well before maxIterations (50).
+            // WINDOW=5 + THRESHOLD=3 means the loop runs at most WINDOW+1 tool calls
+            // before the force-stop kicks in on the iteration after the first warning.
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            (toolResponses.size < 50) shouldBe true
+        }
+
+        "WZ-32491: first repetition detection only emits one WarnEvent, does not force-stop" {
+            // Scenario: tool is called WINDOW times (threshold reached once), then the
+            // generator switches to Answer. Only one WarnEvent should be emitted and the
+            // loop should NOT force-stop — the agent corrected itself.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("Done.")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "LOOP__tool"
+            every { mockTool.description } returns "looping tool"
+            every { mockTool.inputSchema } returns "{}"
+            every { mockTool.paramType } returns String::class.java
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("result")
+
+            val agentId = UUID.randomUUID()
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            // WINDOW iterations of the tool, then Answer when the warning is passed
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), isNull())
+            } returnsMany
+                (1..AgentAdvanced.REPETITION_WINDOW).map {
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call tool $it.",
+                        toolName = "LOOP__tool",
+                    )
+                }
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), not(isNull()))
+            } returns
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    intention = "Stopping.",
+                    toolName = "Answer",
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "SelfCorrectingAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 20,
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Exactly one WarnEvent for the first detection — no force-stop
+            val warnEvents = events.filterIsInstance<WarnEvent>()
+            warnEvents shouldHaveSize 1
+            warnEvents[0].message shouldContain "LOOP__tool"
+
+            // Agent finished normally after self-correcting
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "WZ-32491: handleRepetitionDetection returns Warned on first detection" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val sameArgs = """{"path":"foo.txt"}"""
+            val events =
+                (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
+                    listOf(
+                        ToolRequestEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            args = sameArgs,
+                        ),
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            output = MessageContent.Text("content"),
+                        ),
+                    )
+                }
+
+            var emitted: WarnEvent? = null
+            val outcome =
+                agent.handleRepetitionDetection(
+                    events = events,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    warningAlreadyEmitted = false,
+                    emitEvent = { emitted = it as? WarnEvent },
+                )
+
+            (outcome is RepetitionOutcome.Warned) shouldBe true
+            emitted shouldNotBe null
+            emitted!!.message shouldContain "FILES__ReadFile"
+        }
+
+        "WZ-32491: handleRepetitionDetection returns ForceStop on second detection, emits no WarnEvent" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val sameArgs = """{"path":"foo.txt"}"""
+            val events =
+                (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
+                    listOf(
+                        ToolRequestEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            args = sameArgs,
+                        ),
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "FILES__ReadFile",
+                            output = MessageContent.Text("content"),
+                        ),
+                    )
+                }
+
+            var emitted: WarnEvent? = null
+            val outcome =
+                agent.handleRepetitionDetection(
+                    events = events,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    warningAlreadyEmitted = true, // warning already sent
+                    emitEvent = { emitted = it as? WarnEvent },
+                )
+
+            (outcome is RepetitionOutcome.ForceStop) shouldBe true
+            // ForceStop does NOT emit a WarnEvent — the caller handles emission
+            emitted shouldBe null
+            (outcome as RepetitionOutcome.ForceStop).message shouldContain "Forcing loop termination"
+        }
+
+        "WZ-32491: handleRepetitionDetection returns null when no repetition" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            // Only 3 responses — below the window of 5
+            val events =
+                (1..3).flatMap { i ->
+                    listOf(
+                        ToolRequestEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "TOOL__x",
+                            args = "{}",
+                        ),
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "req-$i",
+                            toolName = "TOOL__x",
+                            output = MessageContent.Text("ok"),
+                        ),
+                    )
+                }
+
+            val outcome =
+                agent.handleRepetitionDetection(
+                    events = events,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    warningAlreadyEmitted = false,
+                    emitEvent = {},
+                )
+
+            outcome shouldBe null
         }
 
         "detectRepetitionLoop returns null when window contains a synthetic ToolResponseEvent" {

@@ -118,10 +118,30 @@ class AgentAdvanced(
                             warningAlreadyEmitted = repetitionWarningEmitted,
                             emitEvent = { event -> emit(event) },
                         )
-                    repetitionWarningEmitted = repetitionWarning != null
+                    when (repetitionWarning) {
+                        is RepetitionOutcome.ForceStop -> {
+                            // Warning was already emitted and ignored — the LLM is stuck.
+                            // Force the loop to stop rather than waiting for maxIterations.
+                            logger.warn {
+                                "[$name] Repetition loop persists after warning — forcing loop stop"
+                            }
+                            emit(
+                                WarnEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    message = repetitionWarning.message,
+                                ),
+                            )
+                            continueLoop = false
+                        }
+                        is RepetitionOutcome.Warned -> repetitionWarningEmitted = true
+                        null -> Unit
+                    }
+
+                    if (!continueLoop) break
 
                     val intention =
-                        intentionGenerator.generate(context, accumulatedEvents, namespaceId, caseId, repetitionWarning)
+                        intentionGenerator.generate(context, accumulatedEvents, namespaceId, caseId, (repetitionWarning as? RepetitionOutcome.Warned)?.message)
                     emit(intention)
                     accumulatedEvents.add(intention)
                     lastIntention = intention
@@ -223,33 +243,40 @@ class AgentAdvanced(
             }
         }
 
-    private suspend fun handleRepetitionDetection(
+    internal suspend fun handleRepetitionDetection(
         events: List<CaseEvent>,
         namespaceId: UUID,
         caseId: UUID,
         warningAlreadyEmitted: Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
-    ): String? {
+    ): RepetitionOutcome? {
         val repeatedTool = detectRepetitionLoop(events)
         return when {
-            repeatedTool == null -> {
-                null
-            }
+            repeatedTool == null -> null
 
-            else -> {
+            !warningAlreadyEmitted -> {
                 val msg =
                     "Calling a tool with the same parameters will produce the same results.\n" +
                         "You have called the tool $repeatedTool $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls. " +
                         "If the tool has not added meaningful information to the conversation, " +
                         "stop calling it and consider the next step toward achieving the user's goal. " +
                         "If you do not have enough information to proceed, use ${AgentIntentionGenerator.ANSWER_TOOL} to ask the user for further instructions."
-                if (!warningAlreadyEmitted) {
-                    logger.warn {
-                        "Repetition loop detected: $repeatedTool called $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls"
-                    }
-                    emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+                logger.warn {
+                    "Repetition loop detected: $repeatedTool called $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls"
                 }
-                msg
+                emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+                RepetitionOutcome.Warned(msg)
+            }
+
+            else -> {
+                // Warning was already emitted and the LLM ignored it — escalate to force-stop.
+                val msg =
+                    "Agent is stuck in a repetition loop on tool '$repeatedTool' and did not stop after warning. " +
+                        "Forcing loop termination."
+                logger.warn {
+                    "[$name] Repetition loop persists after warning for tool '$repeatedTool' — forcing stop"
+                }
+                RepetitionOutcome.ForceStop(msg)
             }
         }
     }
