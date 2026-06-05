@@ -1,3 +1,14 @@
+## 0.173.8 (2026-06-05)
+
+### 🚀 Features
+
+- **agentos:** inject tool guidance in shouldConfirm prompt ([#32284](https://github.com/whoz-oss/coday/pull/32284), [#945](https://github.com/whoz-oss/coday/pull/945), [#943](https://github.com/whoz-oss/coday/issues/943), [#939](https://github.com/whoz-oss/coday/issues/939), [#5076](https://github.com/whoz-oss/coday/issues/5076))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.173.7 (2026-06-05)
 
 ### 🩹 Fixes
