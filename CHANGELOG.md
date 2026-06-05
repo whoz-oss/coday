@@ -1,3 +1,15 @@
+## 0.173.6 (2026-06-05)
+
+### 🩹 Fixes
+
+- #WZ-32472 Fail Intention Generation if the LLM produces two tools in one pass ([5109aa15](https://github.com/whoz-oss/coday/commit/5109aa15))
+- #WZ-32472 Fail Intention Generation if the LLM produces two tool… ([#976](https://github.com/whoz-oss/coday/pull/976))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
 ## 0.173.5 (2026-06-04)
 
 ### 🚀 Features
