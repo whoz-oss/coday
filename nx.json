@@ -24,11 +24,6 @@
         "^default"
       ]
     },
-    "nx-release-publish": {
-      "dependsOn": [
-        "build"
-      ]
-    },
     "lint": {
       "cache": true
     },
