@@ -4,6 +4,10 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.data.annotation.CreatedBy
+import org.springframework.data.annotation.CreatedDate
+import org.springframework.data.annotation.LastModifiedBy
+import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
@@ -36,10 +40,10 @@ data class AgentConfigNode(
     val externalMetadataJson: String? = null,
     val advancedExecution: Boolean = false,
     // EntityMetadata fields
-    val created: Instant = Instant.now(),
-    val createdBy: String? = null,
-    val modified: Instant = Instant.now(),
-    val modifiedBy: String? = null,
+    @CreatedDate val created: Instant = Instant.now(),
+    @CreatedBy val createdBy: String? = null,
+    @LastModifiedDate val modified: Instant = Instant.now(),
+    @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     val namespace: NamespaceNode? = null,

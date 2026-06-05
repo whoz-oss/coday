@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -37,4 +38,8 @@ data class AgentConfigResource(
      * AgentOS persists this field as-is without interpreting its content.
      */
     val externalMetadata: Map<String, Any?>? = null,
+    val createdBy: String? = null,
+    val createdOn: Instant = Instant.now(),
+    val updatedBy: String? = null,
+    val updatedOn: Instant = Instant.now(),
 )

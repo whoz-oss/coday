@@ -59,6 +59,10 @@ class AgentConfigController(
             integrations = entity.integrations,
             advancedExecution = entity.advancedExecution.takeIf { it },
             externalMetadata = entity.externalMetadata,
+            createdBy = entity.metadata.createdBy,
+            createdOn = entity.metadata.created,
+            updatedBy = entity.metadata.modifiedBy,
+            updatedOn = entity.metadata.modified,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -75,9 +79,10 @@ class AgentConfigController(
         )
 
     /**
-     * Merge an update resource onto an existing persisted entity. The persisted
-     * [AgentConfig.namespaceId] is preserved — clients cannot relocate an
-     * AgentConfig across namespaces via PUT (mass-assignment guard).
+     * Merge an update resource onto an existing persisted entity.
+     *
+     * - [AgentConfig.namespaceId] is preserved from [existing] (mass-assignment guard).
+     * - Audit fields (`modifiedBy`, `modified`) are set by the service layer, not here.
      */
     private fun toDomainForUpdate(
         resource: AgentConfigResource,
@@ -108,7 +113,7 @@ class AgentConfigController(
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")
     override fun create(@Valid @RequestBody resource: AgentConfigResource): AgentConfigResource =
-        super.create(resource)
+        toResource(agentConfigService.create(toDomain(resource)))
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")

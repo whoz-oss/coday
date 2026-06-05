@@ -1971,9 +1971,21 @@ components:
         externalMetadata:
           type: object
           additionalProperties: {}
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
       required:
+      - createdOn
       - name
       - namespaceId
+      - updatedOn
     UserGroupSummary:
       type: object
       properties:

@@ -14,9 +14,11 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.userGroup.UserGroup
+import io.whozoss.agentos.config.TestAuditConfiguration
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -358,6 +360,57 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
             result shouldHaveSize 1
             result.first().name shouldBe "target-agent"
+        }
+
+        // -------------------------------------------------------------------------
+        // Spring Data Auditing — @CreatedBy / @LastModifiedBy / @CreatedDate / @LastModifiedDate
+        // -------------------------------------------------------------------------
+
+        "save stamps createdBy and modifiedBy from AuditorAware on create" {
+            val ns = namespaceRepo.save(namespace())
+
+            val saved = agentConfigRepo.save(agentConfig(ns.id, "audited-agent"))
+
+            saved.metadata.createdBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+            saved.metadata.modifiedBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+        }
+
+        "save stamps createdDate and lastModifiedDate on create" {
+            val ns = namespaceRepo.save(namespace())
+            val before = Instant.now()
+
+            val saved = agentConfigRepo.save(agentConfig(ns.id, "timestamped-agent"))
+
+            saved.metadata.created.isAfter(before.minusSeconds(1)) shouldBe true
+            saved.metadata.modified.isAfter(before.minusSeconds(1)) shouldBe true
+        }
+
+        "save on update preserves createdBy and updates modifiedBy" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = agentConfigRepo.save(agentConfig(ns.id, "update-audit-agent"))
+
+            val updated = agentConfigRepo.save(saved.copy(name = "renamed-agent"))
+
+            updated.metadata.createdBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+            updated.metadata.modifiedBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+        }
+
+        "soft delete stamps lastModifiedDate" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = agentConfigRepo.save(agentConfig(ns.id, "to-delete-agent"))
+            val beforeDelete = Instant.now()
+
+            agentConfigRepo.delete(saved.id)
+
+            driver.session().use { session ->
+                val record = session.run(
+                    "MATCH (a:AgentConfig {id: \$id}) RETURN a.modified as modified, a.removed as removed",
+                    mapOf("id" to saved.id.toString()),
+                ).single()
+                record.get("removed").asBoolean() shouldBe true
+                val modified = record.get("modified").asZonedDateTime().toInstant()
+                modified.isAfter(beforeDelete.minusSeconds(1)) shouldBe true
+            }
         }
     }
 }
