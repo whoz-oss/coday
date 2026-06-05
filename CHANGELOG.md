@@ -1,3 +1,13 @@
+## 0.173.7 (2026-06-05)
+
+### 🩹 Fixes
+
+- #WZ-32024 expose createdBy/updatedBy/createdOn/updatedOn in Agen… ([#946](https://github.com/whoz-oss/coday/pull/946))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.173.6 (2026-06-05)
 
 ### 🩹 Fixes
