@@ -1,5 +1,5 @@
 import { releaseChangelog, releasePublish, releaseVersion } from 'nx/release'
-import { readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
@@ -26,6 +26,10 @@ async function main(): Promise<void> {
   }
 
   console.log(`New version: ${workspaceVersion}`)
+
+  if (!dryRun && process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${workspaceVersion}\n`)
+  }
 
   // Step 2: Update Gradle version catalog to match the new release version.
   // This must happen AFTER releaseVersion (which determines the new version)

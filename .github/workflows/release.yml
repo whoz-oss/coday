@@ -19,63 +19,15 @@ defaults:
     shell: bash
 
 jobs:
-  # Job 1: Setup and determine if release is needed
-  check-release:
-    runs-on: ubuntu-latest
-    # Skip if this push was made by github-actions (prevents infinite loop)
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && github.actor != 'github-actions[bot]'"
-    outputs:
-      should_release: ${{ steps.check.outputs.should_release }}
-      previous_tag: ${{ steps.previous_tag.outputs.previous_tag }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Get previous tag
-        id: previous_tag
-        run: |
-          # Get the latest release tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
-          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "Previous tag: $PREVIOUS_TAG"
-          else
-            echo "No previous tag found"
-          fi
-
-      - name: Check if release needed
-        id: check
-        run: |
-          # Check if there are releasable commits since last tag
-          if [ -n "${{ steps.previous_tag.outputs.previous_tag }}" ]; then
-            COMMITS=$(git log ${{ steps.previous_tag.outputs.previous_tag }}..HEAD --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
-          else
-            COMMITS=$(git log --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
-          fi
-
-          if [ -n "$COMMITS" ]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "Found releasable commits"
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "No releasable commits found"
-          fi
-
-  # Job 2: Release (version, build, changelog, GitHub release, and npm publish)
+  # Job 1: Release (version, build, changelog, GitHub release, and npm publish)
   release:
     runs-on: ubuntu-latest
-    needs: check-release
-    if: needs.check-release.outputs.should_release == 'true'
-    permissions:
-      contents: write
-      id-token: write
     outputs:
       new_version: ${{ steps.release.outputs.new_version }}
       release_sha: ${{ steps.release_sha.outputs.sha }}
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -113,28 +65,36 @@ jobs:
         env:
           HUSKY: 0
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          npx tsx scripts/release.ts
-          # Capture new version only if a release commit was just made
-          LATEST_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
-          LATEST_TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
-          HEAD_COMMIT=$(git rev-parse HEAD)
-          if [ "$LATEST_TAG_COMMIT" = "$HEAD_COMMIT" ]; then
-            NEW_VERSION=${LATEST_TAG#release/}
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "new_version=" >> $GITHUB_OUTPUT
-          fi
+        run: npx tsx scripts/release.ts
 
       - name: Capture release commit SHA
         id: release_sha
         run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-  # Job 3: Build and upload desktop apps (Coday + Coday Twin)
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -n "${{ steps.release.outputs.new_version }}" ]; then
+            echo "## 🏷️ Release v${{ steps.release.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⏭️ No release needed" >> $GITHUB_STEP_SUMMARY
+            echo "No releasable commits (\`feat:\`, \`fix:\`, \`feat!:\` / \`fix!:\`, or \`BREAKING CHANGE:\` in commit body) touching files of a releasable project (\`tag:platform:npm\` or \`tag:platform:jvm\`) found since the last release tag." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit message:** ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  # Job 2: Build and upload desktop apps (Coday + Coday Twin)
   desktop-release:
     runs-on: macos-latest
     needs: release
-    if: needs.release.outputs.new_version != ''
+    if: needs.release.outputs.new_version
     permissions:
       contents: write
     steps:
@@ -245,50 +205,20 @@ jobs:
             echo "Warning: Coday Twin PKG not found"
           fi
 
-  # Job 4: Resolve the list of JVM projects to publish from the platform:jvm tag
-  compute-jvm-projects:
+  # Job 3: Publish all JVM artifacts to GitHub Packages
+  publish-agentos-artifacts:
+    name: publish jvm artifacts to github packages
     runs-on: ubuntu-latest
     needs: release
-    if: needs.release.outputs.new_version != ''
-    outputs:
-      projects: ${{ steps.resolve.outputs.projects }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.release.outputs.release_sha }}
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Resolve JVM projects from tag
-        id: resolve
-        # --json --quiet mirrors validate.yml to avoid output pollution from the nx daemon/cache
-        run: |
-          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.' || echo '[]')
-          echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
-
-  publish-agentos-artifacts:
-    name: publish ${{ matrix.project }} to github packages
-    runs-on: ubuntu-latest
-    needs: [release, compute-jvm-projects]
-    if: needs.release.outputs.new_version != ''
+    if: needs.release.outputs.new_version
 
     permissions:
       contents: read
       packages: write
 
-    strategy:
-      matrix:
-        project: ${{ fromJson(needs.compute-jvm-projects.outputs.projects) }}
+    env:
+      # 20 = max concurrent jobs for GitHub Free plan on standard runners
+      NX_PARALLEL: 20
 
     steps:
       - name: Checkout repository
@@ -320,8 +250,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Publish to GitHub Packages
-        working-directory: agentos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: pnpm nx publish ${{ matrix.project }}
+        run: pnpm nx run-many -t publish --projects="tag:platform:jvm"
