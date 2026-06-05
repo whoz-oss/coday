@@ -1331,8 +1331,13 @@ class AgentAdvancedSpec :
         }
 
         // Wiring: the orchestrator must forward the raw LLM-generated args AND the
-        // accumulated (non-empty) caseEvents to the dynamic hook. Without this, a plugin
+        // accumulated caseEvents to the dynamic hook. Without this, a plugin
         // cannot perform a programmatic bypass (core use case of this PR).
+        //
+        // The tool name has no "__" prefix so filterEventsByIntegration passes the full
+        // caseEventsProvider list through unchanged, letting us assert on MessageEvent
+        // presence. Tools with a prefix only receive their integration's ToolResponseEvents
+        // in caseEvents — that filtering is tested separately via filterEventsByIntegration.
         "getConfirmationMode receives the LLM-generated args and the accumulated caseEvents" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1345,7 +1350,8 @@ class AgentAdvancedSpec :
                     .AtomicReference<List<CaseEvent>?>(null)
             val tool =
                 object : StandardTool<Map<String, Any>> {
-                    override val name = "TEST__capturingTool"
+                    // No "__" prefix: filterEventsByIntegration passes all events through.
+                    override val name = "capturingTool"
                     override val description = "captures args/ctx seen at getConfirmationMode"
                     override val inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}"""
                     override val version = "1.0.0"
@@ -1384,7 +1390,7 @@ class AgentAdvancedSpec :
                     caseId = caseId,
                     agentId = agentId,
                     intention = "call capturing tool",
-                    toolName = "TEST__capturingTool",
+                    toolName = "capturingTool",
                 )
 
             // Wire caseEventsProvider explicitly so the hook sees the same events the
@@ -1406,9 +1412,12 @@ class AgentAdvancedSpec :
             // persists on the resulting ToolRequestEvent.
             argsCaptured.get() shouldBe expectedArgs
 
-            // caseEvents : non-null, includes at least the initial USER MessageEvent
-            // from `caseEventsProvider`. Proves the hook is wired to the live event
-            // history exposed by the orchestrator, not to an empty/default snapshot.
+            // caseEvents : non-null and contains the initial USER MessageEvent from
+            // caseEventsProvider. Proves the hook is wired to the live event history
+            // exposed by the orchestrator, not to an empty/default snapshot.
+            // (For prefixed tools like "FILES__remove", filterEventsByIntegration would
+            // restrict caseEvents to matching ToolResponseEvents only — that is the
+            // intended behaviour for integration-scoped context.)
             val seenEvents = eventsCaptured.get()
             seenEvents shouldNotBe null
             seenEvents!!.filterIsInstance<MessageEvent>().any { it.actor.role == ActorRole.USER } shouldBe true
