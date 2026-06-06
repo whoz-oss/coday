@@ -67,7 +67,10 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         }
 
     init {
-        beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
+        beforeEach {
+            Neo4jContainerSupport.clearDatabase(driver)
+            TestAuditConfiguration.currentAuditorId = TestAuditConfiguration.TEST_AUDITOR_ID
+        }
 
         // -------------------------------------------------------------------------
         // No membership — empty result
@@ -393,6 +396,25 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
             updated.metadata.createdBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
             updated.metadata.modifiedBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+        }
+
+        "save on update preserves original createdBy when auditor changes" {
+            val ns = namespaceRepo.save(namespace())
+
+            // Create with auditor A
+            TestAuditConfiguration.currentAuditorId = TestAuditConfiguration.TEST_AUDITOR_ID
+            val created = agentConfigRepo.save(agentConfig(ns.id, "multi-auditor-agent"))
+            created.metadata.createdBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+            created.metadata.modifiedBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+
+            // Update with auditor B
+            TestAuditConfiguration.currentAuditorId = TestAuditConfiguration.SECOND_AUDITOR_ID
+            val updated = agentConfigRepo.save(created.copy(name = "renamed-by-other-user"))
+
+            // createdBy MUST remain auditor A
+            updated.metadata.createdBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
+            // modifiedBy MUST be auditor B
+            updated.metadata.modifiedBy shouldBe TestAuditConfiguration.SECOND_AUDITOR_ID
         }
 
         "soft delete stamps lastModifiedDate" {
