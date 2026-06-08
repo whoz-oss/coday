@@ -1,3 +1,15 @@
+## 0.173.16 (2026-06-08)
+
+### 🩹 Fixes
+
+- restore matrix strategy for jvm publish to avoid github packages 409 conflicts ([ca18112b](https://github.com/whoz-oss/coday/commit/ca18112b))
+- restore matrix strategy for jvm publish to avoid github packages 409 conflicts ([#989](https://github.com/whoz-oss/coday/pull/989))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.173.15 (2026-06-08)
 
 ### 🩹 Fixes
