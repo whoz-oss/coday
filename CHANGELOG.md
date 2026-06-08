@@ -1,3 +1,13 @@
+## 0.173.18 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32491 force-stop loop on second repetition warning ([#979](https://github.com/whoz-oss/coday/pull/979))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.173.17 (2026-06-08)
 
 ### 🩹 Fixes
