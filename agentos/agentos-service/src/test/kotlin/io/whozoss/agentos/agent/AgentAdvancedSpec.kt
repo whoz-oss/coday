@@ -13,7 +13,6 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.redirect.RedirectTool
-import io.whozoss.agentos.agent.RepetitionOutcome
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -627,7 +626,7 @@ class AgentAdvancedSpec :
             hint shouldContain "Respond in the same language"
         }
 
-        "detectRepetitionLoop returns null when fewer than REPETITION_WINDOW tool responses" {
+        "detectToolRepetition returns null when fewer than REPETITION_WINDOW tool responses" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -643,10 +642,10 @@ class AgentAdvancedSpec :
                     )
                 }
 
-            agent.detectRepetitionLoop(events) shouldBe null
+            agent.detectToolRepetition(events) shouldBe null
         }
 
-        "detectRepetitionLoop returns tool name when THRESHOLD identical calls within WINDOW" {
+        "detectToolRepetition returns ToolRepetition when THRESHOLD identical calls within WINDOW" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -672,10 +671,13 @@ class AgentAdvancedSpec :
                     )
                 }
 
-            agent.detectRepetitionLoop(events) shouldBe "FILES__ReadFile"
+            val result = agent.detectToolRepetition(events)
+            result shouldNotBe null
+            result!!.toolName shouldBe "FILES__ReadFile"
+            result.count shouldBe AgentAdvanced.REPETITION_WINDOW
         }
 
-        "detectRepetitionLoop returns tool name on two-tool alternation loop (A,B,A,B,A)" {
+        "detectToolRepetition returns ToolRepetition on two-tool alternation loop (A,B,A,B,A)" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -711,10 +713,13 @@ class AgentAdvancedSpec :
                         )
                     }.flatten()
 
-            agent.detectRepetitionLoop(events) shouldBe "toolA"
+            val result = agent.detectToolRepetition(events)
+            result shouldNotBe null
+            result!!.toolName shouldBe "toolA"
+            result.count shouldBe 3
         }
 
-        "detectRepetitionLoop returns null when WINDOW consecutive same-tool responses have different args (WZ-32262)" {
+        "detectToolRepetition returns null when WINDOW consecutive same-tool responses have different args (WZ-32262)" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -745,10 +750,10 @@ class AgentAdvancedSpec :
                         )
                     }.flatten()
 
-            agent.detectRepetitionLoop(events) shouldBe null
+            agent.detectToolRepetition(events) shouldBe null
         }
 
-        "detectRepetitionLoop returns tool name when THRESHOLD failures with same args within WINDOW" {
+        "detectToolRepetition returns ToolRepetition when THRESHOLD failures with same args within WINDOW" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -774,10 +779,13 @@ class AgentAdvancedSpec :
                     )
                 }
 
-            agent.detectRepetitionLoop(events) shouldBe "FILES__ReadFile"
+            val result = agent.detectToolRepetition(events)
+            result shouldNotBe null
+            result!!.toolName shouldBe "FILES__ReadFile"
+            (result.count >= AgentAdvanced.REPETITION_THRESHOLD) shouldBe true
         }
 
-        "detectRepetitionLoop returns null when no (toolName, args) pair reaches THRESHOLD in the window" {
+        "detectToolRepetition returns null when no (toolName, args) pair reaches THRESHOLD in the window" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -811,7 +819,7 @@ class AgentAdvancedSpec :
                         )
                     }.flatten()
 
-            agent.detectRepetitionLoop(events) shouldBe null
+            agent.detectToolRepetition(events) shouldBe null
         }
 
         // -------------------------------------------------------------------------
@@ -2497,125 +2505,77 @@ class AgentAdvancedSpec :
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
-        "WZ-32491: handleRepetitionDetection returns Warned on first detection" {
+        "WZ-32491: handleRepetition returns Warned on first detection (no prior WarnEvent)" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val sameArgs = """{"path":"foo.txt"}"""
-            val events =
-                (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
-                    listOf(
-                        ToolRequestEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "FILES__ReadFile",
-                            args = sameArgs,
-                        ),
-                        ToolResponseEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "FILES__ReadFile",
-                            output = MessageContent.Text("content"),
-                        ),
-                    )
-                }
-
+            val repetition = ToolRepetition(toolName = "FILES__ReadFile", count = AgentAdvanced.REPETITION_THRESHOLD)
             var emitted: WarnEvent? = null
-            val outcome =
-                agent.handleRepetitionDetection(
-                    events = events,
+
+            val outcome = kotlinx.coroutines.runBlocking {
+                agent.handleRepetition(
+                    repetition = repetition,
                     namespaceId = namespaceId,
                     caseId = caseId,
-                    warningAlreadyEmitted = false,
                     emitEvent = { emitted = it as? WarnEvent },
+                    accumulatedEvents = emptyList(), // no prior WarnEvent
                 )
+            }
 
             (outcome is RepetitionOutcome.Warned) shouldBe true
             emitted shouldNotBe null
             emitted!!.message shouldContain "FILES__ReadFile"
+            (outcome as RepetitionOutcome.Warned).message shouldBe emitted!!.message
         }
 
-        "WZ-32491: handleRepetitionDetection returns ForceStop on second detection, emits no WarnEvent" {
+        "WZ-32491: handleRepetition returns ForceStop when a prior WarnEvent already exists" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            val sameArgs = """{"path":"foo.txt"}"""
-            val events =
-                (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
-                    listOf(
-                        ToolRequestEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "FILES__ReadFile",
-                            args = sameArgs,
-                        ),
-                        ToolResponseEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "FILES__ReadFile",
-                            output = MessageContent.Text("content"),
-                        ),
-                    )
-                }
-
+            val repetition = ToolRepetition(toolName = "FILES__ReadFile", count = AgentAdvanced.REPETITION_THRESHOLD)
+            // Simulate that a Warned was already emitted in a previous iteration
+            val priorWarn = WarnEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                message = "You have called the tool FILES__ReadFile ${AgentAdvanced.REPETITION_THRESHOLD} times within the last ${AgentAdvanced.REPETITION_WINDOW} tool calls.",
+            )
             var emitted: WarnEvent? = null
-            val outcome =
-                agent.handleRepetitionDetection(
-                    events = events,
+
+            val outcome = kotlinx.coroutines.runBlocking {
+                agent.handleRepetition(
+                    repetition = repetition,
                     namespaceId = namespaceId,
                     caseId = caseId,
-                    warningAlreadyEmitted = true, // warning already sent
                     emitEvent = { emitted = it as? WarnEvent },
+                    accumulatedEvents = listOf(priorWarn),
                 )
+            }
 
             (outcome is RepetitionOutcome.ForceStop) shouldBe true
-            // ForceStop does NOT emit a WarnEvent — the caller handles emission
-            emitted shouldBe null
-            (outcome as RepetitionOutcome.ForceStop).message shouldContain "Forcing loop termination"
+            emitted shouldNotBe null
+            emitted!!.message shouldContain "Forcing loop termination"
         }
 
-        "WZ-32491: handleRepetitionDetection returns null when no repetition" {
+        "WZ-32491: handleRepetition returns null when repetition is null" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
-            // Only 3 responses — below the window of 5
-            val events =
-                (1..3).flatMap { i ->
-                    listOf(
-                        ToolRequestEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "TOOL__x",
-                            args = "{}",
-                        ),
-                        ToolResponseEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = "req-$i",
-                            toolName = "TOOL__x",
-                            output = MessageContent.Text("ok"),
-                        ),
-                    )
-                }
+            var emitCalled = false
 
-            val outcome =
-                agent.handleRepetitionDetection(
-                    events = events,
+            val outcome = kotlinx.coroutines.runBlocking {
+                agent.handleRepetition(
+                    repetition = null,
                     namespaceId = namespaceId,
                     caseId = caseId,
-                    warningAlreadyEmitted = false,
-                    emitEvent = {},
+                    emitEvent = { emitCalled = true },
                 )
+            }
 
             outcome shouldBe null
+            emitCalled shouldBe false
         }
 
-        "detectRepetitionLoop returns null when window contains a synthetic ToolResponseEvent" {
+        "detectToolRepetition returns null when window contains a synthetic ToolResponseEvent" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -2664,6 +2624,6 @@ class AgentAdvancedSpec :
                     ),
                 )
 
-            agent.detectRepetitionLoop(events) shouldBe null
+            agent.detectToolRepetition(events) shouldBe null
         }
     })
