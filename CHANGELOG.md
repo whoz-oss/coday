@@ -1,3 +1,13 @@
+## 0.173.13 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32024 prevent `@CreatedBy` from being overridden on updates ([#983](https://github.com/whoz-oss/coday/pull/983))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.173.12 (2026-06-08)
 
 ### 🩹 Fixes
