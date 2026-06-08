@@ -1,3 +1,14 @@
+## 0.173.11 (2026-06-08)
+
+### 🩹 Fixes
+
+- #942 anchor scheduler nextRun to startTimestamp phase ([#942](https://github.com/whoz-oss/coday/issues/942))
+- #942 anchor scheduler nextRun to startTimestamp phase ([#974](https://github.com/whoz-oss/coday/pull/974), [#942](https://github.com/whoz-oss/coday/issues/942))
+
+### ❤️ Thank You
+
+- David Palita
+
 ## 0.173.10 (2026-06-08)
 
 ### 🚀 Features
