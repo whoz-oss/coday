@@ -1,3 +1,13 @@
+## 0.173.17 (2026-06-08)
+
+### 🩹 Fixes
+
+- wz-32496 prevent formulateQuestion past-tense + drop sanitizeQuestion take(300) ([#987](https://github.com/whoz-oss/coday/pull/987))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.173.16 (2026-06-08)
 
 ### 🩹 Fixes
