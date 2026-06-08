@@ -1,13 +1,3 @@
-## 0.173.10 (2026-06-05)
-
-### 🩹 Fixes
-
-- improve release CI pipeline ([1ec3ec02](https://github.com/whoz-oss/coday/commit/1ec3ec02))
-
-### ❤️ Thank You
-
-- mathieu_dearmey @mathieu-dearmey
-
 ## 0.173.9 (2026-06-05)
 
 ### 🩹 Fixes
