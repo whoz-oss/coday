@@ -2,6 +2,7 @@ package io.whozoss.agentos.agentConfig
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -337,6 +338,101 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
         result.integrations shouldBe null
+    }
+
+    // -------------------------------------------------------------------------
+    // findAvailableByNamespaceIdAndUserId — filesystem augmentation
+    // -------------------------------------------------------------------------
+
+    "findAvailableByNamespaceIdAndUserId delegates to underlying repository when namespace has no configPath" {
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, configPath = null)
+        val userId = UUID.randomUUID()
+        val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
+        every { delegate.findAvailableByNamespaceIdAndUserId(namespaceId, userId, null) } returns persisted
+
+        val result = buildRepo(delegate, nsRepo).findAvailableByNamespaceIdAndUserId(namespaceId, userId, null)
+
+        result shouldBe persisted
+        verify(exactly = 1) { delegate.findAvailableByNamespaceIdAndUserId(namespaceId, userId, null) }
+    }
+
+    "findAvailableByNamespaceIdAndUserId includes filesystem agents not returned by delegate" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "fs-agent.yaml", agentYaml("FsAgent"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        val userId = UUID.randomUUID()
+        every { delegate.findAvailableByNamespaceIdAndUserId(namespaceId, userId, null) } returns emptyList()
+
+        val result = buildRepo(delegate, nsRepo).findAvailableByNamespaceIdAndUserId(namespaceId, userId, null)
+
+        result shouldHaveSize 1
+        result.single().name shouldBe "FsAgent"
+        result.single().namespaceId shouldBe namespaceId
+    }
+
+    "findAvailableByNamespaceIdAndUserId merges delegate and filesystem results, persisted wins on name collision" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "alpha.yaml", agentYaml("Alpha", modelName = "SMALL"))
+        writeYaml(agentsDir(root), "beta.yaml", agentYaml("Beta"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        val userId = UUID.randomUUID()
+        val persistedAlpha = persistedConfig(namespaceId, "Alpha", modelName = "BIG")
+        every { delegate.findAvailableByNamespaceIdAndUserId(namespaceId, userId, null) } returns listOf(persistedAlpha)
+
+        val result = buildRepo(delegate, nsRepo).findAvailableByNamespaceIdAndUserId(namespaceId, userId, null)
+
+        result.map { it.name } shouldContainExactlyInAnyOrder listOf("Alpha", "Beta")
+        result.first { it.name == "Alpha" }.modelName shouldBe "BIG"  // persisted wins
+    }
+
+    "findAvailableByNamespaceIdAndUserId filters filesystem results by agentName" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "alpha.yaml", agentYaml("Alpha"))
+        writeYaml(agentsDir(root), "beta.yaml", agentYaml("Beta"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        val userId = UUID.randomUUID()
+        every { delegate.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "Alpha") } returns emptyList()
+
+        val result = buildRepo(delegate, nsRepo).findAvailableByNamespaceIdAndUserId(namespaceId, userId, "Alpha")
+
+        result shouldHaveSize 1
+        result.single().name shouldBe "Alpha"
+    }
+
+    "findAvailableByNamespaceIdAndUserId agentName filter on filesystem agents is case-insensitive" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "my-agent.yaml", agentYaml("My-Agent"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        val userId = UUID.randomUUID()
+        every { delegate.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "MY-AGENT") } returns emptyList()
+
+        val result = buildRepo(delegate, nsRepo).findAvailableByNamespaceIdAndUserId(namespaceId, userId, "MY-AGENT")
+
+        result shouldHaveSize 1
+        result.single().name shouldBe "My-Agent"
+    }
+
+    "findAvailableByNamespaceIdAndUserId returns empty when agentName matches nothing" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "alpha.yaml", agentYaml("Alpha"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        val userId = UUID.randomUUID()
+        every { delegate.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "nonexistent") } returns emptyList()
+
+        val result = buildRepo(delegate, nsRepo).findAvailableByNamespaceIdAndUserId(namespaceId, userId, "nonexistent")
+
+        result.shouldBeEmpty()
     }
 
     // -------------------------------------------------------------------------

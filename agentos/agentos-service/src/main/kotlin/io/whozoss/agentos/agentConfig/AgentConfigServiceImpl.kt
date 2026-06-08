@@ -42,23 +42,11 @@ class AgentConfigServiceImpl(
                 logger.warn { "[AgentConfigService] User not found for externalId: $userExternalId" }
                 throw ResourceNotFoundException("User not found for externalId: $userExternalId")
             }
-        // Admins bypass DEPLOYED_TO filtering — they can use any agent in the namespace.
-        return when {
-            user.isAdmin -> agentConfigRepository.findByParent(namespaceId)
-            else -> agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = user.id, agentName = null)
-        }
+        return agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = user.id, agentName = null)
     }
 
     companion object : KLogging()
 
-    override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> {
-        val user = userService.findById(userId)
-        // Admins bypass DEPLOYED_TO filtering — they can use any agent in the namespace.
-        return when {
-            user?.isAdmin == true -> agentConfigRepository
-                .findByParent(namespaceId)
-                .filter { agentName == null || it.name.equals(agentName, ignoreCase = true) }
-            else -> agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
-        }
-    }
+    override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
+        agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
 }
