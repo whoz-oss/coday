@@ -420,7 +420,7 @@ class AgentAdvanced(
                         accumulatedEvents = accumulatedEvents,
                         fallbackLabel = tool.name,
                         pendingData = argsJson ?: "{}",
-                        guidelines = buildUserFacingGuidelines(detectUserLanguage(accumulatedEvents)),
+                        guidelines = buildUserFacingGuidelines(accumulatedEvents),
                     )
                 emitEvent(
                     PendingConfirmationEvent(
@@ -635,7 +635,7 @@ class AgentAdvanced(
                                         accumulatedEvents = caseEventsAtOrAfterPending,
                                         fallbackLabel = pending.toolName,
                                         pendingData = pending.inputJson,
-                                        guidelines = buildUserFacingGuidelines(detectUserLanguage(events)),
+                                        guidelines = buildUserFacingGuidelines(events),
                                     )
                                 val clarification =
                                     MessageEvent(
@@ -828,12 +828,6 @@ class AgentAdvanced(
 
         val alreadyGreeted = accumulatedEvents.count { it is MessageEvent } > 2
 
-        // Detect language once per turn via a dedicated LLM call (user messages only).
-        // This produces a concrete value ("English", "French", …) used as a hard constraint
-        // in the final response prompt, rather than a probabilistic hint that the model can
-        // override when foreign-language tool payloads dominate the context (WZ-32500).
-        val detectedLanguage = detectUserLanguage(accumulatedEvents)
-
         // Build the final prompt in clear, composable sections
         val prompt =
             buildString {
@@ -853,7 +847,7 @@ class AgentAdvanced(
 
                 appendLine("Based on the above conversation and your analysis, provide your response to the user.")
 
-                buildUserFacingGuidelines(detectedLanguage)?.let {
+                buildUserFacingGuidelines(accumulatedEvents)?.let {
                     appendLine()
                     appendLine(it)
                 }
@@ -905,15 +899,14 @@ class AgentAdvanced(
      * Assembles the user-facing communication guidelines shared across any LLM-generated
      * text shown to the user (final response, confirmation prompts, re-ask questions).
      *
-     * Combines:
-     * - A hard language constraint derived from [detectUserLanguage] (e.g. "Respond in English.").
-     * - A non-discrimination rule.
-     * - A no-technical-IDs rule.
+     * Detects the user's language via [detectUserLanguage] and injects it as a hard
+     * constraint, then appends the non-discrimination and no-technical-IDs rules.
      *
-     * [detectedLanguage] is `null` when no user messages are present (agent-only conversations).
-     * In that case the language constraint is omitted rather than defaulting to a hardcoded language.
+     * Returns `null` only when [events] is blank (defensive — the static rules alone
+     * make a non-null result almost certain in practice).
      */
-    internal fun buildUserFacingGuidelines(detectedLanguage: String?): String? {
+    internal fun buildUserFacingGuidelines(events: List<CaseEvent>): String? {
+        val detectedLanguage = detectUserLanguage(events)
         val lines =
             buildList {
                 detectedLanguage?.let {

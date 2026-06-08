@@ -694,18 +694,58 @@ class AgentAdvancedSpec :
         // buildUserFacingGuidelines unit tests
         // -------------------------------------------------------------------------
 
-        "buildUserFacingGuidelines includes hard language constraint when language is detected" {
-            val agent = makeParserAgent()
-            val guidelines = agent.buildUserFacingGuidelines("English")
+        "buildUserFacingGuidelines includes hard language constraint when LLM detects a language" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "<language>English</language>"
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("Hello, can you help me?")),
+                    ),
+                )
+            val guidelines = agent.buildUserFacingGuidelines(events)
             guidelines shouldNotBe null
             guidelines!! shouldContain "IMPORTANT"
             guidelines shouldContain "English"
             guidelines shouldContain "hard constraint"
         }
 
-        "buildUserFacingGuidelines omits language constraint when detectedLanguage is null" {
+        "buildUserFacingGuidelines omits language constraint when no user messages" {
             val agent = makeParserAgent()
-            val guidelines = agent.buildUserFacingGuidelines(null)
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            // Only an agent message — detectUserLanguage returns null
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
+                    ),
+                )
+            val guidelines = agent.buildUserFacingGuidelines(events)
             guidelines shouldNotBe null
             // Static rules still present
             guidelines!! shouldContain "discriminate"
