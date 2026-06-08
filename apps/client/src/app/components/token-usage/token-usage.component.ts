@@ -116,7 +116,7 @@ export class TokenUsageComponent implements OnInit {
     if (!total) return false
 
     // Token counts may be null for legacy periods where token tracking was disabled,
-    // but cost can still be available. Only consider the period "missing" when both are absent.
+    // but cost can still be available. Only consider the period "missing" when both are absent
     return total.totalTokens === null && (total.cost === null || total.cost === undefined)
   })
 
