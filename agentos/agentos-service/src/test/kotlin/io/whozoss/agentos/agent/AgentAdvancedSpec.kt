@@ -511,7 +511,251 @@ class AgentAdvancedSpec :
         // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
-        // buildLanguageHint unit tests
+        // detectUserLanguage unit tests
+        // -------------------------------------------------------------------------
+
+        "detectUserLanguage returns null when no user messages" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
+                    ),
+                )
+            agent.detectUserLanguage(events) shouldBe null
+        }
+
+        "detectUserLanguage calls LLM with user messages only and extracts language from tags" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returns "<language>French</language>"
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("Cherche-moi des développeurs Angular")),
+                    ),
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Consultor Senior de Ciberseguridad")),
+                    ),
+                )
+            val result = agent.detectUserLanguage(events)
+            result shouldBe "French"
+        }
+
+        "detectUserLanguage returns null when LLM response has no language tags" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } returns "I cannot determine the language."
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("hello")),
+                    ),
+                )
+            agent.detectUserLanguage(events) shouldBe null
+        }
+
+        "detectUserLanguage returns null when LLM call throws" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every {
+                mockChatClient.prompt(any<Prompt>()).call().content()
+            } throws RuntimeException("provider error")
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("hello")),
+                    ),
+                )
+            agent.detectUserLanguage(events) shouldBe null
+        }
+
+        "detectUserLanguage collects newest messages first up to targetChars" {
+            val promptSlot = slot<Prompt>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<language>English</language>"
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("old message from the start")),
+                    ),
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("Can you look for Angular developers in Paris with 5 years of experience")),
+                    ),
+                )
+            // targetChars=60: the newest message (~70 chars) exceeds the threshold alone,
+            // so only it should be sampled — the old message must not appear in the prompt.
+            agent.detectUserLanguage(events, targetChars = 60)
+            val promptText = promptSlot.captured.instructions.first().text
+            promptText shouldContain "Angular developers"
+            // The old message must NOT appear: threshold was reached after the newest message alone
+            (promptText.contains("old message from the start")) shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // buildUserFacingGuidelines unit tests
+        // -------------------------------------------------------------------------
+
+        "buildUserFacingGuidelines includes hard language constraint when LLM detects a language" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "<language>English</language>"
+            val agentId = UUID.randomUUID()
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                )
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("user1", "User", ActorRole.USER),
+                        content = listOf(MessageContent.Text("Hello, can you help me?")),
+                    ),
+                )
+            val guidelines = agent.buildUserFacingGuidelines(events)
+            guidelines shouldNotBe null
+            guidelines!! shouldContain "IMPORTANT"
+            guidelines shouldContain "English"
+            guidelines shouldContain "hard constraint"
+        }
+
+        "buildUserFacingGuidelines omits language constraint when no user messages" {
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            // Only an agent message — detectUserLanguage returns null
+            val events =
+                listOf(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor("agent1", "Astra", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Bonjour, comment puis-je vous aider ?")),
+                    ),
+                )
+            val guidelines = agent.buildUserFacingGuidelines(events)
+            guidelines shouldNotBe null
+            // Static rules still present
+            guidelines!! shouldContain "discriminate"
+            guidelines shouldContain "technical IDs"
+            // No language instruction
+            guidelines shouldNotBe ""
+        }
+
+        // -------------------------------------------------------------------------
+        // buildLanguageHint unit tests (kept for backward compatibility)
         // -------------------------------------------------------------------------
 
         "buildLanguageHint returns null when no user messages" {

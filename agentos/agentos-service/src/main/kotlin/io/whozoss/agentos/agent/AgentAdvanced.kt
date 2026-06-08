@@ -899,18 +899,23 @@ class AgentAdvanced(
      * Assembles the user-facing communication guidelines shared across any LLM-generated
      * text shown to the user (final response, confirmation prompts, re-ask questions).
      *
-     * Combines:
-     * - A language hint anchored on recent user messages (from [buildLanguageHint]).
-     * - A non-discrimination rule.
-     * - A no-technical-IDs rule.
+     * Detects the user's language via [detectUserLanguage] and injects it as a hard
+     * constraint, then appends the non-discrimination and no-technical-IDs rules.
      *
-     * Returns `null` when no user messages are present and there is nothing to add
-     * (defensive — the static rules make a non-null result almost certain in practice).
+     * Returns `null` only when [events] is blank (defensive — the static rules alone
+     * make a non-null result almost certain in practice).
      */
     internal fun buildUserFacingGuidelines(events: List<CaseEvent>): String? {
+        val detectedLanguage = detectUserLanguage(events)
         val lines =
             buildList {
-                buildLanguageHint(events)?.let { add(it) }
+                detectedLanguage?.let {
+                    add(
+                        "IMPORTANT: You MUST respond in $it. " +
+                            "This is a hard constraint — do not switch language regardless of the language " +
+                            "used in the data returned by tools or in the conversation history.",
+                    )
+                }
                 add(
                     "Do not discriminate based on gender, ethnicity, religion, age, physical appearance, " +
                         "or any other protected attribute. If the user's request implies such a step, " +
@@ -925,22 +930,81 @@ class AgentAdvanced(
     }
 
     /**
-     * Builds a language hint from the most recent user [MessageEvent]s in [events].
+     * Detects the language the user is writing in by sending a dedicated lightweight LLM call
+     * that considers only recent user [MessageEvent]s — deliberately excluding agent messages
+     * and tool payloads to avoid contamination from foreign-language data (WZ-32500).
      *
-     * Collects user messages from newest to oldest until the combined text reaches
-     * [minChars], then returns an instruction anchored on the actual user text so the
-     * LLM has a concrete language signal rather than an abstract directive.
+     * Collects user messages newest-first until [targetChars] is reached, then asks the LLM
+     * to identify the language. Returns a language name in English (e.g. `"English"`,
+     * `"French"`, `"Spanish"`) or `null` when no user messages are present.
      *
-     * Returns `null` when no user messages are present (e.g. agent-only conversations),
-     * so the caller can omit the hint entirely rather than defaulting to a hardcoded
-     * language.
+     * The result is consumed once per turn in [generateFinalResponse] to build a hard
+     * language constraint rather than a probabilistic hint.
+     */
+    internal fun detectUserLanguage(
+        events: List<CaseEvent>,
+        targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
+    ): String? {
+        // Collect user messages newest-first — same logic as the former buildLanguageHint.
+        val userMessages =
+            events
+                .filterIsInstance<MessageEvent>()
+                .filter { it.actor.role == ActorRole.USER }
+                .reversed()
+
+        if (userMessages.isEmpty()) return null
+
+        val collected = mutableListOf<String>()
+        var total = 0
+        for (message in userMessages) {
+            val text =
+                message.content
+                    .filterIsInstance<MessageContent.Text>()
+                    .joinToString(" ") { it.content.trim() }
+                    .trim()
+            if (text.isEmpty()) continue
+            collected.add(text)
+            total += text.length
+            if (total >= targetChars) break
+        }
+
+        if (collected.isEmpty()) return null
+
+        // Build the sample from oldest to newest for a natural reading order.
+        val sample = collected.reversed().joinToString(" ")
+
+        val prompt =
+            """
+            Determine the language the user is using to interact with the agent.
+            Only consider the user messages below — ignore any other context.
+
+            User messages: $sample
+
+            Respond with ONLY the language name in English (e.g. "English", "French", "Spanish").
+            Put the language name inside <language></language> tags and nothing else.
+            """.trimIndent()
+
+        val raw =
+            runCatching {
+                context.chatClient
+                    .prompt(org.springframework.ai.chat.prompt.Prompt(listOf(org.springframework.ai.chat.messages.UserMessage(prompt))))
+                    .call()
+                    .content()
+                    ?.trim()
+            }.getOrNull() ?: return null
+
+        // Extract the language name from <language>...</language> tags.
+        return LANGUAGE_TAG_REGEX.find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * @deprecated Use [detectUserLanguage] + [buildUserFacingGuidelines] instead.
+     * Kept for existing unit tests until they are migrated.
      */
     internal fun buildLanguageHint(
         events: List<CaseEvent>,
         targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
     ): String? {
-        // Reverse the messages first so we collect newest-first, then extract text per message.
-        // Reversing after flatMap would operate on individual text blocks, not on messages.
         val userMessages =
             events
                 .filterIsInstance<MessageEvent>()
@@ -1336,6 +1400,12 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
         private val JSON_FENCE_REGEX =
             Regex(
                 """^```(?:json)?\s*(.*?)\s*```$""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
+
+        private val LANGUAGE_TAG_REGEX =
+            Regex(
+                """<language>\s*(.*?)\s*</language>""",
                 setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
             )
     }
