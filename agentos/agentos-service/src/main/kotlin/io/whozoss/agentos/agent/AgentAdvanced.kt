@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
+import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
@@ -366,11 +368,7 @@ class AgentAdvanced(
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
         val toolCtx = tool?.let { buildToolContext(it.name, namespaceId) }
         val confirmationMode =
-            if (tool != null && toolCtx != null) {
-                tool.getConfirmationMode(parameters.args, toolCtx)
-            } else {
-                ConfirmationMode.NONE
-            }
+            tool?.getConfirmationMode(parameters.args, toolCtx) ?: ConfirmationMode.NONE
         return when {
             tool != null && toolCtx != null && confirmationMode != ConfirmationMode.NONE -> {
                 handleConfirmationGate(
@@ -948,16 +946,33 @@ class AgentAdvanced(
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
 
         val contentBuilder = StringBuilder()
+        var lastFinishReason: String? = null
         context.chatClient
             .prompt(Prompt(messages))
             .stream()
-            .content()
+            .chatResponse()
             .asFlow()
             .takeWhile { shouldContinue() }
-            .collect { chunk ->
-                contentBuilder.append(chunk)
-                emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+            .collect { response: ChatResponse ->
+                val chunk =
+                    response.result.output.text
+                        ?.takeIf { it.isNotEmpty() }
+                if (chunk != null) {
+                    contentBuilder.append(chunk)
+                    emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+                }
+                response.result.metadata.finishReason
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { lastFinishReason = it }
             }
+        if (isTruncated(lastFinishReason)) {
+            val msg =
+                "LLM response was truncated (finish_reason=$lastFinishReason). " +
+                    "The configured maxTokens limit may be too low. " +
+                    "Consider increasing the model's maxTokens configuration."
+            logger.warn { "[$name] $msg" }
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+        }
         val content = contentBuilder.toString().stripConversationTags()
         if (content.isNotEmpty()) {
             val msg =
@@ -1063,14 +1078,24 @@ class AgentAdvanced(
         val raw =
             runCatching {
                 context.chatClient
-                    .prompt(org.springframework.ai.chat.prompt.Prompt(listOf(org.springframework.ai.chat.messages.UserMessage(prompt))))
-                    .call()
+                    .prompt(
+                        Prompt(
+                            listOf(
+                                UserMessage(prompt),
+                            ),
+                        ),
+                    ).call()
                     .content()
                     ?.trim()
             }.getOrNull() ?: return null
 
         // Extract the language name from <language>...</language> tags.
-        return LANGUAGE_TAG_REGEX.find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+        return LANGUAGE_TAG_REGEX
+            .find(raw)
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
 
     /**
@@ -1225,7 +1250,7 @@ Output requirements:
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
         val messages = context.buildMessages(events, prompt)
-        val raw = callLlmForParameters(messages, toolName)
+        val raw = callLlmForParameters(messages)
 
         logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
@@ -1245,10 +1270,7 @@ Output requirements:
         }
     }
 
-    private fun callLlmForParameters(
-        messages: List<org.springframework.ai.chat.messages.Message>,
-        toolName: String,
-    ): String {
+    private fun callLlmForParameters(messages: List<org.springframework.ai.chat.messages.Message>): String {
         val raw =
             context.chatClient
                 .prompt(Prompt(messages))
@@ -1406,6 +1428,16 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
     }
 
     companion object : KLogging() {
+        /**
+         * Returns true when the finish reason indicates the LLM was cut off by a token limit,
+         * rather than finishing naturally.
+         */
+        internal fun isTruncated(finishReason: String?): Boolean {
+            if (finishReason == null) return false
+            return finishReason.equals("length", ignoreCase = true) ||
+                finishReason.equals("max_tokens", ignoreCase = true)
+        }
+
         /** How many recent tool responses to inspect for repetition. */
         internal const val REPETITION_WINDOW = 5
 
