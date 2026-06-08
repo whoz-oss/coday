@@ -1,3 +1,15 @@
+## 0.173.15 (2026-06-08)
+
+### 🩹 Fixes
+
+- release summary job ([46734fb6](https://github.com/whoz-oss/coday/commit/46734fb6))
+- release summary job ([#986](https://github.com/whoz-oss/coday/pull/986))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.173.14 (2026-06-08)
 
 ### 🩹 Fixes
