@@ -1,3 +1,13 @@
+## 0.173.12 (2026-06-08)
+
+### 🩹 Fixes
+
+- wz-32443 update intention prompt to avoid technical details ([#980](https://github.com/whoz-oss/coday/pull/980))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
 ## 0.173.11 (2026-06-08)
 
 ### 🩹 Fixes
