@@ -1,3 +1,13 @@
+## 0.173.14 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32500 dedicated LLM language detection to prevent language contamination ([#985](https://github.com/whoz-oss/coday/pull/985))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.173.13 (2026-06-08)
 
 ### 🩹 Fixes
