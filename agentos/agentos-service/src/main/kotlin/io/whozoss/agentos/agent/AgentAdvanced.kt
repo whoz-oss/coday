@@ -298,6 +298,17 @@ class AgentAdvanced(
                 null
             }
 
+            repetition.count > REPETITION_THRESHOLD -> {
+                val msg =
+                    "Agent is stuck in a repetition loop on tool '${repetition.toolName}' " +
+                        "(${repetition.count} calls) and did not stop after warning. " +
+                        "Forcing loop termination."
+                logger.warn {
+                    "[$name] Repetition loop persists after warning for tool '${repetition.toolName}' — forcing stop"
+                }
+                RepetitionOutcome.ForceStop(msg)
+            }
+
             repetition.count >= REPETITION_THRESHOLD -> {
                 val msg =
                     "Calling a tool with the same parameters will produce the same results.\n" +
@@ -312,17 +323,6 @@ class AgentAdvanced(
                         "within the last $REPETITION_WINDOW tool calls"
                 }
                 RepetitionOutcome.Warned(msg)
-            }
-
-            repetition.count > REPETITION_THRESHOLD -> {
-                val msg =
-                    "Agent is stuck in a repetition loop on tool '${repetition.toolName}' " +
-                        "(${repetition.count} calls) and did not stop after warning. " +
-                        "Forcing loop termination."
-                logger.warn {
-                    "[$name] Repetition loop persists after warning for tool '${repetition.toolName}' — forcing stop"
-                }
-                RepetitionOutcome.ForceStop(msg)
             }
 
             else -> {
