@@ -132,16 +132,26 @@ class AgentAdvanced(
                                     message = repetitionWarning.message,
                                 ),
                             )
-                            continueLoop = false
+                            break
                         }
-                        is RepetitionOutcome.Warned -> repetitionWarningEmitted = true
-                        null -> Unit
+
+                        is RepetitionOutcome.Warned -> {
+                            repetitionWarningEmitted = true
+                        }
+
+                        null -> {
+                            Unit
+                        }
                     }
 
-                    if (!continueLoop) break
-
                     val intention =
-                        intentionGenerator.generate(context, accumulatedEvents, namespaceId, caseId, (repetitionWarning as? RepetitionOutcome.Warned)?.message)
+                        intentionGenerator.generate(
+                            context = context,
+                            events = accumulatedEvents,
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            repetitionWarning = repetitionWarning?.message,
+                        )
                     emit(intention)
                     accumulatedEvents.add(intention)
                     lastIntention = intention
@@ -252,7 +262,9 @@ class AgentAdvanced(
     ): RepetitionOutcome? {
         val repeatedTool = detectRepetitionLoop(events)
         return when {
-            repeatedTool == null -> null
+            repeatedTool == null -> {
+                null
+            }
 
             !warningAlreadyEmitted -> {
                 val msg =
