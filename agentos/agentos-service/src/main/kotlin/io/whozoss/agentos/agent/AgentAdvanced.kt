@@ -109,16 +109,17 @@ class AgentAdvanced(
 
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
-                    val repetitionOutcome = handleRepetition(
-                        repetition = detectToolRepetition(accumulatedEvents),
-                        accumulatedEvents = accumulatedEvents,
-                    )
-                    if (repetitionOutcome != null) {
-                        val warnEvent = WarnEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            message = repetitionOutcome.message,
+                    val repetitionOutcome =
+                        handleRepetition(
+                            repetition = detectToolRepetition(accumulatedEvents),
                         )
+                    if (repetitionOutcome != null) {
+                        val warnEvent =
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = repetitionOutcome.message,
+                            )
                         emit(warnEvent)
                         // Accumulate so the next iteration sees the prior warning
                         // and can escalate to ForceStop if the loop persists.
@@ -287,21 +288,17 @@ class AgentAdvanced(
      * This method does **not** emit events — the caller is responsible for emitting a [WarnEvent]
      * from [RepetitionOutcome.message] when the outcome is non-null.
      */
-    internal fun handleRepetition(
-        repetition: ToolRepetition?,
-        accumulatedEvents: List<CaseEvent> = emptyList(),
-    ): RepetitionOutcome? {
-        if (repetition == null) return null
-
-        val alreadyWarned = accumulatedEvents
-            .filterIsInstance<WarnEvent>()
-            .any { w ->
-                (w.message.contains(repetition.toolName) && w.message.contains("times")) ||
-                    w.message.contains("Forcing loop termination")
+    internal fun handleRepetition(repetition: ToolRepetition?): RepetitionOutcome? =
+        when {
+            repetition == null -> {
+                null
             }
 
-        return when {
-            !alreadyWarned -> {
+            repetition.count < REPETITION_THRESHOLD -> {
+                null
+            }
+
+            repetition.count >= REPETITION_THRESHOLD -> {
                 val msg =
                     "Calling a tool with the same parameters will produce the same results.\n" +
                         "You have called the tool ${repetition.toolName} ${repetition.count} times " +
@@ -317,8 +314,7 @@ class AgentAdvanced(
                 RepetitionOutcome.Warned(msg)
             }
 
-            else -> {
-                // A prior WarnEvent was already emitted for this tool — the LLM ignored it.
+            repetition.count > REPETITION_THRESHOLD -> {
                 val msg =
                     "Agent is stuck in a repetition loop on tool '${repetition.toolName}' " +
                         "(${repetition.count} calls) and did not stop after warning. " +
@@ -328,8 +324,11 @@ class AgentAdvanced(
                 }
                 RepetitionOutcome.ForceStop(msg)
             }
+
+            else -> {
+                null
+            }
         }
-    }
 
     /**
      * Executes the tool for the given [intention], handling the confirmation gate when the

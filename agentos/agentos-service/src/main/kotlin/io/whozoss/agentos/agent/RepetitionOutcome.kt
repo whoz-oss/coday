@@ -1,13 +1,14 @@
 package io.whozoss.agentos.agent
 
 /**
- * Result of repetition detection in [AgentAdvanced.handleRepetitionDetection].
+ * Decision produced by [AgentAdvanced.handleRepetition] after comparing a
+ * [ToolRepetition] count against the configured thresholds.
  *
- * - [Warned]: first time the threshold is crossed — a [io.whozoss.agentos.sdk.caseEvent.WarnEvent]
- *   has been emitted and [message] is injected into the next intention prompt so the LLM
- *   can self-correct.
- * - [ForceStop]: the threshold was crossed again after the warning was already emitted.
- *   The LLM ignored the warning; the run loop must be terminated immediately.
+ * - [Warned]: count just reached [AgentAdvanced.REPETITION_THRESHOLD] — a
+ *   [io.whozoss.agentos.sdk.caseEvent.WarnEvent] has been emitted and [message]
+ *   should be injected into the next intention prompt so the LLM can self-correct.
+ * - [ForceStop]: count has strictly exceeded the threshold — the LLM ignored the
+ *   earlier warning; the run loop must break immediately.
  */
 sealed class RepetitionOutcome {
     abstract val message: String

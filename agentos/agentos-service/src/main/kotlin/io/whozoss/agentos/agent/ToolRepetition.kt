@@ -1,10 +1,10 @@
 package io.whozoss.agentos.agent
 
 /**
- * Carries the result of [AgentAdvanced.detectToolRepetition]: the name of the
- * repeated tool and how many times it appeared in the detection window.
+ * Raw result of [AgentAdvanced.detectToolRepetition]: the name of the most-repeated
+ * (toolName, args) pair in the detection window and how many times it appeared.
  *
- * The caller (the run loop) decides what to do based on this value and the
- * current loop state — no policy is embedded here.
+ * No policy is embedded here — the count is compared against thresholds by
+ * [AgentAdvanced.handleRepetition].
  */
 data class ToolRepetition(val toolName: String, val count: Int)
