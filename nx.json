@@ -95,7 +95,7 @@
         "createRelease": "github"
       },
       "git": {
-        "commitMessage": "chore(release): {version}",
+        "commitMessage": "chore(release): {version} [skip ci]",
         "tag": true
       }
     },
