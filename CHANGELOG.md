@@ -1,3 +1,13 @@
+## 0.173.19 (2026-06-08)
+
+### 🩹 Fixes
+
+- **agentos:** improve error handling in case of maxTokens response from llm #32496 ([#990](https://github.com/whoz-oss/coday/pull/990), [#32496](https://github.com/whoz-oss/coday/issues/32496))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.173.18 (2026-06-08)
 
 ### 🩹 Fixes
