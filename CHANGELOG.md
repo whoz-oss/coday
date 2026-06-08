@@ -1,3 +1,19 @@
+## 0.173.10 (2026-06-08)
+
+### 🚀 Features
+
+- improve release CI pipeline ([#982](https://github.com/whoz-oss/coday/pull/982), [#981](https://github.com/whoz-oss/coday/issues/981))
+
+### 🩹 Fixes
+
+- improve release CI pipeline ([1ec3ec02](https://github.com/whoz-oss/coday/commit/1ec3ec02))
+- revert unwanted changes ([0955a7d0](https://github.com/whoz-oss/coday/commit/0955a7d0))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.173.9 (2026-06-05)
 
 ### 🩹 Fixes
