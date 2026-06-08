@@ -69,8 +69,7 @@ data class AgentConfig(
      * explicitly published via the publish endpoint before they are accessible.
      *
      * Backward-compat: existing agents stored in Neo4j without this field are
-     * treated as published (`COALESCE(a.enabled, true)` in Cypher queries) so
-     * that previously available agents continue to work after the migration.
+     * treated as disabled (`COALESCE(a.enabled, false)` in Cypher queries).
      */
     val enabled: Boolean = false,
 ) : Entity
