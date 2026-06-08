@@ -2507,25 +2507,16 @@ class AgentAdvancedSpec :
 
         "WZ-32491: handleRepetition returns Warned on first detection (no prior WarnEvent)" {
             val agent = makeParserAgent()
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
             val repetition = ToolRepetition(toolName = "FILES__ReadFile", count = AgentAdvanced.REPETITION_THRESHOLD)
-            var emitted: WarnEvent? = null
 
-            val outcome = kotlinx.coroutines.runBlocking {
-                agent.handleRepetition(
-                    repetition = repetition,
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    emitEvent = { emitted = it as? WarnEvent },
-                    accumulatedEvents = emptyList(), // no prior WarnEvent
-                )
-            }
+            val outcome = agent.handleRepetition(
+                repetition = repetition,
+                accumulatedEvents = emptyList(),
+            )
 
             (outcome is RepetitionOutcome.Warned) shouldBe true
-            emitted shouldNotBe null
-            emitted!!.message shouldContain "FILES__ReadFile"
-            (outcome as RepetitionOutcome.Warned).message shouldBe emitted!!.message
+            (outcome as RepetitionOutcome.Warned).message shouldContain "FILES__ReadFile"
+            outcome.message shouldContain "times"
         }
 
         "WZ-32491: handleRepetition returns ForceStop when a prior WarnEvent already exists" {
@@ -2533,46 +2524,28 @@ class AgentAdvancedSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val repetition = ToolRepetition(toolName = "FILES__ReadFile", count = AgentAdvanced.REPETITION_THRESHOLD)
-            // Simulate that a Warned was already emitted in a previous iteration
+            // Simulate that a Warned was already emitted and accumulated in a previous iteration
             val priorWarn = WarnEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 message = "You have called the tool FILES__ReadFile ${AgentAdvanced.REPETITION_THRESHOLD} times within the last ${AgentAdvanced.REPETITION_WINDOW} tool calls.",
             )
-            var emitted: WarnEvent? = null
 
-            val outcome = kotlinx.coroutines.runBlocking {
-                agent.handleRepetition(
-                    repetition = repetition,
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    emitEvent = { emitted = it as? WarnEvent },
-                    accumulatedEvents = listOf(priorWarn),
-                )
-            }
+            val outcome = agent.handleRepetition(
+                repetition = repetition,
+                accumulatedEvents = listOf(priorWarn),
+            )
 
             (outcome is RepetitionOutcome.ForceStop) shouldBe true
-            emitted shouldNotBe null
-            emitted!!.message shouldContain "Forcing loop termination"
+            (outcome as RepetitionOutcome.ForceStop).message shouldContain "Forcing loop termination"
         }
 
         "WZ-32491: handleRepetition returns null when repetition is null" {
             val agent = makeParserAgent()
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            var emitCalled = false
 
-            val outcome = kotlinx.coroutines.runBlocking {
-                agent.handleRepetition(
-                    repetition = null,
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    emitEvent = { emitCalled = true },
-                )
-            }
+            val outcome = agent.handleRepetition(repetition = null)
 
             outcome shouldBe null
-            emitCalled shouldBe false
         }
 
         "detectToolRepetition returns null when window contains a synthetic ToolResponseEvent" {
