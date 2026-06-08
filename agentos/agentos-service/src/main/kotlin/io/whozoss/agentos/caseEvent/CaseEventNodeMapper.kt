@@ -209,6 +209,7 @@ class CaseEventNodeMapper(
                     node.toolRequestId,
                     node.toolName,
                     node.args,
+                    node.enrichmentPhasesJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -442,6 +443,7 @@ class CaseEventNodeMapper(
             toolRequestId = n.toolRequestId,
             toolName = n.toolName,
             args = n.args,
+            enrichmentPhases = n.enrichmentPhasesJson?.let { serializer.deserializeEnrichmentPhases(it) },
         )
 
     private fun toDomain(n: ToolResponseEventNode) =
@@ -644,6 +646,7 @@ class CaseEventNodeMapper(
             toolRequestId = e.toolRequestId,
             toolName = e.toolName,
             args = e.args,
+            enrichmentPhasesJson = e.enrichmentPhases?.let { serializer.serializeEnrichmentPhases(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

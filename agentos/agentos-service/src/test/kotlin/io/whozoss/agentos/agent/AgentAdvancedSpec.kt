@@ -31,6 +31,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.EnrichmentResult
 import io.whozoss.agentos.sdk.tool.IntermediatePhaseDescriptor
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -2059,6 +2060,16 @@ class AgentAdvancedSpec :
             toolRequests[0].args shouldNotBe null
             toolRequests[0].args!! shouldContain "enriched"
 
+            // enrichmentPhases must be populated with the single phase trace
+            val phases = toolRequests[0].enrichmentPhases
+            phases shouldNotBe null
+            phases!! shouldHaveSize 1
+            phases[0].phaseIndex shouldBe 0
+            phases[0].prompt shouldBe "Identify the entity."
+            phases[0].llmOutput shouldContain "123"
+            phases[0].enrichmentContent shouldBe "Entity details: name=Foo, status=active"
+            phases[0].success shouldBe true
+
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
@@ -2130,6 +2141,11 @@ class AgentAdvancedSpec :
 
             // getIntermediatePhaseDescriptor should never be called for a 0-phase tool
             coVerify(exactly = 0) { simpleTool.getIntermediatePhaseDescriptor(any(), any()) }
+
+            // enrichmentPhases must be null for tools with no enrichment phases
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].enrichmentPhases shouldBe null
 
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
@@ -2230,6 +2246,18 @@ class AgentAdvancedSpec :
             (toolResponses[0].output as MessageContent.Text).content shouldBe "executed anyway"
 
             // No WarnEvent for enrichment failure (it's a graceful fallback, not a user-facing warning)
+
+            // enrichmentPhases must contain the failed phase trace even on failure
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            val phases = toolRequests[0].enrichmentPhases
+            phases shouldNotBe null
+            phases!! shouldHaveSize 1
+            phases[0].phaseIndex shouldBe 0
+            phases[0].llmOutput shouldContain "456"
+            phases[0].enrichmentContent shouldBe null
+            phases[0].success shouldBe false
+
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
@@ -2337,6 +2365,19 @@ class AgentAdvancedSpec :
             receivedPreviousContents shouldHaveSize 2
             receivedPreviousContents[0] shouldBe null
             receivedPreviousContents[1] shouldBe "phase-0-data"
+
+            // enrichmentPhases must contain traces for both phases
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            val phases = toolRequests[0].enrichmentPhases
+            phases shouldNotBe null
+            phases!! shouldHaveSize 2
+            phases[0].phaseIndex shouldBe 0
+            phases[0].enrichmentContent shouldBe "phase-0-data"
+            phases[0].success shouldBe true
+            phases[1].phaseIndex shouldBe 1
+            phases[1].enrichmentContent shouldBe "phase-1-data"
+            phases[1].success shouldBe true
 
             events.filterIsInstance<ToolResponseEvent>().single().success shouldBe true
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1

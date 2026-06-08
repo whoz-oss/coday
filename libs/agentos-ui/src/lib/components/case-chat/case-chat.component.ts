@@ -24,6 +24,7 @@ import {
   CaseEvent,
   CaseStatusEvent,
   Configuration,
+  EnrichmentPhaseTrace,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
@@ -40,6 +41,8 @@ export interface ToolCall {
   args: string | null
   /** undefined = pending, defined = done */
   response?: ToolResponseEvent
+  /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
+  enrichmentPhases?: EnrichmentPhaseTrace[] | null
 }
 
 /** A technical event displayed only when showTechnical is enabled. */
@@ -213,6 +216,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           toolName: req.toolName ?? 'unknown',
           args: req.args ?? null,
           response: existing?.response,
+          enrichmentPhases:
+            (req as ToolRequestEvent & { enrichmentPhases?: EnrichmentPhaseTrace[] | null }).enrichmentPhases ?? null,
         })
       } else if (e.type === 'ToolResponseEvent') {
         const res = e as ToolResponseEvent
