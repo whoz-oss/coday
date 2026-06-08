@@ -30,6 +30,11 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
+      - name: Expose GitHub Actions runtime and set cache base SHA
+        uses: ./.github/actions/expose-runtime
+        with:
+          base-ref: ${{ github.base_ref }}
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -59,6 +64,11 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
+
+      - name: Expose GitHub Actions runtime and set cache base SHA
+        uses: ./.github/actions/expose-runtime
+        with:
+          base-ref: ${{ github.base_ref }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

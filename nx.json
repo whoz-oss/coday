@@ -62,6 +62,9 @@
   "useDaemonProcess": true,
   "plugins": [
     {
+      "plugin": "./tools/plugins/nx-cache/src/index.ts"
+    },
+    {
       "plugin": "./tools/plugins/agentos-gradle/src/index.ts"
     },
     {
