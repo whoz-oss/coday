@@ -224,7 +224,7 @@ class ConfirmationManager(
             val payloadSummary = serializeSafely(pendingData)
             val prompt =
                 """
-                You are formulating a short, user-facing confirmation prompt for an action the agent is about to perform.
+                You are formulating a short, user-facing confirmation prompt for an action the agent is about to perform (NOT yet executed).
 
                 You have the conversation context.
 
@@ -294,7 +294,6 @@ class ConfirmationManager(
             .replace(Regex("</?$TAG_QUESTION>"), "")
             .replace(Regex("\\p{Cntrl}"), "")
             .trim()
-            .take(300)
 
     private fun serializeSafely(data: Any): String =
         try {
