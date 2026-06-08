@@ -44,17 +44,16 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
     fun findByNamespace(namespaceId: UUID, enabledOnly: Boolean = false): List<AgentConfig>
 
     /**
-     * Publishes an agent config, making it visible to end-users.
+     * Enables an agent config, making it active.
      *
      * @throws ResourceNotFoundException if the agent config does not exist
      */
-    fun publish(id: UUID): AgentConfig
+    fun enable(id: UUID): AgentConfig
 
     /**
-     * Unpublishes an agent config, hiding it from end-users while keeping it
-     * editable by admins.
+     * Disables an agent config, making it inactive.
      *
      * @throws ResourceNotFoundException if the agent config does not exist
      */
-    fun unpublish(id: UUID): AgentConfig
+    fun disable(id: UUID): AgentConfig
 }

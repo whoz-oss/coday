@@ -85,8 +85,8 @@ class AgentConfigController(
      *
      * Two fields are intentionally excluded (mass-assignment guards):
      * - [AgentConfig.namespaceId]: clients cannot relocate an AgentConfig across namespaces via PUT
-     * - [AgentConfig.enabled]: publication state is managed exclusively via the
-     *   [publish] and [unpublish] endpoints
+     * - [AgentConfig.enabled]: enabled state is managed exclusively via the
+     *   [enable] and [disable] endpoints
      */
     private fun toDomainForUpdate(
         resource: AgentConfigResource,
@@ -163,29 +163,29 @@ class AgentConfigController(
     override fun delete(@PathVariable id: UUID) = super.delete(id)
 
     /**
-     * POST /api/agent-configs/{id}/publish
+     * POST /api/agent-configs/{id}/enable
      *
-     * Publishes an agent, making it visible to end-users.
+     * Enables an agent, making it active.
      * Requires WRITE permission (namespace ADMIN).
      */
-    @PostMapping("/{id}/publish")
+    @PostMapping("/{id}/enable")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
-    fun publish(@PathVariable id: UUID): AgentConfigResource {
-        logger.info { "[AgentConfig] Publishing agent config $id" }
-        return toResource(agentConfigService.publish(id))
+    fun enable(@PathVariable id: UUID): AgentConfigResource {
+        logger.info { "[AgentConfig] Enabling agent config $id" }
+        return toResource(agentConfigService.enable(id))
     }
 
     /**
-     * POST /api/agent-configs/{id}/unpublish
+     * POST /api/agent-configs/{id}/disable
      *
-     * Unpublishes an agent, hiding it from end-users while keeping it editable by admins.
+     * Disables an agent, making it inactive.
      * Requires WRITE permission (namespace ADMIN).
      */
-    @PostMapping("/{id}/unpublish")
+    @PostMapping("/{id}/disable")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
-    fun unpublish(@PathVariable id: UUID): AgentConfigResource {
-        logger.info { "[AgentConfig] Unpublishing agent config $id" }
-        return toResource(agentConfigService.unpublish(id))
+    fun disable(@PathVariable id: UUID): AgentConfigResource {
+        logger.info { "[AgentConfig] Disabling agent config $id" }
+        return toResource(agentConfigService.disable(id))
     }
 
     /**

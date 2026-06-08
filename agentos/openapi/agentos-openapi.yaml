@@ -1278,11 +1278,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
-  /api/agent-configs/{id}/unpublish:
+  /api/agent-configs/{id}/enable:
     post:
       tags:
       - agent-config-controller
-      operationId: unpublishAgentConfig
+      operationId: enableAgentConfig
       parameters:
       - name: id
         in: path
@@ -1297,11 +1297,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
-  /api/agent-configs/{id}/publish:
+  /api/agent-configs/{id}/disable:
     post:
       tags:
       - agent-config-controller
-      operationId: publishAgentConfig
+      operationId: disableAgentConfig
       parameters:
       - name: id
         in: path
