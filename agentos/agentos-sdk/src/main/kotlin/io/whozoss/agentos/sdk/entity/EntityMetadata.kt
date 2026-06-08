@@ -1,5 +1,6 @@
 package io.whozoss.agentos.sdk.entity
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import java.time.Instant
 import java.util.UUID
@@ -31,7 +32,7 @@ data class EntityMetadata(
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
     var removed: Boolean = false,
-    val version: Long? = null,
+    @JsonIgnore val version: Long? = null,
 ) {
     fun markAsRemoved(): EntityMetadata = copy(removed = true)
 }

@@ -2384,9 +2384,6 @@ components:
           type: string
         removed:
           type: boolean
-        version:
-          type: integer
-          format: int64
       required:
       - created
       - id
