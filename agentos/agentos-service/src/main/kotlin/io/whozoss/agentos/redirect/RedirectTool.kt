@@ -70,15 +70,18 @@ class RedirectTool(
         appendLine("Route the current request to another agent. Use this when the request is better handled by a specialised agent.")
         appendLine("Available agents:")
         eligibleAgents.forEach { agent ->
-            agent.description?.takeIf { it.isNotBlank() }
-                ?.also { desc -> appendLine("  - ${agent.name}: $desc") }
-                ?: run { appendLine("  - ${agent.name}") }
+            val desc = agent.description?.takeIf { it.isNotBlank() }
+            when (desc) {
+                null -> appendLine("  - ${agent.name}")
+                else -> appendLine("  - ${agent.name}: $desc")
+            }
             if (agent.integrations.isNotEmpty()) {
                 appendLine("    Integrations:")
                 agent.integrations.forEach { integration ->
-                    integration.allowedTools
-                        ?.also { tools -> appendLine("      - ${integration.name}: ${tools.joinToString(", ")}") }
-                        ?: run { appendLine("      - ${integration.name}") }
+                    when (val tools = integration.allowedTools) {
+                        null -> appendLine("      - ${integration.name}")
+                        else -> appendLine("      - ${integration.name}: ${tools.joinToString(", ")}")
+                    }
                 }
             }
         }

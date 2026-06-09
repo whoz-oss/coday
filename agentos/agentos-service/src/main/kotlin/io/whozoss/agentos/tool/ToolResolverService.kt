@@ -16,6 +16,16 @@ class ToolResolverService(
     private val integrationConfigService: IntegrationConfigService,
     private val integrationConfigMergeService: ConfigMergeService<IntegrationConfig>,
 ) {
+    /**
+     * Resolves the tool set for a namespace-level agent run (no authenticated user).
+     *
+     * @param namespaceId The namespace to resolve tools for.
+     * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
+     *   When null, all namespace integrations are included.
+     * @param agentName The name of the agent being built, or null when resolving outside
+     *   an agent context. Passed into [ToolContext] so plugins can exclude the calling
+     *   agent from lists they build (e.g. the redirect tool excludes itself as a target).
+     */
     fun resolveToolsForNamespace(
         namespaceId: UUID,
         agentIntegrations: Map<String, List<String>?>? = null,
@@ -74,6 +84,18 @@ class ToolResolverService(
         return resolved.values
     }
 
+    /**
+     * Resolves the tool set for a user-scoped agent run, applying 3-tier overlay
+     * reconciliation for each integration config.
+     *
+     * @param namespaceId The namespace to resolve tools for.
+     * @param userId The authenticated user whose overlays should be applied.
+     * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
+     *   When null, all namespace integrations are included.
+     * @param agentName The name of the agent being built, or null when resolving outside
+     *   an agent context. Passed into [ToolContext] so plugins can exclude the calling
+     *   agent from lists they build (e.g. the redirect tool excludes itself as a target).
+     */
     fun resolveToolsForRun(
         namespaceId: UUID,
         userId: UUID,
