@@ -306,62 +306,36 @@ export class SchedulerService {
   }
 
   /**
-   * Calculate next run time, skipping missed occurrences
+   * Calculate next run time, skipping missed occurrences.
+   *
+   * With the phase-anchored calculateNextRun(), a single call with `now` as fromDate
+   * directly returns the correct next slot regardless of how many occurrences were
+   * missed — no iterative loop is needed.
+   *
+   * The occurrenceCount is left unchanged: missed executions are not counted as
+   * completed occurrences (they were skipped, not executed).
    */
   private calculateNextRunSkippingMissed(scheduler: Scheduler): { nextRun: string | null; occurrenceCount: number } {
     const now = new Date()
-    let occurrenceCount = scheduler.occurrenceCount ?? 0
-    let nextRun = scheduler.nextRun
+    const occurrenceCount = scheduler.occurrenceCount ?? 0
 
-    // If no nextRun, calculate from now
-    if (!nextRun) {
-      return {
-        nextRun: calculateNextRun(scheduler.schedule, now, occurrenceCount),
-        occurrenceCount,
-      }
+    // If nextRun is already in the future, keep it as-is
+    if (scheduler.nextRun && new Date(scheduler.nextRun) >= now) {
+      return { nextRun: scheduler.nextRun, occurrenceCount }
     }
 
-    // If nextRun is in the future, keep it
-    if (new Date(nextRun) >= now) {
-      return { nextRun, occurrenceCount }
+    // nextRun is missing or in the past — compute the next phase-aligned slot from now.
+    // calculateNextRun() anchors to startTimestamp, so this preserves the configured
+    // time-of-day regardless of how long Coday was down.
+    const nextRun = calculateNextRun(scheduler.schedule, now, occurrenceCount)
+
+    if (scheduler.nextRun && new Date(scheduler.nextRun) < now) {
+      console.log(
+        `[SCHEDULER] Scheduler "${scheduler.name}" (${scheduler.id}) had missed nextRun, recalculated to: ${nextRun}`
+      )
     }
 
-    // nextRun is in the past - skip missed occurrences
-    const maxIterations = 1000
-    let iterations = 0
-    let skippedCount = 0
-
-    while (iterations < maxIterations) {
-      occurrenceCount++
-      skippedCount++
-
-      nextRun = calculateNextRun(scheduler.schedule, now, occurrenceCount)
-
-      if (!nextRun) {
-        if (skippedCount > 0) {
-          console.log(
-            `[SCHEDULER] Scheduler "${scheduler.name}" (${scheduler.id}) expired after skipping ${skippedCount} missed occurrence(s)`
-          )
-        }
-        return { nextRun: null, occurrenceCount }
-      }
-
-      if (new Date(nextRun) >= now) {
-        if (skippedCount > 0) {
-          console.log(
-            `[SCHEDULER] Scheduler "${scheduler.name}" (${scheduler.id}) skipped ${skippedCount} missed occurrence(s), next run: ${nextRun}`
-          )
-        }
-        return { nextRun, occurrenceCount }
-      }
-
-      iterations++
-    }
-
-    console.warn(
-      `[SCHEDULER] Could not find future nextRun for scheduler ${scheduler.id} after ${maxIterations} iterations`
-    )
-    return { nextRun: null, occurrenceCount }
+    return { nextRun, occurrenceCount }
   }
 
   /**

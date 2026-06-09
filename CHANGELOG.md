@@ -1,3 +1,88 @@
+## 0.173.18 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32491 force-stop loop on second repetition warning ([#979](https://github.com/whoz-oss/coday/pull/979))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.17 (2026-06-08)
+
+### 🩹 Fixes
+
+- wz-32496 prevent formulateQuestion past-tense + drop sanitizeQuestion take(300) ([#987](https://github.com/whoz-oss/coday/pull/987))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.173.16 (2026-06-08)
+
+### 🩹 Fixes
+
+- restore matrix strategy for jvm publish to avoid github packages 409 conflicts ([ca18112b](https://github.com/whoz-oss/coday/commit/ca18112b))
+- restore matrix strategy for jvm publish to avoid github packages 409 conflicts ([#989](https://github.com/whoz-oss/coday/pull/989))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.173.15 (2026-06-08)
+
+### 🩹 Fixes
+
+- release summary job ([46734fb6](https://github.com/whoz-oss/coday/commit/46734fb6))
+- release summary job ([#986](https://github.com/whoz-oss/coday/pull/986))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.173.14 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32500 dedicated LLM language detection to prevent language contamination ([#985](https://github.com/whoz-oss/coday/pull/985))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.13 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32024 prevent `@CreatedBy` from being overridden on updates ([#983](https://github.com/whoz-oss/coday/pull/983))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.173.12 (2026-06-08)
+
+### 🩹 Fixes
+
+- wz-32443 update intention prompt to avoid technical details ([#980](https://github.com/whoz-oss/coday/pull/980))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
+## 0.173.11 (2026-06-08)
+
+### 🩹 Fixes
+
+- #942 anchor scheduler nextRun to startTimestamp phase ([#942](https://github.com/whoz-oss/coday/issues/942))
+- #942 anchor scheduler nextRun to startTimestamp phase ([#974](https://github.com/whoz-oss/coday/pull/974), [#942](https://github.com/whoz-oss/coday/issues/942))
+
+### ❤️ Thank You
+
+- David Palita
+
 ## 0.173.10 (2026-06-08)
 
 ### 🚀 Features
