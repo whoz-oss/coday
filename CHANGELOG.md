@@ -1,3 +1,13 @@
+## 0.174.0 (2026-06-09)
+
+### 🚀 Features
+
+- persist case-chat debug toggle in localStorage ([#994](https://github.com/whoz-oss/coday/pull/994))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.173.20 (2026-06-09)
 
 ### 🩹 Fixes
