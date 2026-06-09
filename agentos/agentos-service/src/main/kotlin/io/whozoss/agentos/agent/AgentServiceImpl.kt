@@ -122,9 +122,9 @@ class AgentServiceImpl(
         )
         val tools =
             if (context.userId != null) {
-                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, config.integrations)
+                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, config.integrations, config.name)
             } else {
-                toolResolverService.resolveToolsForNamespace(context.namespaceId, config.integrations)
+                toolResolverService.resolveToolsForNamespace(context.namespaceId, config.integrations, config.name)
             }
         return ResolvedAgentDefinition(
             agentConfigId = config.metadata.id,

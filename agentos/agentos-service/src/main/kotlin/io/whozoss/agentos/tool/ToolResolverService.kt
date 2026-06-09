@@ -19,6 +19,7 @@ class ToolResolverService(
     fun resolveToolsForNamespace(
         namespaceId: UUID,
         agentIntegrations: Map<String, List<String>?>? = null,
+        agentName: String? = null,
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
 
@@ -50,6 +51,7 @@ class ToolResolverService(
                                     userId = null,
                                     userExternalId = null,
                                     caseEvents = emptyList(),
+                                    agentName = agentName,
                                 ),
                         ).filter { tool -> isToolAllowed(tool.name, config.name, allowedToolNames) }
                 providedTools.forEach { tool ->
@@ -76,6 +78,7 @@ class ToolResolverService(
         namespaceId: UUID,
         userId: UUID,
         agentIntegrations: Map<String, List<String>?>? = null,
+        agentName: String? = null,
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
 
@@ -139,6 +142,7 @@ class ToolResolverService(
                                     userId = userId,
                                     userExternalId = null,
                                     caseEvents = emptyList(),
+                                    agentName = agentName,
                                 ),
                         ).filter { tool -> isToolAllowed(tool.name, resolvedConfig.name, allowedToolNames) }
                 tools.forEach { tool ->
