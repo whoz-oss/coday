@@ -31,7 +31,6 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
-import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.EnrichmentResult
 import io.whozoss.agentos.sdk.tool.IntermediatePhaseDescriptor
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -380,6 +379,9 @@ class AgentAdvancedSpec :
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("Here is ", "my answer.")
+            // detectUserLanguage makes a synchronous .call().content() — must be explicitly
+            // mocked to avoid relying on relaxed-mock behaviour that can hang on some JDKs.
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns null
 
             val context =
                 AgentAdvancedContext(
@@ -713,7 +715,10 @@ class AgentAdvancedSpec :
             // targetChars=60: the newest message (~70 chars) exceeds the threshold alone,
             // so only it should be sampled — the old message must not appear in the prompt.
             agent.detectUserLanguage(events, targetChars = 60)
-            val promptText = promptSlot.captured.instructions.first().text
+            val promptText =
+                promptSlot.captured.instructions
+                    .first()
+                    .text
             promptText shouldContain "Angular developers"
             // The old message must NOT appear: threshold was reached after the newest message alone
             (promptText.contains("old message from the start")) shouldBe false
