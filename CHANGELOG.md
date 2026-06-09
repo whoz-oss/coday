@@ -1,3 +1,13 @@
+## 0.175.0 (2026-06-09)
+
+### 🚀 Features
+
+- #WZ-32424 enrich redirect tool description with agent integrations and exclude calling agent ([#991](https://github.com/whoz-oss/coday/pull/991))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.174.2 (2026-06-09)
 
 ### 🚀 Features
