@@ -113,9 +113,17 @@ class ToolResolverServiceSpec :
             val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
             val config = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
             val service = buildService(plugins = listOf(plugin), configs = listOf(config))
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools1 = service.resolveToolsForNamespace(context = toolContext)
-            val tools2 = service.resolveToolsForNamespace(context = toolContext)
+            val tools1 = service.resolveToolsForNamespace(context = ctx)
+            val tools2 = service.resolveToolsForNamespace(context = ctx)
 
             tools1 shouldHaveSize 1
             tools2 shouldHaveSize 1
@@ -127,9 +135,17 @@ class ToolResolverServiceSpec :
             val config = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
             val plugin = makeConfiguredPlugin("JIRA", "GetIssue")
             val service = buildService(plugins = listOf(plugin), configs = listOf(config))
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools1 = service.resolveToolsForNamespace(context = toolContext)
-            val tools2 = service.resolveToolsForNamespace(context = toolContext)
+            val tools1 = service.resolveToolsForNamespace(context = ctx)
+            val tools2 = service.resolveToolsForNamespace(context = ctx)
 
             tools1 shouldHaveSize 1
             tools2 shouldHaveSize 1
@@ -144,8 +160,16 @@ class ToolResolverServiceSpec :
             val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
             val service = buildService(plugins = listOf(plugin))
             val namespaceId = UUID.randomUUID()
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools = service.resolveToolsForNamespace(context = toolContext)
+            val tools = service.resolveToolsForNamespace(context = ctx)
 
             tools.shouldBeEmpty()
         }
@@ -155,8 +179,16 @@ class ToolResolverServiceSpec :
             val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime", "GetCurrentDate")
             val config = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
             val service = buildService(plugins = listOf(plugin), configs = listOf(config))
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools = service.resolveToolsForNamespace(context = toolContext)
+            val tools = service.resolveToolsForNamespace(context = ctx)
 
             tools shouldHaveSize 2
             tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetCurrentDate")
@@ -167,8 +199,16 @@ class ToolResolverServiceSpec :
             val config = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
             val plugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues")
             val service = buildService(plugins = listOf(plugin), configs = listOf(config))
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools = service.resolveToolsForNamespace(context = toolContext)
+            val tools = service.resolveToolsForNamespace(context = ctx)
 
             tools shouldHaveSize 2
             tools.map { it.name }.toSet() shouldBe setOf("GetIssue", "SearchIssues")
@@ -185,8 +225,16 @@ class ToolResolverServiceSpec :
                     plugins = listOf(configLessPlugin, configuredPlugin),
                     configs = listOf(datetimeConfig, jiraConfig),
                 )
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools = service.resolveToolsForNamespace(context = toolContext)
+            val tools = service.resolveToolsForNamespace(context = ctx)
 
             tools shouldHaveSize 2
             tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetIssue")
@@ -202,8 +250,16 @@ class ToolResolverServiceSpec :
                     plugins = listOf(configuredPlugin),
                     configs = listOf(configInOtherNamespace),
                 )
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools = service.resolveToolsForNamespace(context = toolContext)
+            val tools = service.resolveToolsForNamespace(context = ctx)
 
             tools.shouldBeEmpty()
         }
@@ -223,8 +279,16 @@ class ToolResolverServiceSpec :
                     plugins = listOf(configuredPlugin, configLessPlugin),
                     configs = listOf(jiraConfig, datetimeConfig),
                 )
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
-            val tools = service.resolveToolsForNamespace(context = toolContext)
+            val tools = service.resolveToolsForNamespace(context = ctx)
 
             tools shouldHaveSize 2
         }
@@ -240,11 +304,19 @@ class ToolResolverServiceSpec :
                     plugins = listOf(configuredPlugin, configLessPlugin),
                     configs = listOf(jiraConfig, datetimeConfig),
                 )
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
             val tools =
                 service.resolveToolsForNamespace(
                     agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = toolContext,
+                    context = ctx,
                 )
 
             tools shouldHaveSize 1
@@ -262,11 +334,19 @@ class ToolResolverServiceSpec :
                     plugins = listOf(configLessPlugin, configuredPlugin),
                     configs = listOf(datetimeConfig, jiraConfig),
                 )
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
             val tools =
                 service.resolveToolsForNamespace(
                     agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = toolContext,
+                    context = ctx,
                 )
 
             tools shouldHaveSize 1
@@ -278,11 +358,19 @@ class ToolResolverServiceSpec :
             val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
             val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")
             val service = buildService(plugins = listOf(configuredPlugin), configs = listOf(jiraConfig))
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
             val tools =
                 service.resolveToolsForNamespace(
                     agentIntegrations = mapOf("JIRA_PROD" to listOf("GetIssue", "SearchIssues")),
-                    context = toolContext,
+                    context = ctx,
                 )
 
             tools shouldHaveSize 2
@@ -294,11 +382,19 @@ class ToolResolverServiceSpec :
             val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
             val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")
             val service = buildService(plugins = listOf(configuredPlugin), configs = listOf(jiraConfig))
+            val ctx =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    userExternalId = null,
+                    caseEvents = emptyList(),
+                    agentName = null,
+                )
 
             val tools =
                 service.resolveToolsForNamespace(
                     agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = toolContext,
+                    context = ctx,
                 )
 
             tools shouldHaveSize 3
@@ -363,8 +459,10 @@ class ToolResolverServiceSpec :
             val userId = UUID.randomUUID()
             val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
             val service = buildServiceForRun(plugins = listOf(plugin))
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             tools.shouldBeEmpty()
         }
@@ -381,8 +479,10 @@ class ToolResolverServiceSpec :
                     sharedConfigs = listOf(shared),
                     reconciledConfigs = mapOf("jira" to reconciled),
                 )
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             tools shouldHaveSize 1
             tools.first().name shouldBe "GetIssue"
@@ -400,8 +500,10 @@ class ToolResolverServiceSpec :
                     userOverrides = listOf(userGlobal),
                     reconciledConfigs = mapOf("github" to reconciled),
                 )
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             tools shouldHaveSize 1
             tools.first().name shouldBe "CreatePR"
@@ -428,8 +530,10 @@ class ToolResolverServiceSpec :
                     userOverrides = listOf(userNs),
                     reconciledConfigs = mapOf("jira" to reconciled),
                 )
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             tools shouldHaveSize 1
         }
@@ -447,9 +551,11 @@ class ToolResolverServiceSpec :
                     sharedConfigs = listOf(shared1, shared2),
                     reconciledConfigs = mapOf("github" to shared2),
                 )
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
             shouldThrow<ConfigNotFoundException> {
-                service.resolveToolsForRun()
+                service.resolveToolsForRun(context = ctx)
             }
         }
 
@@ -474,8 +580,10 @@ class ToolResolverServiceSpec :
                     userOverrides = listOf(dormantOverride),
                     reconciledConfigs = mapOf("github" to shared),
                 )
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             tools shouldHaveSize 1
             tools.first().name shouldBe "CreatePR"
@@ -493,8 +601,9 @@ class ToolResolverServiceSpec :
                     plugins = listOf(plugin),
                     userOverrides = listOf(overrideForNs2),
                 )
+            val ctx = ToolContext(namespaceId = ns1, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             tools shouldHaveSize 0
         }
@@ -527,8 +636,10 @@ class ToolResolverServiceSpec :
                 }
             val config = integrationConfig(namespaceId, "REDIRECT_all", "REDIRECT")
             val service = buildService(plugins = listOf(contextCapturingPlugin), configs = listOf(config))
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = null, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForNamespace(context = toolContext)
+            val tools = service.resolveToolsForNamespace(context = ctx)
 
             capturedContext shouldNotBe null
             capturedContext!!.namespaceId shouldBe namespaceId
@@ -568,8 +679,10 @@ class ToolResolverServiceSpec :
                     sharedConfigs = listOf(shared),
                     reconciledConfigs = mapOf("REDIRECT_all" to shared),
                 )
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             capturedContext shouldNotBe null
             capturedContext!!.namespaceId shouldBe namespaceId
@@ -591,8 +704,10 @@ class ToolResolverServiceSpec :
                     sharedConfigs = listOf(datetimeConfig, jiraConfig),
                     reconciledConfigs = mapOf("datetime" to datetimeConfig, "jira" to jiraConfig),
                 )
+            val ctx =
+                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
 
-            val tools = service.resolveToolsForRun()
+            val tools = service.resolveToolsForRun(context = ctx)
 
             tools shouldHaveSize 2
             tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetIssue")

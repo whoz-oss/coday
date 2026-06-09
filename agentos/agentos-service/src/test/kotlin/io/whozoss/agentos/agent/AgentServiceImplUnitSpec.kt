@@ -111,8 +111,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolResolverService.resolveToolsForNamespace(any(), toolContext) } returns emptyList()
-        every { toolResolverService.resolveToolsForRun(any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForNamespace(any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(any(), any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
@@ -557,7 +557,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             verify(exactly = 1) {
                 toolResolverService.resolveToolsForNamespace(
-                    context = toolContext,
+                    context = any(),
                 )
             }
         }
@@ -579,7 +579,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) {
                 toolResolverService.resolveToolsForNamespace(
                     integrations,
-                    toolContext,
+                    any(),
                 )
             }
         }

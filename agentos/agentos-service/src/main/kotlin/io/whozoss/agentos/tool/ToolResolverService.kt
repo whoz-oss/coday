@@ -19,8 +19,14 @@ class ToolResolverService(
     /**
      * Resolves the tool set for a namespace-level agent run (no authenticated user).
      *
+     * The [context] must carry a valid [ToolContext.namespaceId]. It is passed verbatim
+     * to each plugin so they can use it for namespace-aware behaviour (e.g. the redirect
+     * tool uses it to enumerate eligible agents). [ToolContext.userId] should be null for
+     * this path — use [resolveToolsForRun] when a user identity is available.
+     *
      * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
      *   When null, all namespace integrations are included.
+     * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
      */
     fun resolveToolsForNamespace(
         agentIntegrations: Map<String, List<String>?>? = null,
@@ -54,8 +60,15 @@ class ToolResolverService(
      * Resolves the tool set for a user-scoped agent run, applying 3-tier overlay
      * reconciliation for each integration config.
      *
+     * The [context] must carry both a valid [ToolContext.namespaceId] and a non-null
+     * [ToolContext.userId] (the method throws [IllegalArgumentException] otherwise). The
+     * context is passed verbatim to each plugin, giving them access to the full runtime
+     * identity (namespace, user, external id, agent name, case events).
+     *
      * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
      *   When null, all namespace integrations are included.
+     * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
+     *   [ToolContext.userId] must be non-null.
      */
     fun resolveToolsForRun(
         agentIntegrations: Map<String, List<String>?>? = null,
