@@ -152,23 +152,23 @@ class ConfirmationManager(
 
         val prompt =
             """
-            Based on the given conversation.
+            Classify the user's MOST RECENT message. The user may reply in any language;
+            reason about semantic intent, examples below are illustrative only.
 
-            The agent was awaiting confirmation for this pending action:
+            Pending action (NOT yet executed):
             $payloadSummary
-
-            Using following conversation history: 
-                <conversationHistory>
-                $firstLevelHistory
-                </conversationHistory>
-                
-            And especially based on the last user message, I need to identify if the user confirms the validation (without any modification) or not.
             $toolGuidanceSection
 
-            Decide between three outcomes and put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between <$TAG_DECISION></$TAG_DECISION> tags:
-            - "$CHOICE_YES" — the user clearly confirms the validation without modification.
-            - "$CHOICE_NO" — the user clearly refuses.
-            - "$CHOICE_UNCLEAR" — the reply is genuinely ambiguous (off-topic, sarcastic, evasive, or an idiomatic expression that could plausibly be read as either yes or no). Use this when you have to guess.
+            <conversationHistory>
+            $firstLevelHistory
+            </conversationHistory>
+
+            Put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between
+            <$TAG_DECISION></$TAG_DECISION> tags:
+            - "$CHOICE_YES" — clear, explicit affirmation (e.g. "yes", "go ahead", "confirmed").
+            - "$CHOICE_NO" — clear refusal, cancellation, OR topic shift to something unrelated.
+            - "$CHOICE_UNCLEAR" — hesitant, non-committal, or a clarification question about the
+              pending action.
 
             <$TAG_DECISION>
             """.trimIndent()
@@ -292,7 +292,6 @@ class ConfirmationManager(
         s
             // Strip orphan opening / closing question tags that leak when the LLM omits one side.
             .replace(Regex("</?$TAG_QUESTION>"), "")
-            .replace(Regex("\\p{Cntrl}"), "")
             .trim()
 
     private fun serializeSafely(data: Any): String =
