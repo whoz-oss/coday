@@ -6,8 +6,8 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "tslib": "catalog:",
-    "xlsx": "0.18.5"
+    "exceljs": "4.4.0",
+    "tslib": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:dev"

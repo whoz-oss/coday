@@ -1,5 +1,5 @@
 import * as path from 'path'
-import { readFileSync, existsSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import {
   AssistantToolFactory,
   CodayTool,
@@ -8,10 +8,10 @@ import {
   IntegrationConfig,
   Interactor,
 } from '@coday/model'
-import * as XLSX from 'xlsx'
+import * as ExcelJS from 'exceljs'
 
 /**
- * ExcelTools: Read Excel files (.xls, .xlsx) and expose their content to agents.
+ * ExcelTools: Read Excel files (.xlsx) and expose their content to agents.
  *
  * Tools provided:
  * - EXCEL__listSheets   — list all sheet names in a workbook
@@ -48,13 +48,14 @@ export class ExcelTools extends AssistantToolFactory {
       throw new Error(`File path must start with "project://" or "exchange://". Got: "${filePath}"`)
     }
 
-    const loadWorkbook = (filePath: string): XLSX.WorkBook => {
+    const loadWorkbook = async (filePath: string): Promise<ExcelJS.Workbook> => {
       const absolutePath = resolvePath(filePath)
       if (!existsSync(absolutePath)) {
         throw new Error(`File not found: ${filePath}`)
       }
-      const buffer = readFileSync(absolutePath)
-      return XLSX.read(buffer, { type: 'buffer' })
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.readFile(absolutePath)
+      return workbook
     }
 
     // --- listSheets ---
@@ -63,7 +64,7 @@ export class ExcelTools extends AssistantToolFactory {
       function: {
         name: `${this.name}__listSheets`,
         description:
-          'List all sheet names in an Excel file (.xls or .xlsx). ' +
+          'List all sheet names in an Excel file (.xlsx). ' +
           'Use this first to discover the structure of a workbook before reading data. ' +
           'File path must start with "project://" or "exchange://".',
         parameters: {
@@ -71,15 +72,16 @@ export class ExcelTools extends AssistantToolFactory {
           properties: {
             filePath: {
               type: 'string',
-              description: 'Path to the Excel file (e.g. "exchange://report.xlsx" or "project://data/sales.xls")',
+              description: 'Path to the Excel file (e.g. "exchange://report.xlsx" or "project://data/sales.xlsx")',
             },
           },
         },
         parse: JSON.parse,
-        function: ({ filePath }: { filePath: string }): string => {
+        function: async ({ filePath }: { filePath: string }): Promise<string> => {
           try {
-            const workbook = loadWorkbook(filePath)
-            return JSON.stringify({ sheets: workbook.SheetNames }, null, 2)
+            const workbook = await loadWorkbook(filePath)
+            const sheets = workbook.worksheets.map((ws) => ws.name)
+            return JSON.stringify({ sheets }, null, 2)
           } catch (error) {
             return `Error: ${error}`
           }
@@ -128,7 +130,7 @@ export class ExcelTools extends AssistantToolFactory {
           },
         },
         parse: JSON.parse,
-        function: ({
+        function: async ({
           filePath,
           sheetName,
           maxRows = 100,
@@ -138,43 +140,55 @@ export class ExcelTools extends AssistantToolFactory {
           sheetName?: string
           maxRows?: number
           startRow?: number
-        }): string => {
+        }): Promise<string> => {
           try {
-            const workbook = loadWorkbook(filePath)
-            const targetSheet = sheetName ?? workbook.SheetNames[0]
+            const workbook = await loadWorkbook(filePath)
+            const sheet = sheetName ? workbook.getWorksheet(sheetName) : workbook.worksheets[0]
 
-            if (!targetSheet) {
-              return 'Error: workbook has no sheets'
-            }
-            if (!workbook.SheetNames.includes(targetSheet)) {
-              return `Error: sheet "${targetSheet}" not found. Available sheets: ${workbook.SheetNames.join(', ')}`
-            }
-
-            const sheet = workbook.Sheets[targetSheet]
             if (!sheet) {
-              return `Error: could not load sheet "${targetSheet}"`
+              const available = workbook.worksheets.map((ws) => ws.name).join(', ')
+              return sheetName
+                ? `Error: sheet "${sheetName}" not found. Available sheets: ${available}`
+                : 'Error: workbook has no sheets'
             }
 
-            // Convert to array of arrays to support pagination
-            const allRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-              defval: null,
-              raw: false, // format dates and numbers as strings for LLM readability
+            // Extract header row (first row)
+            const headerRow = sheet.getRow(1)
+            const headers: string[] = []
+            headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+              headers[colNumber - 1] = cell.text || `Column${colNumber}`
             })
 
+            // Extract data rows with pagination (data starts at row 2)
             const cappedMax = Math.min(maxRows, 1000)
-            const sliced = allRows.slice(startRow, startRow + cappedMax)
-            const totalRows = allRows.length
-            const hasMore = startRow + cappedMax < totalRows
+            const dataStartRow = 2 + startRow
+            const dataEndRow = dataStartRow + cappedMax - 1
+            const totalDataRows = sheet.rowCount - 1 // exclude header
+
+            const rows: Record<string, unknown>[] = []
+            for (let rowIndex = dataStartRow; rowIndex <= Math.min(dataEndRow, sheet.rowCount); rowIndex++) {
+              const row = sheet.getRow(rowIndex)
+              if (row.hasValues) {
+                const rowData: Record<string, unknown> = {}
+                row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                  const header = headers[colNumber - 1] ?? `Column${colNumber}`
+                  rowData[header] = cell.text || null
+                })
+                rows.push(rowData)
+              }
+            }
+
+            const hasMore = dataStartRow + cappedMax - 1 < sheet.rowCount
 
             return JSON.stringify(
               {
-                sheet: targetSheet,
-                totalRows,
-                returnedRows: sliced.length,
+                sheet: sheet.name,
+                totalRows: totalDataRows,
+                returnedRows: rows.length,
                 startRow,
                 hasMore,
                 ...(hasMore ? { nextStartRow: startRow + cappedMax } : {}),
-                rows: sliced,
+                rows,
               },
               null,
               2
@@ -211,35 +225,43 @@ export class ExcelTools extends AssistantToolFactory {
           },
         },
         parse: JSON.parse,
-        function: ({ filePath, sheetName }: { filePath: string; sheetName?: string }): string => {
+        function: async ({ filePath, sheetName }: { filePath: string; sheetName?: string }): Promise<string> => {
           try {
-            const workbook = loadWorkbook(filePath)
-            const targetSheet = sheetName ?? workbook.SheetNames[0]
+            const workbook = await loadWorkbook(filePath)
+            const sheet = sheetName ? workbook.getWorksheet(sheetName) : workbook.worksheets[0]
 
-            if (!targetSheet) {
-              return 'Error: workbook has no sheets'
-            }
-            if (!workbook.SheetNames.includes(targetSheet)) {
-              return `Error: sheet "${targetSheet}" not found. Available sheets: ${workbook.SheetNames.join(', ')}`
-            }
-
-            const sheet = workbook.Sheets[targetSheet]
             if (!sheet) {
-              return `Error: could not load sheet "${targetSheet}"`
+              const available = workbook.worksheets.map((ws) => ws.name).join(', ')
+              return sheetName
+                ? `Error: sheet "${sheetName}" not found. Available sheets: ${available}`
+                : 'Error: workbook has no sheets'
             }
 
-            const allRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-              defval: null,
-              raw: false,
+            // Extract headers
+            const headerRow = sheet.getRow(1)
+            const columns: string[] = []
+            headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+              columns[colNumber - 1] = cell.text || `Column${colNumber}`
             })
 
-            const columns = allRows.length > 0 ? Object.keys(allRows[0] ?? {}) : []
-            const preview = allRows.slice(0, 3)
+            // Preview: first 3 data rows
+            const preview: Record<string, unknown>[] = []
+            for (let rowIndex = 2; rowIndex <= Math.min(4, sheet.rowCount); rowIndex++) {
+              const row = sheet.getRow(rowIndex)
+              if (row.hasValues) {
+                const rowData: Record<string, unknown> = {}
+                row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                  const header = columns[colNumber - 1] ?? `Column${colNumber}`
+                  rowData[header] = cell.text || null
+                })
+                preview.push(rowData)
+              }
+            }
 
             return JSON.stringify(
               {
-                sheet: targetSheet,
-                totalRows: allRows.length,
+                sheet: sheet.name,
+                totalRows: sheet.rowCount - 1,
                 columnCount: columns.length,
                 columns,
                 preview,
