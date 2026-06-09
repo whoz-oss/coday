@@ -1,3 +1,13 @@
+## 0.173.20 (2026-06-09)
+
+### 🩹 Fixes
+
+- #WZ-32236 remove mandatory apiKey validation in ChatModelFactory ([#973](https://github.com/whoz-oss/coday/pull/973))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.173.19 (2026-06-08)
 
 ### 🩹 Fixes
