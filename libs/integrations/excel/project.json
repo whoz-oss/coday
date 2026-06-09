@@ -1,0 +1,26 @@
+{
+  "name": "integrations-excel",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/integrations/excel",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/integrations/excel/dist",
+        "main": "libs/integrations/excel/src/index.ts",
+        "tsConfig": "libs/integrations/excel/tsconfig.lib.json",
+        "assets": [
+          "libs/integrations/excel/*.md"
+        ]
+      }
+    }
+  }
+}
