@@ -1,3 +1,13 @@
+## 0.174.1 (2026-06-09)
+
+### 🩹 Fixes
+
+- wz-32496 streamline analyzeConfirmation prompt ([#993](https://github.com/whoz-oss/coday/pull/993))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.174.0 (2026-06-09)
 
 ### 🚀 Features
