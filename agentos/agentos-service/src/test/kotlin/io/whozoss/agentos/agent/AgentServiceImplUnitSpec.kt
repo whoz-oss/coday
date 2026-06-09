@@ -555,7 +555,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, null) }
+            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, null, "my-agent") }
         }
 
         "findAgentByName passes integrations map to ToolResolverService when agentConfig has integrations" {
@@ -572,7 +572,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations) }
+            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations, "my-agent") }
         }
 
         // -------------------------------------------------------------------------
