@@ -153,7 +153,7 @@ class ConfirmationManager(
         val prompt =
             """
             Classify the user's MOST RECENT message. The user may reply in any language;
-            reason about semantic intent, examples below are illustrative only.
+            reason about semantic intent.
 
             Pending action (NOT yet executed):
             $payloadSummary
@@ -171,7 +171,6 @@ class ConfirmationManager(
               or a clarification question about the pending action.
 
             First give your reasoning between <$TAG_REASONING></$TAG_REASONING>, then the decision.
-            <$TAG_DECISION>
             """.trimIndent()
 
         val decision =
