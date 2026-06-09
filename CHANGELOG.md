@@ -1,3 +1,16 @@
+## 0.174.2 (2026-06-09)
+
+### 🚀 Features
+
+- **wz-32516:** focus intention a bit more towards the session context ([5d14b539](https://github.com/whoz-oss/coday/commit/5d14b539))
+- **wz-32516:** adjust sentence ([dc9b217d](https://github.com/whoz-oss/coday/commit/dc9b217d))
+- **wz-32516:** focus intention a bit more towards the session context ([#997](https://github.com/whoz-oss/coday/pull/997))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.174.1 (2026-06-09)
 
 ### 🩹 Fixes
