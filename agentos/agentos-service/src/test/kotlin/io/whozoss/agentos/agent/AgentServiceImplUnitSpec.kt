@@ -111,8 +111,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolResolverService.resolveToolsForNamespace(any(), any(), any()) } returns emptyList()
-        every { toolResolverService.resolveToolsForRun(any(), any(), any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForNamespace(any(), toolContext) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
@@ -555,7 +555,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, null, "my-agent") }
+            verify(exactly = 1) {
+                toolResolverService.resolveToolsForNamespace(
+                    context = toolContext,
+                )
+            }
         }
 
         "findAgentByName passes integrations map to ToolResolverService when agentConfig has integrations" {
@@ -572,7 +576,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations, "my-agent") }
+            verify(exactly = 1) {
+                toolResolverService.resolveToolsForNamespace(
+                    integrations,
+                    toolContext,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
