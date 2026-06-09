@@ -87,9 +87,9 @@ class ConfirmationManager(
 
                 Task:
                 Analyze the end of the conversation. Has the user *already* explicitly agreed to or requested this specific action/update?
-                Take the following conversation history: 
+                Take the following conversation history:
                 <conversationHistory>
-                $firstLevelHistory
+                ${historyToString(firstLevelHistory)}
                 </conversationHistory>
 
                 Return "$CHOICE_NO" if ANY of the following are true:
@@ -160,16 +160,17 @@ class ConfirmationManager(
             $toolGuidanceSection
 
             <conversationHistory>
-            $firstLevelHistory
+            ${historyToString(firstLevelHistory)}
             </conversationHistory>
 
             Put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between
             <$TAG_DECISION></$TAG_DECISION> tags:
             - "$CHOICE_YES" — clear, explicit affirmation (e.g. "yes", "go ahead", "confirmed").
             - "$CHOICE_NO" — clear refusal, cancellation, OR topic shift to something unrelated.
-            - "$CHOICE_UNCLEAR" — hesitant, non-committal, or a clarification question about the
-              pending action.
+            - "$CHOICE_UNCLEAR" — hesitant, non-committal (e.g. "why not", "I guess", "as you wish"),
+              or a clarification question about the pending action.
 
+            First give your reasoning between <$TAG_REASONING></$TAG_REASONING>, then the decision.
             <$TAG_DECISION>
             """.trimIndent()
 
