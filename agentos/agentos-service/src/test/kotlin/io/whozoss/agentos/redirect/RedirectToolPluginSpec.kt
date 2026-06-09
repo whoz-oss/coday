@@ -27,11 +27,12 @@ class RedirectToolPluginSpec : StringSpec({
         description = description,
     )
 
-    fun context(userId: UUID? = null) = ToolContext(
+    fun context(userId: UUID? = null, agentName: String? = null) = ToolContext(
         namespaceId = namespaceId,
         userId = userId,
         userExternalId = null,
         caseEvents = emptyList(),
+        agentName = agentName,
     )
 
     // -------------------------------------------------------------------------
@@ -95,12 +96,90 @@ class RedirectToolPluginSpec : StringSpec({
         tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA", "AgentB")
     }
 
+    // -------------------------------------------------------------------------
+    // Integration propagation
+    // -------------------------------------------------------------------------
+
+    "provideTools maps AgentConfig.integrations to EligibleAgent.integrations" {
+        val agents = listOf(
+            AgentConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "AgentA",
+                description = "Does A",
+                integrations = mapOf(
+                    "JIRA" to listOf("GetIssue", "PostComment"),
+                    "FILES" to null,
+                ),
+            ),
+        )
+        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+
+        val tool = plugin.provideTools(config = null, context = context(userId = userId)).first() as RedirectTool
+        val eligible = tool.eligibleAgents.first()
+
+        eligible.integrations shouldBe listOf(
+            RedirectTool.Integration(name = "JIRA", allowedTools = listOf("GetIssue", "PostComment")),
+            RedirectTool.Integration(name = "FILES", allowedTools = null),
+        )
+    }
+
+    "provideTools produces empty integrations list when AgentConfig.integrations is null" {
+        val agents = listOf(
+            AgentConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "AgentA",
+                description = null,
+                integrations = null,
+            ),
+        )
+        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+
+        val tool = plugin.provideTools(config = null, context = context(userId = userId)).first() as RedirectTool
+        tool.eligibleAgents.first().integrations shouldBe emptyList()
+    }
+
     "provideTools returns empty list when resolver returns no agents" {
         val plugin = RedirectToolPlugin { _, _, _ -> emptyList() }
 
         val tools = plugin.provideTools(config = null, context = context(userId = userId))
 
         tools.shouldBeEmpty()
+    }
+
+    // -------------------------------------------------------------------------
+    // Self-exclusion
+    // -------------------------------------------------------------------------
+
+    "provideTools excludes the calling agent from eligible agents" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+        )
+        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+
+        val tool = plugin.provideTools(config = null, context = context(agentName = "AgentA")).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentB")
+    }
+
+    "provideTools returns empty list when calling agent is the only eligible agent" {
+        val agents = listOf(agentConfig("AgentA", "Does A"))
+        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+
+        val tools = plugin.provideTools(config = null, context = context(agentName = "AgentA"))
+        tools.shouldBeEmpty()
+    }
+
+    "provideTools does not exclude anything when context has no agentName" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+        )
+        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+
+        val tool = plugin.provideTools(config = null, context = context(agentName = null)).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA", "AgentB")
     }
 
     "provideTools returns empty list when context has no namespaceId" {

@@ -37,13 +37,32 @@ class RedirectTool(
     data class Input(val agentName: String)
 
     /**
+     * One integration available to an eligible agent, optionally restricted to a
+     * specific set of tool names.
+     *
+     * @param name Integration name (matches [IntegrationConfig.name] or
+     *   [ToolPlugin.integrationType] for config-less plugins).
+     * @param allowedTools When non-null, only these tool names (or suffixes for
+     *   multi-instance tools) are available. When null, all tools of the integration
+     *   are available — the list is omitted from the prompt in that case.
+     */
+    data class Integration(val name: String, val allowedTools: List<String>?)
+
+    /**
      * A resolved agent that the LLM may redirect to.
      *
      * @param name Exact agent name as stored in [AgentConfig.name].
      * @param description Human-readable description injected into the tool schema
      *   so the LLM can reason about which agent to choose without a separate list call.
+     * @param integrations Integrations available to this agent, derived from
+     *   [AgentConfig.integrations]. Empty when the agent has no restriction (all
+     *   namespace tools). Each entry may optionally carry a tool whitelist.
      */
-    data class EligibleAgent(val name: String, val description: String?)
+    data class EligibleAgent(
+        val name: String,
+        val description: String?,
+        val integrations: List<Integration> = emptyList(),
+    )
 
     override val name: String = configName?.let { "${it}__redirect" } ?: "redirect"
 
@@ -51,9 +70,20 @@ class RedirectTool(
         appendLine("Route the current request to another agent. Use this when the request is better handled by a specialised agent.")
         appendLine("Available agents:")
         eligibleAgents.forEach { agent ->
-            agent.description?.takeIf { it.isNotBlank() }
-                ?.also { desc -> appendLine("  - ${agent.name}: $desc") }
-                ?: run { appendLine("  - ${agent.name}") }
+            val desc = agent.description?.takeIf { it.isNotBlank() }
+            when (desc) {
+                null -> appendLine("  - ${agent.name}")
+                else -> appendLine("  - ${agent.name}: $desc")
+            }
+            if (agent.integrations.isNotEmpty()) {
+                appendLine("    Integrations:")
+                agent.integrations.forEach { integration ->
+                    when (val tools = integration.allowedTools) {
+                        null -> appendLine("      - ${integration.name}")
+                        else -> appendLine("      - ${integration.name}: ${tools.joinToString(", ")}")
+                    }
+                }
+            }
         }
     }.trimEnd()
 
