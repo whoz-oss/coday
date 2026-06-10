@@ -89,7 +89,7 @@ class FeedbackServiceImplUnitSpec : StringSpec() {
             svc.findByCaseEventId(caseEventId) shouldHaveSize 1
         }
 
-        "upsert updates the existing node when same user submits again on same event" {
+        "upsert clears type and comment when updating to positive=true (positive strips reason fields)" {
             val svc = service()
             // First submission: thumbs-up, no reason
             val first =

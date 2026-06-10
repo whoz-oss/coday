@@ -40,14 +40,21 @@ interface FeedbackNodeNeo4jRepository : Neo4jRepository<FeedbackNode, String> {
      *
      * Used by the upsert path: one feedback per user per event.
      * [userId] matches [FeedbackNode.createdBy] which is populated by Spring Data auditing.
+     *
+     * Returns `f, r, e` (consistent with [findActiveByCaseId] and [findActiveByCaseEventId])
+     * so SDN populates the [FeedbackNode.caseEvent] @Relationship field on the result.
      */
     @Query(
         $$"""MATCH (f:Feedback)
             WHERE f.caseEventId = $caseEventId
               AND f.createdBy = $userId
               AND (f.removed IS NULL OR f.removed = false)
-            RETURN f LIMIT 1
+            OPTIONAL MATCH (f)-[r:FEEDBACK_ON]->(e:CaseEvent)
+            RETURN f, r, e LIMIT 1
             """,
     )
-    fun findActiveByUserAndCaseEventId(caseEventId: String, userId: String): FeedbackNode?
+    fun findActiveByUserAndCaseEventId(
+        caseEventId: String,
+        userId: String,
+    ): FeedbackNode?
 }

@@ -50,9 +50,12 @@ class FeedbackController(
     fun create(
         @Valid @RequestBody resource: FeedbackResource,
     ): FeedbackResource {
-        caseEventService.findById(resource.caseEventId)
-            ?: throw ResourceNotFoundException("CaseEvent not found: ${resource.caseEventId}")
-        return toResource(feedbackService.upsert(toDomain(resource)))
+        val event =
+            caseEventService.findById(resource.caseEventId)
+                ?: throw ResourceNotFoundException("CaseEvent not found: ${resource.caseEventId}")
+        // Resolve namespaceId server-side from the fetched event so the client cannot
+        // supply an arbitrary foreign namespaceId and create a cross-namespace reference.
+        return toResource(feedbackService.upsert(toDomain(resource, serverNamespaceId = event.namespaceId)))
     }
 
     /**
@@ -93,10 +96,20 @@ class FeedbackController(
             updatedOn = feedback.metadata.modified,
         )
 
-    private fun toDomain(resource: FeedbackResource): Feedback =
+    /**
+     * Maps a [FeedbackResource] to the domain [Feedback].
+     *
+     * [serverNamespaceId] is resolved server-side (from the fetched [CaseEvent]) and
+     * overrides whatever the client sent in [FeedbackResource.namespaceId], preventing
+     * cross-namespace reference injection.
+     */
+    private fun toDomain(
+        resource: FeedbackResource,
+        serverNamespaceId: UUID = resource.namespaceId,
+    ): Feedback =
         Feedback(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-            namespaceId = resource.namespaceId,
+            namespaceId = serverNamespaceId,
             caseId = resource.caseId,
             caseEventId = resource.caseEventId,
             positive = resource.positive,
