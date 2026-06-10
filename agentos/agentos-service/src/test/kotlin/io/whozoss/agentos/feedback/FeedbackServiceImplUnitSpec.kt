@@ -12,7 +12,6 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.feedback.Feedback
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -55,7 +54,6 @@ class FeedbackServiceImplUnitSpec : StringSpec() {
         positive = positive,
         type = type,
         comment = comment,
-        timestamp = Instant.now(),
     )
 
     init {

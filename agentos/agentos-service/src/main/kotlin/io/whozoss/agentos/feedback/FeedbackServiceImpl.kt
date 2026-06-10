@@ -30,7 +30,7 @@ class FeedbackServiceImpl(
     override fun findByCaseEventId(caseEventId: UUID): List<Feedback> = repository.findByCaseEventId(caseEventId)
 
     override fun upsert(entity: Feedback): Feedback {
-        val userId = runCatching { userService.getCurrentUser().id.toString() }.getOrNull()
+        val userId = userService.getCurrentUser().id.toString()
         val entityWithoutReasonIfPositive =
             entity.takeIf { !entity.positive } ?: entity.copy(comment = null, type = null)
         return repository.upsert(entityWithoutReasonIfPositive, userId)

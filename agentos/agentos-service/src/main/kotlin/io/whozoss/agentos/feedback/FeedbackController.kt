@@ -47,14 +47,24 @@ class FeedbackController(
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasPermission(#input.caseId, 'Case', 'READ')")
+    @PreAuthorize("@caseEventGuard.canRead(#input.caseEventId)")
     fun create(
         @Valid @RequestBody input: FeedbackInput,
     ): FeedbackResource {
+        // The event is already verified to exist by the @PreAuthorize guard above;
+        // findById here will not return null in practice, but we guard defensively.
         val event =
             caseEventService.findById(input.caseEventId)
                 ?: throw ResourceNotFoundException("CaseEvent not found: ${input.caseEventId}")
-        return toResource(feedbackService.upsert(toDomain(input, namespaceId = event.namespaceId)))
+        return toResource(
+            feedbackService.upsert(
+                toDomain(
+                    input,
+                    caseId = event.caseId,
+                    namespaceId = event.namespaceId,
+                ),
+            ),
+        )
     }
 
     /**
@@ -88,7 +98,6 @@ class FeedbackController(
             positive = feedback.positive,
             type = feedback.type,
             comment = feedback.comment,
-            timestamp = feedback.timestamp,
             createdBy = feedback.metadata.createdBy,
             createdOn = feedback.metadata.created,
             updatedBy = feedback.metadata.modifiedBy,
@@ -97,12 +106,13 @@ class FeedbackController(
 
     private fun toDomain(
         input: FeedbackInput,
+        caseId: UUID,
         namespaceId: UUID,
     ): Feedback =
         Feedback(
             metadata = EntityMetadata(),
             namespaceId = namespaceId,
-            caseId = input.caseId,
+            caseId = caseId,
             caseEventId = input.caseEventId,
             positive = input.positive,
             type = input.type,

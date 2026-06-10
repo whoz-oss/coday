@@ -20,7 +20,7 @@ open class Neo4jFeedbackRepository(
     private val feedbackNodeNeo4jRepository: FeedbackNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
 ) : FeedbackRepository {
-
+    @Transactional
     override fun save(entity: Feedback): Feedback =
         feedbackNodeNeo4jRepository
             .save(FeedbackNode.fromDomain(entity))
@@ -34,13 +34,17 @@ open class Neo4jFeedbackRepository(
      * and `created` timestamp so Spring Data auditing does not reset them).
      * Otherwise fall through to a plain [save].
      */
-    override fun upsert(entity: Feedback, userId: String?): Feedback {
-        val existing = userId?.let {
+    @Transactional
+    override fun upsert(
+        entity: Feedback,
+        userId: String,
+    ): Feedback {
+        val existing =
             feedbackNodeNeo4jRepository.findActiveByUserAndCaseEventId(
                 caseEventId = entity.caseEventId.toString(),
-                userId = it,
+                userId = userId,
             )
-        }
+
         return when {
             existing != null -> {
                 logger.debug {
@@ -49,18 +53,25 @@ open class Neo4jFeedbackRepository(
                 }
                 // Carry forward the original id and created/createdBy so auditing does not
                 // treat this as a new node. Only mutable fields are taken from the incoming entity.
-                val updated = existing.copy(
-                    positive = entity.positive,
-                    type = entity.type,
-                    comment = entity.comment,
-                )
+                val updated =
+                    existing.copy(
+                        positive = entity.positive,
+                        type = entity.type,
+                        comment = entity.comment,
+                    )
                 feedbackNodeNeo4jRepository.save(updated).toDomain()
             }
-            else -> save(entity)
+
+            else -> {
+                save(entity)
+            }
         }
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Feedback> =
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<Feedback> =
         feedbackNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { withRemoved || it.removed != true }
@@ -76,6 +87,7 @@ open class Neo4jFeedbackRepository(
             .findActiveByCaseEventId(caseEventId.toString())
             .map { it.toDomain() }
 
+    @Transactional
     override fun delete(id: UUID): Boolean =
         feedbackNodeNeo4jRepository
             .findByIdOrNull(id.toString())
@@ -87,7 +99,7 @@ open class Neo4jFeedbackRepository(
             } ?: false
 
     @Transactional
-    open override fun deleteByParent(parentId: UUID): Int {
+    override fun deleteByParent(parentId: UUID): Int {
         val active = feedbackNodeNeo4jRepository.findActiveByCaseId(parentId.toString())
         feedbackNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jFeedbackRepository] Soft-deleted ${active.size} feedback entries for case $parentId" }

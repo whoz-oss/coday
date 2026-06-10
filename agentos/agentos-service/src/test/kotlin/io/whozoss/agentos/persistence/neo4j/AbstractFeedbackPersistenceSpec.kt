@@ -8,21 +8,20 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.caseEvent.CaseEventRepository
+import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.feedback.FeedbackRepository
+import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import io.whozoss.agentos.caseFlow.Case
-import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.feedback.Feedback
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -40,25 +39,35 @@ import java.util.UUID
 abstract class AbstractFeedbackPersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
-    @Autowired lateinit var repo: FeedbackRepository
-    @Autowired lateinit var caseRepo: CaseRepository
-    @Autowired lateinit var caseEventRepo: CaseEventRepository
-    @Autowired lateinit var namespaceRepo: NamespaceRepository
-    @Autowired lateinit var driver: Driver
+    @Autowired
+    lateinit var repo: FeedbackRepository
+
+    @Autowired
+    lateinit var caseRepo: CaseRepository
+
+    @Autowired
+    lateinit var caseEventRepo: CaseEventRepository
+
+    @Autowired
+    lateinit var namespaceRepo: NamespaceRepository
+
+    @Autowired
+    lateinit var driver: Driver
 
     fun namespace() = Namespace(metadata = EntityMetadata(), name = "test-ns")
 
-    fun case(namespaceId: UUID) =
-        Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.PENDING)
+    fun case(namespaceId: UUID) = Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.PENDING)
 
-    fun msgEvent(caseId: UUID, namespaceId: UUID) =
-        MessageEvent(
-            metadata = EntityMetadata(),
-            namespaceId = namespaceId,
-            caseId = caseId,
-            actor = Actor(id = "u1", displayName = "User", role = ActorRole.USER),
-            content = listOf(MessageContent.Text("hello")),
-        )
+    fun msgEvent(
+        caseId: UUID,
+        namespaceId: UUID,
+    ) = MessageEvent(
+        metadata = EntityMetadata(),
+        namespaceId = namespaceId,
+        caseId = caseId,
+        actor = Actor(id = "u1", displayName = "User", role = ActorRole.USER),
+        content = listOf(MessageContent.Text("hello")),
+    )
 
     fun feedback(
         namespaceId: UUID,
@@ -75,7 +84,6 @@ abstract class AbstractFeedbackPersistenceSpec : StringSpec() {
         positive = positive,
         type = type,
         comment = comment,
-        timestamp = Instant.now(),
     )
 
     init {
@@ -127,7 +135,17 @@ abstract class AbstractFeedbackPersistenceSpec : StringSpec() {
             val ns = namespaceRepo.save(namespace())
             val case = caseRepo.save(case(ns.id))
             val event = caseEventRepo.save(msgEvent(case.id, ns.id))
-            val f = repo.save(feedback(ns.id, case.id, event.id, positive = false, type = "WRONG_ANSWER", comment = "Did not answer"))
+            val f =
+                repo.save(
+                    feedback(
+                        ns.id,
+                        case.id,
+                        event.id,
+                        positive = false,
+                        type = "WRONG_ANSWER",
+                        comment = "Did not answer",
+                    ),
+                )
 
             val found = repo.findByIds(listOf(f.id)).first()
 

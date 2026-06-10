@@ -21,7 +21,6 @@ data class FeedbackResource(
     val positive: Boolean,
     val type: String? = null,
     val comment: String? = null,
-    val timestamp: Instant,
     val createdBy: String? = null,
     val createdOn: Instant,
     val updatedBy: String? = null,

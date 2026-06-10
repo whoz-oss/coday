@@ -3,7 +3,6 @@ package io.whozoss.agentos.sdk.feedback
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -35,5 +34,4 @@ data class Feedback(
     val positive: Boolean,
     val type: String? = null,
     val comment: String? = null,
-    val timestamp: Instant = Instant.now(),
 ) : Entity

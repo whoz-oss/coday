@@ -23,7 +23,9 @@ interface FeedbackRepository : EntityRepository<Feedback, UUID> {
      * Otherwise a new node is created.
      *
      * [userId] must be the caller's internal UUID string (from [FeedbackNode.createdBy]).
-     * Passing `null` disables the duplicate-check and always creates a new node (test/system use).
      */
-    fun upsert(entity: Feedback, userId: String?): Feedback
+    fun upsert(
+        entity: Feedback,
+        userId: String,
+    ): Feedback
 }

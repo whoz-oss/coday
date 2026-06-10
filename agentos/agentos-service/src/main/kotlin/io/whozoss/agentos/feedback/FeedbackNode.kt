@@ -40,7 +40,6 @@ data class FeedbackNode(
     val positive: Boolean,
     val type: String? = null,
     val comment: String? = null,
-    val timestamp: Instant = Instant.now(),
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
@@ -69,7 +68,6 @@ data class FeedbackNode(
             positive = positive,
             type = type,
             comment = comment,
-            timestamp = timestamp,
         )
 
     companion object {
@@ -82,7 +80,6 @@ data class FeedbackNode(
                 positive = feedback.positive,
                 type = feedback.type,
                 comment = feedback.comment,
-                timestamp = feedback.timestamp,
                 version = feedback.metadata.version,
                 created = feedback.metadata.created,
                 createdBy = feedback.metadata.createdBy,

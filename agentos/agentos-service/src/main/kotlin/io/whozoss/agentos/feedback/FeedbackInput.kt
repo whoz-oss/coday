@@ -9,14 +9,10 @@ import java.util.UUID
  * Inbound DTO for creating or updating a [io.whozoss.agentos.sdk.feedback.Feedback].
  *
  * Contains only the fields the client is allowed to supply.
- * [namespaceId] is intentionally absent — it is always resolved server-side
+ * [namespaceId] and [caseId] are intentionally absent — both are resolved server-side
  * from the fetched [io.whozoss.agentos.sdk.caseEvent.CaseEvent], preventing
- * cross-namespace reference injection.
+ * cross-namespace and cross-case reference injection.
  * Audit fields ([id], timestamps, authorship) are server-set and never accepted on input.
- *
- * [caseId] is required here solely so that [io.whozoss.agentos.feedback.FeedbackController.create]
- * can express the `@PreAuthorize("hasPermission(#input.caseId, 'Case', 'READ')")` guard
- * without an extra round-trip to resolve the case from the event.
  *
  * **Business rule:** when [positive] is `true`, [type] and [comment] are cleared by
  * [FeedbackService.upsert] before persistence. Positive feedback does not carry a reason.
@@ -24,8 +20,6 @@ import java.util.UUID
 @Schema(name = "FeedbackInput")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class FeedbackInput(
-    @field:NotNull(message = "caseId must not be null")
-    val caseId: UUID,
     @field:NotNull(message = "caseEventId must not be null")
     val caseEventId: UUID,
     @field:NotNull(message = "positive must not be null")
