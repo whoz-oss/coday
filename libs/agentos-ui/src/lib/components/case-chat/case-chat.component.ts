@@ -139,8 +139,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isRunning = signal(false)
   protected isTerminal = signal(false)
 
-  /** When true, technical events are shown in the timeline. */
-  protected readonly showTechnical = signal(false)
+  private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
+
+  /** When true, technical events are shown in the timeline. Persisted in localStorage. */
+  protected readonly showTechnical = signal<boolean>(
+    localStorage.getItem(CaseChatComponent.SHOW_TECHNICAL_KEY) === 'true'
+  )
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
@@ -596,7 +600,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected toggleShowTechnical(): void {
-    this.showTechnical.update((v) => !v)
+    this.showTechnical.update((v) => {
+      const next = !v
+      localStorage.setItem(CaseChatComponent.SHOW_TECHNICAL_KEY, String(next))
+      return next
+    })
   }
 
   protected toggleTechnical(eventId: string): void {

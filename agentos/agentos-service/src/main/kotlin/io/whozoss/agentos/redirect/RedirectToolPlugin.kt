@@ -74,8 +74,20 @@ class RedirectToolPlugin(
             ?: listOf("*")
 
         val userId = context.userId
+        val callingAgentName = context.agentName
         val eligibleAgents = agentResolver(namespaceId, userId, patterns)
-            .map { RedirectTool.EligibleAgent(name = it.name, description = it.description) }
+            .filter { agentConfig -> agentConfig.name != callingAgentName }
+            .map { agentConfig ->
+                RedirectTool.EligibleAgent(
+                    name = agentConfig.name,
+                    description = agentConfig.description,
+                    integrations = agentConfig.integrations
+                        ?.map { (integrationName, allowedTools) ->
+                            RedirectTool.Integration(name = integrationName, allowedTools = allowedTools)
+                        }
+                        ?: emptyList(),
+                )
+            }
 
         if (eligibleAgents.isEmpty()) {
             logger.warn { "[RedirectToolPlugin] No eligible agents found for namespace $namespaceId with patterns $patterns" }

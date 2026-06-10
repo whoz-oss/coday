@@ -1296,6 +1296,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/{id}/enable:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: enableAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/{id}/disable:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: disableAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
   /api/agent-configs/search:
     post:
       tags:
@@ -1804,7 +1842,7 @@ paths:
     get:
       tags:
       - agent-config-controller
-      operationId: listByParentAgentConfig
+      operationId: listByNamespaceAgentConfig
       parameters:
       - name: parentId
         in: path
@@ -1813,6 +1851,12 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: enabledOnly
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
       responses:
         "200":
           description: OK
@@ -2041,6 +2085,8 @@ components:
         updatedOn:
           type: string
           format: date-time
+        enabled:
+          type: boolean
       required:
       - createdOn
       - name

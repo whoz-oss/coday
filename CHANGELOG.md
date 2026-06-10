@@ -1,3 +1,66 @@
+## 0.176.0 (2026-06-10)
+
+### 🚀 Features
+
+- #WZ-31935 add enabled field to AgentConfig and honor enabledOnl… ([#909](https://github.com/whoz-oss/coday/pull/909))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.175.0 (2026-06-09)
+
+### 🚀 Features
+
+- #WZ-32424 enrich redirect tool description with agent integrations and exclude calling agent ([#991](https://github.com/whoz-oss/coday/pull/991))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.174.2 (2026-06-09)
+
+### 🚀 Features
+
+- **wz-32516:** focus intention a bit more towards the session context ([5d14b539](https://github.com/whoz-oss/coday/commit/5d14b539))
+- **wz-32516:** adjust sentence ([dc9b217d](https://github.com/whoz-oss/coday/commit/dc9b217d))
+- **wz-32516:** focus intention a bit more towards the session context ([#997](https://github.com/whoz-oss/coday/pull/997))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.174.1 (2026-06-09)
+
+### 🩹 Fixes
+
+- wz-32496 streamline analyzeConfirmation prompt ([#993](https://github.com/whoz-oss/coday/pull/993))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.174.0 (2026-06-09)
+
+### 🚀 Features
+
+- persist case-chat debug toggle in localStorage ([#994](https://github.com/whoz-oss/coday/pull/994))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.20 (2026-06-09)
+
+### 🩹 Fixes
+
+- #WZ-32236 remove mandatory apiKey validation in ChatModelFactory ([#973](https://github.com/whoz-oss/coday/pull/973))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.173.19 (2026-06-08)
 
 ### 🩹 Fixes

@@ -33,4 +33,27 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
      * `toLower()` — no Kotlin-side filtering needed.
      */
     fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String? = null): List<AgentConfig>
+
+    /**
+     * Returns all agent configs in [namespaceId], optionally filtered to published
+     * (enabled) agents only.
+     *
+     * @param namespaceId The namespace to list agents for
+     * @param enabledOnly When true, only published agents are returned
+     */
+    fun findByNamespace(namespaceId: UUID, enabledOnly: Boolean = false): List<AgentConfig>
+
+    /**
+     * Enables an agent config, making it active.
+     *
+     * @throws ResourceNotFoundException if the agent config does not exist
+     */
+    fun enable(id: UUID): AgentConfig
+
+    /**
+     * Disables an agent config, making it inactive.
+     *
+     * @throws ResourceNotFoundException if the agent config does not exist
+     */
+    fun disable(id: UUID): AgentConfig
 }

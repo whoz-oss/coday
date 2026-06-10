@@ -19,10 +19,15 @@ import java.util.UUID
  * @param caseEvents A live snapshot of the current case's event list at the moment
  *   of tool invocation. Evaluated lazily — each call reflects events added during
  *   the current agent run, including prior tool responses in the same turn.
+ * @param agentName The name of the agent that owns this tool invocation, or null when
+ *   the context is not associated with a specific agent (e.g. tool-set resolution at
+ *   namespace level). Plugins may use this to exclude the running agent from lists they
+ *   build (e.g. the redirect tool excludes the calling agent from eligible targets).
  */
 data class ToolContext(
     val namespaceId: UUID,
     val userId: UUID?,
     val userExternalId: String?,
     val caseEvents: List<CaseEvent>,
+    val agentName: String? = null,
 )

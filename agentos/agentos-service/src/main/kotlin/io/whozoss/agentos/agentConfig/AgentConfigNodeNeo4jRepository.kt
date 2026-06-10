@@ -8,16 +8,22 @@ import org.springframework.data.neo4j.repository.query.Query
  */
 interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, String> {
     /**
-     * Find all non-removed agent configs belonging to a namespace, ordered by name.
+     * Find non-removed agent configs belonging to a namespace, ordered by name.
+     *
+     * When [enabledOnly] is true, only published agents are returned.
+     * Agents stored before the `enabled` field was introduced are treated as
+     * disabled (`COALESCE(a.enabled, false)`).
      */
     @Query(
         $$"""
             MATCH (a:AgentConfig)
-            WHERE a.namespaceId = $namespaceId AND NOT COALESCE(a.removed, false)
+            WHERE a.namespaceId = $namespaceId
+              AND NOT COALESCE(a.removed, false)
+              AND (NOT $enabledOnly OR COALESCE(a.enabled, false))
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String): List<AgentConfigNode>
+    fun findActiveByNamespaceId(namespaceId: String, enabledOnly: Boolean = false): List<AgentConfigNode>
 
 
     /**
