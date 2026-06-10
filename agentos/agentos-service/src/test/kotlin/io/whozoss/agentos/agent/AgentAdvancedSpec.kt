@@ -2844,6 +2844,56 @@ class AgentAdvancedSpec :
             outcome shouldBe null
         }
 
+        "detectToolRepetition returns null when tool responses from a previous turn fill the window (cross-turn false positive)" {
+            // Regression: before the fix, tool calls from a previous conversation turn
+            // were included in the window, causing a false repetition detection at the
+            // start of the next turn — even before the agent had called anything.
+            // The fix scopes detection to events after the last user MessageEvent.
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val sameArgs = """{"profile":"A"}"""
+
+            // Previous turn: user message + REPETITION_WINDOW calls to the same tool
+            val previousUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User", ActorRole.USER),
+                content = listOf(MessageContent.Text("first turn")),
+            )
+            val previousTurnEvents = (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
+                listOf(
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "prev-req-$i",
+                        toolName = "SelectActiveProfile",
+                        args = sameArgs,
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "prev-req-$i",
+                        toolName = "SelectActiveProfile",
+                        output = MessageContent.Text("profile A selected"),
+                    ),
+                )
+            }
+
+            // New turn: new user message, no tool calls yet
+            val newUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User", ActorRole.USER),
+                content = listOf(MessageContent.Text("second turn")),
+            )
+
+            val events = listOf(previousUserMsg) + previousTurnEvents + listOf(newUserMsg)
+
+            // The window from the previous turn should NOT trigger detection in the new turn.
+            agent.detectToolRepetition(events) shouldBe null
+        }
+
         "detectToolRepetition returns null when window contains a synthetic ToolResponseEvent" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()
