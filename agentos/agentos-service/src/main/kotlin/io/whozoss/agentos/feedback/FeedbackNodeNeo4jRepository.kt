@@ -14,7 +14,7 @@ interface FeedbackNodeNeo4jRepository : Neo4jRepository<FeedbackNode, String> {
      */
     @Query(
         $$"""MATCH (f:Feedback)
-            WHERE f.caseId = $caseId AND COALESCE(f.removed, false)
+            WHERE f.caseId = $caseId AND NOT COALESCE(f.removed, false)
             OPTIONAL MATCH (f)-[r:FEEDBACK_ON]->(e:CaseEvent)
             RETURN f, r, e ORDER BY f.timestamp ASC
             """,
@@ -28,7 +28,7 @@ interface FeedbackNodeNeo4jRepository : Neo4jRepository<FeedbackNode, String> {
      */
     @Query(
         $$"""MATCH (f:Feedback)
-            WHERE f.caseEventId = $caseEventId AND COALESCE(f.removed, false)
+            WHERE f.caseEventId = $caseEventId AND NOT COALESCE(f.removed, false)
             OPTIONAL MATCH (f)-[r:FEEDBACK_ON]->(e:CaseEvent)
             RETURN f, r, e ORDER BY f.timestamp ASC
             """,
@@ -48,7 +48,7 @@ interface FeedbackNodeNeo4jRepository : Neo4jRepository<FeedbackNode, String> {
         $$"""MATCH (f:Feedback)
             WHERE f.caseEventId = $caseEventId
               AND f.createdBy = $userId
-              AND COALESCE(f.removed, false)
+              AND NOT COALESCE(f.removed, false)
             OPTIONAL MATCH (f)-[r:FEEDBACK_ON]->(e:CaseEvent)
             RETURN f, r, e LIMIT 1
             """,
