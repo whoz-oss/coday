@@ -1,3 +1,16 @@
+## 0.178.0 (2026-06-10)
+
+### 🚀 Features
+
+- update groups-by-external-ids endpoint to accept optional namespaceId ([03765ef2](https://github.com/whoz-oss/coday/commit/03765ef2))
+- updated openapi spec & applied PR review recommendations (Vincent A.) ([272c1e45](https://github.com/whoz-oss/coday/commit/272c1e45))
+- update groups-by-external-ids endpoint to accept optional namespaceId ([#1001](https://github.com/whoz-oss/coday/pull/1001))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.177.0 (2026-06-10)
 
 ### 🚀 Features
