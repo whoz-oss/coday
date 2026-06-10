@@ -285,6 +285,7 @@ class AgentServiceImpl(
         val namespace = namespaceService.findById(namespaceId)
         return buildString {
             appendLine("## Context: ${namespace?.name ?: namespaceId}")
+            // FIXME: we need to disable this temporarly, feature switch ?
             //namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
         }.trimEnd()
     }
