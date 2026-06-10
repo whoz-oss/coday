@@ -58,11 +58,11 @@ class FeedbackController(
     }
 
     /**
-     * GET /api/feedbacks/by-case/{caseId} — list all feedback for a case.
+     * GET /api/feedbacks/by-parentId/{caseId} — list all feedback for a case.
      *
      * Authorization: READ on the Case.
      */
-    @GetMapping("/by-case/{caseId}")
+    @GetMapping("/by-parentId/{caseId}")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     fun listByCase(
         @PathVariable caseId: UUID,
