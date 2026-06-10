@@ -126,7 +126,8 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
             )
-        val namespaceSystemPrompt = buildNamespaceSystemPrompt(namespaceId = context.namespaceId)
+        val namespaceSystemPrompt =
+            buildNamespaceSystemPrompt(namespaceId = context.namespaceId, context = context, resolvedUser = resolvedUser)
         val instructions =
             buildInstructions(
                 baseInstructions = config.instructions,

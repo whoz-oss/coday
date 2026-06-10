@@ -117,8 +117,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolResolverService.resolveToolsForNamespace(any(), any()) } returns emptyList()
-        every { toolResolverService.resolveToolsForRun(any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForNamespace(agentIntegrations = any(), context = any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any()) } returns emptyList()
+
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
@@ -374,8 +375,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = localService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldContain "## Integrations"
-            agent.instructions shouldContain "### JIRA_PROD"
-            agent.instructions shouldContain "Production Jira workspace for the engineering team"
+            agent.instructions shouldContain "- JIRA_PROD: Production Jira workspace for the engineering team"
             agent.instructions shouldNotContain "SLACK_DEV"
         }
 
@@ -701,6 +701,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             verify(exactly = 1) {
                 toolResolverService.resolveToolsForNamespace(
+                    agentIntegrations = null,
                     context = any(),
                 )
             }
@@ -722,8 +723,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             verify(exactly = 1) {
                 toolResolverService.resolveToolsForNamespace(
-                    integrations,
-                    any(),
+                    agentIntegrations = integrations,
+                    context = any(),
                 )
             }
         }
