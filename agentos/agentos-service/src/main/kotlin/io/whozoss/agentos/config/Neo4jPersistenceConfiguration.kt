@@ -16,6 +16,9 @@ import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseEvent.MessageContentSerializer
 import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
+import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
+import io.whozoss.agentos.feedback.FeedbackRepository
+import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
@@ -75,6 +78,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.namespace",
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
+        "io.whozoss.agentos.feedback",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.userGroup",
@@ -159,6 +163,15 @@ class Neo4jPersistenceConfiguration {
     ): UserGroupRepository {
         logger.info { "[Persistence] Neo4jUserGroupRepository active" }
         return Neo4jUserGroupRepository(userGroupNodeNeo4jRepository, childLinkService, neo4jClient)
+    }
+
+    @Bean
+    fun neo4jFeedbackRepository(
+        feedbackNodeNeo4jRepository: FeedbackNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): FeedbackRepository {
+        logger.info { "[Persistence] Neo4jFeedbackRepository active" }
+        return Neo4jFeedbackRepository(feedbackNodeNeo4jRepository, childLinkService)
     }
 
     @Bean
