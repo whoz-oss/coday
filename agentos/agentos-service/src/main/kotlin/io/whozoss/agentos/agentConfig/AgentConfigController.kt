@@ -9,6 +9,7 @@ import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
+import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -171,11 +172,13 @@ class AgentConfigController(
         val agentConfig = agentConfigService.findById(id)
             ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         val resolvedUserId = if (withUserOverlay) userService.getCurrentUser().metadata.id else null
-        val definition = agentService.resolveDefinition(
-            agentConfigId = id,
-            namespaceId = agentConfig.namespaceId,
-            userId = resolvedUserId,
-        )
+        val definition = runBlocking {
+            agentService.resolveDefinition(
+                agentConfigId = id,
+                namespaceId = agentConfig.namespaceId,
+                userId = resolvedUserId,
+            )
+        }
         return AgentDefinitionResource(
             agentConfigId = definition.agentConfigId,
             name = definition.name,

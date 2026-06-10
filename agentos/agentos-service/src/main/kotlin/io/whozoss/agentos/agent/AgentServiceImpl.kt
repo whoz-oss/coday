@@ -14,9 +14,13 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -40,8 +44,9 @@ class AgentServiceImpl(
     private val intentionGenerator: AgentIntentionGenerator,
     private val confirmationManager: ConfirmationManager,
     private val objectMapper: ObjectMapper,
+    private val toolRegistryService: ToolRegistryService,
 ) : AgentService {
-    override fun findAgentByName(
+    override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
@@ -50,11 +55,12 @@ class AgentServiceImpl(
                 ?: throw IllegalArgumentException(
                     "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
                 )
-        val definition = resolveAgentDefinition(agentConfig, context)
-        return instantiateAgent(definition, context)
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
+        return instantiateAgent(definition, context, resolvedUser)
     }
 
-    override fun resolveDefinition(
+    override suspend fun resolveDefinition(
         agentConfigId: UUID,
         namespaceId: UUID,
         userId: UUID?,
@@ -69,7 +75,8 @@ class AgentServiceImpl(
                 namespaceId = namespaceId,
                 userId = userId,
             )
-        return resolveAgentDefinition(agentConfig, context)
+        val resolvedUser = userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+        return resolveAgentDefinition(agentConfig, context, resolvedUser)
     }
 
     override fun resolveAgentName(
@@ -102,9 +109,10 @@ class AgentServiceImpl(
      *
      * Throws [IllegalArgumentException] if no model can be resolved.
      */
-    private fun resolveAgentDefinition(
+    private suspend fun resolveAgentDefinition(
         config: AgentConfig,
         context: AgentExecutionContext,
+        resolvedUser: User?
     ): ResolvedAgentDefinition {
         val baseModel =
             config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
@@ -119,6 +127,7 @@ class AgentServiceImpl(
             baseInstructions = config.instructions,
             agentIntegrations = config.integrations,
             context = context,
+            resolvedUser
         )
         val tools =
             if (context.userId != null) {
@@ -154,10 +163,11 @@ class AgentServiceImpl(
     private fun instantiateAgent(
         definition: ResolvedAgentDefinition,
         context: AgentExecutionContext,
+        resolvedUser: User?
     ): Agent {
         val modelConfig = definition.resolvedModel
         val providerConfig = definition.resolvedProvider
-        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+
         return createAgentInstance(
             agentName = definition.name,
             resolvedInstructions = definition.instructions,
@@ -275,7 +285,7 @@ class AgentServiceImpl(
         val namespace = namespaceService.findById(namespaceId)
         return buildString {
             appendLine("## Context: ${namespace?.name ?: namespaceId}")
-            namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+            //namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
         }.trimEnd()
     }
 
@@ -288,16 +298,22 @@ class AgentServiceImpl(
      *
      * The integrations block lists [IntegrationConfig] entries whose
      * [name][io.whozoss.agentos.integrationConfig.IntegrationConfig.name] appears in
-     * [agentIntegrations] AND that carry a non-null description. It is omitted entirely
-     * when [agentIntegrations] is null (agent has no declared integrations).
+     * [agentIntegrations]. For each matching config, the description is obtained by
+     * calling [io.whozoss.agentos.sdk.tool.ToolPlugin.describeIntegration] on the
+     * corresponding plugin (which may perform async I/O for remote integrations).
+     * When the plugin returns null, the stored [IntegrationConfig.description] is used
+     * as a fallback. Configs with no description from either source are excluded.
+     * The block is omitted entirely when [agentIntegrations] is null (agent has no
+     * declared integrations).
      *
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
      */
-    private fun buildInstructions(
+    private suspend fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
         context: AgentExecutionContext,
+        resolvedUser: User?
     ): String {
         val integrationsBlock =
             when {
@@ -306,10 +322,31 @@ class AgentServiceImpl(
                 }
 
                 else -> {
-                    val listed =
+                    val toolContext = ToolContext(
+                        namespaceId = context.namespaceId,
+                        userId = resolvedUser?.id,
+                        userExternalId = resolvedUser?.externalId,
+                        caseEvents = emptyList(),
+                    )
+                    val matchingConfigs =
                         integrationConfigService
                             .findByParent(context.namespaceId)
-                            .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
+                            .filter { it.name in agentIntegrations }
+                    val listed = coroutineScope {
+                        matchingConfigs
+                            .map { config ->
+                                async {
+                                    val plugin = toolRegistryService.findPlugin(config.integrationType)
+                                    val description = plugin
+                                        ?.runCatching { describeIntegration(config.parameters, config.name, toolContext) }
+                                        ?.onFailure { logger.warn(it) { "describeIntegration failed for '${config.name}' (${config.integrationType})" } }
+                                        ?.getOrNull()
+                                        ?: config.description
+                                    description?.takeUnless { it.isBlank() }?.let { config to it }
+                                }
+                            }
+                            .mapNotNull { it.await() }
+                    }
                     when {
                         listed.isEmpty() -> {
                             null
@@ -319,8 +356,8 @@ class AgentServiceImpl(
                             buildString {
                                 appendLine()
                                 appendLine("## Integrations")
-                                listed.forEach { config ->
-                                    appendLine("- ${config.name}: ${config.description}")
+                                listed.forEach { (config, description) ->
+                                    appendLine("### ${config.name}\n$description")
                                 }
                             }.trimEnd()
                         }

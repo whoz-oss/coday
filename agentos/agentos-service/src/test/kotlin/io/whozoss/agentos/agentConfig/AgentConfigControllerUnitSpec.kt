@@ -4,6 +4,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.clearAllMocks
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -545,7 +547,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         )
         every { service.findById(configId) } returns agentConfig
         every { userService.getCurrentUser() } returns superAdmin
-        every { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+        coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
         val result = controller.getDefinition(configId, withUserOverlay = false)
 
@@ -566,7 +568,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val definition = resolvedDefinition(agentConfigId = configId, systemPrompt = null)
         every { service.findById(configId) } returns agentConfig
         every { userService.getCurrentUser() } returns superAdmin
-        every { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+        coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
         val result = controller.getDefinition(configId, withUserOverlay = false)
 
@@ -579,12 +581,12 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val definition = resolvedDefinition(agentConfigId = configId, userId = callerId)
         every { service.findById(configId) } returns agentConfig
         every { userService.getCurrentUser() } returns superAdmin
-        every { agentService.resolveDefinition(configId, namespaceId, callerId) } returns definition
+        coEvery { agentService.resolveDefinition(configId, namespaceId, callerId) } returns definition
 
         val result = controller.getDefinition(configId, withUserOverlay = true)
 
         result.userId shouldBe callerId
-        verify(exactly = 1) { agentService.resolveDefinition(configId, namespaceId, callerId) }
+        coVerify(exactly = 1) { agentService.resolveDefinition(configId, namespaceId, callerId) }
     }
 
     "getDefinition maps tool summaries" {
@@ -598,7 +600,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val definition = resolvedDefinition(agentConfigId = configId).copy(tools = listOf(tool))
         every { service.findById(configId) } returns agentConfig
         every { userService.getCurrentUser() } returns superAdmin
-        every { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
+        coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
         val result = controller.getDefinition(configId, withUserOverlay = false)
 

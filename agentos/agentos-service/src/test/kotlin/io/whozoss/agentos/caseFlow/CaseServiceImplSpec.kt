@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -184,7 +185,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    every { findAgentByName(agentName, any()) } returns agent
+                    coEvery { findAgentByName(agentName, any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -318,7 +319,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    every { findAgentByName(agentName, any()) } returns finishingAgent()
+                    coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
@@ -534,7 +535,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                    every { findAgentByName(agentName, any()) } returns chunkingAgent
+                    coEvery { findAgentByName(agentName, any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(agentService, allowAllAgentConfigService, AgentConfigProperties(), InMemoryCaseRepository(), caseEventService, userService, namespaceService)
@@ -619,7 +620,7 @@ class CaseServiceImplSpec :
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
             val agentService = mockk<AgentService> {
                 every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                every { findAgentByName(agentName, any()) } returns finishingAgent()
+                coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
             }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
@@ -674,7 +675,7 @@ class CaseServiceImplSpec :
             }
             val agentService = mockk<AgentService> {
                 every { resolveAgentName(namespaceDefaultName, namespaceId, any()) } returns namespaceDefaultName
-                every { findAgentByName(namespaceDefaultName, any()) } returns namespaceAgent
+                coEvery { findAgentByName(namespaceDefaultName, any()) } returns namespaceAgent
             }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
@@ -836,7 +837,7 @@ class CaseServiceImplSpec :
                     }
                 }
                 every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                every { findAgentByName(any(), any()) } returns finishingAgent()
+                coEvery { findAgentByName(any(), any()) } returns finishingAgent()
             }
             val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service = CaseServiceImpl(
@@ -930,7 +931,7 @@ class CaseServiceImplSpec :
                     // @selected-agent resolves to selectedAgentName
                     every { resolveAgentName(selectedAgentName, any(), any()) } returns selectedAgentName
                     // no other mention resolution needed
-                    every { findAgentByName(selectedAgentName, any()) } returns selectedAgent
+                    coEvery { findAgentByName(selectedAgentName, any()) } returns selectedAgent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
