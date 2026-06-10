@@ -531,9 +531,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
+              $ref: "#/components/schemas/GroupsByExternalIdsRequest"
         required: true
       responses:
         "200":
@@ -2032,6 +2030,18 @@ components:
       - name
       - namespaceId
       - updatedOn
+    GroupsByExternalIdsRequest:
+      type: object
+      properties:
+        externalIds:
+          type: array
+          items:
+            type: string
+        namespaceId:
+          type: string
+          format: uuid
+      required:
+      - externalIds
     UserGroupSummary:
       type: object
       properties:

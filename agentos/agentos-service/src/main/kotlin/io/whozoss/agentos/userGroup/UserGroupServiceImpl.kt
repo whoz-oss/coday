@@ -124,8 +124,9 @@ class UserGroupServiceImpl(
     override fun findGroupsByUserExternalIdsVisibleToUser(
         externalIds: Collection<String>,
         user: User,
+        namespaceId: UUID?,
     ): Map<String, List<UserGroupSummary>> {
-        val allGroups = userGroupRepository.findGroupsByUserExternalIds(externalIds)
+        val allGroups = userGroupRepository.findGroupsByUserExternalIds(externalIds, namespaceId)
         val visibleGroupIds = if (user.isAdmin) {
             allGroups.values.flatten().map { it.id.toString() }.toSet()
         } else {

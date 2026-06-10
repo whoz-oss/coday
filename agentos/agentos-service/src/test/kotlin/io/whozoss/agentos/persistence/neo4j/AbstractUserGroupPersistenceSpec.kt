@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
@@ -145,6 +146,48 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
 
             results shouldHaveSize 1
             results.first().userCount shouldBe 1
+        }
+
+        "findGroupsByUserExternalIds returns groups for matching users" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Devs"))
+            userRepo.save(user("alice@example.com"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+
+            val results = userGroupRepo.findGroupsByUserExternalIds(
+                externalIds = listOf("alice@example.com", "bob@example.com"),
+                namespaceId = null,
+            )
+
+            results["alice@example.com"]?.shouldHaveSize(1)
+            results["alice@example.com"]!!.first().name shouldBe "Devs"
+            results["bob@example.com"]?.shouldHaveSize(1)
+        }
+
+        "findGroupsByUserExternalIds scoped to namespaceId excludes other namespaces" {
+            val ns1 = namespaceRepo.save(namespace())
+            val ns2 = namespaceRepo.save(namespace())
+            val g1 = userGroupRepo.save(userGroup(ns1.id, "Group NS1"))
+            val g2 = userGroupRepo.save(userGroup(ns2.id, "Group NS2"))
+            userRepo.save(user("carol@example.com"))
+            userGroupRepo.addUsers(g1.id, listOf("carol@example.com"))
+            userGroupRepo.addUsers(g2.id, listOf("carol@example.com"))
+
+            val results = userGroupRepo.findGroupsByUserExternalIds(
+                externalIds = listOf("carol@example.com"),
+                namespaceId = ns1.id,
+            )
+
+            results["carol@example.com"]?.shouldHaveSize(1)
+            results["carol@example.com"]!!.first().name shouldBe "Group NS1"
+        }
+
+        "findGroupsByUserExternalIds returns empty map for empty input" {
+            userGroupRepo.findGroupsByUserExternalIds(
+                externalIds = emptyList(),
+                namespaceId = null,
+            ).shouldBeEmpty()
         }
     }
 }
