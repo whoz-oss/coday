@@ -393,6 +393,15 @@ class CaseEventNodeMapper(
             message = n.message,
         )
 
+    private fun toDomain(n: ErrorEventNode) =
+        ErrorEvent(
+            metadata = metadata(n),
+            namespaceId = UUID.fromString(n.namespaceId),
+            caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp,
+            message = n.message,
+        )
+
     private fun toDomain(n: AgentSelectedEventNode) =
         AgentSelectedEvent(
             metadata = metadata(n),
@@ -562,6 +571,20 @@ class CaseEventNodeMapper(
 
     private fun fromDomain(e: WarnEvent) =
         WarnEventNode(
+            id = e.id.toString(),
+            caseId = e.caseId.toString(),
+            namespaceId = e.namespaceId.toString(),
+            timestamp = e.timestamp,
+            message = e.message,
+            created = e.metadata.created,
+            createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified,
+            modifiedBy = e.metadata.modifiedBy,
+            removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: ErrorEvent) =
+        ErrorEventNode(
             id = e.id.toString(),
             caseId = e.caseId.toString(),
             namespaceId = e.namespaceId.toString(),
