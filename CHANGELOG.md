@@ -1,3 +1,14 @@
+## 0.176.2 (2026-06-10)
+
+### 🩹 Fixes
+
+- **agentos:** repetition detection scoped to current turn only ([1504d20a](https://github.com/whoz-oss/coday/commit/1504d20a))
+- **agentos:** repetition detection scoped to current turn only ([#998](https://github.com/whoz-oss/coday/pull/998))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
 ## 0.176.1 (2026-06-10)
 
 ### 🩹 Fixes
