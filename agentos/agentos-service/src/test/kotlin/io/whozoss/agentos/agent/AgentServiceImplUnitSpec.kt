@@ -122,7 +122,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
-        // No plugin returns a dynamic description by default — tests fall back to config.description
+        // No plugin contributes a namespace description by default
         every { toolRegistryService.findPlugin(any()) } returns null
         // reconciliation services are relaxed mocks — return the base entity unchanged (passthrough) by default
 
@@ -247,7 +247,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // Namespace context injection into instructions
         // -------------------------------------------------------------------------
 
-        "findAgentByName appends namespace name and description to instructions" {
+        "findAgentByName includes namespace name and description in system prompt" {
             val config = agentConfig(name = "my-agent", modelName = "sonnet")
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
@@ -373,26 +373,24 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = localService.findAgentByName("my-agent", context) as AgentSimple
 
             agent.instructions shouldContain "## Integrations"
-            agent.instructions shouldContain "JIRA_PROD: Production Jira workspace for the engineering team"
+            agent.instructions shouldContain "### JIRA_PROD"
+            agent.instructions shouldContain "Production Jira workspace for the engineering team"
             agent.instructions shouldNotContain "SLACK_DEV"
         }
 
-        "findAgentByName uses dynamic description from describeIntegration when plugin returns one" {
+        "findAgentByName appends describeNamespace result from matching integration config to the namespace system prompt" {
             val plugin = mockk<ToolPlugin>()
-            coEvery { plugin.describeIntegration(any(), any(), any()) } returns "Dynamic description from remote API"
+            val integrationConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "JIRA_PROD",
+                integrationType = "JIRA",
+                description = null,
+            )
+            every { integrationConfigService.findByParent(namespaceId) } returns listOf(integrationConfig)
             every { toolRegistryService.findPlugin("JIRA") } returns plugin
-            val configs = listOf(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "JIRA_PROD",
-                    integrationType = "JIRA",
-                    description = "Static fallback description",
-                ),
-            )
-            every { integrationConfigService.findByParent(namespaceId) } returns configs
+            coEvery { plugin.describeNamespace(any(), eq("JIRA_PROD"), any()) } returns "Jira workspace: ACME Engineering (42 open issues)"
             val config = agentConfig(name = "my-agent", modelName = "sonnet")
-                .copy(integrations = mapOf("JIRA_PROD" to null))
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
@@ -403,120 +401,114 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
-            agent.instructions shouldContain "Dynamic description from remote API"
-            agent.instructions shouldNotContain "Static fallback description"
-
-            // restore default stub
-            every { toolRegistryService.findPlugin(any()) } returns null
-        }
-
-        "findAgentByName falls back to config.description when describeIntegration returns null" {
-            val plugin = mockk<ToolPlugin>()
-            coEvery { plugin.describeIntegration(any(), any(), any()) } returns null
-            every { toolRegistryService.findPlugin("JIRA") } returns plugin
-            val configs = listOf(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "JIRA_PROD",
-                    integrationType = "JIRA",
-                    description = "Static fallback description",
-                ),
-            )
-            every { integrationConfigService.findByParent(namespaceId) } returns configs
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-                .copy(integrations = mapOf("JIRA_PROD" to null))
-            val model = modelConfig(alias = "sonnet")
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
-
-            agent.instructions shouldContain "Static fallback description"
-
-            // restore default stub
-            every { toolRegistryService.findPlugin(any()) } returns null
-        }
-
-        "findAgentByName falls back to config.description when describeIntegration throws" {
-            val plugin = mockk<ToolPlugin>()
-            coEvery { plugin.describeIntegration(any(), any(), any()) } throws RuntimeException("remote API unavailable")
-            every { toolRegistryService.findPlugin("JIRA") } returns plugin
-            val configs = listOf(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "JIRA_PROD",
-                    integrationType = "JIRA",
-                    description = "Static fallback description",
-                ),
-            )
-            every { integrationConfigService.findByParent(namespaceId) } returns configs
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-                .copy(integrations = mapOf("JIRA_PROD" to null))
-            val model = modelConfig(alias = "sonnet")
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
-
-            // Exception must not propagate — agent instantiation succeeds with static fallback
-            agent.instructions shouldContain "Static fallback description"
-
-            // restore default stub
-            every { toolRegistryService.findPlugin(any()) } returns null
-        }
-
-        "findAgentByName calls describeIntegration once per matching integration config" {
-            val jiraPlugin = mockk<ToolPlugin>()
-            val slackPlugin = mockk<ToolPlugin>()
-            coEvery { jiraPlugin.describeIntegration(any(), any(), any()) } returns "Jira dynamic"
-            coEvery { slackPlugin.describeIntegration(any(), any(), any()) } returns "Slack dynamic"
-            every { toolRegistryService.findPlugin("JIRA") } returns jiraPlugin
-            every { toolRegistryService.findPlugin("SLACK") } returns slackPlugin
-            val configs = listOf(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "JIRA_PROD",
-                    integrationType = "JIRA",
-                    description = null,
-                ),
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "SLACK_DEV",
-                    integrationType = "SLACK",
-                    description = null,
-                ),
-            )
-            every { integrationConfigService.findByParent(namespaceId) } returns configs
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-                .copy(integrations = mapOf("JIRA_PROD" to null, "SLACK_DEV" to null))
-            val model = modelConfig(alias = "sonnet")
-            val provider = providerConfig()
-            val chatClient = mockk<ChatClient>(relaxed = true)
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
-            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
-            every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
-
-            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
-
-            agent.instructions shouldContain "Jira dynamic"
-            agent.instructions shouldContain "Slack dynamic"
-            coVerify(exactly = 1) { jiraPlugin.describeIntegration(any(), eq("JIRA_PROD"), any()) }
-            coVerify(exactly = 1) { slackPlugin.describeIntegration(any(), eq("SLACK_DEV"), any()) }
+            agent.systemPrompt shouldContain "Jira workspace: ACME Engineering (42 open issues)"
 
             // restore default stubs
+            every { integrationConfigService.findByParent(any()) } returns emptyList()
+            every { toolRegistryService.findPlugin(any()) } returns null
+        }
+
+        "findAgentByName skips integration config when describeNamespace returns null" {
+            val plugin = mockk<ToolPlugin>()
+            val integrationConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "JIRA_PROD",
+                integrationType = "JIRA",
+                description = null,
+            )
+            every { integrationConfigService.findByParent(namespaceId) } returns listOf(integrationConfig)
+            every { toolRegistryService.findPlugin("JIRA") } returns plugin
+            coEvery { plugin.describeNamespace(any(), any(), any()) } returns null
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.systemPrompt shouldContain namespace.name
+            agent.systemPrompt shouldNotContain "null"
+
+            // restore default stubs
+            every { integrationConfigService.findByParent(any()) } returns emptyList()
+            every { toolRegistryService.findPlugin(any()) } returns null
+        }
+
+        "findAgentByName does not propagate exception from describeNamespace" {
+            val plugin = mockk<ToolPlugin>()
+            val integrationConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "JIRA_PROD",
+                integrationType = "JIRA",
+                description = null,
+            )
+            every { integrationConfigService.findByParent(namespaceId) } returns listOf(integrationConfig)
+            every { toolRegistryService.findPlugin("JIRA") } returns plugin
+            coEvery { plugin.describeNamespace(any(), any(), any()) } throws RuntimeException("remote API unavailable")
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            // Must not throw — agent instantiation succeeds even when a plugin fails
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+            agent.systemPrompt shouldContain namespace.name
+
+            // restore default stubs
+            every { integrationConfigService.findByParent(any()) } returns emptyList()
+            every { toolRegistryService.findPlugin(any()) } returns null
+        }
+
+        "findAgentByName calls describeNamespace once per integration config with matching plugin" {
+            val jiraPlugin = mockk<ToolPlugin>()
+            val slackPlugin = mockk<ToolPlugin>()
+            val jiraConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "JIRA_PROD",
+                integrationType = "JIRA",
+                description = null,
+            )
+            val slackConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "SLACK_DEV",
+                integrationType = "SLACK",
+                description = null,
+            )
+            every { integrationConfigService.findByParent(namespaceId) } returns listOf(jiraConfig, slackConfig)
+            every { toolRegistryService.findPlugin("JIRA") } returns jiraPlugin
+            every { toolRegistryService.findPlugin("SLACK") } returns slackPlugin
+            coEvery { jiraPlugin.describeNamespace(any(), eq("JIRA_PROD"), any()) } returns "Jira namespace info"
+            coEvery { slackPlugin.describeNamespace(any(), eq("SLACK_DEV"), any()) } returns "Slack namespace info"
+            val config = agentConfig(name = "my-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.systemPrompt shouldContain "Jira namespace info"
+            agent.systemPrompt shouldContain "Slack namespace info"
+            coVerify(exactly = 1) { jiraPlugin.describeNamespace(any(), eq("JIRA_PROD"), any()) }
+            coVerify(exactly = 1) { slackPlugin.describeNamespace(any(), eq("SLACK_DEV"), any()) }
+
+            // restore default stubs
+            every { integrationConfigService.findByParent(any()) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 

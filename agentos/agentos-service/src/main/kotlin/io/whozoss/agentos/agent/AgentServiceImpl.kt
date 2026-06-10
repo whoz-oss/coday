@@ -90,8 +90,7 @@ class AgentServiceImpl(
                     namespaceId = namespaceId,
                     userId = userId,
                     agentName = namePart,
-                )
-                .firstOrNull()
+                ).firstOrNull()
                 ?.name
         } else {
             agentConfigService.findByName(namespaceId, namePart)?.name
@@ -112,7 +111,7 @@ class AgentServiceImpl(
     private suspend fun resolveAgentDefinition(
         config: AgentConfig,
         context: AgentExecutionContext,
-        resolvedUser: User?
+        resolvedUser: User?,
     ): ResolvedAgentDefinition {
         val baseModel =
             config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
@@ -122,13 +121,14 @@ class AgentServiceImpl(
                         "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
                 )
         val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId)
-        val namespaceSystemPrompt = buildNamespaceSystemPrompt(context.namespaceId)
-        val instructions = buildInstructions(
-            baseInstructions = config.instructions,
-            agentIntegrations = config.integrations,
-            context = context,
-            resolvedUser
-        )
+        val namespaceSystemPrompt = buildNamespaceSystemPrompt(context.namespaceId, context, resolvedUser)
+        val instructions =
+            buildInstructions(
+                baseInstructions = config.instructions,
+                agentIntegrations = config.integrations,
+                context = context,
+                resolvedUser = resolvedUser,
+            )
         val tools =
             if (context.userId != null) {
                 toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, config.integrations)
@@ -163,7 +163,7 @@ class AgentServiceImpl(
     private fun instantiateAgent(
         definition: ResolvedAgentDefinition,
         context: AgentExecutionContext,
-        resolvedUser: User?
+        resolvedUser: User?,
     ): Agent {
         val modelConfig = definition.resolvedModel
         val providerConfig = definition.resolvedProvider
@@ -280,13 +280,47 @@ class AgentServiceImpl(
     /**
      * Build the namespace context block to be used as a system prompt, separate from
      * the agent's own instructions. Describes the namespace the agent operates in.
+     *
+     * Each [IntegrationConfig] in the namespace is matched to its [ToolPlugin]. If the
+     * plugin implements [io.whozoss.agentos.sdk.tool.ToolPlugin.describeNamespace], its
+     * result is appended to the system prompt. Results are collected concurrently;
+     * plugins returning null or throwing are silently skipped.
      */
-    private fun buildNamespaceSystemPrompt(namespaceId: UUID): String {
+    private suspend fun buildNamespaceSystemPrompt(
+        namespaceId: UUID,
+        context: AgentExecutionContext,
+        resolvedUser: User?,
+    ): String {
         val namespace = namespaceService.findById(namespaceId)
+        val toolContext =
+            ToolContext(
+                namespaceId = namespaceId,
+                userId = resolvedUser?.id,
+                userExternalId = resolvedUser?.externalId,
+                caseEvents = emptyList(),
+            )
+        val integrationDescriptions =
+            coroutineScope {
+                integrationConfigService
+                    .findByParent(namespaceId)
+                    .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
+                    .map { (config, plugin) ->
+                        async {
+                            plugin
+                                .runCatching { describeNamespace(config.parameters, config.name, toolContext) }
+                                .onFailure {
+                                    logger.warn(
+                                        it,
+                                    ) { "describeNamespace failed for '${config.name}' (${config.integrationType})" }
+                                }.getOrNull()
+                        }
+                    }.mapNotNull { it.await() }
+                    .filter { it.isNotBlank() }
+            }
         return buildString {
             appendLine("## Context: ${namespace?.name ?: namespaceId}")
-            // FIXME: we need to disable this temporarly, feature switch ?
-            //namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+            namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+            integrationDescriptions.forEach { appendLine(it) }
         }.trimEnd()
     }
 
@@ -299,22 +333,18 @@ class AgentServiceImpl(
      *
      * The integrations block lists [IntegrationConfig] entries whose
      * [name][io.whozoss.agentos.integrationConfig.IntegrationConfig.name] appears in
-     * [agentIntegrations]. For each matching config, the description is obtained by
-     * calling [io.whozoss.agentos.sdk.tool.ToolPlugin.describeIntegration] on the
-     * corresponding plugin (which may perform async I/O for remote integrations).
-     * When the plugin returns null, the stored [IntegrationConfig.description] is used
-     * as a fallback. Configs with no description from either source are excluded.
-     * The block is omitted entirely when [agentIntegrations] is null (agent has no
-     * declared integrations).
+     * [agentIntegrations], using the static [IntegrationConfig.description] for each.
+     * Configs with no description are excluded. The block is omitted entirely when
+     * [agentIntegrations] is null (agent has no declared integrations).
      *
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
      */
-    private suspend fun buildInstructions(
+    private fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
         context: AgentExecutionContext,
-        resolvedUser: User?
+        resolvedUser: User?,
     ): String {
         val integrationsBlock =
             when {
@@ -323,31 +353,10 @@ class AgentServiceImpl(
                 }
 
                 else -> {
-                    val toolContext = ToolContext(
-                        namespaceId = context.namespaceId,
-                        userId = resolvedUser?.id,
-                        userExternalId = resolvedUser?.externalId,
-                        caseEvents = emptyList(),
-                    )
-                    val matchingConfigs =
+                    val listed =
                         integrationConfigService
                             .findByParent(context.namespaceId)
-                            .filter { it.name in agentIntegrations }
-                    val listed = coroutineScope {
-                        matchingConfigs
-                            .map { config ->
-                                async {
-                                    val plugin = toolRegistryService.findPlugin(config.integrationType)
-                                    val description = plugin
-                                        ?.runCatching { describeIntegration(config.parameters, config.name, toolContext) }
-                                        ?.onFailure { logger.warn(it) { "describeIntegration failed for '${config.name}' (${config.integrationType})" } }
-                                        ?.getOrNull()
-                                        ?: config.description
-                                    description?.takeUnless { it.isBlank() }?.let { config to it }
-                                }
-                            }
-                            .mapNotNull { it.await() }
-                    }
+                            .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
                     when {
                         listed.isEmpty() -> {
                             null
@@ -357,8 +366,8 @@ class AgentServiceImpl(
                             buildString {
                                 appendLine()
                                 appendLine("## Integrations")
-                                listed.forEach { (config, description) ->
-                                    appendLine("### ${config.name}\n$description")
+                                listed.forEach { config ->
+                                    appendLine("- ${config.name}: ${config.description}")
                                 }
                             }.trimEnd()
                         }
@@ -367,25 +376,23 @@ class AgentServiceImpl(
             }
 
         val userBlock =
-            context.userId?.let { userId ->
-                userService.findById(userId)?.let { user ->
-                    // Only inject a user block when at least one human-readable field is present.
-                    // Internal UUIDs (id, externalId) are intentionally excluded — they carry no
-                    // conversational meaning and confuse the LLM about who the interlocutor is.
-                    val hasIdentity = !user.firstname.isNullOrBlank() || !user.lastname.isNullOrBlank()
-                    val hasContext = !user.bio.isNullOrBlank() || user.email.isNotBlank()
-                    if (!hasIdentity && !hasContext) {
-                        null
-                    } else {
-                        buildString {
-                            appendLine()
-                            appendLine("## User")
-                            if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
-                            if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
-                            if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
-                            if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
-                        }.trimEnd()
-                    }
+            resolvedUser?.let { user ->
+                // Only inject a user block when at least one human-readable field is present.
+                // Internal UUIDs (id, externalId) are intentionally excluded — they carry no
+                // conversational meaning and confuse the LLM about who the interlocutor is.
+                val hasIdentity = !user.firstname.isNullOrBlank() || !user.lastname.isNullOrBlank()
+                val hasContext = !user.bio.isNullOrBlank() || user.email.isNotBlank()
+                if (!hasIdentity && !hasContext) {
+                    null
+                } else {
+                    buildString {
+                        appendLine()
+                        appendLine("## User")
+                        if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
+                        if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                        if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
+                        if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
+                    }.trimEnd()
                 }
             }
 
