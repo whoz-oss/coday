@@ -987,6 +987,24 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/IntegrationConfig"
+  /api/feedbacks:
+    post:
+      tags:
+      - feedback-controller
+      operationId: createFeedback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Feedback"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
   /api/cases:
     post:
       tags:
@@ -1507,6 +1525,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/feedbacks/by-parentId/{caseId}:
+    get:
+      tags:
+      - feedback-controller
+      operationId: listByCaseFeedback
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feedback"
+  /api/feedbacks/by-case-event/{caseEventId}:
+    get:
+      tags:
+      - feedback-controller
+      operationId: listByCaseEventFeedback
+      parameters:
+      - name: caseEventId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feedback"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -2159,6 +2219,45 @@ components:
       required:
       - namespaceRoles
       - userExternalId
+    Feedback:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        caseId:
+          type: string
+          format: uuid
+        caseEventId:
+          type: string
+          format: uuid
+        positive:
+          type: boolean
+        type:
+          type: string
+        comment:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - caseEventId
+      - caseId
+      - namespaceId
+      - positive
     AddMessageRequest:
       type: object
       properties:
