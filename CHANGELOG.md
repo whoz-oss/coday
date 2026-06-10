@@ -1,3 +1,13 @@
+## 0.176.1 (2026-06-10)
+
+### 🩹 Fixes
+
+- refine agent name extraction regex to cover a corner case ([#1002](https://github.com/whoz-oss/coday/pull/1002))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.176.0 (2026-06-10)
 
 ### 🚀 Features
