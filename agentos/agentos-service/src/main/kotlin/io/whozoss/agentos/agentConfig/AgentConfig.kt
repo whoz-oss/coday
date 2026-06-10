@@ -68,8 +68,8 @@ data class AgentConfig(
      * Defaults to `false` — newly created agents are unpublished and must be
      * explicitly published via the publish endpoint before they are accessible.
      *
-     * Backward-compat: existing agents stored in Neo4j without this field are
-     * treated as disabled (`COALESCE(a.enabled, false)` in Cypher queries).
+     * Backward-compat: existing nodes without this field are backfilled to `false`
+     * at startup by [io.whozoss.agentos.config.Neo4jSchemaInitializer].
      */
     val enabled: Boolean = false,
 ) : Entity

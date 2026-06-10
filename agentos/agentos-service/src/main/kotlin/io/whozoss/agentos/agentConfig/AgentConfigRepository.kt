@@ -22,8 +22,6 @@ interface AgentConfigRepository : EntityRepository<AgentConfig, UUID> {
      *
      * When [enabledOnly] is `true`, only enabled (published) configs are returned.
      * When [enabledOnly] is `false`, all active (non-removed) configs are returned.
-     * Agents stored before the `enabled` field was introduced are treated as
-     * published for backward-compatibility.
      *
      * @param parentId The namespace UUID
      * @param enabledOnly When `true`, restricts results to published configs only
