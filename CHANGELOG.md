@@ -1,3 +1,13 @@
+## 0.176.0 (2026-06-10)
+
+### 🚀 Features
+
+- #WZ-31935 add enabled field to AgentConfig and honor enabledOnl… ([#909](https://github.com/whoz-oss/coday/pull/909))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.175.0 (2026-06-09)
 
 ### 🚀 Features
