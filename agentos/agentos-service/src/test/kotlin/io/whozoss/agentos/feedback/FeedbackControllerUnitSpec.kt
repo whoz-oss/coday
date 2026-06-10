@@ -29,219 +29,187 @@ import java.util.UUID
  * - [FeedbackController.listByCaseEvent]: delegation
  * - toResource / toDomain mapping (verified through the public endpoints)
  */
-class FeedbackControllerUnitSpec :
-    StringSpec({
+class FeedbackControllerUnitSpec : StringSpec({
 
-        val feedbackService = mockk<FeedbackService>()
-        val caseEventService = mockk<CaseEventService>()
-        val controller = FeedbackController(feedbackService, caseEventService)
+    val feedbackService = mockk<FeedbackService>()
+    val caseEventService = mockk<CaseEventService>()
+    val controller = FeedbackController(feedbackService, caseEventService)
 
-        val namespaceId = UUID.randomUUID()
-        val caseId = UUID.randomUUID()
-        val caseEventId = UUID.randomUUID()
+    val namespaceId = UUID.randomUUID()
+    val caseId = UUID.randomUUID()
+    val caseEventId = UUID.randomUUID()
 
-        fun resource(
-            id: UUID? = null,
-            nsId: UUID = namespaceId,
-            cId: UUID = caseId,
-            ceId: UUID = caseEventId,
-            positive: Boolean = true,
-            type: String? = null,
-            comment: String? = null,
-        ) = FeedbackResource(
-            id = id,
+    fun input(
+        cId: UUID = caseId,
+        ceId: UUID = caseEventId,
+        positive: Boolean = true,
+        type: String? = null,
+        comment: String? = null,
+    ) = FeedbackInput(
+        caseId = cId,
+        caseEventId = ceId,
+        positive = positive,
+        type = type,
+        comment = comment,
+    )
+
+    fun feedback(
+        id: UUID = UUID.randomUUID(),
+        ceId: UUID = caseEventId,
+        positive: Boolean = true,
+        type: String? = null,
+        comment: String? = null,
+    ) = Feedback(
+        metadata = EntityMetadata(id = id),
+        namespaceId = namespaceId,
+        caseId = caseId,
+        caseEventId = ceId,
+        positive = positive,
+        type = type,
+        comment = comment,
+        timestamp = Instant.now(),
+    )
+
+    fun event(nsId: UUID = namespaceId) =
+        MessageEvent(
+            metadata = EntityMetadata(),
             namespaceId = nsId,
-            caseId = cId,
-            caseEventId = ceId,
-            positive = positive,
-            type = type,
-            comment = comment,
-        )
-
-        // Note: FeedbackController.create resolves namespaceId server-side from the fetched CaseEvent,
-        // overriding the value the client sends. The unit test mocks feedbackService.upsert so the
-        // override is transparent here — it is tested in FeedbackControllerIntegrationSpec.
-
-        fun feedback(
-            id: UUID = UUID.randomUUID(),
-            ceId: UUID = caseEventId,
-            positive: Boolean = true,
-            type: String? = null,
-            comment: String? = null,
-        ) = Feedback(
-            metadata = EntityMetadata(id = id),
-            namespaceId = namespaceId,
             caseId = caseId,
-            caseEventId = ceId,
-            positive = positive,
-            type = type,
-            comment = comment,
-            timestamp = Instant.now(),
+            actor = Actor(id = "u1", displayName = "User", role = ActorRole.USER),
+            content = listOf(MessageContent.Text("hello")),
         )
 
-        fun event() =
-            MessageEvent(
-                metadata = EntityMetadata(),
+    beforeTest { clearAllMocks() }
+
+    // -------------------------------------------------------------------------
+    // create (delegates to upsert)
+    // -------------------------------------------------------------------------
+
+    "create returns 201 resource when event exists" {
+        val i = input(positive = true, comment = "Helpful!")
+        val saved = feedback(positive = true, comment = "Helpful!")
+        every { caseEventService.findById(caseEventId) } returns event()
+        every { feedbackService.upsert(any()) } returns saved
+
+        val result = controller.create(i)
+
+        result.positive shouldBe true
+        result.comment shouldBe "Helpful!"
+        result.caseId shouldBe caseId
+        result.caseEventId shouldBe caseEventId
+        verify(exactly = 1) { caseEventService.findById(caseEventId) }
+        verify(exactly = 1) { feedbackService.upsert(any()) }
+    }
+
+    "create throws 404 when target case event does not exist" {
+        every { caseEventService.findById(caseEventId) } returns null
+
+        shouldThrow<ResourceNotFoundException> { controller.create(input()) }
+        verify(exactly = 0) { feedbackService.upsert(any()) }
+    }
+
+    "create maps type and comment from input to domain" {
+        val i = input(type = "WRONG_ANSWER", comment = "Missing context")
+        val saved = feedback(type = "WRONG_ANSWER", comment = "Missing context")
+        every { caseEventService.findById(caseEventId) } returns event()
+        every { feedbackService.upsert(any()) } returns saved
+
+        val result = controller.create(i)
+
+        result.type shouldBe "WRONG_ANSWER"
+        result.comment shouldBe "Missing context"
+    }
+
+    "create uses namespaceId from the fetched CaseEvent, not from input" {
+        // namespaceId is absent from FeedbackInput entirely — it must come from the event.
+        val serverNamespaceId = UUID.randomUUID()
+        val captured = mutableListOf<UUID>()
+        every { caseEventService.findById(caseEventId) } returns event(nsId = serverNamespaceId)
+        every { feedbackService.upsert(any()) } answers {
+            captured += firstArg<Feedback>().namespaceId
+            firstArg()
+        }
+
+        controller.create(input())
+
+        captured.first() shouldBe serverNamespaceId
+    }
+
+    // -------------------------------------------------------------------------
+    // listByCase
+    // -------------------------------------------------------------------------
+
+    "listByCase delegates to feedbackService.findByParent" {
+        val f1 = feedback()
+        val f2 = feedback()
+        every { feedbackService.findByParent(caseId) } returns listOf(f1, f2)
+
+        val result = controller.listByCase(caseId)
+
+        result.size shouldBe 2
+        verify(exactly = 1) { feedbackService.findByParent(caseId) }
+    }
+
+    "listByCase returns empty list when case has no feedback" {
+        every { feedbackService.findByParent(caseId) } returns emptyList()
+
+        controller.listByCase(caseId) shouldBe emptyList()
+    }
+
+    // -------------------------------------------------------------------------
+    // listByCaseEvent
+    // -------------------------------------------------------------------------
+
+    "listByCaseEvent delegates to feedbackService.findByCaseEventId" {
+        val f1 = feedback(ceId = caseEventId)
+        val f2 = feedback(ceId = caseEventId)
+        every { feedbackService.findByCaseEventId(caseEventId) } returns listOf(f1, f2)
+
+        val result = controller.listByCaseEvent(caseEventId)
+
+        result.size shouldBe 2
+        verify(exactly = 1) { feedbackService.findByCaseEventId(caseEventId) }
+    }
+
+    // -------------------------------------------------------------------------
+    // toResource mapping (verified via create response)
+    // -------------------------------------------------------------------------
+
+    "create response maps all resource fields correctly" {
+        val fId = UUID.randomUUID()
+        val ts = Instant.parse("2026-01-01T00:00:00Z")
+        val saved =
+            Feedback(
+                metadata =
+                    EntityMetadata(
+                        id = fId,
+                        created = ts,
+                        createdBy = "user-abc",
+                        modified = ts,
+                        modifiedBy = "user-abc",
+                    ),
                 namespaceId = namespaceId,
                 caseId = caseId,
-                actor = Actor(id = "u1", displayName = "User", role = ActorRole.USER),
-                content = listOf(MessageContent.Text("hello")),
+                caseEventId = caseEventId,
+                positive = false,
+                type = "UNHELPFUL",
+                comment = "Did not answer",
+                timestamp = ts,
             )
+        every { caseEventService.findById(caseEventId) } returns event()
+        every { feedbackService.upsert(any()) } returns saved
 
-        beforeTest { clearAllMocks() }
+        val result = controller.create(input(positive = false))
 
-        // -------------------------------------------------------------------------
-        // create (delegates to upsert)
-        // -------------------------------------------------------------------------
-
-        "create returns 201 resource when event exists" {
-            val r = resource(positive = true, comment = "Helpful!")
-            val saved = feedback(positive = true, comment = "Helpful!")
-            every { caseEventService.findById(caseEventId) } returns event()
-            every { feedbackService.upsert(any()) } returns saved
-
-            val result = controller.create(r)
-
-            result.positive shouldBe true
-            result.comment shouldBe "Helpful!"
-            result.caseId shouldBe caseId
-            result.caseEventId shouldBe caseEventId
-            verify(exactly = 1) { caseEventService.findById(caseEventId) }
-            verify(exactly = 1) { feedbackService.upsert(any()) }
-        }
-
-        "create throws 404 when target case event does not exist" {
-            every { caseEventService.findById(caseEventId) } returns null
-
-            shouldThrow<ResourceNotFoundException> { controller.create(resource()) }
-            verify(exactly = 0) { feedbackService.upsert(any()) }
-        }
-
-        "create maps type and comment from resource to domain" {
-            val r = resource(type = "WRONG_ANSWER", comment = "Missing context")
-            val saved = feedback(type = "WRONG_ANSWER", comment = "Missing context")
-            every { caseEventService.findById(caseEventId) } returns event()
-            every { feedbackService.upsert(any()) } returns saved
-
-            val result = controller.create(r)
-
-            result.type shouldBe "WRONG_ANSWER"
-            result.comment shouldBe "Missing context"
-        }
-
-        "create overrides namespaceId with the server-resolved value from the CaseEvent" {
-            // A client sending a foreign namespaceId must not be able to create a cross-namespace reference.
-            // The controller must always use the namespaceId from the fetched CaseEvent, not from the request body.
-            val foreignNamespaceId = UUID.randomUUID() // different from the event's real namespaceId
-            val r = resource(nsId = foreignNamespaceId)
-            val captured = mutableListOf<UUID>()
-            every { caseEventService.findById(caseEventId) } returns event() // event has namespaceId (the real one)
-            every { feedbackService.upsert(any()) } answers {
-                val f = firstArg<Feedback>()
-                captured += f.namespaceId
-                f
-            }
-
-            controller.create(r)
-
-            // The domain object passed to upsert must carry the event's namespaceId, not the client-supplied one
-            captured.first() shouldBe namespaceId
-        }
-
-        "create generates a fresh UUID when resource id is null" {
-            // Two distinct calls must produce different UUIDs — proves a fresh UUID is generated
-            // rather than reusing a fixed value.
-            val r = resource(id = null)
-            val captured = mutableListOf<UUID>()
-            every { caseEventService.findById(caseEventId) } returns event()
-            every { feedbackService.upsert(any()) } answers {
-                val f = firstArg<Feedback>()
-                captured += f.id
-                f
-            }
-
-            controller.create(r)
-            controller.create(r)
-
-            // Two invocations with null id must have produced two distinct UUIDs
-            (captured[0] != captured[1]) shouldBe true
-        }
-
-        // -------------------------------------------------------------------------
-        // listByCase
-        // -------------------------------------------------------------------------
-
-        "listByCase delegates to feedbackService.findByParent and GET maps to /by-case path" {
-            val f1 = feedback()
-            val f2 = feedback()
-            every { feedbackService.findByParent(caseId) } returns listOf(f1, f2)
-
-            val result = controller.listByCase(caseId)
-
-            result.size shouldBe 2
-            verify(exactly = 1) { feedbackService.findByParent(caseId) }
-        }
-
-        "listByCase returns empty list when case has no feedback" {
-            every { feedbackService.findByParent(caseId) } returns emptyList()
-
-            controller.listByCase(caseId) shouldBe emptyList()
-        }
-
-        // -------------------------------------------------------------------------
-        // listByCaseEvent
-        // -------------------------------------------------------------------------
-
-        "listByCaseEvent delegates to feedbackService.findByCaseEventId" {
-            val f1 = feedback(ceId = caseEventId)
-            val f2 = feedback(ceId = caseEventId)
-            every { feedbackService.findByCaseEventId(caseEventId) } returns listOf(f1, f2)
-
-            val result = controller.listByCaseEvent(caseEventId)
-
-            result.size shouldBe 2
-            verify(exactly = 1) { feedbackService.findByCaseEventId(caseEventId) }
-        }
-
-        // -------------------------------------------------------------------------
-        // toResource mapping (verified via create response)
-        // -------------------------------------------------------------------------
-
-        "create response maps all resource fields correctly" {
-            val fId = UUID.randomUUID()
-            val ts = Instant.parse("2026-01-01T00:00:00Z")
-            val saved =
-                Feedback(
-                    metadata =
-                        EntityMetadata(
-                            id = fId,
-                            created = ts,
-                            createdBy = "user-abc",
-                            modified = ts,
-                            modifiedBy = "user-abc",
-                        ),
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    caseEventId = caseEventId,
-                    positive = false,
-                    type = "UNHELPFUL",
-                    comment = "Did not answer",
-                    timestamp = ts,
-                )
-            every { caseEventService.findById(caseEventId) } returns event()
-            every { feedbackService.upsert(any()) } returns saved
-
-            val result = controller.create(resource(positive = false))
-
-            result.id shouldBe fId
-            result.namespaceId shouldBe namespaceId
-            result.caseId shouldBe caseId
-            result.caseEventId shouldBe caseEventId
-            result.positive shouldBe false
-            result.type shouldBe "UNHELPFUL"
-            result.comment shouldBe "Did not answer"
-            result.timestamp shouldBe ts
-            result.createdBy shouldBe "user-abc"
-            result.createdOn shouldBe ts
-        }
-    })
+        result.id shouldBe fId
+        result.namespaceId shouldBe namespaceId
+        result.caseId shouldBe caseId
+        result.caseEventId shouldBe caseEventId
+        result.positive shouldBe false
+        result.type shouldBe "UNHELPFUL"
+        result.comment shouldBe "Did not answer"
+        result.timestamp shouldBe ts
+        result.createdBy shouldBe "user-abc"
+        result.createdOn shouldBe ts
+    }
+})

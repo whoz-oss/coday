@@ -39,31 +39,30 @@ class FeedbackController(
     /**
      * POST /api/feedbacks — upsert feedback on a case event.
      *
-     * Validates that the target case event exists, then delegates to
-     * [FeedbackService.upsert]. If the authenticated user already has a feedback
-     * node for this event it is updated in-place; otherwise a new node is created.
+     * Validates that the target case event exists, resolves [namespaceId] from it,
+     * then delegates to [FeedbackService.upsert]. If the authenticated user already
+     * has a feedback node for this event it is updated in-place; otherwise a new
+     * node is created.
      * Authorization: READ on the parent Case.
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasPermission(#resource.caseId, 'Case', 'READ')")
+    @PreAuthorize("hasPermission(#input.caseId, 'Case', 'READ')")
     fun create(
-        @Valid @RequestBody resource: FeedbackResource,
+        @Valid @RequestBody input: FeedbackInput,
     ): FeedbackResource {
         val event =
-            caseEventService.findById(resource.caseEventId)
-                ?: throw ResourceNotFoundException("CaseEvent not found: ${resource.caseEventId}")
-        // Resolve namespaceId server-side from the fetched event so the client cannot
-        // supply an arbitrary foreign namespaceId and create a cross-namespace reference.
-        return toResource(feedbackService.upsert(toDomain(resource, serverNamespaceId = event.namespaceId)))
+            caseEventService.findById(input.caseEventId)
+                ?: throw ResourceNotFoundException("CaseEvent not found: ${input.caseEventId}")
+        return toResource(feedbackService.upsert(toDomain(input, namespaceId = event.namespaceId)))
     }
 
     /**
-     * GET /api/feedbacks/by-parentId/{caseId} — list all feedback for a case.
+     * GET /api/feedbacks/by-case/{caseId} — list all feedback for a case.
      *
      * Authorization: READ on the Case.
      */
-    @GetMapping("/by-parentId/{caseId}")
+    @GetMapping("/by-case/{caseId}")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     fun listByCase(
         @PathVariable caseId: UUID,
@@ -96,25 +95,18 @@ class FeedbackController(
             updatedOn = feedback.metadata.modified,
         )
 
-    /**
-     * Maps a [FeedbackResource] to the domain [Feedback].
-     *
-     * [serverNamespaceId] is resolved server-side (from the fetched [CaseEvent]) and
-     * overrides whatever the client sent in [FeedbackResource.namespaceId], preventing
-     * cross-namespace reference injection.
-     */
     private fun toDomain(
-        resource: FeedbackResource,
-        serverNamespaceId: UUID = resource.namespaceId,
+        input: FeedbackInput,
+        namespaceId: UUID,
     ): Feedback =
         Feedback(
-            metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-            namespaceId = serverNamespaceId,
-            caseId = resource.caseId,
-            caseEventId = resource.caseEventId,
-            positive = resource.positive,
-            type = resource.type,
-            comment = resource.comment,
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            caseId = input.caseId,
+            caseEventId = input.caseEventId,
+            positive = input.positive,
+            type = input.type,
+            comment = input.comment,
         )
 
     companion object : KLogging()
