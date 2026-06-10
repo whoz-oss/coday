@@ -118,7 +118,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
     init {
         every { toolResolverService.resolveToolsForNamespace(any(), any()) } returns emptyList()
-        every { toolResolverService.resolveToolsForRun(any(), any(), any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(any(), any()) } returns emptyList()
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
         every { userService.findById(any()) } returns null
@@ -360,8 +360,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 )
             every { localIntegrationService.findByParent(any()) } returns configs
             // Agent only declares JIRA_PROD
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-                .copy(integrations = mapOf("JIRA_PROD" to null))
+            val config =
+                agentConfig(name = "my-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("JIRA_PROD" to null))
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
@@ -524,8 +525,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     ),
                 )
             every { integrationConfigService.findByParent(namespaceId) } returns configs
-            val config = agentConfig(name = "my-agent", modelName = "sonnet")
-                .copy(integrations = mapOf("JIRA_PROD" to null))
+            val config =
+                agentConfig(name = "my-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("JIRA_PROD" to null))
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
@@ -697,7 +699,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, null) }
+            verify(exactly = 1) {
+                toolResolverService.resolveToolsForNamespace(
+                    context = any(),
+                )
+            }
         }
 
         "findAgentByName passes integrations map to ToolResolverService when agentConfig has integrations" {
@@ -714,7 +720,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { toolResolverService.resolveToolsForNamespace(namespaceId, integrations) }
+            verify(exactly = 1) {
+                toolResolverService.resolveToolsForNamespace(
+                    integrations,
+                    any(),
+                )
+            }
         }
 
         // -------------------------------------------------------------------------

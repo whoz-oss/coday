@@ -31,52 +31,39 @@ class ChatModelFactory(
         maxTokens: Int? = null,
         headers: Map<String, String> = emptyMap(),
     ): ChatModel {
-        val resolvedApiKey =
-            apiKey?.takeIf { it.isNotBlank() }
-                ?: throw IllegalArgumentException("No API key configured for provider (apiType=$apiType).")
-
+        val resolvedApiKey = apiKey ?: ""
         return when (apiType) {
-            AiApiType.OpenAI -> {
-                createOpenAiModel(
-                    baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
-                    apiKey = resolvedApiKey,
-                    model = modelName,
-                    temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
-                )
-            }
-
-            AiApiType.vLLM -> {
-                createVllmModel(
-                    baseUrl = baseUrl!!,
-                    apiKey = resolvedApiKey,
-                    model = modelName,
-                    temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
-                    headers = headers,
-                )
-            }
-
-            AiApiType.Anthropic -> {
-                createAnthropicModel(
-                    baseUrl = baseUrl ?: ANTHROPIC_DEFAULT_BASE_URL,
-                    apiKey = resolvedApiKey,
-                    model = modelName,
-                    temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
-                )
-            }
-
-            AiApiType.Gemini -> {
-                createGeminiModel(
-                    apiKey = resolvedApiKey,
-                    model = modelName,
-                    temp = temperature ?: DEFAULT_TEMPERATURE,
-                    maxTokens = maxTokens,
-                )
-            }
+            AiApiType.OpenAI -> createOpenAiModel(
+                baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
+                apiKey = resolvedApiKey,
+                model = modelName,
+                temp = temperature ?: DEFAULT_TEMPERATURE,
+                maxTokens = maxTokens,
+            )
+            AiApiType.vLLM -> createVllmModel(
+                baseUrl = baseUrl!!,
+                apiKey = resolvedApiKey,
+                model = modelName,
+                temp = temperature ?: DEFAULT_TEMPERATURE,
+                maxTokens = maxTokens,
+                headers = headers,
+            )
+            AiApiType.Anthropic -> createAnthropicModel(
+                baseUrl = baseUrl ?: ANTHROPIC_DEFAULT_BASE_URL,
+                apiKey = resolvedApiKey,
+                model = modelName,
+                temp = temperature ?: DEFAULT_TEMPERATURE,
+                maxTokens = maxTokens,
+            )
+            AiApiType.Gemini -> createGeminiModel(
+                apiKey = resolvedApiKey,
+                model = modelName,
+                temp = temperature ?: DEFAULT_TEMPERATURE,
+                maxTokens = maxTokens,
+            )
         }
     }
+
     private fun createOpenAiModel(
         baseUrl: String,
         apiKey: String,
@@ -84,7 +71,12 @@ class ChatModelFactory(
         temp: Double,
         maxTokens: Int?,
     ): ChatModel {
-        val api = OpenAiApi.Builder().baseUrl(baseUrl).apiKey(apiKey).build()
+        val api =
+            OpenAiApi
+                .Builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .build()
 
         val optionsBuilder =
             OpenAiChatOptions
@@ -116,9 +108,10 @@ class ChatModelFactory(
     ): ChatModel {
         var builder = OpenAiApi.Builder().baseUrl(baseUrl).apiKey(apiKey)
         if (headers.isNotEmpty()) {
-            val multiValueHeaders = LinkedMultiValueMap<String, String>(
-                headers.mapValues { (_, value) -> listOf(value) }
-            )
+            val multiValueHeaders =
+                LinkedMultiValueMap<String, String>(
+                    headers.mapValues { (_, value) -> listOf(value) },
+                )
             builder = builder.headers(multiValueHeaders)
         }
         val api = builder.build()

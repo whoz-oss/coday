@@ -16,6 +16,94 @@ class RedirectToolSpec : StringSpec({
         names.map { RedirectTool.EligibleAgent(name = it, description = "Agent $it") }
 
     // -------------------------------------------------------------------------
+    // description - integration rendering
+    // -------------------------------------------------------------------------
+
+    "description includes integration names when agent has integrations" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(
+                    name = "AgentA",
+                    description = "Does A",
+                    integrations = listOf(
+                        RedirectTool.Integration(name = "JIRA", allowedTools = null),
+                        RedirectTool.Integration(name = "FILES", allowedTools = null),
+                    ),
+                ),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Available agents:
+              - AgentA: Does A
+                Integrations:
+                  - JIRA
+                  - FILES
+        """.trimIndent()
+    }
+
+    "description includes allowed tools when integration has a whitelist" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(
+                    name = "AgentA",
+                    description = "Does A",
+                    integrations = listOf(
+                        RedirectTool.Integration(name = "JIRA", allowedTools = listOf("GetIssue", "PostComment")),
+                    ),
+                ),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Available agents:
+              - AgentA: Does A
+                Integrations:
+                  - JIRA: GetIssue, PostComment
+        """.trimIndent()
+    }
+
+    "description omits integrations section when agent has no integrations" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(name = "AgentA", description = "Does A"),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Available agents:
+              - AgentA: Does A
+        """.trimIndent()
+    }
+
+    "description mixes agents with and without integrations" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(
+                    name = "AgentA",
+                    description = "Does A",
+                    integrations = listOf(
+                        RedirectTool.Integration(name = "JIRA", allowedTools = listOf("GetIssue")),
+                    ),
+                ),
+                RedirectTool.EligibleAgent(name = "AgentB", description = "Does B"),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Available agents:
+              - AgentA: Does A
+                Integrations:
+                  - JIRA: GetIssue
+              - AgentB: Does B
+        """.trimIndent()
+    }
+
+    // -------------------------------------------------------------------------
     // execute - null input
     // WZ-31894: previously threw error("RedirectTool: agentName is required but was not provided by the LLM")
     // now returns a human-readable string so the LLM can surface it gracefully

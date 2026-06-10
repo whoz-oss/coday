@@ -120,8 +120,13 @@ class AgentServiceImpl(
                     "AgentConfig '${config.name}' could not resolve an AiModel " +
                         "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
                 )
-        val (modelConfig, providerConfig) = applyOverlaysToModel(baseModel, context.namespaceId, context.userId)
-        val namespaceSystemPrompt = buildNamespaceSystemPrompt(context.namespaceId, context, resolvedUser)
+        val (modelConfig, providerConfig) =
+            applyOverlaysToModel(
+                baseModel = baseModel,
+                namespaceId = context.namespaceId,
+                userId = context.userId,
+            )
+        val namespaceSystemPrompt = buildNamespaceSystemPrompt(namespaceId = context.namespaceId)
         val instructions =
             buildInstructions(
                 baseInstructions = config.instructions,
@@ -129,11 +134,22 @@ class AgentServiceImpl(
                 context = context,
                 resolvedUser = resolvedUser,
             )
+        val toolContext =
+            context.toToolContext(
+                userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
+                agentName = config.name,
+            )
         val tools =
             if (context.userId != null) {
-                toolResolverService.resolveToolsForRun(context.namespaceId, context.userId, config.integrations)
+                toolResolverService.resolveToolsForRun(
+                    agentIntegrations = config.integrations,
+                    context = toolContext,
+                )
             } else {
-                toolResolverService.resolveToolsForNamespace(context.namespaceId, config.integrations)
+                toolResolverService.resolveToolsForNamespace(
+                    agentIntegrations = config.integrations,
+                    context = toolContext,
+                )
             }
         return ResolvedAgentDefinition(
             agentConfigId = config.metadata.id,
