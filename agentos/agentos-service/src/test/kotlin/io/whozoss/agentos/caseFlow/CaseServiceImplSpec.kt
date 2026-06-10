@@ -968,6 +968,135 @@ class CaseServiceImplSpec :
             verify(exactly = 2) { allowAllAgentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, selectedAgentName) }
         }
 
+        // -------------------------------------------------------------------------
+        // @mention parsing: agent name must not include URL or non-ASCII whitespace
+        // -------------------------------------------------------------------------
+
+        "@mention followed by a URL selects the agent and ignores the URL" {
+            // Regression: MENTION_REGEX used \S+ which captures everything up to the first
+            // ASCII whitespace. A non-breaking space (U+00A0) or similar Unicode whitespace
+            // between the agent name and the URL would cause the entire string
+            // `inspector https://...` to be captured as the agent name.
+            //
+            // The fix uses [\w-]+ which stops at the first non-word, non-hyphen character,
+            // so `@inspector https://example.com` correctly extracts `inspector` only.
+
+            val inspectorName = "inspector"
+            val inspectorId = UUID.nameUUIDFromBytes(inspectorName.toByteArray())
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val inspectorAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = inspectorId)
+                every { name } returns inspectorName
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = inspectorId, agentName = inspectorName))
+                    }
+                }
+            }
+            val agentService = mockk<AgentService> {
+                // Only `inspector` resolves — the full string with URL must NOT be passed here
+                every { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
+                every { findAgentByName(inspectorName, any()) } returns inspectorAgent
+            }
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                InMemoryCaseRepository(),
+                caseEventService,
+                userService,
+                namespaceService,
+            )
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+
+            // Regular ASCII space between name and URL — the common case
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("@$inspectorName https://example.com/some/path")),
+            )
+            awaiter.join()
+
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            val persistedEvents = caseEventService.findByParent(case.id)
+            // The selected agent must be `inspector`, not `inspector https://...`
+            persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe inspectorName
+            verify(exactly = 1) { allowAllAgentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, inspectorName) }
+        }
+
+        "@mention followed by a URL with non-breaking space selects the agent and ignores the URL" {
+            // Non-breaking space (U+00A0) is not matched by \s in Java/Kotlin regex,
+            // so \S+ would consume the entire `inspector\u00A0https://...` string.
+            // The fix [\w-]+ stops at the non-breaking space (which is not \w or -).
+
+            val inspectorName = "inspector"
+            val inspectorId = UUID.nameUUIDFromBytes(inspectorName.toByteArray())
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val inspectorAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = inspectorId)
+                every { name } returns inspectorName
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = inspectorId, agentName = inspectorName))
+                    }
+                }
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
+                every { findAgentByName(inspectorName, any()) } returns inspectorAgent
+            }
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                InMemoryCaseRepository(),
+                caseEventService,
+                userService,
+                namespaceService,
+            )
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+
+            // Non-breaking space (U+00A0) — the pathological case that triggered the bug
+            val messageWithNbsp = "@$inspectorName\u00A0https://example.com/some/path"
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text(messageWithNbsp)),
+            )
+            awaiter.join()
+
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            val persistedEvents = caseEventService.findByParent(case.id)
+            persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe inspectorName
+            verify(exactly = 1) { allowAllAgentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, inspectorName) }
+        }
+
         "agent runs once per message when two messages are sent sequentially" {
             var runCallCount = 0
             val countingAgent =
