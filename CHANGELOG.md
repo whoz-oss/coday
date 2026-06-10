@@ -1,3 +1,18 @@
+## 0.177.0 (2026-06-10)
+
+### 🚀 Features
+
+- #995 add Excel integration tools to agent toolbox ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 replace xlsx with exceljs for Excel tool ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 remove excel integration from agent package ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 replace xlsx with exceljs and remove agent excel dependency ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 add Excel integration tools to agent toolbox ([#996](https://github.com/whoz-oss/coday/pull/996), [#995](https://github.com/whoz-oss/coday/issues/995))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.176.2 (2026-06-10)
 
 ### 🩹 Fixes
