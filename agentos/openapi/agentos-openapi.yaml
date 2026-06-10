@@ -996,7 +996,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Feedback"
+              $ref: "#/components/schemas/FeedbackInput"
         required: true
       responses:
         "201":
@@ -2265,6 +2265,27 @@ components:
       required:
       - namespaceRoles
       - userExternalId
+    FeedbackInput:
+      type: object
+      properties:
+        caseId:
+          type: string
+          format: uuid
+        caseEventId:
+          type: string
+          format: uuid
+        positive:
+          type: boolean
+        type:
+          type: string
+          description: Optional category label. Ignored (cleared) when positive=true.
+        comment:
+          type: string
+          description: Optional free-text note. Ignored (cleared) when positive=true.
+      required:
+      - caseEventId
+      - caseId
+      - positive
     Feedback:
       type: object
       properties:
@@ -2302,8 +2323,12 @@ components:
       required:
       - caseEventId
       - caseId
+      - createdOn
+      - id
       - namespaceId
       - positive
+      - timestamp
+      - updatedOn
     AddMessageRequest:
       type: object
       properties:
