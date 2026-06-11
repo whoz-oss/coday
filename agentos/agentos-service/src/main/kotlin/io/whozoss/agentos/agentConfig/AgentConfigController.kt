@@ -5,11 +5,10 @@ import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
-import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -46,7 +45,6 @@ class AgentConfigController(
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<AgentConfig, UUID, AgentConfigResource>(agentConfigService, userService, permissionService) {
-
     override val entityType = EntityType.AGENT_CONFIG
 
     override fun toResource(entity: AgentConfig): AgentConfigResource =
@@ -106,7 +104,9 @@ class AgentConfigController(
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
-    override fun getById(@PathVariable id: UUID): AgentConfigResource = super.getById(id)
+    override fun getById(
+        @PathVariable id: UUID,
+    ): AgentConfigResource = super.getById(id)
 
     // POST /by-ids — inherited from EntityController.getByIds (batch authorization,
     // story 5-4 factorisation of the pattern introduced by 5-3).
@@ -123,8 +123,9 @@ class AgentConfigController(
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> =
-        listByNamespace(parentId, enabledOnly = false)
+    override fun listByParent(
+        @PathVariable parentId: UUID,
+    ): List<AgentConfigResource> = listByNamespace(parentId, enabledOnly = false)
 
     /**
      * GET /api/agent-configs/by-parentId/{parentId}?enabledOnly=...
@@ -140,13 +141,13 @@ class AgentConfigController(
     fun listByNamespace(
         @PathVariable parentId: UUID,
         @RequestParam(required = false, defaultValue = "false") enabledOnly: Boolean,
-    ): List<AgentConfigResource> =
-        agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
+    ): List<AgentConfigResource> = agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")
-    override fun create(@Valid @RequestBody resource: AgentConfigResource): AgentConfigResource =
-        toResource(agentConfigService.create(toDomain(resource)))
+    override fun create(
+        @Valid @RequestBody resource: AgentConfigResource,
+    ): AgentConfigResource = toResource(agentConfigService.create(toDomain(resource)))
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
@@ -154,14 +155,17 @@ class AgentConfigController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: AgentConfigResource,
     ): AgentConfigResource {
-        val existing = agentConfigService.findById(id)
-            ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val existing =
+            agentConfigService.findById(id)
+                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         return toResource(agentConfigService.update(toDomainForUpdate(resource, existing)))
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'DELETE')")
-    override fun delete(@PathVariable id: UUID) = super.delete(id)
+    override fun delete(
+        @PathVariable id: UUID,
+    ) = super.delete(id)
 
     /**
      * POST /api/agent-configs/{id}/enable
@@ -171,7 +175,9 @@ class AgentConfigController(
      */
     @PostMapping("/{id}/enable")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
-    fun enable(@PathVariable id: UUID): AgentConfigResource {
+    fun enable(
+        @PathVariable id: UUID,
+    ): AgentConfigResource {
         logger.info { "[AgentConfig] Enabling agent config $id" }
         return toResource(agentConfigService.enable(id))
     }
@@ -184,7 +190,9 @@ class AgentConfigController(
      */
     @PostMapping("/{id}/disable")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
-    fun disable(@PathVariable id: UUID): AgentConfigResource {
+    fun disable(
+        @PathVariable id: UUID,
+    ): AgentConfigResource {
         logger.info { "[AgentConfig] Disabling agent config $id" }
         return toResource(agentConfigService.disable(id))
     }
@@ -223,20 +231,20 @@ class AgentConfigController(
     @GetMapping("/{id}/definition")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
-    fun getDefinition(
+    suspend fun getDefinition(
         @PathVariable id: UUID,
         @RequestParam(required = false, defaultValue = "false") withUserOverlay: Boolean,
     ): AgentDefinitionResource {
-        val agentConfig = agentConfigService.findById(id)
-            ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val agentConfig =
+            agentConfigService.findById(id)
+                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         val resolvedUserId = if (withUserOverlay) userService.getCurrentUser().metadata.id else null
-        val definition = runBlocking {
+        val definition =
             agentService.resolveDefinition(
                 agentConfigId = id,
                 namespaceId = agentConfig.namespaceId,
                 userId = resolvedUserId,
             )
-        }
         return AgentDefinitionResource(
             agentConfigId = definition.agentConfigId,
             name = definition.name,
@@ -244,13 +252,14 @@ class AgentConfigController(
             instructions = definition.instructions,
             resolvedModelApiName = definition.resolvedModelApiName,
             resolvedProviderName = definition.resolvedProviderName,
-            tools = definition.tools.map { tool ->
-                AgentDefinitionResource.ToolSummary(
-                    name = tool.name,
-                    description = tool.description,
-                    inputSchema = tool.inputSchema,
-                )
-            },
+            tools =
+                definition.tools.map { tool ->
+                    AgentDefinitionResource.ToolSummary(
+                        name = tool.name,
+                        description = tool.description,
+                        inputSchema = tool.inputSchema,
+                    )
+                },
             advancedExecution = definition.advancedExecution,
             namespaceId = definition.namespaceId,
             userId = definition.userId,
