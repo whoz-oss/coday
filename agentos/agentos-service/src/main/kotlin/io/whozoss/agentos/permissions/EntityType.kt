@@ -32,6 +32,7 @@ enum class EntityType(
     AI_PROVIDER("AiProvider"),
     CASE("Case"),
     CASE_EVENT("CaseEvent"),
+    FEEDBACK("Feedback"),
     INTEGRATION_CONFIG("IntegrationConfig"),
     NAMESPACE("Namespace"),
     USER("User"),
