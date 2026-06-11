@@ -1,3 +1,13 @@
+## 0.179.0 (2026-06-11)
+
+### 🚀 Features
+
+- wz-31856: Store and get feedbacks on events ([#1000](https://github.com/whoz-oss/coday/pull/1000))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.178.0 (2026-06-10)
 
 ### 🚀 Features
