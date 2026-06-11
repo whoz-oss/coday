@@ -23,7 +23,7 @@ interface AgentService {
      * are scoped to the given namespace and case.
      * Throws if no model matches [namePart].
      */
-    fun findAgentByName(
+    suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent
@@ -42,7 +42,7 @@ interface AgentService {
      *
      * Throws [IllegalArgumentException] if the config is not found or no model can be resolved.
      */
-    fun resolveDefinition(
+    suspend fun resolveDefinition(
         agentConfigId: UUID,
         namespaceId: UUID,
         userId: UUID? = null,
