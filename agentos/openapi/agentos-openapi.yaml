@@ -2268,9 +2268,6 @@ components:
     FeedbackInput:
       type: object
       properties:
-        caseId:
-          type: string
-          format: uuid
         caseEventId:
           type: string
           format: uuid
@@ -2284,7 +2281,6 @@ components:
           description: Optional free-text note. Ignored (cleared) when positive=true.
       required:
       - caseEventId
-      - caseId
       - positive
     Feedback:
       type: object
@@ -2307,9 +2303,6 @@ components:
           type: string
         comment:
           type: string
-        timestamp:
-          type: string
-          format: date-time
         createdBy:
           type: string
         createdOn:
@@ -2327,7 +2320,6 @@ components:
       - id
       - namespaceId
       - positive
-      - timestamp
       - updatedOn
     AddMessageRequest:
       type: object
