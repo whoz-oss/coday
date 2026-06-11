@@ -1,3 +1,13 @@
+## 0.180.0 (2026-06-11)
+
+### 🚀 Features
+
+- wz-31566 Add dynamic namespace description via integration plugin ([#999](https://github.com/whoz-oss/coday/pull/999))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
 ## 0.179.0 (2026-06-11)
 
 ### 🚀 Features
