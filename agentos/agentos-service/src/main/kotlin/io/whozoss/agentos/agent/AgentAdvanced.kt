@@ -18,12 +18,14 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptResult
 import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.mapWhile
 import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -1155,7 +1157,7 @@ class AgentAdvanced(
                 ?: throw ToolNotFoundException(intentionEvent.toolName)
 
         // Enrichment loop for multi-phase parameter preparation
-        val enrichmentContent =
+        val enrichmentResult =
             if (tool.getIntermediatePhaseCount() > 0) {
                 runEnrichmentPhases(tool, accumulatedEvents, intentionEvent, namespaceId)
             } else {
@@ -1163,7 +1165,7 @@ class AgentAdvanced(
             }
 
         val enrichmentBlock =
-            enrichmentContent?.let {
+            enrichmentResult?.content?.let {
                 "\n\nContext from preparation phases:\n$it"
             } ?: ""
 
@@ -1193,6 +1195,8 @@ Output requirements:
         logger.debug { "[$name] generateParameters for '${tool.name}'" }
         logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
 
+        val enrichmentTraces = enrichmentResult?.traces
+
         val result =
             retryWithFallback<String, ToolRequestEvent>(
                 maxAttempts = MAX_PARAMETER_ATTEMPTS,
@@ -1210,6 +1214,7 @@ Output requirements:
                         toolRequestId = toolRequestId,
                         toolName = tool.name,
                         args = null,
+                        enrichmentPhases = enrichmentTraces,
                     )
                 },
             ) { previousRaw ->
@@ -1221,6 +1226,7 @@ Output requirements:
                     caseId = caseId,
                     toolRequestId = toolRequestId,
                     previousRaw = previousRaw,
+                    enrichmentTraces = enrichmentTraces,
                 )
             }
 
@@ -1243,6 +1249,7 @@ Output requirements:
         caseId: UUID,
         toolRequestId: String,
         previousRaw: String?,
+        enrichmentTraces: List<EnrichmentPhaseTrace>? = null,
     ): AttemptResult<String, ToolRequestEvent> {
         val retryHint =
             previousRaw?.let {
@@ -1270,6 +1277,7 @@ Output requirements:
                     toolRequestId = toolRequestId,
                     toolName = toolName,
                     args = raw,
+                    enrichmentPhases = enrichmentTraces,
                 ),
             )
         } else {
@@ -1293,19 +1301,51 @@ Output requirements:
             objectMapper.readTree(raw)
         }.isSuccess
 
+    /**
+     * Runs all enrichment phases declared by [tool] and returns an [EnrichmentPhasesResult]
+     * containing the final accumulated content (to inject into the parameter-generation
+     * prompt) and the per-phase traces (to attach to the resulting [ToolRequestEvent]).
+     *
+     * On phase failure the loop returns early, but the traces collected up to and
+     * including the failed phase are still returned so they are persisted for debugging.
+     */
     private suspend fun runEnrichmentPhases(
         tool: StandardTool<*>,
         accumulatedEvents: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         namespaceId: UUID,
-    ): String? {
+    ): EnrichmentPhasesResult {
         var previousContent: String? = null
+        val traces =
+            (0 until tool.getIntermediatePhaseCount()).mapWhile(
+                transform = { phaseIndex ->
+                    runEnrichmentPhase(tool, phaseIndex, previousContent, accumulatedEvents, intentionEvent, namespaceId)
+                        .also { trace -> if (trace.success) previousContent = trace.enrichmentContent }
+                },
+                predicate = { phaseIndex, trace ->
+                    trace.success.also {
+                        if (!it) logger.warn { "[$name] enrichment phase $phaseIndex failed for '${tool.name}'" }
+                    }
+                },
+            )
+        return EnrichmentPhasesResult(
+            content = traces.lastOrNull { it.success }?.enrichmentContent,
+            traces = traces,
+        )
+    }
 
-        for (i in 0 until tool.getIntermediatePhaseCount()) {
-            val descriptor = tool.getIntermediatePhaseDescriptor(i, previousContent)
+    private suspend fun runEnrichmentPhase(
+        tool: StandardTool<*>,
+        phaseIndex: Int,
+        previousContent: String?,
+        accumulatedEvents: List<CaseEvent>,
+        intentionEvent: IntentionGeneratedEvent,
+        namespaceId: UUID,
+    ): EnrichmentPhaseTrace {
+        val descriptor = tool.getIntermediatePhaseDescriptor(phaseIndex, previousContent)
 
-            val fullPrompt =
-                """
+        val fullPrompt =
+            """
 ${descriptor.prompt}
 
 Input JSON Schema:
@@ -1321,35 +1361,32 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 - Do not use XML, tool-call wrappers, function tags, markdown, code fences, or any structural syntax other than JSON.
 - Do not include comments, explanations, or reasoning.
 - Only include properties defined in the schema.
-                """.trimIndent()
+            """.trimIndent()
 
-            val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall, fullPrompt)
+        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt)
 
-            logger.debug { "[$name] enrichment phase $i for '${tool.name}' — sending ${messages.size} messages" }
+        logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
-            val rawJson =
-                context.chatClient
-                    .prompt(Prompt(messages))
-                    .call()
-                    .content()
-                    ?.trim() ?: "{}"
-            val phaseJson = stripJsonFence(rawJson)
+        val rawJson =
+            context.chatClient
+                .prompt(Prompt(messages))
+                .call()
+                .content()
+                ?.trim() ?: "{}"
+        val phaseJson = stripJsonFence(rawJson)
 
-            logger.debug { "[$name] enrichment phase $i result for '${tool.name}': $phaseJson" }
+        logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 
-            val toolCtx = buildToolContext(tool.name, namespaceId)
-            val result = tool.enrich(i, phaseJson, toolCtx)
+        val toolCtx = buildToolContext(tool.name, namespaceId)
+        val result = tool.enrich(phaseIndex, phaseJson, toolCtx)
 
-            if (!result.success) {
-                logger.warn { "[$name] enrichment phase $i failed for '${tool.name}': ${result.errorMessage}" }
-                return null
-            }
-
-            previousContent = result.content
-        }
-
-        return previousContent
+        return EnrichmentPhaseTrace(
+            phaseIndex = phaseIndex,
+            prompt = descriptor.prompt,
+            llmOutput = phaseJson,
+            enrichmentContent = result.content,
+            success = result.success,
+        )
     }
 
     /**
@@ -1434,6 +1471,19 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
             }
         }
     }
+
+    /**
+     * Internal result carrier for [runEnrichmentPhases].
+     *
+     * @param content The final content to inject into the parameter-generation prompt,
+     *   or null when an enrichment phase failed.
+     * @param traces Per-phase traces collected during the enrichment run (including any
+     *   failed phase), to be attached to the resulting [ToolRequestEvent].
+     */
+    private data class EnrichmentPhasesResult(
+        val content: String?,
+        val traces: List<EnrichmentPhaseTrace>,
+    )
 
     companion object : KLogging() {
         /**

@@ -27,7 +27,11 @@
             <p class="case-chat__message-text">{{ item.text }}</p>
           </div>
         } @else if (item.kind === 'technical') {
-          <div class="case-chat__technical" [class.case-chat__technical--warn]="item.item.type === 'WarnEvent'">
+          <div
+            class="case-chat__technical"
+            [class.case-chat__technical--warn]="item.item.type === 'WarnEvent'"
+            [class.case-chat__technical--error]="item.item.type === 'ErrorEvent'"
+          >
             @if (item.item.detail) {
               <button
                 type="button"
@@ -75,6 +79,36 @@
 
             @if (isToolCallExpanded(item.call.requestId)) {
               <div class="case-chat__tool-call-output">
+                @if (showTechnical() && item.call.enrichmentPhases?.length) {
+                  <div class="case-chat__tool-call-section case-chat__enrichment-section">
+                    <span class="case-chat__tool-call-label">Enrichment phases</span>
+                    @for (phase of item.call.enrichmentPhases; track phase.phaseIndex) {
+                      <div
+                        class="case-chat__enrichment-phase"
+                        [class.case-chat__enrichment-phase--failed]="!phase.success"
+                      >
+                        <div class="case-chat__enrichment-phase-header">
+                          <span class="case-chat__enrichment-phase-index">Phase {{ phase.phaseIndex }}</span>
+                          <span class="case-chat__enrichment-phase-status">{{ phase.success ? '✅' : '❌' }}</span>
+                        </div>
+                        <div class="case-chat__enrichment-phase-row">
+                          <span class="case-chat__enrichment-phase-label">Prompt</span>
+                          <pre>{{ phase.prompt }}</pre>
+                        </div>
+                        <div class="case-chat__enrichment-phase-row">
+                          <span class="case-chat__enrichment-phase-label">LLM output</span>
+                          <pre>{{ phase.llmOutput }}</pre>
+                        </div>
+                        @if (phase.enrichmentContent) {
+                          <div class="case-chat__enrichment-phase-row">
+                            <span class="case-chat__enrichment-phase-label">Enrichment content</span>
+                            <pre>{{ phase.enrichmentContent }}</pre>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
                 @if (item.call.args) {
                   <div class="case-chat__tool-call-section">
                     <span class="case-chat__tool-call-label">Payload</span>

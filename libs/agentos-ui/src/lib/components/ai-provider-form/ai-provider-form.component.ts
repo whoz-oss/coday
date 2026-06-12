@@ -161,6 +161,7 @@ export class AiProviderFormComponent implements OnInit {
       this.isEditMode.set(true)
       // Edit-mode: scope is immutable — disable the radio so the user cannot change it.
       this.scopeControl.disable()
+      this.apiTypeControl.disable()
       this.loadConfig(aiProviderId)
       return
     }

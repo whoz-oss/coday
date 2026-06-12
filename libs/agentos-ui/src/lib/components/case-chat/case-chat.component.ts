@@ -24,6 +24,8 @@ import {
   CaseEvent,
   CaseStatusEvent,
   Configuration,
+  EnrichmentPhaseTrace,
+  ErrorEvent,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
@@ -40,12 +42,15 @@ export interface ToolCall {
   args: string | null
   /** undefined = pending, defined = done */
   response?: ToolResponseEvent
+  /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
+  enrichmentPhases?: EnrichmentPhaseTrace[] | null
 }
 
 /** A technical event displayed only when showTechnical is enabled. */
 export interface TechnicalItem {
   type:
     | 'WarnEvent'
+    | 'ErrorEvent'
     | 'CaseStatusEvent'
     | 'AgentRunningEvent'
     | 'AgentFinishedEvent'
@@ -217,6 +222,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           toolName: req.toolName ?? 'unknown',
           args: req.args ?? null,
           response: existing?.response,
+          enrichmentPhases: (req as ToolRequestEvent).enrichmentPhases ?? null,
         })
       } else if (e.type === 'ToolResponseEvent') {
         const res = e as ToolResponseEvent
@@ -227,6 +233,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           toolName: existing?.toolName ?? res.toolName ?? 'unknown',
           args: existing?.args ?? null,
           response: res,
+          enrichmentPhases: existing?.enrichmentPhases ?? null,
         })
       }
     }
@@ -461,6 +468,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'ToolResponseEvent',
       'PendingConfirmationEvent',
       'ConfirmationResolvedEvent',
+      'ErrorEvent',
       'WarnEvent',
       'IntentionGeneratedEvent',
     ] as const
@@ -680,6 +688,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'WarnEvent': {
         const e = event as WarnEvent
         return { type: 'WarnEvent', label: '⚠️ Warn', detail: e.message }
+      }
+      case 'ErrorEvent': {
+        const e = event as ErrorEvent
+        return { type: 'ErrorEvent', label: '❌ Error', detail: e.message }
       }
       case 'CaseStatusEvent': {
         const e = event as CaseStatusEvent

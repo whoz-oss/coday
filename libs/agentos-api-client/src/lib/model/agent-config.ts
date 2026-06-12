@@ -18,4 +18,8 @@ export interface AgentConfig {
   integrations?: { [key: string]: Array<string> }
   advancedExecution?: boolean
   externalMetadata?: { [key: string]: any }
+  createdBy?: string
+  createdOn?: string
+  updatedBy?: string
+  updatedOn?: string
 }

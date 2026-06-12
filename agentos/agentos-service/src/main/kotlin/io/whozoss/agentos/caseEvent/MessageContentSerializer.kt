@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseEvent
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 
 /**
  * Utility for serialising/deserialising [MessageContent] values to and from
@@ -47,4 +48,8 @@ class MessageContentSerializer(
     fun serializeMetadata(metadata: Map<String, Any?>): String = mapper.writeValueAsString(metadata)
 
     fun deserializeMetadata(json: String): Map<String, Any?> = mapper.readValue(json)
+
+    fun serializeEnrichmentPhases(phases: List<EnrichmentPhaseTrace>): String = mapper.writeValueAsString(phases)
+
+    fun deserializeEnrichmentPhases(json: String): List<EnrichmentPhaseTrace> = mapper.readValue(json)
 }
