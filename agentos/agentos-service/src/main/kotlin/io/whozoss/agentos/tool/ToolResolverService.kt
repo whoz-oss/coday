@@ -6,9 +6,9 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.springframework.stereotype.Service
-import java.util.UUID
 
 @Service
 class ToolResolverService(
@@ -16,14 +16,26 @@ class ToolResolverService(
     private val integrationConfigService: IntegrationConfigService,
     private val integrationConfigMergeService: ConfigMergeService<IntegrationConfig>,
 ) {
+    /**
+     * Resolves the tool set for a namespace-level agent run (no authenticated user).
+     *
+     * The [context] must carry a valid [ToolContext.namespaceId]. It is passed verbatim
+     * to each plugin so they can use it for namespace-aware behaviour (e.g. the redirect
+     * tool uses it to enumerate eligible agents). [ToolContext.userId] should be null for
+     * this path — use [resolveToolsForRun] when a user identity is available.
+     *
+     * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
+     *   When null, all namespace integrations are included.
+     * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
+     */
     fun resolveToolsForNamespace(
-        namespaceId: UUID,
         agentIntegrations: Map<String, List<String>?>? = null,
+        context: ToolContext,
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
 
-        val configs = integrationConfigService.findByParent(namespaceId)
-        logger.info { "[ToolResolver] Resolving tools for namespace $namespaceId: ${configs.size} IntegrationConfig(s) found" }
+        val configs = integrationConfigService.findByParent(context.namespaceId)
+        logger.info { "[ToolResolver] Resolving tools for namespace ${context.namespaceId}: ${configs.size} IntegrationConfig(s) found" }
 
         configs.forEach { config ->
             if (agentIntegrations != null && config.name !in agentIntegrations) {
@@ -37,47 +49,34 @@ class ToolResolverService(
                 }
                 return@forEach
             }
-            try {
-                val allowedToolNames = agentIntegrations?.get(config.name)
-                val providedTools =
-                    plugin
-                        .provideTools(
-                            config = config.parameters,
-                            configName = config.name,
-                            context =
-                                ToolContext(
-                                    namespaceId = namespaceId,
-                                    userId = null,
-                                    userExternalId = null,
-                                    caseEvents = emptyList(),
-                                ),
-                        ).filter { tool -> isToolAllowed(tool.name, config.name, allowedToolNames) }
-                providedTools.forEach { tool ->
-                    if (resolved.containsKey(tool.name)) {
-                        logger.warn {
-                            "[ToolResolver] Tool name conflict: '${tool.name}' from integrationType='${config.integrationType}' overrides an existing entry"
-                        }
-                    }
-                    resolved[tool.name] = tool
-                }
-                logger.info {
-                    "[ToolResolver] Resolved ${providedTools.size} tool(s) from integrationType='${config.integrationType}' for namespace $namespaceId"
-                }
-            } catch (e: Exception) {
-                logger.error(e) { "[ToolResolver] Error instantiating tools for integrationType='${config.integrationType}': ${e.message}" }
-            }
+            extractTools(agentIntegrations, config, plugin, context, resolved)
         }
 
-        logger.info { "[ToolResolver] Total tools for namespace $namespaceId: ${resolved.size}" }
+        logger.info { "[ToolResolver] Total tools for namespace ${context.namespaceId}: ${resolved.size}" }
         return resolved.values
     }
 
+    /**
+     * Resolves the tool set for a user-scoped agent run, applying 3-tier overlay
+     * reconciliation for each integration config.
+     *
+     * The [context] must carry both a valid [ToolContext.namespaceId] and a non-null
+     * [ToolContext.userId] (the method throws [IllegalArgumentException] otherwise). The
+     * context is passed verbatim to each plugin, giving them access to the full runtime
+     * identity (namespace, user, external id, agent name, case events).
+     *
+     * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
+     *   When null, all namespace integrations are included.
+     * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
+     *   [ToolContext.userId] must be non-null.
+     */
     fun resolveToolsForRun(
-        namespaceId: UUID,
-        userId: UUID,
         agentIntegrations: Map<String, List<String>?>? = null,
+        context: ToolContext,
     ): Collection<StandardTool<*>> {
         val resolved = mutableMapOf<String, StandardTool<*>>()
+        val userId = requireNotNull(context.userId)
+        val namespaceId = context.namespaceId
 
         val sharedConfigs = integrationConfigService.findByNamespaceShared(namespaceId)
         val userOverrides =
@@ -108,7 +107,7 @@ class ToolResolverService(
                 return@forEach
             }
 
-            val resolvedConfig =
+            val config =
                 try {
                     integrationConfigMergeService.resolve(namespaceId, userId, name)
                 } catch (e: ConfigNotFoundException) {
@@ -121,42 +120,47 @@ class ToolResolverService(
                 }
 
             val plugin =
-                toolRegistryService.findPlugin(resolvedConfig.integrationType) ?: run {
-                    logger.warn { "[ToolResolver] No plugin for integrationType='${resolvedConfig.integrationType}' (name='$name')" }
+                toolRegistryService.findPlugin(config.integrationType) ?: run {
+                    logger.warn { "[ToolResolver] No plugin for integrationType='${config.integrationType}' (name='$name')" }
                     return@forEach
                 }
-
-            try {
-                val allowedToolNames = agentIntegrations?.get(resolvedConfig.name)
-                val tools =
-                    plugin
-                        .provideTools(
-                            config = resolvedConfig.parameters,
-                            configName = resolvedConfig.name,
-                            context =
-                                ToolContext(
-                                    namespaceId = namespaceId,
-                                    userId = userId,
-                                    userExternalId = null,
-                                    caseEvents = emptyList(),
-                                ),
-                        ).filter { tool -> isToolAllowed(tool.name, resolvedConfig.name, allowedToolNames) }
-                tools.forEach { tool ->
-                    if (resolved.containsKey(tool.name)) {
-                        logger.warn {
-                            "[ToolResolver] Tool name conflict: '${tool.name}' from integrationType='${resolvedConfig.integrationType}'"
-                        }
-                    }
-                    resolved[tool.name] = tool
-                }
-                logger.info { "[ToolResolver] Resolved ${tools.size} tool(s) from name='$name' (type='${resolvedConfig.integrationType}')" }
-            } catch (e: Exception) {
-                logger.error(e) { "[ToolResolver] Error instantiating tools for name='$name': ${e.message}" }
-            }
+            extractTools(agentIntegrations, config, plugin, context, resolved)
         }
 
         logger.info { "[ToolResolver] Total tools for namespace $namespaceId (user $userId): ${resolved.size}" }
         return resolved.values
+    }
+
+    private fun extractTools(
+        agentIntegrations: Map<String, List<String>?>?,
+        config: IntegrationConfig,
+        plugin: ToolPlugin,
+        context: ToolContext,
+        resolved: MutableMap<String, StandardTool<*>>,
+    ) {
+        try {
+            val allowedToolNames = agentIntegrations?.get(config.name)
+            val tools =
+                plugin
+                    .provideTools(
+                        config = config.parameters,
+                        configName = config.name,
+                        context = context,
+                    ).filter { tool -> isToolAllowed(tool.name, config.name, allowedToolNames) }
+            tools.forEach { tool ->
+                if (resolved.containsKey(tool.name)) {
+                    logger.warn {
+                        "[ToolResolver] Tool name conflict: '${tool.name}' from integrationType='${config.integrationType}' overrides an existing entry"
+                    }
+                }
+                resolved[tool.name] = tool
+            }
+            logger.info {
+                "[ToolResolver] Resolved ${tools.size} tool(s) from integrationType='${config.integrationType}' for namespace ${context.namespaceId}"
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "[ToolResolver] Error instantiating tools for integrationType='${config.integrationType}': ${e.message}" }
+        }
     }
 
     internal fun isToolAllowed(

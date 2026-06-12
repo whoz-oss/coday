@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
+import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
@@ -240,30 +242,38 @@ class AgentAdvanced(
 
     /**
      * Counts the maximum repetition of any (toolName, args) pair within the last
-     * [REPETITION_WINDOW] tool responses.
+     * [REPETITION_WINDOW] tool responses **of the current turn**.
      *
-     * Returns `null` when the window is not yet full or when it contains a synthetic
-     * [ToolResponseEvent] from a confirmation resolution (user-validated, not a loop).
-     * No threshold comparison is done here — that is [handleRepetition]'s job.
+     * "Current turn" means events strictly after the last user [MessageEvent] in the
+     * history. This prevents tool calls from previous conversation turns from being
+     * mistaken for an ongoing loop when the agent is reloaded with full case history.
+     *
+     * Returns `null` when the current-turn window is not yet full or when it contains
+     * a synthetic [ToolResponseEvent] from a confirmation resolution (user-validated,
+     * not a loop). No threshold comparison is done here — that is [handleRepetition]'s job.
      */
     internal fun detectToolRepetition(events: List<CaseEvent>): ToolRepetition? {
+        // Scope detection to the current turn only: events after the last user message.
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val currentTurnEvents = if (lastUserMessageIndex >= 0) events.drop(lastUserMessageIndex + 1) else events
+
         val resolvedPendingIds =
-            events
+            currentTurnEvents
                 .filterIsInstance<ConfirmationResolvedEvent>()
                 .mapTo(mutableSetOf()) { it.pendingEventId }
         val syntheticToolRequestIds =
-            events
+            currentTurnEvents
                 .filterIsInstance<PendingConfirmationEvent>()
                 .filter { it.metadata.id in resolvedPendingIds }
                 .mapTo(mutableSetOf()) { it.toolRequestId }
 
         val argsByRequestId =
-            events
+            currentTurnEvents
                 .filterIsInstance<ToolRequestEvent>()
                 .associate { it.toolRequestId to (it.args?.trim() ?: "") }
 
         val window =
-            events
+            currentTurnEvents
                 .filterIsInstance<ToolResponseEvent>()
                 .takeLast(REPETITION_WINDOW)
 
@@ -368,11 +378,7 @@ class AgentAdvanced(
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
         val toolCtx = tool?.let { buildToolContext(it.name, namespaceId) }
         val confirmationMode =
-            if (tool != null && toolCtx != null) {
-                tool.getConfirmationMode(parameters.args, toolCtx)
-            } else {
-                ConfirmationMode.NONE
-            }
+            tool?.getConfirmationMode(parameters.args, toolCtx) ?: ConfirmationMode.NONE
         return when {
             tool != null && toolCtx != null && confirmationMode != ConfirmationMode.NONE -> {
                 handleConfirmationGate(
@@ -950,16 +956,33 @@ class AgentAdvanced(
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
 
         val contentBuilder = StringBuilder()
+        var lastFinishReason: String? = null
         context.chatClient
             .prompt(Prompt(messages))
             .stream()
-            .content()
+            .chatResponse()
             .asFlow()
             .takeWhile { shouldContinue() }
-            .collect { chunk ->
-                contentBuilder.append(chunk)
-                emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+            .collect { response: ChatResponse ->
+                val chunk =
+                    response.result.output.text
+                        ?.takeIf { it.isNotEmpty() }
+                if (chunk != null) {
+                    contentBuilder.append(chunk)
+                    emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+                }
+                response.result.metadata.finishReason
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { lastFinishReason = it }
             }
+        if (isTruncated(lastFinishReason)) {
+            val msg =
+                "LLM response was truncated (finish_reason=$lastFinishReason). " +
+                    "The configured maxTokens limit may be too low. " +
+                    "Consider increasing the model's maxTokens configuration."
+            logger.warn { "[$name] $msg" }
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+        }
         val content = contentBuilder.toString().stripConversationTags()
         if (content.isNotEmpty()) {
             val msg =
@@ -1068,8 +1091,7 @@ class AgentAdvanced(
                     .prompt(
                         Prompt(
                             listOf(
-                                org.springframework.ai.chat.messages
-                                    .UserMessage(prompt),
+                                UserMessage(prompt),
                             ),
                         ),
                     ).call()
@@ -1243,7 +1265,7 @@ Output requirements:
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
         val messages = context.buildMessages(events, prompt)
-        val raw = callLlmForParameters(messages, toolName)
+        val raw = callLlmForParameters(messages)
 
         logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
@@ -1264,10 +1286,7 @@ Output requirements:
         }
     }
 
-    private fun callLlmForParameters(
-        messages: List<org.springframework.ai.chat.messages.Message>,
-        toolName: String,
-    ): String {
+    private fun callLlmForParameters(messages: List<org.springframework.ai.chat.messages.Message>): String {
         val raw =
             context.chatClient
                 .prompt(Prompt(messages))
@@ -1467,6 +1486,16 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
     )
 
     companion object : KLogging() {
+        /**
+         * Returns true when the finish reason indicates the LLM was cut off by a token limit,
+         * rather than finishing naturally.
+         */
+        internal fun isTruncated(finishReason: String?): Boolean {
+            if (finishReason == null) return false
+            return finishReason.equals("length", ignoreCase = true) ||
+                finishReason.equals("max_tokens", ignoreCase = true)
+        }
+
         /** How many recent tool responses to inspect for repetition. */
         internal const val REPETITION_WINDOW = 5
 

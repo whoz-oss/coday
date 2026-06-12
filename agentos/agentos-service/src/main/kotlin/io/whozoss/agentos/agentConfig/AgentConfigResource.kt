@@ -42,4 +42,6 @@ data class AgentConfigResource(
     val createdOn: Instant = Instant.now(),
     val updatedBy: String? = null,
     val updatedOn: Instant = Instant.now(),
+    /** Whether this agent is published. Null on input is treated as false (unpublished). */
+    val enabled: Boolean? = null,
 )

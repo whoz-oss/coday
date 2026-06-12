@@ -5,8 +5,8 @@ import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
@@ -45,7 +45,6 @@ class AgentConfigController(
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<AgentConfig, UUID, AgentConfigResource>(agentConfigService, userService, permissionService) {
-
     override val entityType = EntityType.AGENT_CONFIG
 
     override fun toResource(entity: AgentConfig): AgentConfigResource =
@@ -63,6 +62,7 @@ class AgentConfigController(
             createdOn = entity.metadata.created,
             updatedBy = entity.metadata.modifiedBy,
             updatedOn = entity.metadata.modified,
+            enabled = entity.enabled,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -76,13 +76,16 @@ class AgentConfigController(
             integrations = resource.integrations,
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
+            enabled = resource.enabled ?: false,
         )
 
     /**
      * Merge an update resource onto an existing persisted entity.
      *
-     * - [AgentConfig.namespaceId] is preserved from [existing] (mass-assignment guard).
-     * - Audit fields (`modifiedBy`, `modified`) are set by the service layer, not here.
+     * Two fields are intentionally excluded (mass-assignment guards):
+     * - [AgentConfig.namespaceId]: clients cannot relocate an AgentConfig across namespaces via PUT
+     * - [AgentConfig.enabled]: enabled state is managed exclusively via the
+     *   [enable] and [disable] endpoints
      */
     private fun toDomainForUpdate(
         resource: AgentConfigResource,
@@ -101,19 +104,50 @@ class AgentConfigController(
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
-    override fun getById(@PathVariable id: UUID): AgentConfigResource = super.getById(id)
+    override fun getById(
+        @PathVariable id: UUID,
+    ): AgentConfigResource = super.getById(id)
 
     // POST /by-ids — inherited from EntityController.getByIds (batch authorization,
     // story 5-4 factorisation of the pattern introduced by 5-3).
 
+    /**
+     * GET /api/agent-configs/by-parentId/{parentId} (no enabledOnly param)
+     *
+     * Matched by Spring MVC when `enabledOnly` is absent from the query string.
+     * The `params = ["!enabledOnly"]` selector makes this mutually exclusive with
+     * [listByNamespace], resolving the ambiguous-mapping conflict that arises from
+     * the inherited [EntityController.listByParent] `@GetMapping`.
+     *
+     * Delegates to [listByNamespace] with `enabledOnly = false`.
+     */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> = super.listByParent(parentId)
+    override fun listByParent(
+        @PathVariable parentId: UUID,
+    ): List<AgentConfigResource> = listByNamespace(parentId, enabledOnly = false)
+
+    /**
+     * GET /api/agent-configs/by-parentId/{parentId}?enabledOnly=...
+     *
+     * Matched by Spring MVC when `enabledOnly` is present in the query string.
+     * When `true`, only published agents are returned (end-user contexts like Copilot).
+     * When `false`, all agents visible to namespace members/admins are returned.
+     * Spring's `DefaultConversionService` handles `Boolean` binding — invalid values
+     * (neither `"true"` nor `"false"`) produce a 400.
+     */
+    @GetMapping("/by-parentId/{parentId}", params = ["enabledOnly"])
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    fun listByNamespace(
+        @PathVariable parentId: UUID,
+        @RequestParam(required = false, defaultValue = "false") enabledOnly: Boolean,
+    ): List<AgentConfigResource> = agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")
-    override fun create(@Valid @RequestBody resource: AgentConfigResource): AgentConfigResource =
-        toResource(agentConfigService.create(toDomain(resource)))
+    override fun create(
+        @Valid @RequestBody resource: AgentConfigResource,
+    ): AgentConfigResource = toResource(agentConfigService.create(toDomain(resource)))
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
@@ -121,14 +155,47 @@ class AgentConfigController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: AgentConfigResource,
     ): AgentConfigResource {
-        val existing = agentConfigService.findById(id)
-            ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val existing =
+            agentConfigService.findById(id)
+                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         return toResource(agentConfigService.update(toDomainForUpdate(resource, existing)))
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'DELETE')")
-    override fun delete(@PathVariable id: UUID) = super.delete(id)
+    override fun delete(
+        @PathVariable id: UUID,
+    ) = super.delete(id)
+
+    /**
+     * POST /api/agent-configs/{id}/enable
+     *
+     * Enables an agent, making it active.
+     * Requires WRITE permission (namespace ADMIN).
+     */
+    @PostMapping("/{id}/enable")
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    fun enable(
+        @PathVariable id: UUID,
+    ): AgentConfigResource {
+        logger.info { "[AgentConfig] Enabling agent config $id" }
+        return toResource(agentConfigService.enable(id))
+    }
+
+    /**
+     * POST /api/agent-configs/{id}/disable
+     *
+     * Disables an agent, making it inactive.
+     * Requires WRITE permission (namespace ADMIN).
+     */
+    @PostMapping("/{id}/disable")
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    fun disable(
+        @PathVariable id: UUID,
+    ): AgentConfigResource {
+        logger.info { "[AgentConfig] Disabling agent config $id" }
+        return toResource(agentConfigService.disable(id))
+    }
 
     /**
      * POST /api/agent-configs/search
@@ -164,18 +231,20 @@ class AgentConfigController(
     @GetMapping("/{id}/definition")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
-    fun getDefinition(
+    suspend fun getDefinition(
         @PathVariable id: UUID,
         @RequestParam(required = false, defaultValue = "false") withUserOverlay: Boolean,
     ): AgentDefinitionResource {
-        val agentConfig = agentConfigService.findById(id)
-            ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val agentConfig =
+            agentConfigService.findById(id)
+                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         val resolvedUserId = if (withUserOverlay) userService.getCurrentUser().metadata.id else null
-        val definition = agentService.resolveDefinition(
-            agentConfigId = id,
-            namespaceId = agentConfig.namespaceId,
-            userId = resolvedUserId,
-        )
+        val definition =
+            agentService.resolveDefinition(
+                agentConfigId = id,
+                namespaceId = agentConfig.namespaceId,
+                userId = resolvedUserId,
+            )
         return AgentDefinitionResource(
             agentConfigId = definition.agentConfigId,
             name = definition.name,
@@ -183,13 +252,14 @@ class AgentConfigController(
             instructions = definition.instructions,
             resolvedModelApiName = definition.resolvedModelApiName,
             resolvedProviderName = definition.resolvedProviderName,
-            tools = definition.tools.map { tool ->
-                AgentDefinitionResource.ToolSummary(
-                    name = tool.name,
-                    description = tool.description,
-                    inputSchema = tool.inputSchema,
-                )
-            },
+            tools =
+                definition.tools.map { tool ->
+                    AgentDefinitionResource.ToolSummary(
+                        name = tool.name,
+                        description = tool.description,
+                        inputSchema = tool.inputSchema,
+                    )
+                },
             advancedExecution = definition.advancedExecution,
             namespaceId = definition.namespaceId,
             userId = definition.userId,

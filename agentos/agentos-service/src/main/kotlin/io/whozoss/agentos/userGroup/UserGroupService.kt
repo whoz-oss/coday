@@ -9,5 +9,15 @@ interface UserGroupService : EntityService<UserGroup, UUID> {
     fun findByIdWithDetails(id: UUID): UserGroupSearchResult?
     fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult
     fun updateFromRequest(userGroupId: UUID, request: UserGroupUpdateRequest): UserGroupSearchResult
-    fun findGroupsByUserExternalIdsVisibleToUser(externalIds: Collection<String>, user: User): Map<String, List<UserGroupSummary>>
+    /**
+     * Returns groups for the given user external IDs visible to [user], optionally scoped to a namespace.
+     *
+     * When [namespaceId] is null, groups from all namespaces are returned.
+     * When [namespaceId] is provided, only groups belonging to that namespace are returned.
+     */
+    fun findGroupsByUserExternalIdsVisibleToUser(
+        externalIds: Collection<String>,
+        user: User,
+        namespaceId: UUID? = null,
+    ): Map<String, List<UserGroupSummary>>
 }

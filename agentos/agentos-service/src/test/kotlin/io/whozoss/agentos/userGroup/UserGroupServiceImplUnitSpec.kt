@@ -468,6 +468,44 @@ class UserGroupServiceImplUnitSpec :
             result shouldBe emptyMap()
         }
 
+        "findGroupsByUserExternalIdsVisibleToUser forwards namespaceId to repository when provided" {
+            val groupId = randomUUID();
+            val scopedNamespaceId = randomUUID()
+            val userGroupRepository = mockk<UserGroupRepository>()
+            val adminUser = User(metadata = EntityMetadata(id = randomUUID()), externalId = "admin@example.com", isAdmin = true)
+            val groups = mapOf("alice@example.com" to listOf(UserGroupSummary(id = groupId, name = "Team A")))
+
+            every { userGroupRepository.findGroupsByUserExternalIds(listOf("alice@example.com"), scopedNamespaceId) } returns groups
+
+            val service = buildService(userGroupRepository = userGroupRepository)
+            val result = service.findGroupsByUserExternalIdsVisibleToUser(
+                listOf("alice@example.com"),
+                adminUser,
+                namespaceId = scopedNamespaceId,
+            )
+
+            result shouldBe groups
+            verify(exactly = 1) { userGroupRepository.findGroupsByUserExternalIds(listOf("alice@example.com"), scopedNamespaceId) }
+        }
+
+        "findGroupsByUserExternalIdsVisibleToUser forwards null namespaceId to repository when not provided" {
+            val groupId = randomUUID()
+            val userGroupRepository = mockk<UserGroupRepository>()
+            val adminUser = User(metadata = EntityMetadata(id = randomUUID()), externalId = "admin@example.com", isAdmin = true)
+            val groups = mapOf("alice@example.com" to listOf(UserGroupSummary(id = groupId, name = "Team A")))
+
+            every { userGroupRepository.findGroupsByUserExternalIds(listOf("alice@example.com"), null) } returns groups
+
+            val service = buildService(userGroupRepository = userGroupRepository)
+            val result = service.findGroupsByUserExternalIdsVisibleToUser(
+                listOf("alice@example.com"),
+                adminUser,
+            )
+
+            result shouldBe groups
+            verify(exactly = 1) { userGroupRepository.findGroupsByUserExternalIds(listOf("alice@example.com"), null) }
+        }
+
         "createFromRequest with no userExternalIds skips addUsers" {
             val groupId = randomUUID()
             val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team F")

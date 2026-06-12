@@ -1,9 +1,7 @@
 package io.whozoss.agentos.aiProvider
 
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
-import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.chat.ChatModelFactory
@@ -24,6 +22,18 @@ class ChatModelFactoryUnitSpec : StringSpec({
             modelName = "gpt-4",
             temperature = 0.7,
             maxTokens = null,
+        )
+
+        model.shouldNotBeNull()
+        model.shouldBeInstanceOf<OpenAiChatModel>()
+    }
+
+    "createChatModel should create OpenAI chat model with null apiKey" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.OpenAI,
+            baseUrl = null,
+            apiKey = null,
+            modelName = "gpt-4",
         )
 
         model.shouldNotBeNull()
@@ -58,16 +68,28 @@ class ChatModelFactoryUnitSpec : StringSpec({
         model.shouldBeInstanceOf<GoogleGenAiChatModel>()
     }
 
-    "createChatModel should throw exception when API key is blank" {
-        val exception = shouldThrow<IllegalArgumentException> {
-            factory.createChatModel(
-                apiType = AiApiType.OpenAI,
-                baseUrl = null,
-                apiKey = null,
-                modelName = "gpt-4",
-            )
-        }
-        exception.message shouldContain "No API key"
+    "createChatModel vLLM with apiKey works normally" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.vLLM,
+            baseUrl = "http://localhost:8000",
+            apiKey = "sk-vllm-key",
+            modelName = "meta-llama/Llama-3-8b-instruct",
+        )
+
+        model.shouldNotBeNull()
+        model.shouldBeInstanceOf<OpenAiChatModel>()
+    }
+
+    "createChatModel vLLM without apiKey does not throw" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.vLLM,
+            baseUrl = "http://localhost:8000",
+            apiKey = null,
+            modelName = "meta-llama/Llama-3-8b-instruct",
+        )
+
+        model.shouldNotBeNull()
+        model.shouldBeInstanceOf<OpenAiChatModel>()
     }
 
     "createChatModel should use null temperature and fall back to default" {

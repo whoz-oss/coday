@@ -531,9 +531,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
+              $ref: "#/components/schemas/GroupsByExternalIdsRequest"
         required: true
       responses:
         "200":
@@ -987,6 +985,24 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/IntegrationConfig"
+  /api/feedbacks:
+    post:
+      tags:
+      - feedback-controller
+      operationId: createFeedback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
   /api/cases:
     post:
       tags:
@@ -1278,6 +1294,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/{id}/enable:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: enableAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/{id}/disable:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: disableAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
   /api/agent-configs/search:
     post:
       tags:
@@ -1507,6 +1561,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/feedbacks/by-parentId/{caseId}:
+    get:
+      tags:
+      - feedback-controller
+      operationId: listByCaseFeedback
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feedback"
+  /api/feedbacks/by-case-event/{caseEventId}:
+    get:
+      tags:
+      - feedback-controller
+      operationId: listByCaseEventFeedback
+      parameters:
+      - name: caseEventId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feedback"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -1744,7 +1840,7 @@ paths:
     get:
       tags:
       - agent-config-controller
-      operationId: listByParentAgentConfig
+      operationId: listByNamespaceAgentConfig
       parameters:
       - name: parentId
         in: path
@@ -1753,6 +1849,12 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: enabledOnly
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
       responses:
         "200":
           description: OK
@@ -1981,11 +2083,25 @@ components:
         updatedOn:
           type: string
           format: date-time
+        enabled:
+          type: boolean
       required:
       - createdOn
       - name
       - namespaceId
       - updatedOn
+    GroupsByExternalIdsRequest:
+      type: object
+      properties:
+        externalIds:
+          type: array
+          items:
+            type: string
+        namespaceId:
+          type: string
+          format: uuid
+      required:
+      - externalIds
     UserGroupSummary:
       type: object
       properties:
@@ -2159,6 +2275,62 @@ components:
       required:
       - namespaceRoles
       - userExternalId
+    FeedbackInput:
+      type: object
+      properties:
+        caseEventId:
+          type: string
+          format: uuid
+        positive:
+          type: boolean
+        type:
+          type: string
+          description: Optional category label. Ignored (cleared) when positive=true.
+        comment:
+          type: string
+          description: Optional free-text note. Ignored (cleared) when positive=true.
+      required:
+      - caseEventId
+      - positive
+    Feedback:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        caseId:
+          type: string
+          format: uuid
+        caseEventId:
+          type: string
+          format: uuid
+        positive:
+          type: boolean
+        type:
+          type: string
+        comment:
+          type: string
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - caseEventId
+      - caseId
+      - createdOn
+      - id
+      - namespaceId
+      - positive
+      - updatedOn
     AddMessageRequest:
       type: object
       properties:

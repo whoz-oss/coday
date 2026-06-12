@@ -40,6 +40,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withContext
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata
+import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import reactor.core.publisher.Flux
@@ -86,6 +90,24 @@ internal class TestRemoveTool(
     // The orchestrator invokes executeWithJson (parses JSON then calls execute) for the
     // post-confirmation path. onRejected: default returns "Action cancelled.".
 }
+
+/**
+ * Creates a Flux<ChatResponse> from text chunks, suitable for mocking .chatResponse().
+ * The last chunk carries finishReason="stop"; earlier chunks have null finishReason.
+ */
+fun chatResponseFlux(vararg chunks: String): Flux<ChatResponse> =
+    Flux.fromIterable(
+        chunks.mapIndexed { index, text ->
+            val isLast = index == chunks.size - 1
+            val metadata =
+                if (isLast) {
+                    ChatGenerationMetadata.builder().finishReason("stop").build()
+                } else {
+                    ChatGenerationMetadata.NULL
+                }
+            ChatResponse(listOf(Generation(AssistantMessage(text), metadata)))
+        },
+    )
 
 class AgentAdvancedSpec :
     StringSpec({
@@ -378,7 +400,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Here is ", "my answer.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Here is ", "my answer.")
             // detectUserLanguage makes a synchronous .call().content() — must be explicitly
             // mocked to avoid relying on relaxed-mock behaviour that can hang on some JDKs.
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns null
@@ -448,7 +470,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Loop stopped.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Loop stopped.")
 
             val readTool = mockk<StandardTool<String>>(relaxed = true)
             every { readTool.name } returns "FILES__ReadFile"
@@ -1112,7 +1134,7 @@ class AgentAdvancedSpec :
         ): Pair<AgentAdvancedContext, ChatClient> {
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { chatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.empty()
+            every { mockStreamSpec.chatResponse() } returns Flux.empty()
             val ctx =
                 AgentAdvancedContext(
                     chatClient = chatClient,
@@ -1934,7 +1956,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("ok")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
 
             // First call returns valid JSON; second call (generateFinalResponse) returns streaming
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"hello"}"""
@@ -2002,7 +2024,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("ok")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
 
             // First call returns invalid JSON, second returns valid JSON
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany
@@ -2077,7 +2099,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("done")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("done")
 
             // LLM correctly wraps JSON in <parameter> tags as instructed
             val response = """<parameter>{"entitiesId":["6790ca2213906f27c141a80b","698c66db04182c7fb1dbd119"]}</parameter>"""
@@ -2149,7 +2171,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("ok")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
 
             // All MAX_PARAMETER_RETRIES + 1 attempts return invalid JSON
             val invalidResponses = (1..AgentAdvanced.MAX_PARAMETER_ATTEMPTS).map { "not json attempt $it" }
@@ -2278,7 +2300,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("OK.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("OK.")
 
             // LLM calls: 1) enrichment phase JSON, 2) final params JSON
             every {
@@ -2376,7 +2398,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Done.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Done.")
             // Only ONE LLM call for params (no enrichment phase)
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
@@ -2475,7 +2497,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("OK.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("OK.")
             // LLM calls: 1) enrichment phase JSON (before enrich fails), 2) final params (fallback)
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
@@ -2596,7 +2618,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("OK.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("OK.")
             // LLM calls: 1) phase-0 JSON, 2) phase-1 JSON, 3) final params
             every {
                 mockChatClient.prompt(any<Prompt>()).call().content()
@@ -2693,7 +2715,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Forced stop.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Forced stop.")
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
             val mockTool = mockk<StandardTool<String>>(relaxed = true)
@@ -2764,7 +2786,7 @@ class AgentAdvancedSpec :
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Done.")
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("Done.")
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
             val mockTool = mockk<StandardTool<String>>(relaxed = true)
@@ -2866,6 +2888,56 @@ class AgentAdvancedSpec :
             val outcome = agent.handleRepetition(repetition = null)
 
             outcome shouldBe null
+        }
+
+        "detectToolRepetition returns null when tool responses from a previous turn fill the window (cross-turn false positive)" {
+            // Regression: before the fix, tool calls from a previous conversation turn
+            // were included in the window, causing a false repetition detection at the
+            // start of the next turn — even before the agent had called anything.
+            // The fix scopes detection to events after the last user MessageEvent.
+            val agent = makeParserAgent()
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val sameArgs = """{"profile":"A"}"""
+
+            // Previous turn: user message + REPETITION_WINDOW calls to the same tool
+            val previousUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User", ActorRole.USER),
+                content = listOf(MessageContent.Text("first turn")),
+            )
+            val previousTurnEvents = (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
+                listOf(
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "prev-req-$i",
+                        toolName = "SelectActiveProfile",
+                        args = sameArgs,
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "prev-req-$i",
+                        toolName = "SelectActiveProfile",
+                        output = MessageContent.Text("profile A selected"),
+                    ),
+                )
+            }
+
+            // New turn: new user message, no tool calls yet
+            val newUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor("user1", "User", ActorRole.USER),
+                content = listOf(MessageContent.Text("second turn")),
+            )
+
+            val events = listOf(previousUserMsg) + previousTurnEvents + listOf(newUserMsg)
+
+            // The window from the previous turn should NOT trigger detection in the new turn.
+            agent.detectToolRepetition(events) shouldBe null
         }
 
         "detectToolRepetition returns null when window contains a synthetic ToolResponseEvent" {
