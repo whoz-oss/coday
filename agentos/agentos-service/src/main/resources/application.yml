@@ -47,6 +47,11 @@ spring:
           model: claude-3-5-sonnet-20241022
           temperature: 0.7
     
+    ollama:
+      init:
+        # Prevent the Ollama starter from pulling models at startup.
+        # Model creation is managed exclusively by ChatModelFactory.
+        pull-model-strategy: never
     mcp:
       client:
         enabled: ${MCP_ENABLED:false}

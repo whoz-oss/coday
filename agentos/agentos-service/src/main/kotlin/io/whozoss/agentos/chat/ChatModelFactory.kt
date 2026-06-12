@@ -11,6 +11,11 @@ import org.springframework.ai.google.genai.GoogleGenAiChatModel
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions
 import org.springframework.ai.model.tool.DefaultToolCallingManager
 import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate
+import org.springframework.ai.ollama.OllamaChatModel
+import org.springframework.ai.ollama.api.OllamaApi
+import org.springframework.ai.ollama.api.OllamaChatOptions
+import org.springframework.ai.ollama.management.ModelManagementOptions
+import org.springframework.ai.ollama.management.PullModelStrategy
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.ai.openai.api.OpenAiApi
@@ -33,34 +38,54 @@ class ChatModelFactory(
     ): ChatModel {
         val resolvedApiKey = apiKey ?: ""
         return when (apiType) {
-            AiApiType.OpenAI -> createOpenAiModel(
-                baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
-                apiKey = resolvedApiKey,
-                model = modelName,
-                temp = temperature ?: DEFAULT_TEMPERATURE,
-                maxTokens = maxTokens,
-            )
-            AiApiType.vLLM -> createVllmModel(
-                baseUrl = baseUrl!!,
-                apiKey = resolvedApiKey,
-                model = modelName,
-                temp = temperature ?: DEFAULT_TEMPERATURE,
-                maxTokens = maxTokens,
-                headers = headers,
-            )
-            AiApiType.Anthropic -> createAnthropicModel(
-                baseUrl = baseUrl ?: ANTHROPIC_DEFAULT_BASE_URL,
-                apiKey = resolvedApiKey,
-                model = modelName,
-                temp = temperature ?: DEFAULT_TEMPERATURE,
-                maxTokens = maxTokens,
-            )
-            AiApiType.Gemini -> createGeminiModel(
-                apiKey = resolvedApiKey,
-                model = modelName,
-                temp = temperature ?: DEFAULT_TEMPERATURE,
-                maxTokens = maxTokens,
-            )
+            AiApiType.OpenAI -> {
+                createOpenAiModel(
+                    baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
+                    apiKey = resolvedApiKey,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
+                )
+            }
+
+            AiApiType.vLLM -> {
+                createVllmModel(
+                    baseUrl = baseUrl!!,
+                    apiKey = resolvedApiKey,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
+                    headers = headers,
+                )
+            }
+
+            AiApiType.Anthropic -> {
+                createAnthropicModel(
+                    baseUrl = baseUrl ?: ANTHROPIC_DEFAULT_BASE_URL,
+                    apiKey = resolvedApiKey,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
+                )
+            }
+
+            AiApiType.Gemini -> {
+                createGeminiModel(
+                    apiKey = resolvedApiKey,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
+                )
+            }
+
+            AiApiType.Ollama -> {
+                createOllamaModel(
+                    baseUrl = baseUrl ?: OLLAMA_DEFAULT_BASE_URL,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
+                )
+            }
         }
     }
 
@@ -192,9 +217,41 @@ class ChatModelFactory(
         )
     }
 
+    private fun createOllamaModel(
+        baseUrl: String,
+        model: String,
+        temp: Double,
+        maxTokens: Int?,
+    ): ChatModel {
+        val api = OllamaApi.builder().baseUrl(baseUrl).build()
+
+        val optionsBuilder =
+            OllamaChatOptions
+                .builder()
+                .model(model)
+                .temperature(temp)
+        if (maxTokens != null) {
+            optionsBuilder.numPredict(maxTokens)
+        }
+        optionsBuilder.disableThinking()
+        val options = optionsBuilder.build()
+
+        return OllamaChatModel(
+            api,
+            options,
+            DefaultToolCallingManager.builder().build(),
+            observationRegistry,
+            ModelManagementOptions
+                .builder()
+                .pullModelStrategy(PullModelStrategy.NEVER)
+                .build(),
+        )
+    }
+
     companion object {
         private const val DEFAULT_TEMPERATURE = 1.0
         private const val OPENAI_DEFAULT_BASE_URL = "https://api.openai.com"
         private const val ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
+        private const val OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
     }
 }

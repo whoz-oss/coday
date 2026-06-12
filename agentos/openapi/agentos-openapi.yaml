@@ -1998,6 +1998,7 @@ components:
           - Anthropic
           - Gemini
           - vLLM
+          - Ollama
         baseUrl:
           type: string
         apiKey:
