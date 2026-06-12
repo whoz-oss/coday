@@ -10,18 +10,19 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     /**
      * Find non-removed agent configs belonging to a namespace, ordered by name.
      *
-     * When [enabledOnly] is true, only published agents are returned.
+     * When [withDisabled] is `true` (the default), all active configs are returned.
+     * When [withDisabled] is `false`, only published (enabled) agents are returned.
      */
     @Query(
         $$"""
             MATCH (a:AgentConfig)
             WHERE a.namespaceId = $namespaceId
               AND NOT COALESCE(a.removed, false)
-              AND (NOT $enabledOnly OR a.enabled)
+              AND ($withDisabled OR a.enabled)
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String, enabledOnly: Boolean = false): List<AgentConfigNode>
+    fun findActiveByNamespaceId(namespaceId: String, withDisabled: Boolean = true): List<AgentConfigNode>
 
 
     /**
