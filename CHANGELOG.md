@@ -1,3 +1,14 @@
+## 0.180.1 (2026-06-12)
+
+### 🚀 Features
+
+- **wz-32370:** save intermediate steps parameter generation results ([#988](https://github.com/whoz-oss/coday/pull/988))
+
+### ❤️ Thank You
+
+- vincent.couturier @vincent-couturier-whoz
+- Yannick Bridé @yannick-bride-whoz
+
 ## 0.180.0 (2026-06-11)
 
 ### 🚀 Features
