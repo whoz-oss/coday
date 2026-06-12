@@ -5,4 +5,5 @@ enum class AiApiType {
     Anthropic,
     Gemini,
     vLLM,
+    Ollama,
 }
