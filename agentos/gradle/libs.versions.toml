@@ -48,8 +48,8 @@ logstashLogbackEncoder = "8.1"
 okhttp = "4.12.0"
 
 # AgentOS modules versions
-agentosSdk = "0.176.0"
-agentosService = "0.176.0"
+agentosSdk = "0.180.0"
+agentosService = "0.180.0"
 
 [libraries]
 # Kotlin
@@ -60,6 +60,7 @@ kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
 # Kotlin Coroutines
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinCoroutines" }
 kotlinx-coroutines-reactive = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactive", version.ref = "kotlinCoroutines" }
+kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "kotlinCoroutines" }
 
 # PF4J Plugin Framework
 pf4j = { module = "org.pf4j:pf4j", version.ref = "pf4j" }
@@ -140,7 +141,7 @@ spring-dependency-management = { id = "io.spring.dependency-management", version
 [bundles]
 jackson = ["jackson-annotations", "jackson-core", "jackson-databind", "jackson-dataformat-yaml", "jackson-module-kotlin"]
 kotlin-common = ["kotlin-stdlib", "kotlin-reflect"]
-kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive"]
+kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive", "kotlinx-coroutines-reactor"]
 spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-openai", "spring-ai-mcp-client"]
 okhttp = ["okhttp", "okhttp-logging-interceptor"]
 testing-common = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "mockk"]

@@ -62,11 +62,12 @@ open class Neo4jUserGroupRepository(
                 WHERE $whereClause
                 OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
                   WHERE NOT COALESCE(a.removed, false)
-                OPTIONAL MATCH (u:User)-[:MEMBER]->(g)
+                OPTIONAL MATCH (u:User)-[:MEMBER|ADMIN]->(g)
                   WHERE NOT COALESCE(u.removed, false)
-                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
+                       g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
                 ORDER BY g.name ASC
-            """,
+            """.trimIndent(),
         ).bind(paramValue)
         .to(paramName)
         .fetchAs(UserGroupSearchResult::class.java)
@@ -106,19 +107,38 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
-    override fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>> {
+    /**
+     * Returns groups for the given user external IDs, optionally scoped to a namespace.
+     *
+     * When [namespaceId] is null, groups from all namespaces are returned.
+     * When [namespaceId] is provided, the Cypher query adds an extra predicate
+     * `AND g.namespaceId = $$namespaceId` to scope results to a single federation.
+     */
+    override fun findGroupsByUserExternalIds(
+        externalIds: Collection<String>,
+        namespaceId: UUID?,
+    ): Map<String, List<UserGroupSummary>> {
         if (externalIds.isEmpty()) return emptyMap()
+        val params = mutableMapOf<String, Any>("externalIds" to externalIds.toList())
+        val namespaceClause: String
+        if (namespaceId != null) {
+            params["namespaceId"] = namespaceId.toString()
+            namespaceClause = $$"AND g.namespaceId = $namespaceId"
+        } else {
+            namespaceClause = ""
+        }
+        val query = $$"""
+            MATCH (u:User)-[:MEMBER]->(g:UserGroup)
+            WHERE u.externalId IN $externalIds
+              AND NOT COALESCE(g.removed, false)
+              AND NOT COALESCE(u.removed, false)
+              $$namespaceClause
+            RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
+            ORDER BY u.externalId ASC, g.name ASC
+        """.trimIndent()
         return neo4jClient
-            .query(
-                $$"""
-                    MATCH (u:User)-[:MEMBER]->(g:UserGroup)
-                    WHERE u.externalId IN $externalIds
-                      AND NOT COALESCE(g.removed, false)
-                      AND NOT COALESCE(u.removed, false)
-                    RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
-                    ORDER BY u.externalId ASC, g.name ASC
-                """.trimIndent(),
-            ).bindAll(mapOf("externalIds" to externalIds.toList()))
+            .query(query)
+            .bindAll(params)
             .fetchAs(UserExternalIdGroupRow::class.java)
             .mappedBy { _, record ->
                 UserExternalIdGroupRow(

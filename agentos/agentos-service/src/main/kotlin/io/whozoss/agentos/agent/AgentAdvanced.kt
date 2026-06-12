@@ -240,30 +240,38 @@ class AgentAdvanced(
 
     /**
      * Counts the maximum repetition of any (toolName, args) pair within the last
-     * [REPETITION_WINDOW] tool responses.
+     * [REPETITION_WINDOW] tool responses **of the current turn**.
      *
-     * Returns `null` when the window is not yet full or when it contains a synthetic
-     * [ToolResponseEvent] from a confirmation resolution (user-validated, not a loop).
-     * No threshold comparison is done here — that is [handleRepetition]'s job.
+     * "Current turn" means events strictly after the last user [MessageEvent] in the
+     * history. This prevents tool calls from previous conversation turns from being
+     * mistaken for an ongoing loop when the agent is reloaded with full case history.
+     *
+     * Returns `null` when the current-turn window is not yet full or when it contains
+     * a synthetic [ToolResponseEvent] from a confirmation resolution (user-validated,
+     * not a loop). No threshold comparison is done here — that is [handleRepetition]'s job.
      */
     internal fun detectToolRepetition(events: List<CaseEvent>): ToolRepetition? {
+        // Scope detection to the current turn only: events after the last user message.
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val currentTurnEvents = if (lastUserMessageIndex >= 0) events.drop(lastUserMessageIndex + 1) else events
+
         val resolvedPendingIds =
-            events
+            currentTurnEvents
                 .filterIsInstance<ConfirmationResolvedEvent>()
                 .mapTo(mutableSetOf()) { it.pendingEventId }
         val syntheticToolRequestIds =
-            events
+            currentTurnEvents
                 .filterIsInstance<PendingConfirmationEvent>()
                 .filter { it.metadata.id in resolvedPendingIds }
                 .mapTo(mutableSetOf()) { it.toolRequestId }
 
         val argsByRequestId =
-            events
+            currentTurnEvents
                 .filterIsInstance<ToolRequestEvent>()
                 .associate { it.toolRequestId to (it.args?.trim() ?: "") }
 
         val window =
-            events
+            currentTurnEvents
                 .filterIsInstance<ToolResponseEvent>()
                 .takeLast(REPETITION_WINDOW)
 

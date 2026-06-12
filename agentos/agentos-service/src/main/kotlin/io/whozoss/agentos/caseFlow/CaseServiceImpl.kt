@@ -531,7 +531,17 @@ class CaseServiceImpl(
     }
 
     companion object : KLogging() {
-        /** Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`. */
-        private val MENTION_REGEX = """^@(\S+)""".toRegex()
+        /**
+         * Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`.
+         *
+         * Agent names may contain letters, digits, hyphens and underscores only.
+         * Using `\S+` was too broad: a message like `@inspector https://...` would
+         * capture the entire `inspector https://...` string when the separator is a
+         * non-breaking space (U+00A0) or any other non-ASCII whitespace character,
+         * because `\S` in Java/Kotlin regex only excludes ASCII whitespace by default.
+         * The tighter character class `[\w-]+` stops at the first space-like or
+         * special character, ensuring only the agent name token is captured.
+         */
+        private val MENTION_REGEX = """^@([\w-]+)""".toRegex()
     }
 }

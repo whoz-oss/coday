@@ -207,19 +207,36 @@ class UserController(
         return userService.findByExternalIds(externalIds.toSet()).map(::toResource)
     }
 
-    /** POST /api/users/groups-by-external-ids — return groups per user, filtered to groups visible to the caller. */
+    /**
+     * POST /api/users/groups-by-external-ids — return groups per user, filtered to groups visible to the caller.
+     *
+     * Accepts an optional [GroupsByExternalIdsRequest.namespaceId] to scope results to a single namespace.
+     * When omitted, groups from all namespaces are returned.
+     */
     @PostMapping("/groups-by-external-ids")
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("isAuthenticated()")
     fun getGroupsByExternalIds(
-        @RequestBody externalIds: List<String>,
+        @RequestBody request: GroupsByExternalIdsRequest,
     ): Map<String, List<UserGroupSummaryResource>> {
-        if (externalIds.isEmpty()) return emptyMap()
+        if (request.externalIds.isEmpty()) return emptyMap()
         val currentUser = userService.getCurrentUser()
         return userGroupService
-            .findGroupsByUserExternalIdsVisibleToUser(externalIds, currentUser)
+            .findGroupsByUserExternalIdsVisibleToUser(request.externalIds, currentUser, request.namespaceId)
             .mapValues { (_, groups) -> groups.map { it.toResource() } }
     }
 
     companion object : KLogging()
 }
+
+/**
+ * Request body for `POST /api/users/groups-by-external-ids`.
+ *
+ * @param externalIds List of user external IDs (identity-provider keys) to look up.
+ * @param namespaceId Optional namespace UUID to scope results to a single federation.
+ *   When null, groups from all namespaces are returned.
+ */
+data class GroupsByExternalIdsRequest(
+    val externalIds: List<String>,
+    val namespaceId: UUID? = null,
+)

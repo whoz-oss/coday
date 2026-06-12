@@ -102,4 +102,34 @@ interface ToolPlugin : ExtensionPoint {
         configName: String? = null,
         context: ToolContext? = null,
     ): List<StandardTool<*>>
+
+    /**
+     * Optionally contribute a dynamic, runtime description of this integration instance
+     * to the namespace-level system prompt.
+     *
+     * Called once per [IntegrationConfig] when building the namespace system prompt so
+     * the agent receives an up-to-date description of what this integration provides
+     * within the current namespace. Because some integrations are remote (e.g. fetching
+     * workspace info from an external API), this method is `suspend` and may perform
+     * async I/O.
+     *
+     * When this method returns `null`, nothing is appended for this integration config.
+     *
+     * Implementations should be resilient: catch exceptions internally and return `null`
+     * rather than letting errors propagate — a missing dynamic description is non-fatal.
+     *
+     * The default implementation returns `null` (no contribution), preserving binary
+     * compatibility with existing plugin JARs.
+     *
+     * @param config Parsed JSON parameters from the persisted IntegrationConfig,
+     *               or null if no configuration is available.
+     * @param configName The name of the IntegrationConfig being described.
+     * @param context Resolution context (namespaceId, userId, caseEvents).
+     * @return A description string to append to the namespace system prompt, or null.
+     */
+    suspend fun describeNamespace(
+        config: JsonNode?,
+        configName: String?,
+        context: ToolContext?,
+    ): String? = null
 }
