@@ -1,3 +1,13 @@
+## 0.180.2 (2026-06-12)
+
+### 🚀 Features
+
+- **agentos:** add ollama ai provider to allow offline tests #32370 ([#1003](https://github.com/whoz-oss/coday/pull/1003), [#32370](https://github.com/whoz-oss/coday/issues/32370))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.180.1 (2026-06-12)
 
 ### 🚀 Features
