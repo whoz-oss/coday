@@ -2366,6 +2366,25 @@ components:
       - resultText
       - timestamp
       - type
+    EnrichmentPhaseTrace:
+      type: object
+      properties:
+        phaseIndex:
+          type: integer
+          format: int32
+        prompt:
+          type: string
+        llmOutput:
+          type: string
+        enrichmentContent:
+          type: string
+        success:
+          type: boolean
+      required:
+      - llmOutput
+      - phaseIndex
+      - prompt
+      - success
     EntityMetadata:
       type: object
       properties:
@@ -2571,6 +2590,10 @@ components:
         properties:
           args:
             type: string
+          enrichmentPhases:
+            type: array
+            items:
+              $ref: "#/components/schemas/EnrichmentPhaseTrace"
           toolName:
             type: string
           toolRequestId:

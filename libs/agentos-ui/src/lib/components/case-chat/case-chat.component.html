@@ -27,7 +27,11 @@
             <p class="case-chat__message-text">{{ item.text }}</p>
           </div>
         } @else if (item.kind === 'technical') {
-          <div class="case-chat__technical" [class.case-chat__technical--warn]="item.item.type === 'WarnEvent'">
+          <div
+            class="case-chat__technical"
+            [class.case-chat__technical--warn]="item.item.type === 'WarnEvent'"
+            [class.case-chat__technical--error]="item.item.type === 'ErrorEvent'"
+          >
             @if (item.item.detail) {
               <button
                 type="button"
