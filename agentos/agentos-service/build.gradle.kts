@@ -133,55 +133,25 @@ dependencies {
     // Neo4j persistence (Bolt-based, for server/container deployments)
     implementation(libs.spring.boot.starter.data.neo4j)
 
-    // Netty 4.2.x — explicit direct dependency to override Spring Boot BOM's 4.1.x pin.
-    // Neo4j 2026.x BoltServer requires MultiThreadIoEventLoopGroup and KQueueIoHandler
-    // which were introduced in Netty 4.2.x. Spring Boot BOM pins 4.1.x; without an
-    // explicit direct dependency IntelliJ's run configuration classpath uses 4.1.x
-    // regardless of resolutionStrategy rules (which only apply to Gradle's own resolution).
-    // Declaring these as direct runtime dependencies ensures IntelliJ picks up 4.2.x
-    // after a Gradle sync, with no VM option workarounds needed.
-    runtimeOnly("io.netty:netty-transport-classes-epoll:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-transport-classes-kqueue:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-common:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-buffer:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-transport:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-handler:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-codec:${libs.versions.netty.get()}")
-    runtimeOnly("io.netty:netty-resolver:${libs.versions.netty.get()}")
+    // Neo4j Migrations — Flyway-equivalent for Neo4j.
+    // Applies versioned .cypher files from classpath:neo4j/migrations/ at startup.
+    // Replaces the manual Neo4jSchemaInitializer ApplicationRunner.
+    implementation(libs.neo4j.migrations.spring.boot.starter)
 
     // Neo4j embedded engine (Community Edition)
-    // Included as optional runtime — only activated when agentos.persistence.mode=embedded-neo4j.
+    // Activated when agentos.persistence.mode=embedded-neo4j.
+    // Version 5.26.x is aligned with the production server (neo4j:5.26-community),
+    // so Spring Boot's managed driver (5.28.9) is compatible with both.
     // The embedded engine starts an in-process Neo4j instance and exposes a Bolt port;
     // Spring Data Neo4j connects to it identically to a standalone server.
-    // This eliminates the Docker prerequisite for local single-user deployments.
-    //
-    // Exclusions:
-    // - slf4j-nop: Neo4j 2026.x pulls in a competing SLF4J binding that shadows Logback,
-    //   causing Spring Boot's LogbackLoggingSystem to fail with NOPLoggerFactory.
-    //   Spring Boot's own Logback binding (via spring-boot-starter-logging) must win.
-    // - neo4j-java-driver: Neo4j 2026.x requests driver 6.x; Spring Boot BOM pins 5.28.9.
-    //   We let Spring Boot win to avoid two versions of the driver on the classpath.
     implementation(libs.neo4j.embedded) {
-        // ── Logging ─────────────────────────────────────────────────────────────
-        // Neo4j 2026.x ships two competing logging artifacts:
-        //
-        // 1. org.slf4j:slf4j-api — a second copy of the SLF4J API JAR.
-        //    Having two copies causes SLF4J's ServiceLoader to see duplicate
-        //    providers and bind to NOPLoggerFactory before Logback can register.
-        //    Fix: exclude the whole org.slf4j group; Spring Boot owns that copy.
+        // Neo4j ships org.slf4j:slf4j-api as a transitive dependency, creating a duplicate
+        // SLF4J API JAR that causes the ServiceLoader to bind NOPLoggerFactory before Logback.
+        // Exclude the whole org.slf4j group; Spring Boot's Logback binding must win.
         exclude(group = "org.slf4j")
-        //
-        // 2. org.neo4j:neo4j-slf4j-provider is excluded globally via configurations.all
-        //    below, which ensures it is removed from ALL configurations including
-        //    IntelliJ's module classpath after Gradle sync.
-        //
-        // Also exclude any log4j→SLF4J bridges Neo4j may pull in transitively.
+        // Exclude log4j→SLF4J bridges that Neo4j may pull in transitively.
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j-impl")
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
-        // ── Driver ──────────────────────────────────────────────────────────────
-        // Neo4j 2026.x requests driver 6.x; Spring Boot BOM pins 5.28.9.
-        // Exclude to let Spring Boot's version win and avoid two driver versions.
-        exclude(group = "org.neo4j.driver", module = "neo4j-java-driver")
     }
 
     // Test dependencies
@@ -194,15 +164,14 @@ dependencies {
     testImplementation(libs.testcontainers.neo4j)
     testImplementation(libs.testcontainers.junit)
     // Neo4j test harness: starts an embedded Neo4j in-process for testing.
-    // neo4j-harness 2026.x requires Netty 4.2.x (BoltServer uses 4.2 APIs).
-    // Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict resolution selects
-    // by default, causing NoClassDefFoundError at BoltServer startup.
-    // We force Netty 4.2.x on the testRuntimeClasspath via a constraint below.
+    // Version 5.26.x is compatible with Spring Boot's managed Netty 4.1.x — no version override needed.
     testImplementation(libs.neo4j.harness) {
         exclude(group = "org.slf4j")
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j-impl")
         exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
     }
+    // Note: no Netty version override needed — neo4j 5.26.x is compatible with
+    // Spring Boot's managed Netty 4.1.x.
 
     // DevTools causes classloader issues with PF4J plugins - DISABLED
     // developmentOnly("org.springframework.boot:spring-boot-devtools")
@@ -249,58 +218,12 @@ tasks.withType<Test> {
     jvmArgs("-XX:-OmitStackTraceInFastThrow")
 }
 
-// Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
-// as an SLF4J service provider. When it wins the ServiceLoader race over Logback,
-// Spring Boot's LogbackLoggingSystem fails with:
-//   "LoggerFactory is not a Logback LoggerContext"
-// Excluding it from the individual neo4j-embedded dependency declaration is not
-// always sufficient (IntelliJ may resolve a stale classpath). This global exclusion
-// across ALL configurations guarantees it never appears regardless of how the
-// classpath is assembled.
+// Neo4j ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge as an SLF4J
+// service provider. When it wins the ServiceLoader race over Logback, Spring Boot's
+// LogbackLoggingSystem fails with "LoggerFactory is not a Logback LoggerContext".
+// This global exclusion guarantees it never appears on any classpath configuration.
 configurations.all {
     exclude(group = "org.neo4j", module = "neo4j-slf4j-provider")
-}
-
-// Neo4j 2026.x (embedded engine) requires Netty 4.2.x for BoltServer.
-// Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict resolution selects by
-// default (lower version wins). Force the core Netty transport modules to 4.2.x
-// across ALL configurations — runtime, test, and IntelliJ's module classpath.
-//
-// Excluded from forcing:
-// - netty-tcnative-* : native TLS helper — only published for specific 4.1.x builds;
-//   forcing 4.2.x causes a resolution failure (artifact does not exist on Maven Central).
-//
-// Spring Boot's HTTP stack uses spring-boot-starter-web (Tomcat), NOT Reactor Netty.
-// Reactor Netty is not on this module's runtime classpath, so this upgrade is safe.
-val nettyCoreModules =
-    setOf(
-        "netty-common",
-        "netty-buffer",
-        "netty-transport",
-        "netty-transport-native-epoll",
-        "netty-transport-native-kqueue",
-        "netty-transport-native-unix-common",
-        // netty-transport-classes-* contain the platform-specific IoHandler classes
-        // (e.g. KQueueIoHandler, EpollIoHandler, MultiThreadIoEventLoopGroup)
-        // introduced in Netty 4.2.x. BoltServer references these at init time.
-        "netty-transport-classes-epoll",
-        "netty-transport-classes-kqueue",
-        "netty-handler",
-        "netty-handler-proxy",
-        "netty-codec",
-        "netty-codec-http",
-        "netty-codec-http2",
-        "netty-codec-socks",
-        "netty-resolver",
-        "netty-resolver-dns",
-    )
-configurations.all {
-    resolutionStrategy.eachDependency {
-        if (requested.group == "io.netty" && requested.name in nettyCoreModules) {
-            useVersion(libs.versions.netty.get())
-            because("neo4j-embedded 2026.x requires Netty 4.2.x; Spring Boot BOM pins 4.1.x")
-        }
-    }
 }
 
 // Configure the bootJar task
