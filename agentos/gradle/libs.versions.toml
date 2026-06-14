@@ -3,7 +3,6 @@
 
 [versions]
 # JDK toolchain version: the JDK used to compile and run.
-# Must be >= 21 for org.neo4j:neo4j:2026.x (embedded engine).
 java = "25"
 # Kotlin bytecode target: the JVM class file level Kotlin emits.
 # Kotlin 2.3.x supports JVM target 25 natively.
@@ -24,11 +23,11 @@ klogger = "2.0.4"
 springdoc = "2.8.9"
 springdocPlugin = "1.9.0"
 neo4j = "5.26.5"
-# Calendar-versioned release line — keep neo4jTestcontainers in Neo4jContainerSupport.NEO4J_IMAGE in sync
-neo4jEmbedded = "2026.02.2"
-# Netty version required by neo4j-embedded 2026.x / neo4j-harness 2026.x (BoltServer).
-# Spring Boot BOM pins 4.1.x; we force 4.2.x on testRuntimeClasspath only.
-netty = "4.2.9.Final"
+# Keep neo4jEmbedded aligned with the production Neo4j server version (docker-compose.yml neo4j:5.26-community).
+# Both embedded and server run 5.26.x, so Spring Boot's managed driver (5.28.9) is compatible with both.
+neo4jEmbedded = "5.26.5"
+# Neo4j Migrations — Flyway-equivalent for Neo4j (versioned .cypher files applied at startup)
+neo4jMigrations = "2.17.1"
 testcontainers = "1.20.4"
 # Spring Cloud — Northfields release train, compatible with Spring Boot 3.5.x
 springCloud = "2025.0.1"
@@ -109,13 +108,16 @@ jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-
 # Neo4j
 spring-boot-starter-data-neo4j = { module = "org.springframework.boot:spring-boot-starter-data-neo4j" }
 neo4j-java-driver = { module = "org.neo4j.driver:neo4j-java-driver" }
-# Neo4j embedded engine (Community Edition) — for zero-Docker local deployment
-# Version 2026.x uses calendar versioning; keep aligned with the Bolt protocol
-# supported by neo4j-java-driver managed by Spring Boot.
+# Neo4j embedded engine (Community Edition) — for zero-Docker local deployment.
+# Version aligned with the production server (neo4j:5.26-community) so embedded and server
+# share the same Bolt protocol version and Spring Boot's managed driver (5.28.9) covers both.
 neo4j-embedded = { module = "org.neo4j:neo4j", version.ref = "neo4jEmbedded" }
 
-# Neo4j test harness — in-process embedded Neo4j without Bolt/Netty for unit/integration tests
+# Neo4j test harness — in-process embedded Neo4j for integration tests
 neo4j-harness = { module = "org.neo4j.test:neo4j-harness", version.ref = "neo4jEmbedded" }
+
+# Neo4j Migrations Spring Boot Starter — applies versioned .cypher files from classpath:neo4j/migrations/ at startup
+neo4j-migrations-spring-boot-starter = { module = "eu.michael-simons.neo4j:neo4j-migrations-spring-boot-starter", version.ref = "neo4jMigrations" }
 
 # Testcontainers
 testcontainers-neo4j = { module = "org.testcontainers:neo4j", version.ref = "testcontainers" }
