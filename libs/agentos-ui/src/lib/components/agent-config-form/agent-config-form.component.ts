@@ -226,6 +226,12 @@ export class AgentConfigFormComponent implements OnInit {
 
     const payload: AgentConfig = {
       ...(this.existingConfig ?? {}),
+      // `createdOn` / `updatedOn` are server-managed timestamps — omit them in the FE
+      // payload; the backend ignores them on create and preserves them on update.
+      // Cast needed because the generated model marks them as required (non-optional)
+      // but the backend does not require them in the request body.
+      createdOn: this.existingConfig?.createdOn as string,
+      updatedOn: this.existingConfig?.updatedOn as string,
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
       description: this.descriptionControl.value?.trim() || undefined,
