@@ -23,6 +23,17 @@ class InMemoryIntegrationConfigRepository : IntegrationConfigRepository {
     override fun findPlatform(): List<IntegrationConfig> =
         delegate.findAll().filter { it.namespaceId == null && it.userId == null }
 
+    override fun findAllByNamesForNamespaceIdAndUserId(
+        names: List<String>,
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig> =
+        delegate.findAll().filter { config ->
+            config.name in names &&
+                (config.namespaceId == null || config.namespaceId == namespaceId) &&
+                (config.userId == null || config.userId == userId)
+        }
+
     override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,

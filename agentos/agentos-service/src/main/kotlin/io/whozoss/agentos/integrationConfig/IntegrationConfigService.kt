@@ -42,6 +42,12 @@ interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, Con
      */
     fun findByUserId(userId: UUID): List<IntegrationConfig>
 
+    fun findAllByNamesForNamespaceIdAndUserId(
+        names: List<String>,
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig>
+
     /**
      * Find all non-removed [IntegrationConfig] scoped to the given namespace AND with
      * [IntegrationConfig.userId] = null (namespace-shared layer of the 3-tier reconciliation).

@@ -78,32 +78,74 @@ class IntegrationConfigServiceImpl(
 
     override fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig> = repository.findByParent(namespaceId)
 
+    override fun findEffective(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig> {
+        // Accumulate layers from lowest to highest precedence. Each layer overwrites the
+        // previous entry for the same name, so the last write wins per name.
+        val byName = mutableMapOf<String, IntegrationConfig>()
+
+        // Layer 1 — platform (always)
+        repository.findPlatform().forEach { byName[it.name] = it }
+
+        // Layer 2 — namespace-shared
+        if (namespaceId != null) {
+            repository.findByParent(namespaceId).forEach { byName[it.name] = it }
+        }
+
+        // Layers 3 & 4 — user overlays (user-global then user×namespace, in order so
+        // user×namespace wins over user-global for the same name)
+        if (userId != null) {
+            repository
+                .findByUserId(userId)
+                .filter { it.namespaceId == null || it.namespaceId == namespaceId }
+                .sortedBy { if (it.namespaceId == null) 0 else 1 } // user-global first, then user×ns
+                .forEach { byName[it.name] = it }
+        }
+
+        return byName.values.toList()
+    }
+
     override fun findFiltered(
         namespaceId: UUID?,
         namespaceIsNone: Boolean,
         callerId: UUID,
         userRequested: Boolean,
         canReadNamespace: (UUID) -> Boolean,
-    ): List<IntegrationConfig> = when {
-        // NS-shared layer of a specific namespace (no userId param) : check READ permission
-        namespaceId != null && !userRequested -> {
-            if (!canReadNamespace(namespaceId)) emptyList()
-            else findByNamespaceShared(namespaceId)
-        }
-
-        // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
-        userRequested -> {
-            val nsFilter: (UUID?) -> Boolean = when {
-                namespaceIsNone -> { nsId -> nsId == null }
-                namespaceId != null -> { nsId -> nsId == namespaceId }
-                else -> { _ -> true }
+    ): List<IntegrationConfig> =
+        when {
+            // NS-shared layer of a specific namespace (no userId param) : check READ permission
+            namespaceId != null && !userRequested -> {
+                if (!canReadNamespace(namespaceId)) {
+                    emptyList()
+                } else {
+                    findByNamespaceShared(namespaceId)
+                }
             }
-            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+
+            // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
+            userRequested -> {
+                val nsFilter: (UUID?) -> Boolean =
+                    when {
+                        namespaceIsNone -> { nsId -> nsId == null }
+                        namespaceId != null -> { nsId -> nsId == namespaceId }
+                        else -> { _ -> true }
+                    }
+                findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+            }
+
+            // No filter at all : surface the caller's own overlays
+            else -> {
+                findByUserId(callerId)
+            }
         }
 
-        // No filter at all : surface the caller's own overlays
-        else -> findByUserId(callerId)
-    }
+    override fun findAllByNamesForNamespaceIdAndUserId(
+        names: List<String>,
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig> = repository.findAllByNamesForNamespaceIdAndUserId(names, namespaceId, userId)
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
