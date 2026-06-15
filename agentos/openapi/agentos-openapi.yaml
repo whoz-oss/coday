@@ -2381,6 +2381,10 @@ components:
             format: uuid
           agentName:
             type: string
+          llmModel:
+            type: string
+          llmProvider:
+            type: string
       required:
       - agentId
       - agentName
