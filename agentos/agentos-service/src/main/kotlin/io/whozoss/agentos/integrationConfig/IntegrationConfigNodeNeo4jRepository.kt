@@ -49,7 +49,7 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
      * is needed — a plain label scan filtered on the scalar properties is sufficient.
      */
     @Query(
-        $"""MATCH (c:IntegrationConfig)
+        $$"""MATCH (c:IntegrationConfig)
             WHERE c.namespaceId IS NULL AND c.userId IS NULL
             AND (c.removed IS NULL OR c.removed = false)
             RETURN c ORDER BY c.name ASC
