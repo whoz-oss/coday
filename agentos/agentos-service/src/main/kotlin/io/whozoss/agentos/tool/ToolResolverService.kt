@@ -63,7 +63,7 @@ class ToolResolverService(
             }
     }
 
-    private fun resolveConfigs(
+    internal fun resolveConfigs(
         integrationConfigNames: List<String>,
         context: ToolContext,
     ): List<IntegrationConfig> =
@@ -74,8 +74,9 @@ class ToolResolverService(
                 userId = context.userId,
             ).groupBy { it.name }
             .mapNotNull { (_, configs) ->
-                configs.sortedBy { it.getPriority() }.fold(
-                    initial = configs.first(),
+                val sorted = configs.sortedBy { it.getPriority() }
+                sorted.drop(1).fold(
+                    initial = sorted.first(),
                 ) { base, override -> mergeStrategy.merge(base, override) }
             }
 
