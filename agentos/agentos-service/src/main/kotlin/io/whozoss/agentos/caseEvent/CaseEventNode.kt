@@ -122,6 +122,10 @@ class AgentRunningEventNode(
     timestamp: Instant,
     val agentId: String,
     val agentName: String,
+    /** LLM provider name (e.g. "anthropic"), null for nodes predating this field. */
+    val llmProvider: String? = null,
+    /** LLM model API name (e.g. "claude-haiku-4-5"), null for nodes predating this field. */
+    val llmModel: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

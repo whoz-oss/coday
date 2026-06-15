@@ -38,6 +38,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @param isAgentAuthorized defensive check called when [processNextStep] encounters an
  *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
  *   is accessible to the current user. Called at redirect time — not pre-computed.
+ * @param resolveAgentLlmInfo resolves the LLM provider and model names for a given agent
+ *   name and user, called just before emitting [AgentRunningEvent] so the event can carry
+ *   observability metadata. Returns a [Pair] of (llmProvider, llmModel), or null on failure
+ *   (the event is emitted with null fields rather than blocking execution).
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. Error handling is the
  *   responsibility of the service implementation.
@@ -49,6 +53,7 @@ class CaseRuntime(
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
     private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
+    private val resolveAgentLlmInfo: suspend (agentName: String, userId: UUID?) -> Pair<String?, String?>?,
     private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
@@ -321,12 +326,17 @@ class CaseRuntime(
                         interruptRequested.set(true)
                         return
                     }
+                    val llmInfo = runCatching { resolveAgentLlmInfo(event.agentName, userId) }
+                        .onFailure { logger.warn(it) { "[CaseRuntime $id] Could not resolve LLM info for agent '${event.agentName}'" } }
+                        .getOrNull()
                     storeAndEmitEvent(
                         AgentRunningEvent(
                             namespaceId = namespaceId,
                             caseId = id,
                             agentId = event.agentId,
                             agentName = event.agentName,
+                            llmProvider = llmInfo?.first,
+                            llmModel = llmInfo?.second,
                         ),
                     )
                     return

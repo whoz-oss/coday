@@ -152,6 +152,15 @@ class CaseServiceImpl(
                             agentName = agentName,
                         ).isNotEmpty()
             },
+            resolveAgentLlmInfo = { agentName, userId ->
+                val context = AgentExecutionContext(
+                    namespaceId = case.namespaceId,
+                    caseId = case.id,
+                    userId = userId,
+                )
+                val definition = agentService.resolveDefinitionByName(agentName, context)
+                definition.resolvedProviderName to definition.resolvedModelApiName
+            },
             runAgent = { agentName, events, eventsProvider, userId, shouldContinue ->
                 runAgent(
                     agentName,

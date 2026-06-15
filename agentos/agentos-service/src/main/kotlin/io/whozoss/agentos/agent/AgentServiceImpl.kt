@@ -46,6 +46,19 @@ class AgentServiceImpl(
     private val objectMapper: ObjectMapper,
     private val toolRegistryService: ToolRegistryService,
 ) : AgentService {
+    override suspend fun resolveDefinitionByName(
+        agentName: String,
+        context: AgentExecutionContext,
+    ): ResolvedAgentDefinition {
+        val agentConfig =
+            agentConfigService.findByName(context.namespaceId, agentName)
+                ?: throw IllegalArgumentException(
+                    "No AgentConfig found for name '$agentName' in namespace ${context.namespaceId}.",
+                )
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+        return resolveAgentDefinition(agentConfig, context, resolvedUser)
+    }
+
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,

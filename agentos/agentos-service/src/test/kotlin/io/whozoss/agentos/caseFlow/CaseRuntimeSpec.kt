@@ -25,6 +25,9 @@ import java.util.UUID
 /** Authorization check that grants access to all agents. */
 private val TRUE_FOR_ANY_AGENTS: (String, UUID?) -> Boolean = { _, _ -> true }
 
+/** LLM info resolver that returns null — used in tests that don't care about LLM metadata. */
+private val NO_LLM_INFO: suspend (String, UUID?) -> Pair<String?, String?>? = { _, _ -> null }
+
 /**
  * A simple recording wrapper for the runAgent callback.
  *
@@ -153,6 +156,7 @@ class CaseRuntimeSpec : StringSpec() {
                 },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                resolveAgentLlmInfo = NO_LLM_INFO,
                 runAgent = runAgent.asCallback,
             )
 
@@ -247,6 +251,7 @@ class CaseRuntimeSpec : StringSpec() {
                         )
                     },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    resolveAgentLlmInfo = NO_LLM_INFO,
                     runAgent = { _, events, _, _, _ ->
                         agent.run(events).collect { event ->
                             savedEvents.add(event)
@@ -305,6 +310,7 @@ class CaseRuntimeSpec : StringSpec() {
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    resolveAgentLlmInfo = NO_LLM_INFO,
                     runAgent = { _, events, _, _, _ ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
@@ -321,6 +327,126 @@ class CaseRuntimeSpec : StringSpec() {
 
             (runningIdx >= 0) shouldBe true
             (runIdx > runningIdx) shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // resolveAgentLlmInfo: llmProvider and llmModel propagation
+        // -------------------------------------------------------------------------
+
+        "AgentRunningEvent carries llmProvider and llmModel when resolveAgentLlmInfo succeeds" {
+            // Verifies the happy path: the Pair returned by resolveAgentLlmInfo is forwarded
+            // verbatim onto the AgentRunningEvent that is stored and emitted.
+            val runtimeId = UUID.randomUUID()
+            val agentName = "my-agent"
+            val agent = finishingAgent(agentName)
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatus = { _, _ -> },
+                storeEvent = { event ->
+                    savedEvents.add(event)
+                    event
+                },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                resolveAgentLlmInfo = { _, _ -> "anthropic" to "claude-haiku-4-5" },
+                runAgent = { _, events, _, _, _ ->
+                    agent.run(events).collect { event ->
+                        savedEvents.add(event)
+                        runtime.pushEvents(listOf(event))
+                    }
+                },
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            val runningEvent = savedEvents.filterIsInstance<AgentRunningEvent>().first()
+            runningEvent.llmProvider shouldBe "anthropic"
+            runningEvent.llmModel shouldBe "claude-haiku-4-5"
+        }
+
+        "AgentRunningEvent has null llmProvider and llmModel when resolveAgentLlmInfo throws" {
+            // Verifies degraded mode: a failure in resolveAgentLlmInfo must not block
+            // execution — the AgentRunningEvent is emitted with null fields and the agent
+            // still runs normally.
+            val runtimeId = UUID.randomUUID()
+            val agentName = "my-agent"
+            val agent = finishingAgent(agentName)
+            val savedEvents = mutableListOf<CaseEvent>()
+            var agentDidRun = false
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatus = { _, _ -> },
+                storeEvent = { event ->
+                    savedEvents.add(event)
+                    event
+                },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                resolveAgentLlmInfo = { _, _ -> throw RuntimeException("DB unavailable") },
+                runAgent = { _, events, _, _, _ ->
+                    agentDidRun = true
+                    agent.run(events).collect { event ->
+                        savedEvents.add(event)
+                        runtime.pushEvents(listOf(event))
+                    }
+                },
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            // Degraded mode: event emitted with null LLM fields
+            val runningEvent = savedEvents.filterIsInstance<AgentRunningEvent>().first()
+            runningEvent.llmProvider shouldBe null
+            runningEvent.llmModel shouldBe null
+
+            // Agent still ran despite the resolve failure
+            agentDidRun shouldBe true
+            savedEvents.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
+        }
+
+        "AgentRunningEvent has null llmProvider and llmModel when resolveAgentLlmInfo returns null" {
+            // Verifies the case where the callback returns null explicitly
+            // (e.g. provider not configured) — same null propagation as a throw.
+            val runtimeId = UUID.randomUUID()
+            val agentName = "my-agent"
+            val agent = finishingAgent(agentName)
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatus = { _, _ -> },
+                storeEvent = { event ->
+                    savedEvents.add(event)
+                    event
+                },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                resolveAgentLlmInfo = { _, _ -> null },
+                runAgent = { _, events, _, _, _ ->
+                    agent.run(events).collect { event ->
+                        savedEvents.add(event)
+                        runtime.pushEvents(listOf(event))
+                    }
+                },
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            val runningEvent = savedEvents.filterIsInstance<AgentRunningEvent>().first()
+            runningEvent.llmProvider shouldBe null
+            runningEvent.llmModel shouldBe null
         }
 
         // -------------------------------------------------------------------------
@@ -346,6 +472,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    resolveAgentLlmInfo = NO_LLM_INFO,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                         // Simulate a long-running agent: don't push AgentFinishedEvent
@@ -381,6 +508,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    resolveAgentLlmInfo = NO_LLM_INFO,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                     },
@@ -415,6 +543,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    resolveAgentLlmInfo = NO_LLM_INFO,
                     runAgent = { _, _, _, _, shouldContinue ->
                         // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
                         // still false at this point, so shouldContinue() must return true.
@@ -507,6 +636,7 @@ class CaseRuntimeSpec : StringSpec() {
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                resolveAgentLlmInfo = NO_LLM_INFO,
                 runAgent = runAgent.asCallback,
             )
 
@@ -567,6 +697,7 @@ class CaseRuntimeSpec : StringSpec() {
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = { name, _ -> name == agentA }, // agentB not authorized
+                resolveAgentLlmInfo = NO_LLM_INFO,
                 runAgent = runAgent.asCallback,
             )
 
@@ -625,6 +756,7 @@ class CaseRuntimeSpec : StringSpec() {
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    resolveAgentLlmInfo = NO_LLM_INFO,
                     runAgent = recorder.asCallback,
                 )
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))

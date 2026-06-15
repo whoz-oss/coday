@@ -29,6 +29,25 @@ interface AgentService {
     ): Agent
 
     /**
+     * Resolve the fully-computed definition for an agent by name, without instantiating
+     * a live [Agent].
+     *
+     * Runs the same resolution pipeline as [findAgentByName] — model overlay, provider
+     * overlay, instruction building, tool resolution — but stops before constructing the
+     * Spring AI chat client and agent objects.
+     *
+     * Intended for callers that need the LLM metadata (provider, model) before running
+     * the agent, so that the [io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent] can be
+     * enriched without a second full resolution pass.
+     *
+     * Throws [IllegalArgumentException] if the config is not found or no model can be resolved.
+     */
+    suspend fun resolveDefinitionByName(
+        agentName: String,
+        context: AgentExecutionContext,
+    ): ResolvedAgentDefinition
+
+    /**
      * Resolve the fully-computed definition for an agent config, without instantiating
      * a live [Agent].
      *

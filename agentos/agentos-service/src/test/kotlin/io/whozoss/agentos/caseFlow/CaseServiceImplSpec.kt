@@ -11,6 +11,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
@@ -20,6 +21,9 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -46,6 +50,31 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.util.UUID
+
+/** Minimal [ResolvedAgentDefinition] stub for tests that run an agent but do not assert on LLM metadata. */
+private fun stubDefinition(
+    agentName: String,
+    namespaceId: UUID,
+): ResolvedAgentDefinition {
+    val providerId = UUID.nameUUIDFromBytes("stub-provider".toByteArray())
+    val modelId = UUID.nameUUIDFromBytes("stub-model".toByteArray())
+    return ResolvedAgentDefinition(
+        agentConfigId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
+        name = agentName,
+        systemPrompt = null,
+        instructions = null,
+        resolvedModelApiName = "stub-model",
+        resolvedProviderName = "stub-provider",
+        resolvedModelId = modelId,
+        resolvedProviderId = providerId,
+        resolvedModel = AiModel(aiProviderId = providerId, apiModelName = "stub-model"),
+        resolvedProvider = AiProvider(name = "stub-provider", apiType = AiApiType.Anthropic),
+        tools = emptyList(),
+        advancedExecution = false,
+        namespaceId = namespaceId,
+        userId = null,
+    )
+}
 
 /**
  * Suspends until [runtime]'s SSE flow has at least [count] active subscribers.
@@ -191,6 +220,7 @@ class CaseServiceImplSpec :
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any()) } returns agent
+                    coEvery { resolveDefinitionByName(agentName, any()) } answers { stubDefinition(agentName, namespaceId) }
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -322,10 +352,30 @@ class CaseServiceImplSpec :
                     defaultAgentName = agentName,
                 )
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val providerId = UUID.randomUUID()
+            val modelId = UUID.randomUUID()
+            val resolvedDefinition =
+                ResolvedAgentDefinition(
+                    agentConfigId = agentId,
+                    name = agentName,
+                    systemPrompt = null,
+                    instructions = null,
+                    resolvedModelApiName = "claude-haiku-4-5",
+                    resolvedProviderName = "anthropic",
+                    resolvedModelId = modelId,
+                    resolvedProviderId = providerId,
+                    resolvedModel = AiModel(aiProviderId = providerId, apiModelName = "claude-haiku-4-5"),
+                    resolvedProvider = AiProvider(name = "anthropic", apiType = AiApiType.Anthropic),
+                    tools = emptyList(),
+                    advancedExecution = false,
+                    namespaceId = namespaceId,
+                    userId = null,
+                )
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
+                    coEvery { resolveDefinitionByName(agentName, any()) } returns resolvedDefinition
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -365,7 +415,9 @@ class CaseServiceImplSpec :
             agentEvents shouldHaveAtLeastSize 4
             agentEvents[0].shouldBeInstanceOf<MessageEvent>()
             agentEvents[1].shouldBeInstanceOf<AgentSelectedEvent>()
-            agentEvents[2].shouldBeInstanceOf<AgentRunningEvent>()
+            val runningEvent = agentEvents[2].shouldBeInstanceOf<AgentRunningEvent>()
+            runningEvent.llmProvider shouldBe "anthropic"
+            runningEvent.llmModel shouldBe "claude-haiku-4-5"
             agentEvents[3].shouldBeInstanceOf<AgentFinishedEvent>()
             // isAgentAuthorized called once for the AgentSelectedEvent -> AgentRunningEvent transition
             verify(exactly = 1) { allowAllAgentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, agentName) }
@@ -544,6 +596,7 @@ class CaseServiceImplSpec :
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
                     coEvery { findAgentByName(agentName, any()) } returns chunkingAgent
+                    coEvery { resolveDefinitionByName(agentName, any()) } answers { stubDefinition(agentName, namespaceId) }
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -640,6 +693,7 @@ class CaseServiceImplSpec :
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
                     coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
+                    coEvery { resolveDefinitionByName(agentName, any()) } answers { stubDefinition(agentName, namespaceId) }
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -706,6 +760,7 @@ class CaseServiceImplSpec :
                 mockk<AgentService> {
                     every { resolveAgentName(namespaceDefaultName, namespaceId, any()) } returns namespaceDefaultName
                     coEvery { findAgentByName(namespaceDefaultName, any()) } returns namespaceAgent
+                    coEvery { resolveDefinitionByName(namespaceDefaultName, any()) } answers { stubDefinition(namespaceDefaultName, namespaceId) }
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -881,6 +936,7 @@ class CaseServiceImplSpec :
                     }
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
                     coEvery { findAgentByName(any(), any()) } returns finishingAgent()
+                    coEvery { resolveDefinitionByName(any(), any()) } answers { stubDefinition(firstArg(), namespaceId) }
                 }
             val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -979,6 +1035,7 @@ class CaseServiceImplSpec :
                     every { resolveAgentName(selectedAgentName, any(), any()) } returns selectedAgentName
                     // no other mention resolution needed
                     coEvery { findAgentByName(selectedAgentName, any()) } returns selectedAgent
+                    coEvery { resolveDefinitionByName(selectedAgentName, any()) } answers { stubDefinition(selectedAgentName, namespaceId) }
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -1071,6 +1128,7 @@ class CaseServiceImplSpec :
                     // Only `inspector` resolves — the full string with URL must NOT be passed here
                     coEvery { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
                     coEvery { findAgentByName(inspectorName, any()) } returns inspectorAgent
+                    coEvery { resolveDefinitionByName(inspectorName, any()) } answers { stubDefinition(inspectorName, namespaceId) }
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -1142,6 +1200,7 @@ class CaseServiceImplSpec :
                 mockk<AgentService> {
                     coEvery { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
                     coEvery { findAgentByName(inspectorName, any()) } returns inspectorAgent
+                    coEvery { resolveDefinitionByName(inspectorName, any()) } answers { stubDefinition(inspectorName, namespaceId) }
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
