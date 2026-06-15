@@ -171,9 +171,7 @@ data class AgentRunningEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
-    /** LLM provider name (e.g. "anthropic"), null when not resolved. */
     val llmProvider: String? = null,
-    /** LLM model API name (e.g. "claude-haiku-4-5"), null when not resolved. */
     val llmModel: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_RUNNING

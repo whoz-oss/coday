@@ -46,19 +46,6 @@ class AgentServiceImpl(
     private val objectMapper: ObjectMapper,
     private val toolRegistryService: ToolRegistryService,
 ) : AgentService {
-    override suspend fun resolveDefinitionByName(
-        agentName: String,
-        context: AgentExecutionContext,
-    ): ResolvedAgentDefinition {
-        val agentConfig =
-            agentConfigService.findByName(context.namespaceId, agentName)
-                ?: throw IllegalArgumentException(
-                    "No AgentConfig found for name '$agentName' in namespace ${context.namespaceId}.",
-                )
-        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
-        return resolveAgentDefinition(agentConfig, context, resolvedUser)
-    }
-
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
@@ -112,6 +99,32 @@ class AgentServiceImpl(
     // -------------------------------------------------------------------------
     // Resolution helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Lightweight resolution of the LLM provider and model names for an agent.
+     *
+     * Only resolves the [AgentConfig], [AiModel] and [AiProvider] (with user overlay).
+     * Does NOT build instructions, system prompt, or tools — unlike [resolveAgentDefinition]
+     * which performs the full resolution pipeline.
+     *
+     * Used by the runtime callback to enrich [io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent]
+     * with observability metadata before the agent executes.
+     *
+     * @return a [Pair] of (providerName, modelApiName), or null if the agent config is not found.
+     */
+    override fun resolveModelInfo(
+        agentName: String,
+        namespaceId: UUID,
+        userId: UUID?,
+    ): Pair<String, String>? {
+        val config = agentConfigService.findByName(namespaceId, agentName) ?: return null
+        val baseModel =
+            config.modelName?.let { aiModelService.findAiModel(namespaceId, it) }
+                ?: findDefaultModelConfig(namespaceId)
+                ?: return null
+        val (_, providerConfig) = applyOverlaysToModel(baseModel, namespaceId, userId)
+        return providerConfig.name to baseModel.apiModelName
+    }
 
     /**
      * Phase 1: resolve all configuration for an [AgentConfig] into a [ResolvedAgentDefinition].
