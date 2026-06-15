@@ -220,9 +220,8 @@ class IntegrationConfigController(
         val currentUser = userService.getCurrentUser()
         validateUserParam(userId)
 
-        // Platform scope: no namespaceId and no userId — Super Admin only
+        // Platform scope: no namespaceId and no userId — list is open to all authenticated users
         if (namespaceId == null && userId == null) {
-            if (!currentUser.isAdmin) throw AccessDeniedException("Listing platform-level configs requires Super Admin")
             return integrationConfigService.findPlatform().map { toResource(it) }
         }
 
@@ -272,11 +271,7 @@ class IntegrationConfigController(
         // unauthorised callers always get 403 regardless of namespace existence
         // (closes the 404-vs-403 existence oracle on POST).
         when {
-            isPlatform -> {
-                if (!currentUser.isAdmin) {
-                    throw AccessDeniedException("Creating platform-level IntegrationConfig requires Super Admin")
-                }
-            }
+            isPlatform -> requireAdminForPlatform(resolvedNs, resolvedUser)
             resolvedNs != null -> {
                 val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
                 val granted = permissionService.hasPermission(
@@ -324,7 +319,7 @@ class IntegrationConfigController(
     ): IntegrationConfigResource {
         val existing = integrationConfigService.findById(id)
             ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        requireAdminForPlatform(existing)
+        requireAdminForPlatform(existing.namespaceId, existing.userId)
         return toResource(integrationConfigService.update(toDomainForUpdate(resource, existing)))
     }
 
@@ -334,17 +329,17 @@ class IntegrationConfigController(
     override fun delete(@PathVariable id: UUID) {
         val existing = integrationConfigService.findById(id)
             ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        requireAdminForPlatform(existing)
+        requireAdminForPlatform(existing.namespaceId, existing.userId)
         super.delete(id)
     }
 
     /**
-     * Throws [AccessDeniedException] when [entity] is a platform-scoped config
-     * (`namespaceId == null && userId == null`) and the current user is not a Super Admin.
-     * Called before any mutating operation on an existing entity.
+     * Throws [AccessDeniedException] when the scope is platform (`namespaceId == null && userId == null`)
+     * and the current user is not a Super Admin. Called before any mutating operation (create, update,
+     * delete) on a platform-scoped entity.
      */
-    private fun requireAdminForPlatform(entity: IntegrationConfig) {
-        if (entity.namespaceId == null && entity.userId == null && !userService.getCurrentUser().isAdmin) {
+    private fun requireAdminForPlatform(namespaceId: UUID?, userId: UUID?) {
+        if (namespaceId == null && userId == null && !userService.getCurrentUser().isAdmin) {
             throw AccessDeniedException("Mutating platform-level IntegrationConfig requires Super Admin")
         }
     }

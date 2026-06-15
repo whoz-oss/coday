@@ -359,14 +359,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
     }
 
-    "list without any param and non-admin throws AccessDeniedException (platform scope)" {
-        shouldThrow<org.springframework.security.access.AccessDeniedException> {
-            controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
-        }
-    }
-
-    "list without any param and Super Admin returns platform configs" {
-        every { userService.getCurrentUser() } returns aliceUser(isAdmin = true)
+    "list without any param returns platform configs for any authenticated user" {
         val rows = listOf(
             config(nsId = null, userId = null, name = "PLATFORM_JIRA"),
         )

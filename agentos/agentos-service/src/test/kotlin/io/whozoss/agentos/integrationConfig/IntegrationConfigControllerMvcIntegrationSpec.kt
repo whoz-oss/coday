@@ -312,10 +312,10 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "LIST without params returns 403 for non-admin (platform scope)" {
-            // GET /api/integration-configs with no params = platform scope, Super Admin only
+        "LIST without params returns platform configs for any authenticated user" {
             mockMvc.perform(get("/api/integration-configs"))
-                .andExpect(status().isForbidden)
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
         }
 
         "LIST with ?userId=me returns a flat JSON array for caller's configs" {
