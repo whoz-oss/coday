@@ -141,17 +141,11 @@ class AgentServiceImpl(
                 agentName = config.name,
             )
         val tools =
-            if (context.userId != null) {
-                toolResolverService.resolveToolsForRun(
-                    agentIntegrations = config.integrations,
-                    context = toolContext,
-                )
-            } else {
-                toolResolverService.resolveToolsForNamespace(
-                    agentIntegrations = config.integrations,
-                    context = toolContext,
-                )
-            }
+            toolResolverService.resolveToolsForRun(
+                agentIntegrations = config.integrations,
+                context = toolContext,
+            )
+
         return ResolvedAgentDefinition(
             agentConfigId = config.metadata.id,
             name = config.name,
@@ -319,7 +313,7 @@ class AgentServiceImpl(
         val integrationDescriptions =
             coroutineScope {
                 integrationConfigService
-                    .findByParent(namespaceId)
+                    .findEffective(namespaceId, resolvedUser?.id)
                     .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
                     .map { (config, plugin) ->
                         async {
@@ -372,7 +366,7 @@ class AgentServiceImpl(
                 else -> {
                     val listed =
                         integrationConfigService
-                            .findByParent(context.namespaceId)
+                            .findEffective(context.namespaceId, resolvedUser?.id)
                             .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
                     when {
                         listed.isEmpty() -> {
