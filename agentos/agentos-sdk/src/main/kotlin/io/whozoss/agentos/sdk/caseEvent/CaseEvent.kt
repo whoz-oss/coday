@@ -160,6 +160,8 @@ data class AgentFinishedEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
+    val llmProvider: String? = null,
+    val llmModel: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }

@@ -157,6 +157,8 @@ class CaseEventNodeMapper(
                     node.timestamp,
                     node.agentId,
                     node.agentName,
+                    node.llmProvider,
+                    node.llmModel,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -422,6 +424,8 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             agentId = UUID.fromString(n.agentId),
             agentName = n.agentName,
+            llmProvider = n.llmProvider,
+            llmModel = n.llmModel,
         )
 
     private fun toDomain(n: AgentRunningEventNode) =
@@ -624,6 +628,8 @@ class CaseEventNodeMapper(
             timestamp = e.timestamp,
             agentId = e.agentId.toString(),
             agentName = e.agentName,
+            llmProvider = e.llmProvider,
+            llmModel = e.llmModel,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

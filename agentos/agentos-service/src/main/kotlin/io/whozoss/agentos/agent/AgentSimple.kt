@@ -69,6 +69,8 @@ class AgentSimple(
     private val userExternalId: String? = null,
     /** Returns the live event list of the current case at the moment of invocation. */
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
+    private val llmProviderName: String? = null,
+    private val llmModelApiName: String? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -113,6 +115,8 @@ class AgentSimple(
                             caseId = caseId,
                             agentId = id,
                             agentName = name,
+                            llmProvider = llmProviderName,
+                            llmModel = llmModelApiName,
                         ),
                     )
                     return@flow
@@ -224,6 +228,8 @@ class AgentSimple(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProviderName,
+                        llmModel = llmModelApiName,
                     ),
                 )
             } catch (e: AgentInterrupt) {
@@ -234,9 +240,25 @@ class AgentSimple(
                 for (toolEvent in toolEventChannel) {
                     emit(toolEvent)
                 }
-                emitInterruptEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+                val finished = AgentFinishedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = id,
+                    agentName = name,
+                    llmProvider = llmProviderName,
+                    llmModel = llmModelApiName,
+                )
+                emitInterruptEvents(finished, e, logger)
             } catch (e: NonTransientAiException) {
-                emitProviderErrorEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+                val finished = AgentFinishedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = id,
+                    agentName = name,
+                    llmProvider = llmProviderName,
+                    llmModel = llmModelApiName,
+                )
+                emitProviderErrorEvents(finished, e, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -253,6 +275,8 @@ class AgentSimple(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProviderName,
+                        llmModel = llmModelApiName,
                     ),
                 )
             }

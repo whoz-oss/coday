@@ -48,6 +48,8 @@ class AgentAdvanced(
     private val userExternalId: String? = null,
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     private val maxIterations: Int = 20,
+    private val llmProviderName: String? = null,
+    private val llmModelApiName: String? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -86,6 +88,8 @@ class AgentAdvanced(
                                 caseId = caseId,
                                 agentId = id,
                                 agentName = name,
+                                llmProvider = llmProviderName,
+                                llmModel = llmModelApiName,
                             ),
                         )
                         return@flow
@@ -196,14 +200,32 @@ class AgentAdvanced(
                             caseId = caseId,
                             agentId = id,
                             agentName = name,
+                            llmProvider = llmProviderName,
+                            llmModel = llmModelApiName,
                         ),
                     )
                 }
             } catch (e: AgentInterrupt) {
                 // Not an error: a tool requested a structured interruption of this agent run.
-                emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+                val finished = AgentFinishedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = id,
+                    agentName = name,
+                    llmProvider = llmProviderName,
+                    llmModel = llmModelApiName,
+                )
+                emitInterruptEvents(finished, e, logger)
             } catch (e: NonTransientAiException) {
-                emitProviderErrorEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+                val finished = AgentFinishedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = id,
+                    agentName = name,
+                    llmProvider = llmProviderName,
+                    llmModel = llmModelApiName,
+                )
+                emitProviderErrorEvents(finished, e, logger)
             } catch (e: ConfirmationConfigurationException) {
                 // DI wiring bug — surface loudly so prod logs catch it. Still emit a WarnEvent
                 // so the per-case lifecycle terminates cleanly, but the operator-facing signal
@@ -533,6 +555,8 @@ class AgentAdvanced(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProviderName,
+                        llmModel = llmModelApiName,
                     ),
                 )
                 GateOutcome.AwaitingConfirmation
