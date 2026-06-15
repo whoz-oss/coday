@@ -2,13 +2,9 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import {
-  AgentConfig,
-  AgentConfigControllerService,
-  IntegrationConfig,
-  IntegrationConfigControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { AgentConfig, AgentConfigControllerService, IntegrationConfig } from '@whoz-oss/agentos-api-client'
 import { forkJoin } from 'rxjs'
+import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 
 /**
  * Tracks the per-integration state within the form:
@@ -54,7 +50,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
-  private readonly integrationConfigController = inject(IntegrationConfigControllerService)
+  private readonly integrationConfigState = inject(IntegrationConfigStateService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -116,25 +112,27 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * In edit mode: load the agent config and the namespace integrations in parallel,
-   * then hydrate both the main form and the integration rows.
+   * In edit mode: load the agent config, the namespace integrations, and the platform
+   * integrations in parallel, then hydrate both the main form and the integration rows.
    */
   private loadConfigAndIntegrations(agentConfigId: string): void {
     this.isLoading.set(true)
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
-      integrations: this.integrationConfigController.listIntegrationConfig(this.namespaceId),
+      namespaceIntegrations: this.integrationConfigState.loadNamespaceConfigs(this.namespaceId),
+      platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ config, integrations }) => {
+        next: ({ config, namespaceIntegrations, platformIntegrations }) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
-          this.integrationRows.set(this.buildIntegrationRows(integrations, config.integrations ?? undefined))
+          const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
+          this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
           this.isLoading.set(false)
         },
         error: () => {
@@ -144,14 +142,20 @@ export class AgentConfigFormComponent implements OnInit {
       })
   }
 
-  /** In create mode: only load the namespace integrations (undefined = no existing filter). */
+  /**
+   * In create mode: load platform + namespace integrations and merge them.
+   * Platform configs are visible to non-admins (backend returns [] for them, not 403).
+   */
   private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
-    this.integrationConfigController
-      .listIntegrationConfig(this.namespaceId)
+    forkJoin({
+      namespaceIntegrations: this.integrationConfigState.loadNamespaceConfigs(this.namespaceId),
+      platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
+    })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (integrations: IntegrationConfig[]) => {
-          this.integrationRows.set(this.buildIntegrationRows(integrations, existingIntegrations ?? undefined))
+        next: ({ namespaceIntegrations, platformIntegrations }) => {
+          const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
+          this.integrationRows.set(this.buildIntegrationRows(allIntegrations, existingIntegrations ?? undefined))
         },
       })
   }
