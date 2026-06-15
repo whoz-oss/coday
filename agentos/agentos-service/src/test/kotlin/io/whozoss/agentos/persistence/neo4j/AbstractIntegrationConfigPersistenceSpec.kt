@@ -223,13 +223,35 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
             repo.findByTriple(ns.id, null, "JIRA")?.id shouldBe second.id
         }
 
-        "findByTriple matche distinctement les 3 modes (ns-only, user-only, ns x user)" {
+        "findPlatform returns configs with both namespaceId and userId null" {
+            // Regression test: findActivePlatform uses IS NULL predicates on both
+            // namespaceId and userId — SDN does not store null properties, so the
+            // node has no namespaceId/userId property at all. Neo4j treats absent
+            // properties as null in IS NULL predicates, so the query must match.
+            val platform = repo.save(config(namespaceId = null, userId = null, name = "PLATFORM_JIRA"))
+            val ns = namespaceRepo.save(namespace())
+            val nsShared = repo.save(config(namespaceId = ns.id, userId = null, name = "NS_JIRA"))
+            val userId = UUID.randomUUID()
+            val userOnly = repo.save(config(namespaceId = null, userId = userId, name = "USER_JIRA"))
+
+            val result = repo.findPlatform()
+
+            result shouldHaveSize 1
+            result.first().id shouldBe platform.id
+            result.first().namespaceId shouldBe null
+            result.first().userId shouldBe null
+            result.first().name shouldBe "PLATFORM_JIRA"
+        }
+
+        "findByTriple matchs distinctly the 4 modes (platform, ns-only, user-only, ns x user)" {
             val ns = namespaceRepo.save(namespace())
             val userId = UUID.randomUUID()
+            val platform = repo.save(config(namespaceId = null, userId = null, name = "JIRA"))
             val nsOnly = repo.save(config(namespaceId = ns.id, userId = null, name = "JIRA"))
             val userOnly = repo.save(config(namespaceId = null, userId = userId, name = "JIRA"))
             val nsAndUser = repo.save(config(namespaceId = ns.id, userId = userId, name = "JIRA"))
 
+            repo.findByTriple(null, null, "JIRA")?.id shouldBe platform.id
             repo.findByTriple(ns.id, null, "JIRA")?.id shouldBe nsOnly.id
             repo.findByTriple(null, userId, "JIRA")?.id shouldBe userOnly.id
             repo.findByTriple(ns.id, userId, "JIRA")?.id shouldBe nsAndUser.id
