@@ -152,12 +152,12 @@ class IntegrationConfigCrossUserIsolationSpec : StringSpec() {
         // ---------------------------------------------------------------------
         // LIST
         // ---------------------------------------------------------------------
-        "LIST as alice never includes bob's rows (either mode)" {
+        "LIST as alice with ?userId=me never includes bob's rows" {
             createBobRow(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             createBobRow(namespaceId = sharedNamespaceId, name = "BOB_NS_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/integration-configs"))
+            mockMvc.perform(get("/api/integration-configs?userId=me"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.userId != '$aliceId')]").isEmpty)
         }

@@ -33,27 +33,35 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * Unified REST API for [IntegrationConfig] entities — covers the **three scopes**
- * (NS-shared, user × namespace, user-global) under a single set of routes.
+ * Unified REST API for [IntegrationConfig] entities — covers the **four scopes**
+ * (platform, NS-shared, user × namespace, user-global) under a single set of routes.
  *
  * **Implicit scope dispatch on `POST` (Decision 15)** — the controller infers the
  * scope from the `(body.namespaceId, body.userId)` pair. Phases :
  *  1. Mass-assignment guard : `body.userId`, when non-null, must equal
  *     `auth.principal.userId`. Otherwise → 400.
  *  2. Scope determination :
- *     - both null → 400 ;
+ *     - both null → platform scope (Super Admin only) ;
  *     - `(ns, null)` → NS-shared ;
  *     - `(null, user)` → user-global ;
  *     - `(ns, user)` → user × namespace.
  *  3. Per-scope authorization (run BEFORE existence so unauthorised callers always
- *     get 403, never an existence-leak 404) : NS-shared → `WRITE` ; user × ns →
- *     `READ` ; user-global → `isAuthenticated()`.
+ *     get 403, never an existence-leak 404) :
+ *     - platform → `currentUser.isAdmin` required ;
+ *     - NS-shared → `WRITE` on namespace ;
+ *     - user × ns → `READ` on namespace ;
+ *     - user-global → `isAuthenticated()`.
  *  4. Namespace existence check (when `ns != null`) → 404 if dangling. Still required
  *     after authz because the super-admin bypass in `permissionService.hasPermission`
  *     returns `true` for missing ids, which would otherwise let an admin create
  *     dangling FK rows.
  *  5. Domain build is **explicit** : the persisted entity uses the controller-
  *     resolved `(namespaceId, userId)` — never the raw body.
+ *
+ * **Platform-level write guard on `PUT` / `DELETE`** : a platform-scoped entity
+ * (`namespaceId == null && userId == null`) can only be mutated by a Super Admin.
+ * Non-admins receive 403 even if the `@PreAuthorize` evaluator would otherwise grant
+ * access (e.g. via ownership — platform configs have no owner).
  *
  * **Authorization on read / update / delete** uses `@PreAuthorize("hasPermission(#id, 'IntegrationConfig', ACTION)")` —
  * [io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator] tries the
@@ -193,12 +201,14 @@ class IntegrationConfigController(
         description = "Scope is inferred from the query params :\n\n" +
             "| query                                              | mode             | required permission                            |\n" +
             "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
+            "| (no params)                                        | platform         | Super Admin only                               |\n" +
             "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
             "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
             "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
             "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
             "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
-            "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.",
+            "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.\n\n" +
+            "When called with no params, returns platform-level configs (Super Admin only).",
     )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
@@ -207,14 +217,20 @@ class IntegrationConfigController(
         @RequestParam(required = false) userId: String?,
         auth: Authentication,
     ): List<IntegrationConfigResource> {
-        val resolvedNs = parseNamespaceParam(namespaceId)
-        val me = userService.getCurrentUser().id
+        val currentUser = userService.getCurrentUser()
         validateUserParam(userId)
 
+        // Platform scope: no namespaceId and no userId — Super Admin only
+        if (namespaceId == null && userId == null) {
+            if (!currentUser.isAdmin) throw AccessDeniedException("Listing platform-level configs requires Super Admin")
+            return integrationConfigService.findPlatform().map { toResource(it) }
+        }
+
+        val resolvedNs = parseNamespaceParam(namespaceId)
         val all = integrationConfigService.findFiltered(
             namespaceId = resolvedNs,
             namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
-            callerId = me,
+            callerId = currentUser.id,
             userRequested = userId != null,
             canReadNamespace = { nsId -> callerCanReadNamespace(auth, nsId) },
         )
@@ -227,7 +243,7 @@ class IntegrationConfigController(
         description = "Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :\n\n" +
             "| body.namespaceId | body.userId        | scope         | required permission                  |\n" +
             "|------------------|--------------------|---------------|--------------------------------------|\n" +
-            "| null             | null               | —             | 400 Bad Request                      |\n" +
+            "| null             | null               | platform      | Super Admin only                     |\n" +
             "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
             "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
             "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
@@ -239,7 +255,8 @@ class IntegrationConfigController(
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
     override fun create(@Valid @RequestBody resource: IntegrationConfigResource): IntegrationConfigResource {
-        val me = userService.getCurrentUser().id
+        val currentUser = userService.getCurrentUser()
+        val me = currentUser.id
 
         // Phase 1 — mass-assignment guard
         if (resource.userId != null && resource.userId != me) {
@@ -249,30 +266,32 @@ class IntegrationConfigController(
         // Phase 2 — scope determination
         val resolvedNs: UUID? = resource.namespaceId
         val resolvedUser: UUID? = if (resource.userId != null) me else null
-        if (resolvedNs == null && resolvedUser == null) {
-            throw BadRequestException("must provide namespaceId, userId, or both")
-        }
+        val isPlatform = resolvedNs == null && resolvedUser == null
 
         // Phase 3 — per-scope authorization, run BEFORE the existence check so
         // unauthorised callers always get 403 regardless of namespace existence
         // (closes the 404-vs-403 existence oracle on POST).
-        val authzAction: Action? = when {
-            resolvedNs != null && resolvedUser != null -> Action.READ
-            resolvedNs != null && resolvedUser == null -> Action.WRITE
-            else -> null
-        }
-        if (authzAction != null && resolvedNs != null) {
-            val granted = permissionService.hasPermission(
-                userId = me.toString(),
-                entityType = EntityType.NAMESPACE,
-                entityId = resolvedNs.toString(),
-                action = authzAction,
-            )
-            if (!granted) {
-                throw AccessDeniedException(
-                    "Cannot create IntegrationConfig in namespace $resolvedNs (${authzAction.name} required)",
-                )
+        when {
+            isPlatform -> {
+                if (!currentUser.isAdmin) {
+                    throw AccessDeniedException("Creating platform-level IntegrationConfig requires Super Admin")
+                }
             }
+            resolvedNs != null -> {
+                val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
+                val granted = permissionService.hasPermission(
+                    userId = me.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = resolvedNs.toString(),
+                    action = authzAction,
+                )
+                if (!granted) {
+                    throw AccessDeniedException(
+                        "Cannot create IntegrationConfig in namespace $resolvedNs (${authzAction.name} required)",
+                    )
+                }
+            }
+            // user-global: isAuthenticated() from class-level @PreAuthorize is sufficient
         }
 
         // Phase 3.5 — namespace existence check (deferred after Phase 3 to avoid
@@ -305,13 +324,30 @@ class IntegrationConfigController(
     ): IntegrationConfigResource {
         val existing = integrationConfigService.findById(id)
             ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        requireAdminForPlatform(existing)
         return toResource(integrationConfigService.update(toDomainForUpdate(resource, existing)))
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'DELETE')")
     @HideOnAccessDenied
-    override fun delete(@PathVariable id: UUID) = super.delete(id)
+    override fun delete(@PathVariable id: UUID) {
+        val existing = integrationConfigService.findById(id)
+            ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        requireAdminForPlatform(existing)
+        super.delete(id)
+    }
+
+    /**
+     * Throws [AccessDeniedException] when [entity] is a platform-scoped config
+     * (`namespaceId == null && userId == null`) and the current user is not a Super Admin.
+     * Called before any mutating operation on an existing entity.
+     */
+    private fun requireAdminForPlatform(entity: IntegrationConfig) {
+        if (entity.namespaceId == null && entity.userId == null && !userService.getCurrentUser().isAdmin) {
+            throw AccessDeniedException("Mutating platform-level IntegrationConfig requires Super Admin")
+        }
+    }
 
     private fun callerCanReadNamespace(auth: Authentication, namespaceId: UUID): Boolean =
         permissionService.hasPermission(

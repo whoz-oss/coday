@@ -12,10 +12,10 @@ import java.util.UUID
  *
  * Delegates persistence to [IntegrationConfigRepository].
  *
- * Triple-mode invariant — `(namespaceId != null) OR (userId != null)` — is enforced on both
- * [create] and [update] (defence-in-depth, even if the controller already validates). A
- * violation surfaces as HTTP 400 to align with the [io.whozoss.agentos.aiProvider.AiProviderServiceImpl]
- * pattern referenced by story 6.1.
+ * Four scope modes are supported: platform `(null, null)`, namespace-shared `(ns, null)`,
+ * user-global `(null, user)`, and user×namespace `(ns, user)`. The service accepts all four;
+ * authorization (only Super Admins may write platform-level configs) is enforced in the
+ * controller where the security context is available.
  *
  * Uniqueness on the (namespaceId, userId, name) triple is enforced on [create] (409 on
  * conflict) and on [update] when a rename would collide with another row in the same scope.
@@ -30,7 +30,6 @@ class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
@@ -42,7 +41,6 @@ class IntegrationConfigServiceImpl(
     }
 
     override fun update(entity: IntegrationConfig): IntegrationConfig {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -76,6 +74,8 @@ class IntegrationConfigServiceImpl(
 
     override fun findByUserId(userId: UUID): List<IntegrationConfig> = repository.findByUserId(userId)
 
+    override fun findPlatform(): List<IntegrationConfig> = repository.findPlatform()
+
     override fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig> = repository.findByParent(namespaceId)
 
     override fun findFiltered(
@@ -103,15 +103,6 @@ class IntegrationConfigServiceImpl(
 
         // No filter at all : surface the caller's own overlays
         else -> findByUserId(callerId)
-    }
-
-    private fun requireScope(entity: IntegrationConfig) {
-        if (entity.namespaceId == null && entity.userId == null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "IntegrationConfig must be scoped to at least a namespace or a user",
-            )
-        }
     }
 
     /**
@@ -148,6 +139,12 @@ class IntegrationConfigServiceImpl(
                     "same integrationType to merge correctly at reconciliation time. Either use " +
                     "a different name or align the integrationType.",
             )
+
+        // Platform layer: always checked — any entity with the same name at platform scope
+        // participates in the reconciliation chain for every namespace and user.
+        repository.findByTriple(null, null, name)
+            ?.takeIf { it.id != entityId && it.integrationType != type }
+            ?.let(::reject)
 
         // NS layer (always checked for entities that target a namespace, even pure NS-shared ones —
         // catches the case of an admin renaming a NS config to a name already used by a user-overlay

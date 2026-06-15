@@ -20,6 +20,9 @@ class InMemoryIntegrationConfigRepository : IntegrationConfigRepository {
         delegate.findAll().filter { it.namespaceId == namespaceId && it.userId == null }
     override fun findByUserId(userId: UUID): List<IntegrationConfig> =
         delegate.findAll().filter { it.userId == userId }
+    override fun findPlatform(): List<IntegrationConfig> =
+        delegate.findAll().filter { it.namespaceId == null && it.userId == null }
+
     override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,

@@ -110,12 +110,13 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         // POST — Decision 15 implicit scope dispatch
         // -------------------------------------------------------------------------
 
-        "POST with neither namespaceId nor userId returns 400 (must provide one or both)" {
+        "POST with neither namespaceId nor userId returns 403 for non-admin (platform scope)" {
+            // alice.isAdmin = false — platform scope is restricted to Super Admins
             mockMvc.perform(
                 post("/api/integration-configs")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "name": "JIRA_PROD", "integrationType": "JIRA" }"""),
-            ).andExpect(status().isBadRequest)
+            ).andExpect(status().isForbidden)
         }
 
         "POST NS-shared (namespaceId only) returns 201" {
@@ -311,7 +312,13 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "LIST returns a flat JSON array for caller's configs" {
+        "LIST without params returns 403 for non-admin (platform scope)" {
+            // GET /api/integration-configs with no params = platform scope, Super Admin only
+            mockMvc.perform(get("/api/integration-configs"))
+                .andExpect(status().isForbidden)
+        }
+
+        "LIST with ?userId=me returns a flat JSON array for caller's configs" {
             val tag = "LIST_${UUID.randomUUID()}"
             integrationConfigService.create(
                 IntegrationConfig(
@@ -323,7 +330,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/integration-configs"))
+            mockMvc.perform(get("/api/integration-configs?userId=me"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
         }

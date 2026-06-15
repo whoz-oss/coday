@@ -151,19 +151,11 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
         // Triple-mode (story 6.1, AC1, AC2, FR27bis)
         // -------------------------------------------------------------------------
 
-        "create throws 400 when both namespaceId and userId are null (invariant)" {
+        "create succeeds with namespaceId=null and userId=null (platform scope)" {
             val service = newService()
-            shouldThrow<ResponseStatusException> {
-                service.create(config(namespaceId = null, userId = null))
-            }.statusCode.value() shouldBe 400
-        }
-
-        "update throws 400 when both namespaceId and userId are null (defence in depth)" {
-            val service = newService()
-            val original = service.create(config(namespaceId = UUID.randomUUID()))
-            shouldThrow<ResponseStatusException> {
-                service.update(original.copy(namespaceId = null, userId = null))
-            }.statusCode.value() shouldBe 400
+            val saved = service.create(config(namespaceId = null, userId = null))
+            saved.namespaceId shouldBe null
+            saved.userId shouldBe null
         }
 
         "create succeeds with namespaceId only (Epic 4 path preserved)" {

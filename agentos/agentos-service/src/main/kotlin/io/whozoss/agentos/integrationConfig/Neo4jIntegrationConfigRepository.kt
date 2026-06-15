@@ -62,6 +62,11 @@ open class Neo4jIntegrationConfigRepository(
             .findActiveByUserId(userId.toString())
             .map { it.toDomain(objectMapper) }
 
+    override fun findPlatform(): List<IntegrationConfig> =
+        neo4jRepository
+            .findActivePlatform()
+            .map { it.toDomain(objectMapper) }
+
     override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,

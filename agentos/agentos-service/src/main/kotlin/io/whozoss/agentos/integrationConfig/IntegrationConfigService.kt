@@ -54,6 +54,14 @@ interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, Con
     fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig>
 
     /**
+     * Find all non-removed platform-level [IntegrationConfig] entries
+     * (`namespaceId IS NULL AND userId IS NULL`).
+     *
+     * Used by [IntegrationConfigController.list] when called with no query params (Super Admin only).
+     */
+    fun findPlatform(): List<IntegrationConfig>
+
+    /**
      * Scope-aware filtered listing used by [IntegrationConfigController.list].
      *
      * Dispatches the query based on the resolved namespace/user filter combination:
