@@ -394,22 +394,22 @@ class AgentConfigControllerUnitSpec : StringSpec({
     "listByParent returns configs for the given namespaceId" {
         val c1 = config(name = "alpha")
         val c2 = config(name = "beta")
-        every { service.findByNamespace(namespaceId, false) } returns listOf(c1, c2)
+        every { service.findByNamespace(namespaceId, withDisabled = true) } returns listOf(c1, c2)
 
         val result = controller.listByParent(namespaceId)
 
         result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
-        verify(exactly = 1) { service.findByNamespace(namespaceId, false) }
+        verify(exactly = 1) { service.findByNamespace(namespaceId, withDisabled = true) }
     }
 
-    "listByNamespace with enabledOnly=true returns only enabled configs" {
+    "listByNamespace with withDisabled=false returns only enabled configs" {
         val c1 = config(name = "published").copy(enabled = true)
-        every { service.findByNamespace(namespaceId, true) } returns listOf(c1)
+        every { service.findByNamespace(namespaceId, withDisabled = false) } returns listOf(c1)
 
-        val result = controller.listByNamespace(namespaceId, enabledOnly = true)
+        val result = controller.listByNamespace(namespaceId, withDisabled = false)
 
         result shouldBe listOf(controller.toResource(c1))
-        verify(exactly = 1) { service.findByNamespace(namespaceId, true) }
+        verify(exactly = 1) { service.findByNamespace(namespaceId, withDisabled = false) }
     }
 
     // -------------------------------------------------------------------------

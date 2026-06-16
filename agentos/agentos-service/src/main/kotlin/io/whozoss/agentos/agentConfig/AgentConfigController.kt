@@ -112,36 +112,34 @@ class AgentConfigController(
     // story 5-4 factorisation of the pattern introduced by 5-3).
 
     /**
-     * GET /api/agent-configs/by-parentId/{parentId} (no enabledOnly param)
+     * GET /api/agent-configs/by-parentId/{parentId} (no withDisabled param)
      *
-     * Matched by Spring MVC when `enabledOnly` is absent from the query string.
-     * The `params = ["!enabledOnly"]` selector makes this mutually exclusive with
+     * Matched by Spring MVC when `withDisabled` is absent from the query string.
+     * The `params = ["!withDisabled"]` selector makes this mutually exclusive with
      * [listByNamespace], resolving the ambiguous-mapping conflict that arises from
      * the inherited [EntityController.listByParent] `@GetMapping`.
      *
-     * Delegates to [listByNamespace] with `enabledOnly = false`.
+     * Delegates to [listByNamespace] with `withDisabled = true`.
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    override fun listByParent(
-        @PathVariable parentId: UUID,
-    ): List<AgentConfigResource> = listByNamespace(parentId, enabledOnly = false)
+    override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> = listByNamespace(parentId, withDisabled = true)
 
     /**
-     * GET /api/agent-configs/by-parentId/{parentId}?enabledOnly=...
+     * GET /api/agent-configs/by-parentId/{parentId}?withDisabled=...
      *
-     * Matched by Spring MVC when `enabledOnly` is present in the query string.
-     * When `true`, only published agents are returned (end-user contexts like Copilot).
-     * When `false`, all agents visible to namespace members/admins are returned.
+     * Matched by Spring MVC when `withDisabled` is present in the query string.
+     * When `true` (the default), all agents visible to namespace members/admins are returned.
+     * When `false`, only published (enabled) agents are returned (end-user contexts like Copilot).
      * Spring's `DefaultConversionService` handles `Boolean` binding — invalid values
      * (neither `"true"` nor `"false"`) produce a 400.
      */
-    @GetMapping("/by-parentId/{parentId}", params = ["enabledOnly"])
+    @GetMapping("/by-parentId/{parentId}", params = ["withDisabled"])
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     fun listByNamespace(
         @PathVariable parentId: UUID,
-        @RequestParam(required = false, defaultValue = "false") enabledOnly: Boolean,
-    ): List<AgentConfigResource> = agentConfigService.findByNamespace(parentId, enabledOnly).map { toResource(it) }
+        @RequestParam(required = false, defaultValue = "true") withDisabled: Boolean,
+    ): List<AgentConfigResource> = agentConfigService.findByNamespace(parentId, withDisabled = withDisabled).map { toResource(it) }
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")

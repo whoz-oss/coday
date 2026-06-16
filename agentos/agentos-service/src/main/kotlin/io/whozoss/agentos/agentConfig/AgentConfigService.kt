@@ -39,9 +39,9 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
      * (enabled) agents only.
      *
      * @param namespaceId The namespace to list agents for
-     * @param enabledOnly When true, only published agents are returned
+     * @param withDisabled When `true` (the default), all configs are returned; when `false`, only published agents are returned
      */
-    fun findByNamespace(namespaceId: UUID, enabledOnly: Boolean = false): List<AgentConfig>
+    fun findByNamespace(namespaceId: UUID, withDisabled: Boolean = true): List<AgentConfig>
 
     /**
      * Enables an agent config, making it active.

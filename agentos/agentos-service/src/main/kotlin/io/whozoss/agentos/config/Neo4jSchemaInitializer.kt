@@ -48,6 +48,19 @@ class Neo4jSchemaInitializer(
         if (backfilled > 0L) {
             logger.info { "[Neo4jSchemaInitializer] Backfilled version=0 on $backfilled AgentConfig node(s)" }
         }
+
+        // Backfill enabled=false on AgentConfig nodes created before the enabled field was introduced.
+        // Once all nodes have the property set, Cypher queries can use a.enabled directly
+        // without COALESCE(a.enabled, false).
+        val backfilledEnabled = neo4jClient.query(
+            "MATCH (a:AgentConfig) WHERE a.enabled IS NULL SET a.enabled = false RETURN count(a) AS count",
+        ).fetchAs(Long::class.java)
+            .mappedBy { _, record -> record["count"].asLong() }
+            .one()
+            .orElse(0L)
+        if (backfilledEnabled > 0L) {
+            logger.info { "[Neo4jSchemaInitializer] Backfilled enabled=false on $backfilledEnabled AgentConfig node(s)" }
+        }
     }
 
     companion object : KLogging()

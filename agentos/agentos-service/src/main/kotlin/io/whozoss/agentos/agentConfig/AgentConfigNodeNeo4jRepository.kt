@@ -10,26 +10,27 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     /**
      * Find non-removed agent configs belonging to a namespace, ordered by name.
      *
-     * When [enabledOnly] is true, only published agents are returned.
-     * Agents stored before the `enabled` field was introduced are treated as
-     * disabled (`COALESCE(a.enabled, false)`).
+     * When [withDisabled] is `true` (the default), all active configs are returned.
+     * When [withDisabled] is `false`, only published (enabled) agents are returned.
      */
     @Query(
         $$"""
             MATCH (a:AgentConfig)
             WHERE a.namespaceId = $namespaceId
               AND NOT COALESCE(a.removed, false)
-              AND (NOT $enabledOnly OR COALESCE(a.enabled, false))
+              AND ($withDisabled OR a.enabled)
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String, enabledOnly: Boolean = false): List<AgentConfigNode>
+    fun findActiveByNamespaceId(namespaceId: String, withDisabled: Boolean = true): List<AgentConfigNode>
 
 
     /**
      * Returns the union of [AgentConfigNode]s accessible to [userId] in [namespaceId]:
      * - agents deployed on a [io.whozoss.agentos.userGroup.UserGroup] the user is a member of (within the namespace)
      * - agents deployed directly on the namespace, for a user holding MEMBER or ADMIN
+     *
+     * Only enabled (published) agents are returned — disabled agents are never surfaced at runtime.
      *
      * When [agentName] is non-null, the result is filtered to configs whose name
      * matches case-insensitively. When null, all accessible configs are returned.
@@ -44,6 +45,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
               WHERE NOT COALESCE(g.removed, false)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
               WHERE NOT COALESCE(a.removed, false)
+                AND a.enabled
                 AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             UNION
@@ -54,6 +56,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             MATCH (u)-[:MEMBER|ADMIN]->(ns)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
               WHERE NOT COALESCE(a.removed, false)
+                AND a.enabled
                 AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             """,

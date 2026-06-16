@@ -26,10 +26,10 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
             override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
 
-            // Returns configs from the in-memory store, filtered by enabledOnly.
-            override fun findByParent(parentId: UUID, enabledOnly: Boolean): List<AgentConfig> =
-                if (enabledOnly) inMemory.findByParent(parentId).filter { it.enabled }
-                else inMemory.findByParent(parentId)
+            // Returns configs from the in-memory store, filtered by withDisabled.
+            override fun findByParent(parentId: UUID, withDisabled: Boolean): List<AgentConfig> =
+                if (withDisabled) inMemory.findByParent(parentId)
+                else inMemory.findByParent(parentId).filter { it.enabled }
         }
     }
 
@@ -103,27 +103,27 @@ class AgentConfigServiceImplUnitSpec : StringSpec({
     // findByNamespace
     // -------------------------------------------------------------------------
 
-    "findByNamespace with enabledOnly=false returns all configs" {
+    "findByNamespace with withDisabled=true returns all configs" {
         val repo = repository()
         val svc = service(repo)
         repo.save(config("Published").copy(enabled = true))
         repo.save(config("Unpublished").copy(enabled = false))
 
-        val result = svc.findByNamespace(namespaceId, enabledOnly = false)
+        val result = svc.findByNamespace(namespaceId, withDisabled = true)
         result.map { it.name }.toSet() shouldBe setOf("Published", "Unpublished")
     }
 
-    "findByNamespace with enabledOnly=true returns only enabled configs" {
+    "findByNamespace with withDisabled=false returns only enabled configs" {
         val repo = repository()
         val svc = service(repo)
         repo.save(config("Published").copy(enabled = true))
         repo.save(config("Unpublished").copy(enabled = false))
 
-        val result = svc.findByNamespace(namespaceId, enabledOnly = true)
+        val result = svc.findByNamespace(namespaceId, withDisabled = false)
         result.map { it.name } shouldBe listOf("Published")
     }
 
-    "findByNamespace defaults to enabledOnly=false" {
+    "findByNamespace defaults to withDisabled=true" {
         val repo = repository()
         val svc = service(repo)
         repo.save(config("Alpha").copy(enabled = false))
