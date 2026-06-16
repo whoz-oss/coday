@@ -208,13 +208,13 @@ class IntegrationConfigController(
         summary = "List IntegrationConfigs by scope",
         description =
             "Scope is inferred from the query params :\n\n" +
-                "| query                                              | mode             | required permission                            |\n" +
-                "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
-                "| (no params)                                        | platform         | none                                           |\n" +
-                "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
-                "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
-                "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
-                "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
+                "| query                            | mode             | required permission                            |\n" +
+                "|----------------------------------|------------------|------------------------------------------------|\n" +
+                "| (no params)                      | platform         | none                                           |\n" +
+                "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
+                "| `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |\n" +
+                "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
+                "| `?userId=me` (no namespace)      | all caller's     | authenticated                                  |\n\n" +
                 "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
                 "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.\n\n" +
                 "When called with no params, returns platform-level configs.",
