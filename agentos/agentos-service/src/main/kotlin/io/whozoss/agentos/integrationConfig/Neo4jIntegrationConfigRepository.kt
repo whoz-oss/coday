@@ -78,14 +78,12 @@ open class Neo4jIntegrationConfigRepository(
             .findActiveByTripleKey(IntegrationConfigNode.computeTripleKey(namespaceId, userId, name))
             ?.toDomain(objectMapper)
 
-    override fun findAllByNamesForNamespaceIdAndUserId(
-        names: List<String>,
+    override fun findAllForNamespaceIdAndUserId(
         namespaceId: UUID?,
         userId: UUID?,
     ): List<IntegrationConfig> =
         neo4jRepository
-            .findAllByNamesForNamespaceIdAndUserId(
-                names = names,
+            .findAllForNamespaceIdAndUserId(
                 namespaceId = namespaceId?.toString(),
                 userId = userId?.toString(),
             ).map {

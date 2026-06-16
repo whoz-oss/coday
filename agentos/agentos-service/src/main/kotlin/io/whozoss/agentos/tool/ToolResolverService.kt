@@ -1,20 +1,15 @@
 package io.whozoss.agentos.tool
 
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
-import io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy
-import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.springframework.stereotype.Service
-import kotlin.collections.flatten
 
 @Service
 class ToolResolverService(
     private val toolRegistryService: ToolRegistryService,
-    private val integrationConfigService: IntegrationConfigService,
-    private val mergeStrategy: IntegrationConfigMergeStrategy,
 ) {
     /**
      * Resolves the tool set for a user-scoped agent run, applying 3-tier overlay
@@ -33,24 +28,25 @@ class ToolResolverService(
     fun resolveToolsForRun(
         agentIntegrations: Map<String, List<String>?>? = null,
         context: ToolContext,
+        allIntegrationConfigs: List<IntegrationConfig>,
     ): Collection<StandardTool<*>> {
+        val integrationNames = agentIntegrations?.keys?.toList() ?: emptyList()
+        val integrationConfigs = allIntegrationConfigs.filter { it.name in integrationNames }
         val allTools =
-            resolveConfigs(
-                integrationConfigNames = agentIntegrations?.keys?.toList() ?: emptyList(),
-                context = context,
-            ).mapNotNull { config ->
-                toolRegistryService
-                    .findPlugin(config.integrationType)
-                    .also { if (it == null) logger.warn { "[ToolResolver] No plugin found for type ${config.integrationType}" } }
-                    ?.let { plugin ->
-                        extractTools(
-                            allowedNames = agentIntegrations?.get(config.name),
-                            config = config,
-                            plugin = plugin,
-                            context = context,
-                        )
-                    }
-            }.flatten()
+            integrationConfigs
+                .mapNotNull { config ->
+                    toolRegistryService
+                        .findPlugin(config.integrationType)
+                        .also { if (it == null) logger.warn { "[ToolResolver] No plugin found for type ${config.integrationType}" } }
+                        ?.let { plugin ->
+                            extractTools(
+                                allowedNames = agentIntegrations?.get(config.name),
+                                config = config,
+                                plugin = plugin,
+                                context = context,
+                            )
+                        }
+                }.flatten()
 
         // De-duplicate tools by name, dropping second and more tools with same name
         return allTools
@@ -62,23 +58,6 @@ class ToolResolverService(
                 tools.first()
             }
     }
-
-    internal fun resolveConfigs(
-        integrationConfigNames: List<String>,
-        context: ToolContext,
-    ): List<IntegrationConfig> =
-        integrationConfigService
-            .findAllByNamesForNamespaceIdAndUserId(
-                names = integrationConfigNames,
-                namespaceId = context.namespaceId,
-                userId = context.userId,
-            ).groupBy { it.name }
-            .mapNotNull { (_, configs) ->
-                val sorted = configs.sortedBy { it.getPriority() }
-                sorted.drop(1).fold(
-                    initial = sorted.first(),
-                ) { base, override -> mergeStrategy.merge(base, override) }
-            }
 
     private fun extractTools(
         allowedNames: List<String>?,

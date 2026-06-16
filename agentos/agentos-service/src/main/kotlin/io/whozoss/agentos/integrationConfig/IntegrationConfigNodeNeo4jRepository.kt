@@ -82,15 +82,13 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     @Query(
         $$"""
             MATCH (c:IntegrationConfig)
-            WHERE c.name IN $names
-            AND (c.namespaceId IS NULL OR c.namespaceId = $namespaceId)
+            WHERE (c.namespaceId IS NULL OR c.namespaceId = $namespaceId)
             AND (c.userId IS NULL OR c.userId = $userId)
             AND (c.removed IS NULL OR c.removed = false)
             RETURN c
         """,
     )
-    fun findAllByNamesForNamespaceIdAndUserId(
-        names: List<String>,
+    fun findAllForNamespaceIdAndUserId(
         namespaceId: String?,
         userId: String?,
     ): List<IntegrationConfigNode>

@@ -28,6 +28,7 @@ import java.util.UUID
 @Service
 class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
+    private val mergeStrategy: IntegrationConfigMergeStrategy,
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -53,7 +54,10 @@ class IntegrationConfigServiceImpl(
         return saveOrConflict(entity)
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<IntegrationConfig> = repository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<IntegrationConfig> = repository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<IntegrationConfig> = repository.findByParent(parentId)
 
@@ -81,31 +85,31 @@ class IntegrationConfigServiceImpl(
     override fun findEffective(
         namespaceId: UUID?,
         userId: UUID?,
-    ): List<IntegrationConfig> {
-        // Accumulate layers from lowest to highest precedence. Each layer overwrites the
-        // previous entry for the same name, so the last write wins per name.
-        val byName = mutableMapOf<String, IntegrationConfig>()
-
-        // Layer 1 — platform (always)
-        repository.findPlatform().forEach { byName[it.name] = it }
-
-        // Layer 2 — namespace-shared
-        if (namespaceId != null) {
-            repository.findByParent(namespaceId).forEach { byName[it.name] = it }
-        }
-
-        // Layers 3 & 4 — user overlays (user-global then user×namespace, in order so
-        // user×namespace wins over user-global for the same name)
-        if (userId != null) {
-            repository
-                .findByUserId(userId)
-                .filter { it.namespaceId == null || it.namespaceId == namespaceId }
-                .sortedBy { if (it.namespaceId == null) 0 else 1 } // user-global first, then user×ns
-                .forEach { byName[it.name] = it }
-        }
-
-        return byName.values.toList()
-    }
+    ): List<IntegrationConfig> =
+        repository
+            .findAllForNamespaceIdAndUserId(
+                namespaceId = namespaceId,
+                userId = userId,
+            ).groupBy { it.name }
+            .mapNotNull { (_, configs) ->
+                if (configs.size == 1) {
+                    configs.first()
+                } else {
+                    val sorted = configs.sortedBy { it.getPriority() }
+                    sorted.drop(1).fold(
+                        initial = sorted.first(),
+                    ) { base, override ->
+                        if (base.getPriority() ==
+                            override.getPriority()
+                        ) {
+                            logger.warn {
+                                "[IntegrationConfigService] Inconsistency detected as same level between configs ${base.id} and ${override.id}"
+                            }
+                        }
+                        mergeStrategy.merge(base, override)
+                    }
+                }
+            }
 
     override fun findFiltered(
         namespaceId: UUID?,
@@ -140,12 +144,6 @@ class IntegrationConfigServiceImpl(
                 findByUserId(callerId)
             }
         }
-
-    override fun findAllByNamesForNamespaceIdAndUserId(
-        names: List<String>,
-        namespaceId: UUID?,
-        userId: UUID?,
-    ): List<IntegrationConfig> = repository.findAllByNamesForNamespaceIdAndUserId(names, namespaceId, userId)
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
@@ -184,7 +182,8 @@ class IntegrationConfigServiceImpl(
 
         // Platform layer: always checked — any entity with the same name at platform scope
         // participates in the reconciliation chain for every namespace and user.
-        repository.findByTriple(null, null, name)
+        repository
+            .findByTriple(null, null, name)
             ?.takeIf { it.id != entityId && it.integrationType != type }
             ?.let(::reject)
 
@@ -192,14 +191,16 @@ class IntegrationConfigServiceImpl(
         // catches the case of an admin renaming a NS config to a name already used by a user-overlay
         // with a different type, which would also break the merge for that user).
         if (namespaceId != null) {
-            repository.findByTriple(namespaceId, null, name)
+            repository
+                .findByTriple(namespaceId, null, name)
                 ?.takeIf { it.id != entityId && it.integrationType != type }
                 ?.let(::reject)
         }
 
         if (userId != null) {
             // user-global of the same user
-            repository.findByTriple(null, userId, name)
+            repository
+                .findByTriple(null, userId, name)
                 ?.takeIf { it.id != entityId && it.integrationType != type }
                 ?.let(::reject)
 
@@ -215,8 +216,7 @@ class IntegrationConfigServiceImpl(
                             it.namespaceId != null &&
                             it.name == name &&
                             it.integrationType != type
-                    }
-                    ?.let(::reject)
+                    }?.let(::reject)
             }
         }
     }

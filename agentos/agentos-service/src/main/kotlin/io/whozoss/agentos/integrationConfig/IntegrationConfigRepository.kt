@@ -46,8 +46,7 @@ interface IntegrationConfigRepository : EntityRepository<IntegrationConfig, UUID
         name: String,
     ): IntegrationConfig?
 
-    fun findAllByNamesForNamespaceIdAndUserId(
-        names: List<String>,
+    fun findAllForNamespaceIdAndUserId(
         namespaceId: UUID?,
         userId: UUID?,
     ): List<IntegrationConfig>

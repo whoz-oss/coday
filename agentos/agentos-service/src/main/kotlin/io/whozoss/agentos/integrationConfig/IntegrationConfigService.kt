@@ -18,8 +18,12 @@ import java.util.UUID
  * - [findByNamespaceAndName]: legacy two-key lookup that always assumes `userId = null`,
  *   preserved for Epic 4 callers and tests.
  */
-interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, ConfigLookup<IntegrationConfig>, OwnershipAware {
+interface IntegrationConfigService :
+    EntityService<IntegrationConfig, UUID>,
+    ConfigLookup<IntegrationConfig>,
+    OwnershipAware {
     override val ownershipEntityType: EntityType get() = EntityType.INTEGRATION_CONFIG
+
     override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
 
     /**
@@ -42,12 +46,6 @@ interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, Con
      */
     fun findByUserId(userId: UUID): List<IntegrationConfig>
 
-    fun findAllByNamesForNamespaceIdAndUserId(
-        names: List<String>,
-        namespaceId: UUID?,
-        userId: UUID?,
-    ): List<IntegrationConfig>
-
     /**
      * Find all non-removed [IntegrationConfig] scoped to the given namespace AND with
      * [IntegrationConfig.userId] = null (namespace-shared layer of the 3-tier reconciliation).
@@ -66,6 +64,32 @@ interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, Con
      * Used by [IntegrationConfigController.list] when called with no query params (Super Admin only).
      */
     fun findPlatform(): List<IntegrationConfig>
+
+    /**
+     * Enumerate the effective [IntegrationConfig] entries visible for a given execution context
+     * `(namespaceId, userId)`.
+     *
+     * Composes the four precedence layers from lowest to highest, keeping only the highest-
+     * precedence entry per [IntegrationConfig.name]:
+     *
+     * | Layer              | Condition                        |
+     * |--------------------|----------------------------------|
+     * | Platform           | always included                  |
+     * | Namespace-shared   | when `namespaceId != null`       |
+     * | User-global        | when `userId != null`            |
+     * | User × namespace   | when both are non-null           |
+     *
+     * This is intentionally **not** a parameter-level merge — it returns the raw config from
+     * the winning layer for each name. Full parameter reconciliation is the responsibility of
+     * [io.whozoss.agentos.reconciliation.ConfigMergeService].
+     *
+     * Intended for callers that need the list of reachable configs for descriptive purposes
+     * (system prompt, instructions block, tool enumeration) without needing merged parameters.
+     */
+    fun findEffective(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig>
 
     /**
      * Scope-aware filtered listing used by [IntegrationConfigController.list].

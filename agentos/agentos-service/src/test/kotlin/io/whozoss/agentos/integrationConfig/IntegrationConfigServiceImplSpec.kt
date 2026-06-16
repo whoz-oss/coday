@@ -23,7 +23,7 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
     private val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
 
     private fun newService(): IntegrationConfigServiceImpl =
-        IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository())
+        IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy())
 
     private fun config(
         namespaceId: UUID? = UUID.randomUUID(),
