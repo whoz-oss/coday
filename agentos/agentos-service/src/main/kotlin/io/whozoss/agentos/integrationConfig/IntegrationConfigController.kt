@@ -10,8 +10,8 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
@@ -100,7 +100,6 @@ class IntegrationConfigController(
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<IntegrationConfig, UUID, IntegrationConfigResource>(integrationConfigService, userService, permissionService) {
-
     override val entityType = EntityType.INTEGRATION_CONFIG
 
     override fun toResource(entity: IntegrationConfig): IntegrationConfigResource =
@@ -147,7 +146,9 @@ class IntegrationConfigController(
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'READ')")
     @HideOnAccessDenied
-    override fun getById(@PathVariable id: UUID): IntegrationConfigResource = super.getById(id)
+    override fun getById(
+        @PathVariable id: UUID,
+    ): IntegrationConfigResource = super.getById(id)
 
     /**
      * POST /by-ids — overridden to honor the ownership branch (mirrors
@@ -159,28 +160,33 @@ class IntegrationConfigController(
         produces = [MediaType.APPLICATION_JSON_VALUE],
     )
     @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody request: GetByIdsRequest): List<IntegrationConfigResource> {
+    override fun getByIds(
+        @RequestBody request: GetByIdsRequest,
+    ): List<IntegrationConfigResource> {
         val ids = request.ids
         if (ids.isEmpty()) return emptyList()
 
         val currentUser = userService.getCurrentUser()
-        val membershipVisibleIds: Set<UUID> = if (currentUser.isAdmin) {
-            ids.toSet()
-        } else {
-            val rawVisible = permissionService.filterVisibleIds(
-                userId = currentUser.id.toString(),
-                entityType = entityType,
-                ids = ids.map(UUID::toString),
-                action = Action.READ,
-            )
-            rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet()
-        }
+        val membershipVisibleIds: Set<UUID> =
+            if (currentUser.isAdmin) {
+                ids.toSet()
+            } else {
+                val rawVisible =
+                    permissionService.filterVisibleIds(
+                        userId = currentUser.id.toString(),
+                        entityType = entityType,
+                        ids = ids.map(UUID::toString),
+                        action = Action.READ,
+                    )
+                rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet()
+            }
 
         val callerId = currentUser.id
         val rows = integrationConfigService.findByIds(ids, request.withRemoved)
-        val byId: Map<UUID, IntegrationConfig> = rows
-            .filter { it.id in membershipVisibleIds || it.userId == callerId }
-            .associateBy { it.id }
+        val byId: Map<UUID, IntegrationConfig> =
+            rows
+                .filter { it.id in membershipVisibleIds || it.userId == callerId }
+                .associateBy { it.id }
         return ids.mapNotNull { byId[it]?.let(::toResource) }
     }
 
@@ -191,24 +197,27 @@ class IntegrationConfigController(
     @Hidden
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("isAuthenticated()")
-    override fun listByParent(@PathVariable parentId: UUID): List<IntegrationConfigResource> =
+    override fun listByParent(
+        @PathVariable parentId: UUID,
+    ): List<IntegrationConfigResource> =
         throw ResourceNotFoundException(
             "Endpoint removed; use GET /api/integration-configs?namespaceId=$parentId instead",
         )
 
     @Operation(
         summary = "List IntegrationConfigs by scope",
-        description = "Scope is inferred from the query params :\n\n" +
-            "| query                                              | mode             | required permission                            |\n" +
-            "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
-            "| (no params)                                        | platform         | Super Admin only                               |\n" +
-            "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
-            "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
-            "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
-            "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
-            "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
-            "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.\n\n" +
-            "When called with no params, returns platform-level configs (Super Admin only).",
+        description =
+            "Scope is inferred from the query params :\n\n" +
+                "| query                                              | mode             | required permission                            |\n" +
+                "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
+                "| (no params)                                        | platform         | none                                           |\n" +
+                "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
+                "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
+                "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
+                "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
+                "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
+                "listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.\n\n" +
+                "When called with no params, returns platform-level configs.",
     )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
@@ -226,34 +235,38 @@ class IntegrationConfigController(
         }
 
         val resolvedNs = parseNamespaceParam(namespaceId)
-        val all = integrationConfigService.findFiltered(
-            namespaceId = resolvedNs,
-            namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
-            callerId = currentUser.id,
-            userRequested = userId != null,
-            canReadNamespace = { nsId -> callerCanReadNamespace(auth, nsId) },
-        )
+        val all =
+            integrationConfigService.findFiltered(
+                namespaceId = resolvedNs,
+                namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
+                callerId = currentUser.id,
+                userRequested = userId != null,
+                canReadNamespace = { nsId -> callerCanReadNamespace(auth, nsId) },
+            )
 
         return all.map { toResource(it) }
     }
 
     @Operation(
         summary = "Create an IntegrationConfig",
-        description = "Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :\n\n" +
-            "| body.namespaceId | body.userId        | scope         | required permission                  |\n" +
-            "|------------------|--------------------|---------------|--------------------------------------|\n" +
-            "| null             | null               | platform      | Super Admin only                     |\n" +
-            "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
-            "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
-            "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
-            "`body.userId` (when supplied) MUST equal the authenticated user's id — sending a different " +
-            "user-id is rejected with 400 (mass-assignment guard, Decision 15). A `namespaceId` that does " +
-            "not exist returns 404.",
+        description =
+            "Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :\n\n" +
+                "| body.namespaceId | body.userId        | scope         | required permission                  |\n" +
+                "|------------------|--------------------|---------------|--------------------------------------|\n" +
+                "| null             | null               | platform      | Super Admin only                     |\n" +
+                "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
+                "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
+                "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
+                "`body.userId` (when supplied) MUST equal the authenticated user's id — sending a different " +
+                "user-id is rejected with 400 (mass-assignment guard, Decision 15). A `namespaceId` that does " +
+                "not exist returns 404.",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
-    override fun create(@Valid @RequestBody resource: IntegrationConfigResource): IntegrationConfigResource {
+    override fun create(
+        @Valid @RequestBody resource: IntegrationConfigResource,
+    ): IntegrationConfigResource {
         val currentUser = userService.getCurrentUser()
         val me = currentUser.id
 
@@ -271,15 +284,19 @@ class IntegrationConfigController(
         // unauthorised callers always get 403 regardless of namespace existence
         // (closes the 404-vs-403 existence oracle on POST).
         when {
-            isPlatform -> requireAdminForPlatform(resolvedNs, resolvedUser)
+            isPlatform -> {
+                requireAdminForPlatform(resolvedNs, resolvedUser)
+            }
+
             resolvedNs != null -> {
                 val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
-                val granted = permissionService.hasPermission(
-                    userId = me.toString(),
-                    entityType = EntityType.NAMESPACE,
-                    entityId = resolvedNs.toString(),
-                    action = authzAction,
-                )
+                val granted =
+                    permissionService.hasPermission(
+                        userId = me.toString(),
+                        entityType = EntityType.NAMESPACE,
+                        entityId = resolvedNs.toString(),
+                        action = authzAction,
+                    )
                 if (!granted) {
                     throw AccessDeniedException(
                         "Cannot create IntegrationConfig in namespace $resolvedNs (${authzAction.name} required)",
@@ -298,15 +315,16 @@ class IntegrationConfigController(
         }
 
         // Phase 4 — explicit domain build
-        val target = IntegrationConfig(
-            metadata = EntityMetadata(id = UUID.randomUUID()),
-            namespaceId = resolvedNs,
-            userId = resolvedUser,
-            name = resource.name,
-            integrationType = resource.integrationType,
-            description = resource.description,
-            parameters = resource.parameters,
-        )
+        val target =
+            IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = resolvedNs,
+                userId = resolvedUser,
+                name = resource.name,
+                integrationType = resource.integrationType,
+                description = resource.description,
+                parameters = resource.parameters,
+            )
         return toResource(integrationConfigService.create(target))
     }
 
@@ -317,8 +335,9 @@ class IntegrationConfigController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: IntegrationConfigResource,
     ): IntegrationConfigResource {
-        val existing = integrationConfigService.findById(id)
-            ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        val existing =
+            integrationConfigService.findById(id)
+                ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
         requireAdminForPlatform(existing.namespaceId, existing.userId)
         return toResource(integrationConfigService.update(toDomainForUpdate(resource, existing)))
     }
@@ -326,9 +345,12 @@ class IntegrationConfigController(
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'DELETE')")
     @HideOnAccessDenied
-    override fun delete(@PathVariable id: UUID) {
-        val existing = integrationConfigService.findById(id)
-            ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+    override fun delete(
+        @PathVariable id: UUID,
+    ) {
+        val existing =
+            integrationConfigService.findById(id)
+                ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
         requireAdminForPlatform(existing.namespaceId, existing.userId)
         super.delete(id)
     }
@@ -338,13 +360,19 @@ class IntegrationConfigController(
      * and the current user is not a Super Admin. Called before any mutating operation (create, update,
      * delete) on a platform-scoped entity.
      */
-    private fun requireAdminForPlatform(namespaceId: UUID?, userId: UUID?) {
+    private fun requireAdminForPlatform(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ) {
         if (namespaceId == null && userId == null && !userService.getCurrentUser().isAdmin) {
             throw AccessDeniedException("Mutating platform-level IntegrationConfig requires Super Admin")
         }
     }
 
-    private fun callerCanReadNamespace(auth: Authentication, namespaceId: UUID): Boolean =
+    private fun callerCanReadNamespace(
+        auth: Authentication,
+        namespaceId: UUID,
+    ): Boolean =
         permissionService.hasPermission(
             userId = userService.getCurrentUser().id.toString(),
             entityType = EntityType.NAMESPACE,
@@ -356,12 +384,21 @@ class IntegrationConfigController(
      * Parse the `namespaceId` query parameter. Returns `null` for absent or `none` sentinel,
      * a valid UUID otherwise.
      */
-    private fun parseNamespaceParam(raw: String?): UUID? = when {
-        raw == null -> null
-        raw.equals(NONE_SENTINEL, ignoreCase = true) -> null
-        else -> runCatching { UUID.fromString(raw) }
-            .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
-    }
+    private fun parseNamespaceParam(raw: String?): UUID? =
+        when {
+            raw == null -> {
+                null
+            }
+
+            raw.equals(NONE_SENTINEL, ignoreCase = true) -> {
+                null
+            }
+
+            else -> {
+                runCatching { UUID.fromString(raw) }
+                    .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
+            }
+        }
 
     /**
      * Validate the `userId` query parameter. Only `me` and absent are valid;
