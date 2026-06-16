@@ -57,7 +57,7 @@ class ToolResolverServiceSpec :
             integrationName: String? = null,
         ): StandardTool<Nothing> =
             object : StandardTool<Nothing> {
-                override val name = name
+                override val name = (integrationName?.let { "${it}__" } ?: "") + name
                 override val description = (integrationName?.let { "${it}__" } ?: "") + name
                 override val inputSchema = """{"type":"object"}"""
                 override val version = "1.0.0"
@@ -315,7 +315,7 @@ class ToolResolverServiceSpec :
             val tools = service.resolveToolsForRun(agentIntegrations = mapOf("JIRA_PROD" to null), context = ctx(nsId))
 
             tools shouldHaveSize 1
-            tools.first().name shouldBe "GetIssue"
+            tools.first().name shouldBe "JIRA_PROD__GetIssue"
         }
 
         "resolveToolsForRun with non-null allowed list filters tools within an integration" {
