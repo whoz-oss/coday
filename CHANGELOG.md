@@ -1,3 +1,13 @@
+## 0.181.0 (2026-06-16)
+
+### 🚀 Features
+
+- #WZ-31935 enable agent config runtime filter ([#992](https://github.com/whoz-oss/coday/pull/992))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.180.2 (2026-06-12)
 
 ### 🚀 Features
