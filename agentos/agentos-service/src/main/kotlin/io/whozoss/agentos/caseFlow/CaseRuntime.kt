@@ -39,10 +39,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
  *   is accessible to the current user. Called at redirect time — not pre-computed.
  * @param runAgent fetches the named agent, runs it against the current event history,
- *   and pipes each produced event through [storeEvent]. The [skipRunningEvent] boolean
- *   tells the implementation whether to suppress emitting a duplicate [AgentRunningEvent]
- *   (true when rehydrating from a persisted [AgentRunningEvent]). Error handling is the
- *   responsibility of the service implementation.
+ *   and pipes each produced event through [storeEvent]. The implementation is responsible
+ *   for deciding whether to emit [AgentRunningEvent] by inspecting the event history
+ *   (e.g. skip if already the most recent orchestration event, to avoid duplicates on
+ *   rehydration). Error handling is the responsibility of the service implementation.
  */
 class CaseRuntime(
     val id: UUID,
@@ -51,7 +51,7 @@ class CaseRuntime(
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
     private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean, skipRunningEvent: Boolean) -> Unit,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
 ) : CaseEventEmitter by emitter {
@@ -297,11 +297,11 @@ class CaseRuntime(
                 }
 
                 is AgentRunningEvent -> {
-                    // Rehydration: the AgentRunningEvent was already persisted before the
-                    // crash/restart. Pass skipRunningEvent=true so runAgent does not emit
-                    // a duplicate AgentRunningEvent.
-                    logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events), { !interruptRequested.get() }, true)
+                    // Rehydration: agent was running when the case crashed.
+                    // Delegate to runAgent which inspects the event history
+                    // and skips the duplicate AgentRunningEvent emission.
+                    logger.info { "[CaseRuntime $id] Rehydrating from AgentRunningEvent for agent: ${event.agentName}" }
+                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events)) { !interruptRequested.get() }
                     return
                 }
 
@@ -325,7 +325,7 @@ class CaseRuntime(
                         interruptRequested.set(true)
                         return
                     }
-                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, userId, { !interruptRequested.get() }, false)
+                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, userId) { !interruptRequested.get() }
                     return
                 }
 

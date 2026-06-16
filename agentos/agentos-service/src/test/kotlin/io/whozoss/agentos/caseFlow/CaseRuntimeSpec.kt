@@ -41,7 +41,7 @@ class RecordingRunAgent(
     val callCount: Int get() = _calls.size
 
     /** Expose as the function type [CaseRuntime] expects. */
-    val asCallback: suspend (String, List<CaseEvent>, () -> List<CaseEvent>, UUID?, () -> Boolean, Boolean) -> Unit = { name, events, _, _, _, _ ->
+    val asCallback: suspend (String, List<CaseEvent>, () -> List<CaseEvent>, UUID?, () -> Boolean) -> Unit = { name, events, _, _, _ ->
         _calls += name to events
         delegate(name, events)
     }
@@ -234,7 +234,7 @@ class CaseRuntimeSpec : StringSpec() {
                         )
                     },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    runAgent = { _, events, _, _, _, _ ->
+                    runAgent = { _, events, _, _, _ ->
                         agent.run(events).collect { event ->
                             savedEvents.add(event)
                             runtime.pushEvents(listOf(event))
@@ -292,7 +292,7 @@ class CaseRuntimeSpec : StringSpec() {
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    runAgent = { _, events, _, _, _, _ ->
+                    runAgent = { _, events, _, _, _ ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
                             runtime.pushEvents(listOf(event))
@@ -329,7 +329,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    runAgent = { _, _, _, _, shouldContinue, _ ->
+                    runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                         // Simulate a long-running agent: don't push AgentFinishedEvent
                         // so we can inspect shouldContinue before the loop exits naturally.
@@ -364,7 +364,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    runAgent = { _, _, _, _, shouldContinue, _ ->
+                    runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
                     },
                 )
@@ -398,7 +398,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    runAgent = { _, _, _, _, shouldContinue, _ ->
+                    runAgent = { _, _, _, _, shouldContinue ->
                         // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
                         // still false at this point, so shouldContinue() must return true.
                         lambdaResultDuringRun = shouldContinue()

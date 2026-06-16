@@ -153,7 +153,7 @@ class CaseServiceImpl(
                             agentName = agentName,
                         ).isNotEmpty()
             },
-            runAgent = { agentName, events, eventsProvider, userId, shouldContinue, skipRunningEvent ->
+            runAgent = { agentName, events, eventsProvider, userId, shouldContinue ->
                 runAgent(
                     agentName,
                     case.id,
@@ -161,7 +161,6 @@ class CaseServiceImpl(
                     eventsProvider,
                     userId,
                     shouldContinue,
-                    skipRunningEvent,
                 )
             },
             inputEvents = inputEvents,
@@ -386,7 +385,6 @@ class CaseServiceImpl(
         eventsProvider: () -> List<CaseEvent>,
         userId: UUID?,
         shouldContinue: () -> Boolean,
-        skipRunningEvent: Boolean = false,
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
 
@@ -407,9 +405,17 @@ class CaseServiceImpl(
             )
         val agent = agentService.findAgentByName(agentName, context)
 
-        if (!skipRunningEvent) {
-            // Emit AgentRunningEvent after resolution — the agent carries the resolved
-            // LLM provider and model from its construction.
+        // Decide whether to emit AgentRunningEvent by inspecting the event history.
+        // If the last AgentSelectedEvent is more recent than the last AgentRunningEvent
+        // (or there is no AgentRunningEvent), this is a fresh run and we emit.
+        // If AgentRunningEvent is already the most recent orchestration event, we are
+        // rehydrating from a crash — skip to avoid a duplicate that would cause an
+        // infinite loop in processNextStep.
+        val lastSelectedIndex = events.indexOfLast { it is AgentSelectedEvent }
+        val lastRunningIndex = events.indexOfLast { it is AgentRunningEvent }
+        val shouldEmitRunningEvent = lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
+
+        if (shouldEmitRunningEvent) {
             val runningEvent =
                 AgentRunningEvent(
                     namespaceId = runtime.namespaceId,
