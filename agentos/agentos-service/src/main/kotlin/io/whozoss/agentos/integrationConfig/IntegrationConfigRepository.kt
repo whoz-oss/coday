@@ -50,4 +50,14 @@ interface IntegrationConfigRepository : EntityRepository<IntegrationConfig, UUID
         namespaceId: UUID?,
         userId: UUID?,
     ): List<IntegrationConfig>
+
+    /**
+     * Find all non-removed namespace-shared configs (userId IS NULL, namespaceId IS NOT NULL)
+     * that match the given [name], across all namespaces.
+     *
+     * Used by [IntegrationConfigServiceImpl.assertConsistentIntegrationTypeAcrossLayers] when
+     * creating or updating a platform-level config, to detect cross-namespace type conflicts
+     * without enumerating all namespaces first.
+     */
+    fun findNsSharedByName(name: String): List<IntegrationConfig>
 }

@@ -95,13 +95,11 @@ class IntegrationConfigServiceImpl(
                 if (configs.size == 1) {
                     configs.first()
                 } else {
-                    val sorted = configs.sortedBy { it.getPriority() }
+                    val sorted = configs.sortedWith(LAYER_COMPARATOR)
                     sorted.drop(1).fold(
                         initial = sorted.first(),
                     ) { base, override ->
-                        if (base.getPriority() ==
-                            override.getPriority()
-                        ) {
+                        if (LAYER_COMPARATOR.compare(base, override) == 0) {
                             logger.warn {
                                 "[IntegrationConfigService] Inconsistency detected as same level between configs ${base.id} and ${override.id}"
                             }
@@ -197,6 +195,17 @@ class IntegrationConfigServiceImpl(
                 ?.let(::reject)
         }
 
+        // Platform entity — check for conflicting NS-shared configs across all namespaces.
+        // A platform layer merges with every NS-shared layer that carries the same name;
+        // a type mismatch would silently switch the plugin at runtime for those namespaces.
+        // Volume is bounded by the name filter: typically a single-digit number of rows.
+        if (namespaceId == null && userId == null) {
+            repository
+                .findNsSharedByName(name)
+                .firstOrNull { it.id != entityId && it.integrationType != type }
+                ?.let(::reject)
+        }
+
         if (userId != null) {
             // user-global of the same user
             repository
@@ -267,5 +276,32 @@ class IntegrationConfigServiceImpl(
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "integration_config_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+
+        /**
+         * Comparator defining the 3-tier overlay precedence (lowest → highest priority).
+         *
+         * | Scope            | namespaceId | userId   | rank |
+         * |------------------|-------------|----------|------|
+         * | Platform         | null        | null     | 0    |
+         * | User-global      | null        | non-null | 1    |
+         * | Namespace-shared | non-null    | null     | 2    |
+         * | User × namespace | non-null    | non-null | 3    |
+         *
+         * Namespace-shared (rank 2) intentionally overrides user-global (rank 1):
+         * namespace admins can enforce a config that supersedes user preferences.
+         * User × namespace (rank 3) lets the user restore a personal override
+         * scoped to that specific namespace.
+         */
+        val LAYER_COMPARATOR: Comparator<IntegrationConfig> = Comparator { a, b ->
+            val rankA = layerRank(a)
+            val rankB = layerRank(b)
+            rankA.compareTo(rankB)
+        }
+
+        private fun layerRank(config: IntegrationConfig): Int {
+            val nsRank = if (config.namespaceId == null) 0 else 2
+            val userRank = if (config.userId == null) 0 else 1
+            return nsRank + userRank
+        }
     }
 }

@@ -21,7 +21,8 @@ class ToolResolverService(
      * identity (namespace, user, external id, agent name, case events).
      *
      * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
-     *   When null, all namespace integrations are included.
+     *   When null, the agent has no integration bindings and no tools are resolved.
+     *   This is intentional: an agent with no declared integrations runs tool-free.
      * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
      *   [ToolContext.userId] must be non-null.
      */

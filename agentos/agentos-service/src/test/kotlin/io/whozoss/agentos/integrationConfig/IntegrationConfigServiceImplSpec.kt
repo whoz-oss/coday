@@ -443,5 +443,57 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                 service.update(userOverride.copy(name = "JIRA"))
             }
         }
+
+        // -------------------------------------------------------------------------
+        // IG-3 — platform layer checks in assertConsistentIntegrationTypeAcrossLayers
+        // -------------------------------------------------------------------------
+
+        "create rejects NS-shared config whose integrationType conflicts with an existing platform config" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            // Platform layer with type=JIRA
+            service.create(config(namespaceId = null, userId = null, name = "JIRA", integrationType = "JIRA"))
+            // NS-shared layer with the same name but a different type — would break the merge
+            shouldThrow<ResponseStatusException> {
+                service.create(
+                    config(namespaceId = nsId, userId = null, name = "JIRA", integrationType = "FILE_ACCESS"),
+                )
+            }
+        }
+
+        "create rejects platform config whose integrationType conflicts with an existing NS-shared config" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            // NS-shared layer exists first
+            service.create(config(namespaceId = nsId, userId = null, name = "JIRA", integrationType = "JIRA"))
+            // Admin tries to add a platform layer with the same name but a different type
+            shouldThrow<ResponseStatusException> {
+                service.create(
+                    config(namespaceId = null, userId = null, name = "JIRA", integrationType = "FILE_ACCESS"),
+                )
+            }
+        }
+
+        "create accepts platform config with the same integrationType as an existing NS-shared config" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = null, name = "JIRA", integrationType = "JIRA"))
+            // Same integrationType — legitimate base layer, must NOT throw
+            val platform = service.create(
+                config(namespaceId = null, userId = null, name = "JIRA", integrationType = "JIRA"),
+            )
+            platform.integrationType shouldBe "JIRA"
+        }
+
+        "create rejects user-global config whose integrationType conflicts with an existing platform config" {
+            val service = newService()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = null, userId = null, name = "JIRA", integrationType = "JIRA"))
+            shouldThrow<ResponseStatusException> {
+                service.create(
+                    config(namespaceId = null, userId = userId, name = "JIRA", integrationType = "FILE_ACCESS"),
+                )
+            }
+        }
     }
 }

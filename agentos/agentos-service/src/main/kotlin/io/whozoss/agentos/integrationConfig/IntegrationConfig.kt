@@ -42,24 +42,4 @@ data class IntegrationConfig(
     val description: String? = null,
     val parameters: JsonNode? = null,
 ) : Entity {
-    /**
-     * Precedence rank for 3-tier overlay merging (lower = base, higher = override).
-     *
-     * | Scope              | namespaceId | userId   | priority |
-     * |--------------------|-------------|----------|----------|
-     * | Platform           | null        | null     | 0        |
-     * | User-global        | null        | non-null | 1        |
-     * | Namespace-shared   | non-null    | null     | 2        |
-     * | User × namespace   | non-null    | non-null | 3        |
-     *
-     * Namespace-shared (priority 2) intentionally overrides user-global (priority 1):
-     * namespace admins can enforce a config that supersedes user preferences.
-     * User × namespace (priority 3) lets the user restore a personal override
-     * scoped to that specific namespace.
-     */
-    fun getPriority(): Int {
-        val firstPriority = if (namespaceId == null) 0 else 2
-        val secondPriority = if (userId == null) 0 else 1
-        return firstPriority + secondPriority
-    }
 }

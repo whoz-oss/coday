@@ -79,12 +79,15 @@ interface IntegrationConfigService :
      * | User-global        | when `userId != null`            |
      * | User × namespace   | when both are non-null           |
      *
-     * This is intentionally **not** a parameter-level merge — it returns the raw config from
-     * the winning layer for each name. Full parameter reconciliation is the responsibility of
-     * [io.whozoss.agentos.reconciliation.ConfigMergeService].
+     * This **is** a parameter-level merge across all applicable layers, ordered from lowest to
+     * highest precedence. Each layer's parameters are deep-merged on top of the previous via
+     * [io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy]. The result carries
+     * the identity (`id`, `namespaceId`, `userId`) of the platform layer (lowest), which is
+     * the stable provenance anchor for caching and logging. The merged config is a derived,
+     * runtime-only view and is never persisted.
      *
-     * Intended for callers that need the list of reachable configs for descriptive purposes
-     * (system prompt, instructions block, tool enumeration) without needing merged parameters.
+     * Intended for callers that need the effective parameter set at agent-run time
+     * (tool instantiation, system prompt).
      */
     fun findEffective(
         namespaceId: UUID?,
