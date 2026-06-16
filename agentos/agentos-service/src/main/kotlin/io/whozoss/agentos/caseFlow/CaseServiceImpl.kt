@@ -405,17 +405,7 @@ class CaseServiceImpl(
             )
         val agent = agentService.findAgentByName(agentName, context)
 
-        // Decide whether to emit AgentRunningEvent by inspecting the event history.
-        // If the last AgentSelectedEvent is more recent than the last AgentRunningEvent
-        // (or there is no AgentRunningEvent), this is a fresh run and we emit.
-        // If AgentRunningEvent is already the most recent orchestration event, we are
-        // rehydrating from a crash — skip to avoid a duplicate that would cause an
-        // infinite loop in processNextStep.
-        val lastSelectedIndex = events.indexOfLast { it is AgentSelectedEvent }
-        val lastRunningIndex = events.indexOfLast { it is AgentRunningEvent }
-        val shouldEmitRunningEvent = lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
-
-        if (shouldEmitRunningEvent) {
+        if (shouldEmitRunningEvent(events)) {
             val runningEvent =
                 AgentRunningEvent(
                     namespaceId = runtime.namespaceId,
@@ -555,6 +545,31 @@ class CaseServiceImpl(
         activeRuntimes.clear()
         scope.cancel()
         logger.info { "CaseService shutdown complete" }
+    }
+
+    /**
+     * Determines whether a new [AgentRunningEvent] should be emitted by inspecting
+     * the event history.
+     *
+     * Returns `true` when the most recent [AgentSelectedEvent] is newer than the most
+     * recent [AgentRunningEvent] (or when no [AgentRunningEvent] exists yet) — this is
+     * the normal fresh-run path.
+     *
+     * Returns `false` when [AgentRunningEvent] is already the most recent of the two —
+     * the case is rehydrating from a crash and emitting a duplicate would cause
+     * [CaseRuntime.processNextStep] to re-trigger execution indefinitely.
+     *
+     * This comparison is safe because agent execution is strictly sequential within a
+     * case: [CaseRuntime.run] is guarded by an [AtomicBoolean] that prevents concurrent
+     * invocations, and [runAgent] suspends in [Flow.collect] until the agent's flow
+     * terminates. No two agents can overlap, so the relative positions of
+     * [AgentSelectedEvent] and [AgentRunningEvent] in the event list are always
+     * well-ordered.
+     */
+    private fun shouldEmitRunningEvent(events: List<CaseEvent>): Boolean {
+        val lastSelectedIndex = events.indexOfLast { it is AgentSelectedEvent }
+        val lastRunningIndex = events.indexOfLast { it is AgentRunningEvent }
+        return lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
     }
 
     companion object : KLogging() {
