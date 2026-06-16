@@ -101,32 +101,6 @@ class AgentServiceImpl(
     // -------------------------------------------------------------------------
 
     /**
-     * Lightweight resolution of the LLM provider and model names for an agent.
-     *
-     * Only resolves the [AgentConfig], [AiModel] and [AiProvider] (with user overlay).
-     * Does NOT build instructions, system prompt, or tools — unlike [resolveAgentDefinition]
-     * which performs the full resolution pipeline.
-     *
-     * Used by the runtime callback to enrich [io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent]
-     * with observability metadata before the agent executes.
-     *
-     * @return a [Pair] of (providerName, modelApiName), or null if the agent config is not found.
-     */
-    override fun resolveModelInfo(
-        agentName: String,
-        namespaceId: UUID,
-        userId: UUID?,
-    ): Pair<String, String>? {
-        val config = agentConfigService.findByName(namespaceId, agentName) ?: return null
-        val baseModel =
-            config.modelName?.let { aiModelService.findAiModel(namespaceId, it) }
-                ?: findDefaultModelConfig(namespaceId)
-                ?: return null
-        val (_, providerConfig) = applyOverlaysToModel(baseModel, namespaceId, userId)
-        return providerConfig.name to baseModel.apiModelName
-    }
-
-    /**
      * Phase 1: resolve all configuration for an [AgentConfig] into a [ResolvedAgentDefinition].
      *
      * Performs model / provider overlay resolution, instruction building, and tool resolution.
@@ -304,8 +278,8 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
-                llmProviderName = providerConfig.name,
-                llmModelApiName = modelConfig.apiModelName,
+                llmProvider = providerConfig.name,
+                llmModel = modelConfig.apiModelName,
             )
         } else {
             AgentSimple(
@@ -318,8 +292,8 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
-                llmProviderName = providerConfig.name,
-                llmModelApiName = modelConfig.apiModelName,
+                llmProvider = providerConfig.name,
+                llmModel = modelConfig.apiModelName,
             )
         }
     }

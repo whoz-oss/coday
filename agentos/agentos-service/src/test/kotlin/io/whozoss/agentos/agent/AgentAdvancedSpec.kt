@@ -131,6 +131,8 @@ class AgentAdvancedSpec :
                 context = context,
                 intentionGenerator = mockk(),
                 objectMapper = testObjectMapper,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
             )
         }
 
@@ -201,6 +203,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events =
@@ -274,6 +278,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events =
@@ -343,6 +349,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events =
@@ -421,6 +429,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -543,6 +553,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 10,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -603,6 +615,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -645,6 +659,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -680,6 +696,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -716,6 +734,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -768,6 +788,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1188,6 +1210,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "FILES__remove"),
                     objectMapper = testObjectMapper,
                     maxIterations = 3,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1243,6 +1267,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1301,6 +1327,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = intentionGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1365,6 +1393,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1420,6 +1450,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1482,6 +1514,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1558,6 +1592,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1634,6 +1670,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1709,6 +1747,8 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     maxIterations = 2,
                     caseEventsProvider = { initialEvents },
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             agent.run(initialEvents).toList()
 
@@ -1749,6 +1789,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(initialUserMsg + pending).toList()
 
@@ -1807,6 +1849,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userYes).toList()
 
@@ -1856,6 +1900,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending).toList()
 
@@ -1919,6 +1965,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 10,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -1996,6 +2044,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2068,6 +2118,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2140,6 +2192,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2212,6 +2266,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2242,6 +2298,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "DOES_NOT_EXIST"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2348,6 +2406,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2439,6 +2499,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2544,6 +2606,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2666,6 +2730,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2756,6 +2822,8 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     // High maxIterations: without the fix the agent would run until exhaustion.
                     maxIterations = 50,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2841,6 +2909,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 20,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()

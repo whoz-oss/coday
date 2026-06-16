@@ -38,12 +38,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @param isAgentAuthorized defensive check called when [processNextStep] encounters an
  *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
  *   is accessible to the current user. Called at redirect time — not pre-computed.
- * @param resolveAgentLlmInfo resolves the LLM provider and model names for a given agent
- *   name and user, called just before emitting [AgentRunningEvent] so the event can carry
- *   observability metadata. Returns a [Pair] of (llmProvider, llmModel), or null on failure
- *   (the event is emitted with null fields rather than blocking execution).
  * @param runAgent fetches the named agent, runs it against the current event history,
- *   and pipes each produced event through [storeEvent]. Error handling is the
+ *   and pipes each produced event through [storeEvent]. The [skipRunningEvent] boolean
+ *   tells the implementation whether to suppress emitting a duplicate [AgentRunningEvent]
+ *   (true when rehydrating from a persisted [AgentRunningEvent]). Error handling is the
  *   responsibility of the service implementation.
  */
 class CaseRuntime(
@@ -53,8 +51,7 @@ class CaseRuntime(
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
     private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
-    private val resolveAgentLlmInfo: suspend (agentName: String, userId: UUID?) -> Pair<String?, String?>?,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean, skipRunningEvent: Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
 ) : CaseEventEmitter by emitter {
@@ -300,15 +297,17 @@ class CaseRuntime(
                 }
 
                 is AgentRunningEvent -> {
+                    // Rehydration: the AgentRunningEvent was already persisted before the
+                    // crash/restart. Pass skipRunningEvent=true so runAgent does not emit
+                    // a duplicate AgentRunningEvent.
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events)) { !interruptRequested.get() }
+                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events), { !interruptRequested.get() }, true)
                     return
                 }
 
                 is AgentSelectedEvent -> {
                     logger.info {
-                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, " +
-                            "transitioning to running"
+                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}"
                     }
                     val userId = resolveUserId(events)
                     if (!isAgentAuthorized(event.agentName, userId)) {
@@ -326,19 +325,7 @@ class CaseRuntime(
                         interruptRequested.set(true)
                         return
                     }
-                    val llmInfo = runCatching { resolveAgentLlmInfo(event.agentName, userId) }
-                        .onFailure { logger.warn(it) { "[CaseRuntime $id] Could not resolve LLM info for agent '${event.agentName}'" } }
-                        .getOrNull()
-                    storeAndEmitEvent(
-                        AgentRunningEvent(
-                            namespaceId = namespaceId,
-                            caseId = id,
-                            agentId = event.agentId,
-                            agentName = event.agentName,
-                            llmProvider = llmInfo?.first,
-                            llmModel = llmInfo?.second,
-                        ),
-                    )
+                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, userId, { !interruptRequested.get() }, false)
                     return
                 }
 

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -10,52 +11,68 @@ import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
 
 /**
- * Emits an [ErrorEvent] and the given [AgentFinishedEvent] when the LLM provider
- * rejects a request with a non-transient error (4xx).
- *
- * @param finishedEvent Pre-built event closing the agent's turn.
- * @param e The non-transient provider exception.
- * @param logger Logger of the calling agent.
+ * Emits an [ErrorEvent] and [AgentFinishedEvent] when the LLM provider rejects a request
+ * with a non-transient error (4xx). Retrying with the same payload would produce the
+ * same result, so the run is terminated immediately rather than looping.
  */
 suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
-    finishedEvent: AgentFinishedEvent,
+    agent: Agent,
     e: NonTransientAiException,
+    namespaceId: UUID,
+    caseId: UUID,
     logger: KLogger,
 ) {
-    logger.error(e) { "LLM provider rejected request for case ${finishedEvent.caseId}" }
+    logger.error(e) { "LLM provider rejected request for case $caseId" }
     emit(
         ErrorEvent(
-            namespaceId = finishedEvent.namespaceId,
-            caseId = finishedEvent.caseId,
+            namespaceId = namespaceId,
+            caseId = caseId,
             message = "The AI provider rejected the request and the agent cannot continue: ${e.message}",
         ),
     )
-    emit(finishedEvent)
+    emit(
+        AgentFinishedEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            agentId = agent.id,
+            agentName = agent.name,
+            llmProvider = agent.llmProvider,
+            llmModel = agent.llmModel,
+        ),
+    )
 }
 
 /**
- * Emits the given [AgentFinishedEvent] then the interrupt-specific follow-up events.
+ * Emits [AgentFinishedEvent] to close the current agent's turn, then emits
+ * the interrupt-specific follow-up events.
  *
  * The [when] is exhaustive over the [AgentInterrupt] sealed hierarchy: adding a new
  * subtype without handling it here is a compile error.
- *
- * @param finishedEvent Pre-built event closing the agent's turn.
- * @param e The interrupt signal thrown by a tool.
- * @param logger Logger of the calling agent, used to trace the redirect.
  */
 suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
-    finishedEvent: AgentFinishedEvent,
+    agent: Agent,
     e: AgentInterrupt,
+    namespaceId: UUID,
+    caseId: UUID,
     logger: KLogger,
 ) {
-    emit(finishedEvent)
+    emit(
+        AgentFinishedEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            agentId = agent.id,
+            agentName = agent.name,
+            llmProvider = agent.llmProvider,
+            llmModel = agent.llmModel,
+        ),
+    )
     when (e) {
         is AgentInterrupt.Redirect -> {
-            logger.info { "[${finishedEvent.agentName}] redirecting to '${e.targetAgentName}'" }
+            logger.info { "[${agent.name}] redirecting to '${e.targetAgentName}'" }
             emit(
                 AgentSelectedEvent(
-                    namespaceId = finishedEvent.namespaceId,
-                    caseId = finishedEvent.caseId,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
                     agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
                     agentName = e.targetAgentName,
                 ),

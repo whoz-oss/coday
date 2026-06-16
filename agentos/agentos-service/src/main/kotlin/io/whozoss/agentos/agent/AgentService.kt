@@ -67,20 +67,4 @@ interface AgentService {
         userId: UUID? = null,
     ): String?
 
-    /**
-     * Lightweight resolution of the LLM provider and model names for an agent.
-     *
-     * Only resolves the agent config, AI model and AI provider (with user overlay).
-     * Does not build instructions, system prompt, or tools.
-     *
-     * Used by the runtime to enrich [io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent]
-     * with observability metadata before the agent executes.
-     *
-     * @return a [Pair] of (providerName, modelApiName), or null if the agent config or model is not found.
-     */
-    fun resolveModelInfo(
-        agentName: String,
-        namespaceId: UUID,
-        userId: UUID? = null,
-    ): Pair<String, String>?
 }

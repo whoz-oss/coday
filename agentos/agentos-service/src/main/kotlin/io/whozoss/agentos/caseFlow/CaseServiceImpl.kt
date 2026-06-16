@@ -9,6 +9,7 @@ import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
@@ -152,10 +153,7 @@ class CaseServiceImpl(
                             agentName = agentName,
                         ).isNotEmpty()
             },
-            resolveAgentLlmInfo = { agentName, userId ->
-                agentService.resolveModelInfo(agentName, case.namespaceId, userId)
-            },
-            runAgent = { agentName, events, eventsProvider, userId, shouldContinue ->
+            runAgent = { agentName, events, eventsProvider, userId, shouldContinue, skipRunningEvent ->
                 runAgent(
                     agentName,
                     case.id,
@@ -163,6 +161,7 @@ class CaseServiceImpl(
                     eventsProvider,
                     userId,
                     shouldContinue,
+                    skipRunningEvent,
                 )
             },
             inputEvents = inputEvents,
@@ -387,6 +386,7 @@ class CaseServiceImpl(
         eventsProvider: () -> List<CaseEvent>,
         userId: UUID?,
         shouldContinue: () -> Boolean,
+        skipRunningEvent: Boolean = false,
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
 
@@ -405,9 +405,27 @@ class CaseServiceImpl(
                 userId = userId,
                 caseEventsProvider = eventsProvider,
             )
-        agentService
-            .findAgentByName(agentName, context)
-            .run(events, shouldContinue)
+        val agent = agentService.findAgentByName(agentName, context)
+
+        if (!skipRunningEvent) {
+            // Emit AgentRunningEvent after resolution — the agent carries the resolved
+            // LLM provider and model from its construction.
+            val runningEvent =
+                AgentRunningEvent(
+                    namespaceId = runtime.namespaceId,
+                    caseId = caseId,
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    llmProvider = agent.llmProvider,
+                    llmModel = agent.llmModel,
+                )
+            storeEvent(runningEvent).also { saved ->
+                runtime.pushEvents(listOf(saved))
+                runtime.emitEvent(saved)
+            }
+        }
+
+        agent.run(events, shouldContinue)
             .catch { error ->
                 logger.error(error) { "Error in agent $agentName for case $caseId" }
                 storeEvent(

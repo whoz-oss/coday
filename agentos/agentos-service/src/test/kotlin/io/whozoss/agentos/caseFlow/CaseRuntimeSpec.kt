@@ -25,9 +25,6 @@ import java.util.UUID
 /** Authorization check that grants access to all agents. */
 private val TRUE_FOR_ANY_AGENTS: (String, UUID?) -> Boolean = { _, _ -> true }
 
-/** LLM info resolver that returns null — used in tests that don't care about LLM metadata. */
-private val NO_LLM_INFO: suspend (String, UUID?) -> Pair<String?, String?>? = { _, _ -> null }
-
 /**
  * A simple recording wrapper for the runAgent callback.
  *
@@ -44,7 +41,7 @@ class RecordingRunAgent(
     val callCount: Int get() = _calls.size
 
     /** Expose as the function type [CaseRuntime] expects. */
-    val asCallback: suspend (String, List<CaseEvent>, () -> List<CaseEvent>, UUID?, () -> Boolean) -> Unit = { name, events, _, _, _ ->
+    val asCallback: suspend (String, List<CaseEvent>, () -> List<CaseEvent>, UUID?, () -> Boolean, Boolean) -> Unit = { name, events, _, _, _, _ ->
         _calls += name to events
         delegate(name, events)
     }
@@ -156,7 +153,6 @@ class CaseRuntimeSpec : StringSpec() {
                 },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                resolveAgentLlmInfo = NO_LLM_INFO,
                 runAgent = runAgent.asCallback,
             )
 
@@ -190,7 +186,7 @@ class CaseRuntimeSpec : StringSpec() {
         // Event sequence
         // -------------------------------------------------------------------------
 
-        "AgentSelectedEvent then AgentRunningEvent then AgentFinishedEvent are saved in order" {
+        "AgentSelectedEvent then AgentFinishedEvent are saved in order" {
             val (runtime, _, _, savedEvents) = buildRuntime()
 
             runtime.addUserMessage(userActor, userMessage)
@@ -198,27 +194,14 @@ class CaseRuntimeSpec : StringSpec() {
 
             val agentEvents =
                 savedEvents.filter {
-                    it is AgentSelectedEvent || it is AgentRunningEvent || it is AgentFinishedEvent
+                    it is AgentSelectedEvent || it is AgentFinishedEvent
                 }
-            agentEvents shouldHaveAtLeastSize 3
+            agentEvents shouldHaveAtLeastSize 2
             agentEvents[0].shouldBeInstanceOf<AgentSelectedEvent>()
-            agentEvents[1].shouldBeInstanceOf<AgentRunningEvent>()
-            agentEvents[2].shouldBeInstanceOf<AgentFinishedEvent>()
+            agentEvents[1].shouldBeInstanceOf<AgentFinishedEvent>()
         }
 
-        "AgentSelectedEvent and AgentRunningEvent carry the same agentId and agentName" {
-            val (runtime, _, _, savedEvents) = buildRuntime(agentName = "gemini-flash")
 
-            runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
-
-            val selected = savedEvents.filterIsInstance<AgentSelectedEvent>().first()
-            val running = savedEvents.filterIsInstance<AgentRunningEvent>().first()
-
-            selected.agentName shouldBe "gemini-flash"
-            running.agentName shouldBe "gemini-flash"
-            selected.agentId shouldBe running.agentId
-        }
 
         // -------------------------------------------------------------------------
         // selectAgent returning a WarnEvent + AgentSelectedEvent
@@ -251,8 +234,7 @@ class CaseRuntimeSpec : StringSpec() {
                         )
                     },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    resolveAgentLlmInfo = NO_LLM_INFO,
-                    runAgent = { _, events, _, _, _ ->
+                    runAgent = { _, events, _, _, _, _ ->
                         agent.run(events).collect { event ->
                             savedEvents.add(event)
                             runtime.pushEvents(listOf(event))
@@ -273,7 +255,7 @@ class CaseRuntimeSpec : StringSpec() {
         // processNextStep: AgentSelectedEvent -> AgentRunningEvent ordering
         // -------------------------------------------------------------------------
 
-        "processNextStep emits AgentRunningEvent before runAgent is ever called" {
+        "processNextStep calls runAgent after AgentSelectedEvent is stored" {
             val agentName = "ordered-agent"
             val callOrder = mutableListOf<String>()
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
@@ -305,13 +287,12 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
-                        if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
+                        if (event is AgentSelectedEvent) callOrder.add("AgentSelectedEvent saved")
                         event
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    resolveAgentLlmInfo = NO_LLM_INFO,
-                    runAgent = { _, events, _, _, _ ->
+                    runAgent = { _, events, _, _, _, _ ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
                             runtime.pushEvents(listOf(event))
@@ -322,136 +303,12 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
 
-            val runningIdx = callOrder.indexOf("AgentRunningEvent saved")
+            val selectedIdx = callOrder.indexOf("AgentSelectedEvent saved")
             val runIdx = callOrder.indexOf("runAgent")
 
-            (runningIdx >= 0) shouldBe true
-            (runIdx > runningIdx) shouldBe true
+            (selectedIdx >= 0) shouldBe true
+            (runIdx > selectedIdx) shouldBe true
         }
-
-        // -------------------------------------------------------------------------
-        // resolveAgentLlmInfo: llmProvider and llmModel propagation
-        // -------------------------------------------------------------------------
-
-        "AgentRunningEvent carries llmProvider and llmModel when resolveAgentLlmInfo succeeds" {
-            // Verifies the happy path: the Pair returned by resolveAgentLlmInfo is forwarded
-            // verbatim onto the AgentRunningEvent that is stored and emitted.
-            val runtimeId = UUID.randomUUID()
-            val agentName = "my-agent"
-            val agent = finishingAgent(agentName)
-            val savedEvents = mutableListOf<CaseEvent>()
-
-            lateinit var runtime: CaseRuntime
-            runtime = CaseRuntime(
-                id = runtimeId,
-                namespaceId = namespaceId,
-                updateStatus = { _, _ -> },
-                storeEvent = { event ->
-                    savedEvents.add(event)
-                    event
-                },
-                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
-                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                resolveAgentLlmInfo = { _, _ -> "anthropic" to "claude-haiku-4-5" },
-                runAgent = { _, events, _, _, _ ->
-                    agent.run(events).collect { event ->
-                        savedEvents.add(event)
-                        runtime.pushEvents(listOf(event))
-                    }
-                },
-            )
-
-            runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
-
-            val runningEvent = savedEvents.filterIsInstance<AgentRunningEvent>().first()
-            runningEvent.llmProvider shouldBe "anthropic"
-            runningEvent.llmModel shouldBe "claude-haiku-4-5"
-        }
-
-        "AgentRunningEvent has null llmProvider and llmModel when resolveAgentLlmInfo throws" {
-            // Verifies degraded mode: a failure in resolveAgentLlmInfo must not block
-            // execution — the AgentRunningEvent is emitted with null fields and the agent
-            // still runs normally.
-            val runtimeId = UUID.randomUUID()
-            val agentName = "my-agent"
-            val agent = finishingAgent(agentName)
-            val savedEvents = mutableListOf<CaseEvent>()
-            var agentDidRun = false
-
-            lateinit var runtime: CaseRuntime
-            runtime = CaseRuntime(
-                id = runtimeId,
-                namespaceId = namespaceId,
-                updateStatus = { _, _ -> },
-                storeEvent = { event ->
-                    savedEvents.add(event)
-                    event
-                },
-                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
-                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                resolveAgentLlmInfo = { _, _ -> throw RuntimeException("DB unavailable") },
-                runAgent = { _, events, _, _, _ ->
-                    agentDidRun = true
-                    agent.run(events).collect { event ->
-                        savedEvents.add(event)
-                        runtime.pushEvents(listOf(event))
-                    }
-                },
-            )
-
-            runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
-
-            // Degraded mode: event emitted with null LLM fields
-            val runningEvent = savedEvents.filterIsInstance<AgentRunningEvent>().first()
-            runningEvent.llmProvider shouldBe null
-            runningEvent.llmModel shouldBe null
-
-            // Agent still ran despite the resolve failure
-            agentDidRun shouldBe true
-            savedEvents.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
-        }
-
-        "AgentRunningEvent has null llmProvider and llmModel when resolveAgentLlmInfo returns null" {
-            // Verifies the case where the callback returns null explicitly
-            // (e.g. provider not configured) — same null propagation as a throw.
-            val runtimeId = UUID.randomUUID()
-            val agentName = "my-agent"
-            val agent = finishingAgent(agentName)
-            val savedEvents = mutableListOf<CaseEvent>()
-
-            lateinit var runtime: CaseRuntime
-            runtime = CaseRuntime(
-                id = runtimeId,
-                namespaceId = namespaceId,
-                updateStatus = { _, _ -> },
-                storeEvent = { event ->
-                    savedEvents.add(event)
-                    event
-                },
-                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
-                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                resolveAgentLlmInfo = { _, _ -> null },
-                runAgent = { _, events, _, _, _ ->
-                    agent.run(events).collect { event ->
-                        savedEvents.add(event)
-                        runtime.pushEvents(listOf(event))
-                    }
-                },
-            )
-
-            runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
-
-            val runningEvent = savedEvents.filterIsInstance<AgentRunningEvent>().first()
-            runningEvent.llmProvider shouldBe null
-            runningEvent.llmModel shouldBe null
-        }
-
-        // -------------------------------------------------------------------------
-        // AgentRunningEvent already in history (case resumed mid-run)
-        // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
         // shouldContinue lambda contract
@@ -472,8 +329,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    resolveAgentLlmInfo = NO_LLM_INFO,
-                    runAgent = { _, _, _, _, shouldContinue ->
+                    runAgent = { _, _, _, _, shouldContinue, _ ->
                         capturedShouldContinue = shouldContinue
                         // Simulate a long-running agent: don't push AgentFinishedEvent
                         // so we can inspect shouldContinue before the loop exits naturally.
@@ -508,8 +364,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    resolveAgentLlmInfo = NO_LLM_INFO,
-                    runAgent = { _, _, _, _, shouldContinue ->
+                    runAgent = { _, _, _, _, shouldContinue, _ ->
                         capturedShouldContinue = shouldContinue
                     },
                 )
@@ -543,8 +398,7 @@ class CaseRuntimeSpec : StringSpec() {
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    resolveAgentLlmInfo = NO_LLM_INFO,
-                    runAgent = { _, _, _, _, shouldContinue ->
+                    runAgent = { _, _, _, _, shouldContinue, _ ->
                         // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
                         // still false at this point, so shouldContinue() must return true.
                         lambdaResultDuringRun = shouldContinue()
@@ -636,8 +490,7 @@ class CaseRuntimeSpec : StringSpec() {
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                resolveAgentLlmInfo = NO_LLM_INFO,
-                runAgent = runAgent.asCallback,
+                    runAgent = runAgent.asCallback,
             )
 
             runtime.addUserMessage(userActor, userMessage)
@@ -697,8 +550,7 @@ class CaseRuntimeSpec : StringSpec() {
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = { name, _ -> name == agentA }, // agentB not authorized
-                resolveAgentLlmInfo = NO_LLM_INFO,
-                runAgent = runAgent.asCallback,
+                    runAgent = runAgent.asCallback,
             )
 
             runtime.addUserMessage(userActor, userMessage)
@@ -756,7 +608,6 @@ class CaseRuntimeSpec : StringSpec() {
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    resolveAgentLlmInfo = NO_LLM_INFO,
                     runAgent = recorder.asCallback,
                 )
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))
