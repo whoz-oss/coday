@@ -17,7 +17,7 @@ import java.util.UUID
  * @param e The non-transient provider exception.
  * @param logger Logger of the calling agent.
  */
-suspend fun FlowCollector<CaseEvent>.emitProviderErrorEvents(
+suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
     finishedEvent: AgentFinishedEvent,
     e: NonTransientAiException,
     logger: KLogger,
@@ -43,7 +43,7 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorEvents(
  * @param e The interrupt signal thrown by a tool.
  * @param logger Logger of the calling agent, used to trace the redirect.
  */
-suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
+suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
     finishedEvent: AgentFinishedEvent,
     e: AgentInterrupt,
     logger: KLogger,

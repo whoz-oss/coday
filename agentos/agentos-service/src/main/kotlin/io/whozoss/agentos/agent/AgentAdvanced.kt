@@ -215,7 +215,7 @@ class AgentAdvanced(
                     llmProvider = llmProviderName,
                     llmModel = llmModelApiName,
                 )
-                emitInterruptEvents(finished, e, logger)
+                emitInterruptAndFinishEvents(finished, e, logger)
             } catch (e: NonTransientAiException) {
                 val finished = AgentFinishedEvent(
                     namespaceId = namespaceId,
@@ -225,7 +225,7 @@ class AgentAdvanced(
                     llmProvider = llmProviderName,
                     llmModel = llmModelApiName,
                 )
-                emitProviderErrorEvents(finished, e, logger)
+                emitProviderErrorAndFinishEvents(finished, e, logger)
             } catch (e: ConfirmationConfigurationException) {
                 // DI wiring bug — surface loudly so prod logs catch it. Still emit a WarnEvent
                 // so the per-case lifecycle terminates cleanly, but the operator-facing signal

@@ -248,7 +248,7 @@ class AgentSimple(
                     llmProvider = llmProviderName,
                     llmModel = llmModelApiName,
                 )
-                emitInterruptEvents(finished, e, logger)
+                emitInterruptAndFinishEvents(finished, e, logger)
             } catch (e: NonTransientAiException) {
                 val finished = AgentFinishedEvent(
                     namespaceId = namespaceId,
@@ -258,7 +258,7 @@ class AgentSimple(
                     llmProvider = llmProviderName,
                     llmModel = llmModelApiName,
                 )
-                emitProviderErrorEvents(finished, e, logger)
+                emitProviderErrorAndFinishEvents(finished, e, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
