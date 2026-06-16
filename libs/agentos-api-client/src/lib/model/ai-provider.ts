@@ -24,4 +24,5 @@ export enum AiProviderApiTypeEnum {
   Anthropic = 'Anthropic',
   Gemini = 'Gemini',
   vLLM = 'vLLM',
+  Ollama = 'Ollama',
 }

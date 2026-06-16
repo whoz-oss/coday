@@ -8,16 +8,21 @@ import org.springframework.data.neo4j.repository.query.Query
  */
 interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, String> {
     /**
-     * Find all non-removed agent configs belonging to a namespace, ordered by name.
+     * Find non-removed agent configs belonging to a namespace, ordered by name.
+     *
+     * When [withDisabled] is `true` (the default), all active configs are returned.
+     * When [withDisabled] is `false`, only published (enabled) agents are returned.
      */
     @Query(
         $$"""
             MATCH (a:AgentConfig)
-            WHERE a.namespaceId = $namespaceId AND NOT COALESCE(a.removed, false)
+            WHERE a.namespaceId = $namespaceId
+              AND NOT COALESCE(a.removed, false)
+              AND ($withDisabled OR a.enabled)
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String): List<AgentConfigNode>
+    fun findActiveByNamespaceId(namespaceId: String, withDisabled: Boolean = true): List<AgentConfigNode>
 
 
     /**
@@ -25,6 +30,8 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      * - (admin path) all active agents in the namespace when the user has isAdmin = true
      * - agents deployed on a [io.whozoss.agentos.userGroup.UserGroup] the user is a member of (within the namespace)
      * - agents deployed directly on the namespace, for a user holding MEMBER or ADMIN
+     *
+     * Only enabled (published) agents are returned — disabled agents are never surfaced at runtime.
      *
      * When [agentName] is non-null, the result is filtered to configs whose name
      * matches case-insensitively. When null, all accessible configs are returned.
@@ -49,6 +56,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
               WHERE NOT COALESCE(g.removed, false)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
               WHERE NOT COALESCE(a.removed, false)
+                AND a.enabled
                 AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             UNION
@@ -59,6 +67,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             MATCH (u)-[:MEMBER|ADMIN]->(ns)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
               WHERE NOT COALESCE(a.removed, false)
+                AND a.enabled
                 AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             """,

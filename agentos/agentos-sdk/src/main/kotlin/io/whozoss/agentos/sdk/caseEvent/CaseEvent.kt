@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.caseEvent
 
 import com.fasterxml.jackson.annotation.JsonCreator
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
@@ -9,6 +10,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import java.time.Instant
 import java.util.UUID
 
@@ -197,6 +199,12 @@ data class MessageEvent(
 
 /**
  * Emitted when a tool is requested.
+ *
+ * [enrichmentPhases] carries the per-phase trace produced by
+ * [AgentAdvanced.runEnrichmentPhases] when the tool declares intermediate enrichment
+ * phases. Null when the tool has no enrichment phases (the common case), so that
+ * existing [ToolRequestEvent] construction sites that do not pass this parameter
+ * continue to work without change.
  */
 data class ToolRequestEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -206,6 +214,8 @@ data class ToolRequestEvent(
     val toolRequestId: String,
     val toolName: String,
     val args: String?,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val enrichmentPhases: List<EnrichmentPhaseTrace>? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_REQUEST
 }

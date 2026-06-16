@@ -87,12 +87,12 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         val nsRepo = nsRepoWith(namespaceId, configPath = null)
         val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
 
-        every { delegate.findByParent(namespaceId) } returns persisted
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns persisted
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
         result shouldBe persisted
-        verify(exactly = 1) { delegate.findByParent(namespaceId) }
+        verify(exactly = 1) { delegate.findByParent(namespaceId, withDisabled = true) }
     }
 
     "findByParent delegates to underlying repository when namespace is not found" {
@@ -100,7 +100,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         val nsRepo = mockk<NamespaceRepository>()
         val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
 
-        every { delegate.findByParent(namespaceId) } returns persisted
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns persisted
         every { nsRepo.findByIds(listOf(namespaceId)) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
@@ -120,7 +120,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
@@ -134,7 +134,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
@@ -150,7 +150,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
@@ -165,13 +165,13 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val repo = buildRepo(delegate, nsRepo)
         val id1 = repo.findByParent(namespaceId).single().id
         // force TTL expiry by using a zero-TTL repo on the same directory
         val nsRepo2 = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
         val repo2 = FilesystemAgentConfigRepository(delegate, nsRepo2, ttl = Duration.ZERO)
         val id2 = repo2.findByParent(namespaceId).single().id
 
@@ -190,7 +190,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         val persisted = listOf(persistedConfig(namespaceId, "Gamma"))
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns persisted
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns persisted
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
@@ -207,7 +207,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         val persisted = listOf(persistedConfig(namespaceId, "dev", modelName = "BIG"))
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns persisted
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns persisted
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
@@ -221,7 +221,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
         val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns persisted
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns persisted
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
@@ -240,7 +240,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
@@ -267,7 +267,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId)
 
@@ -294,7 +294,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
@@ -318,7 +318,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
@@ -333,7 +333,7 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         val delegate = mockk<AgentConfigRepository>()
         val nsRepo = nsRepoWith(namespaceId, root.toString())
-        every { delegate.findByParent(namespaceId) } returns emptyList()
+        every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
 
         val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
@@ -472,5 +472,68 @@ class FilesystemAgentConfigRepositoryUnitSpec : StringSpec({
 
         result shouldBe 3
         verify(exactly = 1) { delegate.deleteByParent(namespaceId) }
+    }
+
+    // -------------------------------------------------------------------------
+    // findByParent with withDisabled=false (enabled-only)
+    // -------------------------------------------------------------------------
+
+    "findByParent with withDisabled=false forwards withDisabled to delegate" {
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, configPath = null)
+        val persisted = listOf(persistedConfig(namespaceId, "Alpha"))
+
+        every { delegate.findByParent(namespaceId, withDisabled = false) } returns persisted
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, withDisabled = false)
+
+        result shouldBe persisted
+        verify(exactly = 1) { delegate.findByParent(namespaceId, withDisabled = false) }
+    }
+
+    "findByParent with withDisabled=false still merges filesystem agents" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev", modelName = "BIG"))
+
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        every { delegate.findByParent(namespaceId, withDisabled = false) } returns emptyList()
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, withDisabled = false)
+
+        result shouldHaveSize 1
+        result.single().name shouldBe "Dev"
+    }
+
+    "findByParent with withDisabled=false drops filesystem config when persisted has same name" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev", modelName = "SMALL"))
+
+        val persisted = listOf(persistedConfig(namespaceId, "dev", modelName = "BIG"))
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        every { delegate.findByParent(namespaceId, withDisabled = false) } returns persisted
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, withDisabled = false)
+
+        result shouldHaveSize 1
+        result.single().modelName shouldBe "BIG"
+    }
+
+    "findByParent with withDisabled=false places persisted first then filesystem" {
+        val root = tempDir()
+        writeYaml(agentsDir(root), "alpha.yaml", agentYaml("Alpha"))
+        writeYaml(agentsDir(root), "beta.yaml", agentYaml("Beta"))
+
+        val persisted = listOf(persistedConfig(namespaceId, "Gamma"))
+        val delegate = mockk<AgentConfigRepository>()
+        val nsRepo = nsRepoWith(namespaceId, root.toString())
+        every { delegate.findByParent(namespaceId, withDisabled = false) } returns persisted
+
+        val result = buildRepo(delegate, nsRepo).findByParent(namespaceId, withDisabled = false)
+
+        result shouldHaveSize 3
+        result.first().name shouldBe "Gamma"
+        result.drop(1).map { it.name } shouldBe listOf("Alpha", "Beta")
     }
 })

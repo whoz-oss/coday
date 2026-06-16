@@ -49,6 +49,7 @@ Based on the full conversation history and current context, your objective is to
 Before generating the output, analyze the situation using the following logic:
 
 **1. Analyze Context & Execution State:**
+*   Determine the subject of the user's request: Something currently visible to them (provided via <session-context>), something mentioned in previous messages, something that needs to be retrieved or searched...
 *   Check the last tool execution. Did it succeed?
     *   **Yes:** What is the logical sequential step?
     *   **No/Missing Info:** If the tool failed and required more data, the next step is `${ANSWER_TOOL}` to ask for clarification.
@@ -78,7 +79,7 @@ ${repetitionWarning ?: ""}
 ### Output Instructions
 You must respond with **exactly** this XML structure and **nothing else** — no prose, no markdown fences, no preamble (any deviation from the following expected xml would result in a error):
 
-<intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
+<intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now. Stay high-level and general — do not invent, assume, or include any technical details (field names, IDs, values, tool parameters) that are not explicitly present in the conversation history.]</intention>
 <toolName>[The exact name of the tool to be called]</toolName>
 
 You MUST start with the `<intention>` tag first, and THEN `<toolName>`. Do not reorder them.

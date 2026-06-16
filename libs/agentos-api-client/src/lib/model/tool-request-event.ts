@@ -8,6 +8,7 @@
  * Do not edit the class manually.
  */
 import { EntityMetadata } from './entity-metadata'
+import { EnrichmentPhaseTrace } from './enrichment-phase-trace'
 
 export interface ToolRequestEvent {
   caseId: string
@@ -17,6 +18,7 @@ export interface ToolRequestEvent {
   timestamp: string
   type: 'ToolRequestEvent'
   args?: string
+  enrichmentPhases?: Array<EnrichmentPhaseTrace>
   toolName: string
   toolRequestId: string
 }

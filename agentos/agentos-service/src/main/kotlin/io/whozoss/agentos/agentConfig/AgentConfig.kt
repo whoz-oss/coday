@@ -62,4 +62,14 @@ data class AgentConfig(
      * Each consumer is responsible for serializing/deserializing its own structure.
      */
     val externalMetadata: Map<String, Any?>? = null,
+    /**
+     * Whether this agent is published and visible to end-users.
+     *
+     * Defaults to `false` — newly created agents are unpublished and must be
+     * explicitly published via the publish endpoint before they are accessible.
+     *
+     * Backward-compat: existing nodes without this field are backfilled to `false`
+     * at startup by [io.whozoss.agentos.config.Neo4jSchemaInitializer].
+     */
+    val enabled: Boolean = false,
 ) : Entity

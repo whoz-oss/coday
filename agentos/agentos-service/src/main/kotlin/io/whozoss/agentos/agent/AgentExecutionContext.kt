@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
 /**
@@ -23,4 +24,16 @@ data class AgentExecutionContext(
     val caseId: UUID? = null,
     val userId: UUID? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
-)
+) {
+    fun toToolContext(
+        userExternalId: String?,
+        agentName: String?,
+    ): ToolContext =
+        ToolContext(
+            namespaceId = namespaceId,
+            userId = userId,
+            userExternalId = userExternalId,
+            caseEvents = caseEventsProvider(),
+            agentName = agentName,
+        )
+}

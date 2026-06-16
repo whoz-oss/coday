@@ -8,6 +8,7 @@ import org.springframework.data.annotation.CreatedBy
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedBy
 import org.springframework.data.annotation.LastModifiedDate
+import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
@@ -39,7 +40,9 @@ data class AgentConfigNode(
     val integrationsJson: String? = null,
     val externalMetadataJson: String? = null,
     val advancedExecution: Boolean = false,
+    val enabled: Boolean,
     // EntityMetadata fields
+    @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
     @LastModifiedDate val modified: Instant = Instant.now(),
@@ -58,6 +61,7 @@ data class AgentConfigNode(
                     modified = modified,
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
+                    version = version,
                 ),
             namespaceId = UUID.fromString(namespaceId),
             name = name,
@@ -67,6 +71,7 @@ data class AgentConfigNode(
             integrations = integrationsJson?.let { MAPPER.readValue(it, INTEGRATIONS_TYPE) },
             advancedExecution = advancedExecution,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
+            enabled = enabled,
         )
 
     companion object {
@@ -85,6 +90,8 @@ data class AgentConfigNode(
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
                 externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
                 advancedExecution = config.advancedExecution,
+                version = config.metadata.version,
+                enabled = config.enabled,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,

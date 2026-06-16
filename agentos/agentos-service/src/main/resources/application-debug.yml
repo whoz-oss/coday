@@ -8,3 +8,6 @@ spring:
     tools:
       observations:
         include-content: true
+logging:
+  level:
+    org.apache.hc: TRACE

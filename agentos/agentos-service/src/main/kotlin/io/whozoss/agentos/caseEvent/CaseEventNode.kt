@@ -161,6 +161,12 @@ class ToolRequestEventNode(
     val toolRequestId: String,
     val toolName: String,
     val args: String?,
+    /**
+     * JSON-serialised [List]<[io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace]>, or null
+     * when the tool had no enrichment phases. Stored as a nullable string for backward
+     * compatibility with existing nodes that pre-date this field.
+     */
+    val enrichmentPhasesJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

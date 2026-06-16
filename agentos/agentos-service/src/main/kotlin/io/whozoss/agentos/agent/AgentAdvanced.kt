@@ -18,18 +18,22 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ConfirmationMode
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptResult
 import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.mapWhile
 import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
+import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
@@ -102,7 +106,6 @@ class AgentAdvanced(
             var continueLoop = true
             var hasUnresolvedConfirmation = false
             var lastIntention: IntentionGeneratedEvent? = null
-            var repetitionWarningEmitted = false
 
             try {
                 while (continueLoop && iteration < maxIterations && shouldContinue()) {
@@ -110,18 +113,32 @@ class AgentAdvanced(
 
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
-                    val repetitionWarning =
-                        handleRepetitionDetection(
+                    val repetitionOutcome =
+                        handleRepetition(
+                            repetition = detectToolRepetition(accumulatedEvents),
+                        )
+                    if (repetitionOutcome != null) {
+                        val warnEvent =
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = repetitionOutcome.message,
+                            )
+                        emit(warnEvent)
+                        // Accumulate so the next iteration sees the prior warning
+                        // and can escalate to ForceStop if the loop persists.
+                        accumulatedEvents.add(warnEvent)
+                    }
+                    if (repetitionOutcome is RepetitionOutcome.ForceStop) break
+
+                    val intention =
+                        intentionGenerator.generate(
+                            context = context,
                             events = accumulatedEvents,
                             namespaceId = namespaceId,
                             caseId = caseId,
-                            warningAlreadyEmitted = repetitionWarningEmitted,
-                            emitEvent = { event -> emit(event) },
+                            repetitionWarning = (repetitionOutcome as? RepetitionOutcome.Warned)?.message,
                         )
-                    repetitionWarningEmitted = repetitionWarning != null
-
-                    val intention =
-                        intentionGenerator.generate(context, accumulatedEvents, namespaceId, caseId, repetitionWarning)
                     emit(intention)
                     accumulatedEvents.add(intention)
                     lastIntention = intention
@@ -223,36 +240,107 @@ class AgentAdvanced(
             }
         }
 
-    private suspend fun handleRepetitionDetection(
-        events: List<CaseEvent>,
-        namespaceId: UUID,
-        caseId: UUID,
-        warningAlreadyEmitted: Boolean,
-        emitEvent: suspend (CaseEvent) -> Unit,
-    ): String? {
-        val repeatedTool = detectRepetitionLoop(events)
-        return when {
-            repeatedTool == null -> {
+    /**
+     * Counts the maximum repetition of any (toolName, args) pair within the last
+     * [REPETITION_WINDOW] tool responses **of the current turn**.
+     *
+     * "Current turn" means events strictly after the last user [MessageEvent] in the
+     * history. This prevents tool calls from previous conversation turns from being
+     * mistaken for an ongoing loop when the agent is reloaded with full case history.
+     *
+     * Returns `null` when the current-turn window is not yet full or when it contains
+     * a synthetic [ToolResponseEvent] from a confirmation resolution (user-validated,
+     * not a loop). No threshold comparison is done here — that is [handleRepetition]'s job.
+     */
+    internal fun detectToolRepetition(events: List<CaseEvent>): ToolRepetition? {
+        // Scope detection to the current turn only: events after the last user message.
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val currentTurnEvents = if (lastUserMessageIndex >= 0) events.drop(lastUserMessageIndex + 1) else events
+
+        val resolvedPendingIds =
+            currentTurnEvents
+                .filterIsInstance<ConfirmationResolvedEvent>()
+                .mapTo(mutableSetOf()) { it.pendingEventId }
+        val syntheticToolRequestIds =
+            currentTurnEvents
+                .filterIsInstance<PendingConfirmationEvent>()
+                .filter { it.metadata.id in resolvedPendingIds }
+                .mapTo(mutableSetOf()) { it.toolRequestId }
+
+        val argsByRequestId =
+            currentTurnEvents
+                .filterIsInstance<ToolRequestEvent>()
+                .associate { it.toolRequestId to (it.args?.trim() ?: "") }
+
+        val window =
+            currentTurnEvents
+                .filterIsInstance<ToolResponseEvent>()
+                .takeLast(REPETITION_WINDOW)
+
+        if (window.size < REPETITION_WINDOW || window.any { it.toolRequestId in syntheticToolRequestIds }) return null
+
+        return window
+            .groupingBy { e -> e.toolName to (argsByRequestId[e.toolRequestId] ?: "") }
+            .eachCount()
+            .entries
+            .filter { it.value >= REPETITION_THRESHOLD }
+            .maxByOrNull { it.value }
+            ?.let { (key, count) -> ToolRepetition(toolName = key.first, count = count) }
+    }
+
+    /**
+     * Applies the repetition policy to a [ToolRepetition].
+     *
+     * - `null` repetition → `null` outcome.
+     * - First detection (no prior repetition [WarnEvent] in [accumulatedEvents]) →
+     *   [RepetitionOutcome.Warned]: the caller should warn the LLM so it can self-correct.
+     * - Subsequent detection (a prior repetition [WarnEvent] already present) →
+     *   [RepetitionOutcome.ForceStop]: the LLM ignored the warning; the caller must break the loop.
+     *
+     * This method does **not** emit events — the caller is responsible for emitting a [WarnEvent]
+     * from [RepetitionOutcome.message] when the outcome is non-null.
+     */
+    internal fun handleRepetition(repetition: ToolRepetition?): RepetitionOutcome? =
+        when {
+            repetition == null -> {
                 null
             }
 
-            else -> {
+            repetition.count < REPETITION_THRESHOLD -> {
+                null
+            }
+
+            repetition.count > REPETITION_THRESHOLD -> {
+                val msg =
+                    "Agent is stuck in a repetition loop on tool '${repetition.toolName}' " +
+                        "(${repetition.count} calls) and did not stop after warning. " +
+                        "Forcing loop termination."
+                logger.warn {
+                    "[$name] Repetition loop persists after warning for tool '${repetition.toolName}' — forcing stop"
+                }
+                RepetitionOutcome.ForceStop(msg)
+            }
+
+            repetition.count >= REPETITION_THRESHOLD -> {
                 val msg =
                     "Calling a tool with the same parameters will produce the same results.\n" +
-                        "You have called the tool $repeatedTool $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls. " +
+                        "You have called the tool ${repetition.toolName} ${repetition.count} times " +
+                        "within the last $REPETITION_WINDOW tool calls. " +
                         "If the tool has not added meaningful information to the conversation, " +
                         "stop calling it and consider the next step toward achieving the user's goal. " +
-                        "If you do not have enough information to proceed, use ${AgentIntentionGenerator.ANSWER_TOOL} to ask the user for further instructions."
-                if (!warningAlreadyEmitted) {
-                    logger.warn {
-                        "Repetition loop detected: $repeatedTool called $REPETITION_THRESHOLD times within the last $REPETITION_WINDOW tool calls"
-                    }
-                    emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+                        "If you do not have enough information to proceed, use ${AgentIntentionGenerator.ANSWER_TOOL} " +
+                        "to ask the user for further instructions."
+                logger.warn {
+                    "Repetition loop detected: ${repetition.toolName} called ${repetition.count} times " +
+                        "within the last $REPETITION_WINDOW tool calls"
                 }
-                msg
+                RepetitionOutcome.Warned(msg)
+            }
+
+            else -> {
+                null
             }
         }
-    }
 
     /**
      * Executes the tool for the given [intention], handling the confirmation gate when the
@@ -290,11 +378,7 @@ class AgentAdvanced(
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
         val toolCtx = tool?.let { buildToolContext(it.name, namespaceId) }
         val confirmationMode =
-            if (tool != null && toolCtx != null) {
-                tool.getConfirmationMode(parameters.args, toolCtx)
-            } else {
-                ConfirmationMode.NONE
-            }
+            tool?.getConfirmationMode(parameters.args, toolCtx) ?: ConfirmationMode.NONE
         return when {
             tool != null && toolCtx != null && confirmationMode != ConfirmationMode.NONE -> {
                 handleConfirmationGate(
@@ -872,16 +956,33 @@ class AgentAdvanced(
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
 
         val contentBuilder = StringBuilder()
+        var lastFinishReason: String? = null
         context.chatClient
             .prompt(Prompt(messages))
             .stream()
-            .content()
+            .chatResponse()
             .asFlow()
             .takeWhile { shouldContinue() }
-            .collect { chunk ->
-                contentBuilder.append(chunk)
-                emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+            .collect { response: ChatResponse ->
+                val chunk =
+                    response.result.output.text
+                        ?.takeIf { it.isNotEmpty() }
+                if (chunk != null) {
+                    contentBuilder.append(chunk)
+                    emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+                }
+                response.result.metadata.finishReason
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { lastFinishReason = it }
             }
+        if (isTruncated(lastFinishReason)) {
+            val msg =
+                "LLM response was truncated (finish_reason=$lastFinishReason). " +
+                    "The configured maxTokens limit may be too low. " +
+                    "Consider increasing the model's maxTokens configuration."
+            logger.warn { "[$name] $msg" }
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+        }
         val content = contentBuilder.toString().stripConversationTags()
         if (content.isNotEmpty()) {
             val msg =
@@ -899,18 +1000,23 @@ class AgentAdvanced(
      * Assembles the user-facing communication guidelines shared across any LLM-generated
      * text shown to the user (final response, confirmation prompts, re-ask questions).
      *
-     * Combines:
-     * - A language hint anchored on recent user messages (from [buildLanguageHint]).
-     * - A non-discrimination rule.
-     * - A no-technical-IDs rule.
+     * Detects the user's language via [detectUserLanguage] and injects it as a hard
+     * constraint, then appends the non-discrimination and no-technical-IDs rules.
      *
-     * Returns `null` when no user messages are present and there is nothing to add
-     * (defensive — the static rules make a non-null result almost certain in practice).
+     * Returns `null` only when [events] is blank (defensive — the static rules alone
+     * make a non-null result almost certain in practice).
      */
     internal fun buildUserFacingGuidelines(events: List<CaseEvent>): String? {
+        val detectedLanguage = detectUserLanguage(events)
         val lines =
             buildList {
-                buildLanguageHint(events)?.let { add(it) }
+                detectedLanguage?.let {
+                    add(
+                        "IMPORTANT: You MUST respond in $it. " +
+                            "This is a hard constraint — do not switch language regardless of the language " +
+                            "used in the data returned by tools or in the conversation history.",
+                    )
+                }
                 add(
                     "Do not discriminate based on gender, ethnicity, religion, age, physical appearance, " +
                         "or any other protected attribute. If the user's request implies such a step, " +
@@ -925,22 +1031,91 @@ class AgentAdvanced(
     }
 
     /**
-     * Builds a language hint from the most recent user [MessageEvent]s in [events].
+     * Detects the language the user is writing in by sending a dedicated lightweight LLM call
+     * that considers only recent user [MessageEvent]s — deliberately excluding agent messages
+     * and tool payloads to avoid contamination from foreign-language data (WZ-32500).
      *
-     * Collects user messages from newest to oldest until the combined text reaches
-     * [minChars], then returns an instruction anchored on the actual user text so the
-     * LLM has a concrete language signal rather than an abstract directive.
+     * Collects user messages newest-first until [targetChars] is reached, then asks the LLM
+     * to identify the language. Returns a language name in English (e.g. `"English"`,
+     * `"French"`, `"Spanish"`) or `null` when no user messages are present.
      *
-     * Returns `null` when no user messages are present (e.g. agent-only conversations),
-     * so the caller can omit the hint entirely rather than defaulting to a hardcoded
-     * language.
+     * The result is consumed once per turn in [generateFinalResponse] to build a hard
+     * language constraint rather than a probabilistic hint.
+     */
+    internal fun detectUserLanguage(
+        events: List<CaseEvent>,
+        targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
+    ): String? {
+        // Collect user messages newest-first — same logic as the former buildLanguageHint.
+        val userMessages =
+            events
+                .filterIsInstance<MessageEvent>()
+                .filter { it.actor.role == ActorRole.USER }
+                .reversed()
+
+        if (userMessages.isEmpty()) return null
+
+        val collected = mutableListOf<String>()
+        var total = 0
+        for (message in userMessages) {
+            val text =
+                message.content
+                    .filterIsInstance<MessageContent.Text>()
+                    .joinToString(" ") { it.content.trim() }
+                    .trim()
+            if (text.isEmpty()) continue
+            collected.add(text)
+            total += text.length
+            if (total >= targetChars) break
+        }
+
+        if (collected.isEmpty()) return null
+
+        // Build the sample from oldest to newest for a natural reading order.
+        val sample = collected.reversed().joinToString(" ")
+
+        val prompt =
+            """
+            Determine the language the user is using to interact with the agent.
+            Only consider the user messages below — ignore any other context.
+
+            User messages: $sample
+
+            Respond with ONLY the language name in English (e.g. "English", "French", "Spanish").
+            Put the language name inside <language></language> tags and nothing else.
+            """.trimIndent()
+
+        val raw =
+            runCatching {
+                context.chatClient
+                    .prompt(
+                        Prompt(
+                            listOf(
+                                UserMessage(prompt),
+                            ),
+                        ),
+                    ).call()
+                    .content()
+                    ?.trim()
+            }.getOrNull() ?: return null
+
+        // Extract the language name from <language>...</language> tags.
+        return LANGUAGE_TAG_REGEX
+            .find(raw)
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * @deprecated Use [detectUserLanguage] + [buildUserFacingGuidelines] instead.
+     * Kept for existing unit tests until they are migrated.
      */
     internal fun buildLanguageHint(
         events: List<CaseEvent>,
         targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
     ): String? {
-        // Reverse the messages first so we collect newest-first, then extract text per message.
-        // Reversing after flatMap would operate on individual text blocks, not on messages.
         val userMessages =
             events
                 .filterIsInstance<MessageEvent>()
@@ -969,49 +1144,6 @@ class AgentAdvanced(
         return "Respond in the same language the user is writing in (reference: $sample)."
     }
 
-    internal fun detectRepetitionLoop(events: List<CaseEvent>): String? {
-        // Identify synthetic ToolResponseEvent IDs (from confirmation resolution).
-        val resolvedPendingIds =
-            events
-                .filterIsInstance<ConfirmationResolvedEvent>()
-                .mapTo(mutableSetOf()) { it.pendingEventId }
-        val syntheticToolRequestIds =
-            events
-                .filterIsInstance<PendingConfirmationEvent>()
-                .filter { it.metadata.id in resolvedPendingIds }
-                .mapTo(mutableSetOf()) { it.toolRequestId }
-
-        // Build a lookup of toolRequestId → args for quick pairing with ToolResponseEvent.
-        val argsByRequestId =
-            events
-                .filterIsInstance<ToolRequestEvent>()
-                .associate { it.toolRequestId to (it.args?.trim() ?: "") }
-
-        // Take last REPETITION_WINDOW ToolResponseEvent (success or failure) — a tool
-        // that consistently fails with the same input is also a repetition loop.
-        // If the window contains any synthetic (= confirmation resolution), do not signal
-        // repetition — those are user-validated, not auto.
-        val window =
-            events
-                .filterIsInstance<ToolResponseEvent>()
-                .takeLast(REPETITION_WINDOW)
-
-        if (window.size < REPETITION_WINDOW || window.any { it.toolRequestId in syntheticToolRequestIds }) return null
-
-        // A repetition is detected when the same (toolName, args) pair appears at least
-        // REPETITION_THRESHOLD times in the window. This catches two-tool alternation
-        // loops (A, B, A, B, A) as well as straight repetition (A, A, A, ...).
-        // Calls to the same tool with different payloads are legitimate exploration
-        // and do not count toward the threshold (WZ-32262).
-        return window
-            .groupingBy { e -> e.toolName to (argsByRequestId[e.toolRequestId] ?: "") }
-            .eachCount()
-            .entries
-            .firstOrNull { it.value >= REPETITION_THRESHOLD }
-            ?.key
-            ?.first
-    }
-
     private suspend fun generateParameters(
         accumulatedEvents: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
@@ -1025,7 +1157,7 @@ class AgentAdvanced(
                 ?: throw ToolNotFoundException(intentionEvent.toolName)
 
         // Enrichment loop for multi-phase parameter preparation
-        val enrichmentContent =
+        val enrichmentResult =
             if (tool.getIntermediatePhaseCount() > 0) {
                 runEnrichmentPhases(tool, accumulatedEvents, intentionEvent, namespaceId)
             } else {
@@ -1033,7 +1165,7 @@ class AgentAdvanced(
             }
 
         val enrichmentBlock =
-            enrichmentContent?.let {
+            enrichmentResult?.content?.let {
                 "\n\nContext from preparation phases:\n$it"
             } ?: ""
 
@@ -1063,6 +1195,8 @@ Output requirements:
         logger.debug { "[$name] generateParameters for '${tool.name}'" }
         logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
 
+        val enrichmentTraces = enrichmentResult?.traces
+
         val result =
             retryWithFallback<String, ToolRequestEvent>(
                 maxAttempts = MAX_PARAMETER_ATTEMPTS,
@@ -1080,6 +1214,7 @@ Output requirements:
                         toolRequestId = toolRequestId,
                         toolName = tool.name,
                         args = null,
+                        enrichmentPhases = enrichmentTraces,
                     )
                 },
             ) { previousRaw ->
@@ -1091,6 +1226,7 @@ Output requirements:
                     caseId = caseId,
                     toolRequestId = toolRequestId,
                     previousRaw = previousRaw,
+                    enrichmentTraces = enrichmentTraces,
                 )
             }
 
@@ -1113,6 +1249,7 @@ Output requirements:
         caseId: UUID,
         toolRequestId: String,
         previousRaw: String?,
+        enrichmentTraces: List<EnrichmentPhaseTrace>? = null,
     ): AttemptResult<String, ToolRequestEvent> {
         val retryHint =
             previousRaw?.let {
@@ -1128,7 +1265,7 @@ Output requirements:
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
         val messages = context.buildMessages(events, prompt)
-        val raw = callLlmForParameters(messages, toolName)
+        val raw = callLlmForParameters(messages)
 
         logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
@@ -1140,6 +1277,7 @@ Output requirements:
                     toolRequestId = toolRequestId,
                     toolName = toolName,
                     args = raw,
+                    enrichmentPhases = enrichmentTraces,
                 ),
             )
         } else {
@@ -1148,10 +1286,7 @@ Output requirements:
         }
     }
 
-    private fun callLlmForParameters(
-        messages: List<org.springframework.ai.chat.messages.Message>,
-        toolName: String,
-    ): String {
+    private fun callLlmForParameters(messages: List<org.springframework.ai.chat.messages.Message>): String {
         val raw =
             context.chatClient
                 .prompt(Prompt(messages))
@@ -1166,19 +1301,51 @@ Output requirements:
             objectMapper.readTree(raw)
         }.isSuccess
 
+    /**
+     * Runs all enrichment phases declared by [tool] and returns an [EnrichmentPhasesResult]
+     * containing the final accumulated content (to inject into the parameter-generation
+     * prompt) and the per-phase traces (to attach to the resulting [ToolRequestEvent]).
+     *
+     * On phase failure the loop returns early, but the traces collected up to and
+     * including the failed phase are still returned so they are persisted for debugging.
+     */
     private suspend fun runEnrichmentPhases(
         tool: StandardTool<*>,
         accumulatedEvents: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         namespaceId: UUID,
-    ): String? {
+    ): EnrichmentPhasesResult {
         var previousContent: String? = null
+        val traces =
+            (0 until tool.getIntermediatePhaseCount()).mapWhile(
+                transform = { phaseIndex ->
+                    runEnrichmentPhase(tool, phaseIndex, previousContent, accumulatedEvents, intentionEvent, namespaceId)
+                        .also { trace -> if (trace.success) previousContent = trace.enrichmentContent }
+                },
+                predicate = { phaseIndex, trace ->
+                    trace.success.also {
+                        if (!it) logger.warn { "[$name] enrichment phase $phaseIndex failed for '${tool.name}'" }
+                    }
+                },
+            )
+        return EnrichmentPhasesResult(
+            content = traces.lastOrNull { it.success }?.enrichmentContent,
+            traces = traces,
+        )
+    }
 
-        for (i in 0 until tool.getIntermediatePhaseCount()) {
-            val descriptor = tool.getIntermediatePhaseDescriptor(i, previousContent)
+    private suspend fun runEnrichmentPhase(
+        tool: StandardTool<*>,
+        phaseIndex: Int,
+        previousContent: String?,
+        accumulatedEvents: List<CaseEvent>,
+        intentionEvent: IntentionGeneratedEvent,
+        namespaceId: UUID,
+    ): EnrichmentPhaseTrace {
+        val descriptor = tool.getIntermediatePhaseDescriptor(phaseIndex, previousContent)
 
-            val fullPrompt =
-                """
+        val fullPrompt =
+            """
 ${descriptor.prompt}
 
 Input JSON Schema:
@@ -1194,35 +1361,32 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 - Do not use XML, tool-call wrappers, function tags, markdown, code fences, or any structural syntax other than JSON.
 - Do not include comments, explanations, or reasoning.
 - Only include properties defined in the schema.
-                """.trimIndent()
+            """.trimIndent()
 
-            val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
-            val messages = context.buildMessages(accumulatedEventsWithoutCurrentToolCall, fullPrompt)
+        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt)
 
-            logger.debug { "[$name] enrichment phase $i for '${tool.name}' — sending ${messages.size} messages" }
+        logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
-            val rawJson =
-                context.chatClient
-                    .prompt(Prompt(messages))
-                    .call()
-                    .content()
-                    ?.trim() ?: "{}"
-            val phaseJson = stripJsonFence(rawJson)
+        val rawJson =
+            context.chatClient
+                .prompt(Prompt(messages))
+                .call()
+                .content()
+                ?.trim() ?: "{}"
+        val phaseJson = stripJsonFence(rawJson)
 
-            logger.debug { "[$name] enrichment phase $i result for '${tool.name}': $phaseJson" }
+        logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 
-            val toolCtx = buildToolContext(tool.name, namespaceId)
-            val result = tool.enrich(i, phaseJson, toolCtx)
+        val toolCtx = buildToolContext(tool.name, namespaceId)
+        val result = tool.enrich(phaseIndex, phaseJson, toolCtx)
 
-            if (!result.success) {
-                logger.warn { "[$name] enrichment phase $i failed for '${tool.name}': ${result.errorMessage}" }
-                return null
-            }
-
-            previousContent = result.content
-        }
-
-        return previousContent
+        return EnrichmentPhaseTrace(
+            phaseIndex = phaseIndex,
+            prompt = descriptor.prompt,
+            llmOutput = phaseJson,
+            enrichmentContent = result.content,
+            success = result.success,
+        )
     }
 
     /**
@@ -1308,7 +1472,30 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
         }
     }
 
+    /**
+     * Internal result carrier for [runEnrichmentPhases].
+     *
+     * @param content The final content to inject into the parameter-generation prompt,
+     *   or null when an enrichment phase failed.
+     * @param traces Per-phase traces collected during the enrichment run (including any
+     *   failed phase), to be attached to the resulting [ToolRequestEvent].
+     */
+    private data class EnrichmentPhasesResult(
+        val content: String?,
+        val traces: List<EnrichmentPhaseTrace>,
+    )
+
     companion object : KLogging() {
+        /**
+         * Returns true when the finish reason indicates the LLM was cut off by a token limit,
+         * rather than finishing naturally.
+         */
+        internal fun isTruncated(finishReason: String?): Boolean {
+            if (finishReason == null) return false
+            return finishReason.equals("length", ignoreCase = true) ||
+                finishReason.equals("max_tokens", ignoreCase = true)
+        }
+
         /** How many recent tool responses to inspect for repetition. */
         internal const val REPETITION_WINDOW = 5
 
@@ -1336,6 +1523,12 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
         private val JSON_FENCE_REGEX =
             Regex(
                 """^```(?:json)?\s*(.*?)\s*```$""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
+
+        private val LANGUAGE_TAG_REGEX =
+            Regex(
+                """<language>\s*(.*?)\s*</language>""",
                 setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
             )
     }

@@ -10,5 +10,11 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
     fun removeAllAgents(userGroupId: UUID)
     fun addUsers(userGroupId: UUID, userExternalIds: Collection<String>)
     fun removeUsers(userGroupId: UUID, userExternalIds: Collection<String>)
-    fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>>
+    /**
+     * Returns groups for the given user external IDs, optionally scoped to a namespace.
+     *
+     * When [namespaceId] is null, groups from all namespaces are returned.
+     * When [namespaceId] is provided, only groups belonging to that namespace are returned.
+     */
+    fun findGroupsByUserExternalIds(externalIds: Collection<String>, namespaceId: UUID? = null): Map<String, List<UserGroupSummary>>
 }

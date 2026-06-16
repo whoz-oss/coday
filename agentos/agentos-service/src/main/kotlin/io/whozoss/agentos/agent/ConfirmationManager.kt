@@ -87,9 +87,9 @@ class ConfirmationManager(
 
                 Task:
                 Analyze the end of the conversation. Has the user *already* explicitly agreed to or requested this specific action/update?
-                Take the following conversation history: 
+                Take the following conversation history:
                 <conversationHistory>
-                $firstLevelHistory
+                ${historyToString(firstLevelHistory)}
                 </conversationHistory>
 
                 Return "$CHOICE_NO" if ANY of the following are true:
@@ -152,25 +152,25 @@ class ConfirmationManager(
 
         val prompt =
             """
-            Based on the given conversation.
+            Classify the user's MOST RECENT message. The user may reply in any language;
+            reason about semantic intent.
 
-            The agent was awaiting confirmation for this pending action:
+            Pending action (NOT yet executed):
             $payloadSummary
-
-            Using following conversation history: 
-                <conversationHistory>
-                $firstLevelHistory
-                </conversationHistory>
-                
-            And especially based on the last user message, I need to identify if the user confirms the validation (without any modification) or not.
             $toolGuidanceSection
 
-            Decide between three outcomes and put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between <$TAG_DECISION></$TAG_DECISION> tags:
-            - "$CHOICE_YES" — the user clearly confirms the validation without modification.
-            - "$CHOICE_NO" — the user clearly refuses.
-            - "$CHOICE_UNCLEAR" — the reply is genuinely ambiguous (off-topic, sarcastic, evasive, or an idiomatic expression that could plausibly be read as either yes or no). Use this when you have to guess.
+            <conversationHistory>
+            ${historyToString(firstLevelHistory)}
+            </conversationHistory>
 
-            <$TAG_DECISION>
+            Put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between
+            <$TAG_DECISION></$TAG_DECISION> tags:
+            - "$CHOICE_YES" — clear, explicit affirmation (e.g. "yes", "go ahead", "confirmed").
+            - "$CHOICE_NO" — clear refusal, cancellation, OR topic shift to something unrelated.
+            - "$CHOICE_UNCLEAR" — hesitant, non-committal (e.g. "why not", "I guess", "as you wish"),
+              or a clarification question about the pending action.
+
+            First give your reasoning between <$TAG_REASONING></$TAG_REASONING>, then the decision.
             """.trimIndent()
 
         val decision =
@@ -224,7 +224,7 @@ class ConfirmationManager(
             val payloadSummary = serializeSafely(pendingData)
             val prompt =
                 """
-                You are formulating a short, user-facing confirmation prompt for an action the agent is about to perform.
+                You are formulating a short, user-facing confirmation prompt for an action the agent is about to perform (NOT yet executed).
 
                 You have the conversation context.
 
@@ -292,9 +292,7 @@ class ConfirmationManager(
         s
             // Strip orphan opening / closing question tags that leak when the LLM omits one side.
             .replace(Regex("</?$TAG_QUESTION>"), "")
-            .replace(Regex("\\p{Cntrl}"), "")
             .trim()
-            .take(300)
 
     private fun serializeSafely(data: Any): String =
         try {

@@ -209,6 +209,7 @@ class CaseEventNodeMapper(
                     node.toolRequestId,
                     node.toolName,
                     node.args,
+                    node.enrichmentPhasesJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -392,6 +393,15 @@ class CaseEventNodeMapper(
             message = n.message,
         )
 
+    private fun toDomain(n: ErrorEventNode) =
+        ErrorEvent(
+            metadata = metadata(n),
+            namespaceId = UUID.fromString(n.namespaceId),
+            caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp,
+            message = n.message,
+        )
+
     private fun toDomain(n: AgentSelectedEventNode) =
         AgentSelectedEvent(
             metadata = metadata(n),
@@ -442,6 +452,7 @@ class CaseEventNodeMapper(
             toolRequestId = n.toolRequestId,
             toolName = n.toolName,
             args = n.args,
+            enrichmentPhases = n.enrichmentPhasesJson?.let { serializer.deserializeEnrichmentPhases(it) },
         )
 
     private fun toDomain(n: ToolResponseEventNode) =
@@ -572,6 +583,20 @@ class CaseEventNodeMapper(
             removed = e.metadata.removed.takeIf { it },
         )
 
+    private fun fromDomain(e: ErrorEvent) =
+        ErrorEventNode(
+            id = e.id.toString(),
+            caseId = e.caseId.toString(),
+            namespaceId = e.namespaceId.toString(),
+            timestamp = e.timestamp,
+            message = e.message,
+            created = e.metadata.created,
+            createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified,
+            modifiedBy = e.metadata.modifiedBy,
+            removed = e.metadata.removed.takeIf { it },
+        )
+
     private fun fromDomain(e: AgentSelectedEvent) =
         AgentSelectedEventNode(
             id = e.id.toString(),
@@ -644,6 +669,7 @@ class CaseEventNodeMapper(
             toolRequestId = e.toolRequestId,
             toolName = e.toolName,
             args = e.args,
+            enrichmentPhasesJson = e.enrichmentPhases?.let { serializer.serializeEnrichmentPhases(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

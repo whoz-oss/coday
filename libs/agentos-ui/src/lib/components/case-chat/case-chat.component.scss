@@ -167,6 +167,73 @@
     color: var(--color-text-secondary, #6e6e73);
   }
 
+  // Enrichment phase traces (debug-only, gated behind showTechnical)
+  &__enrichment-section {
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.02));
+  }
+
+  &__enrichment-phase {
+    margin-top: 0.35rem;
+    border-radius: 4px;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    background: var(--glass-bg, rgba(255, 255, 255, 0.6));
+    overflow: hidden;
+
+    &--failed {
+      border-color: var(--color-error, #ff3b30);
+      background: rgba(255, 59, 48, 0.04);
+    }
+  }
+
+  &__enrichment-phase-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.2rem 0.5rem;
+    background: rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.06));
+  }
+
+  &__enrichment-phase-index {
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
+  &__enrichment-phase-status {
+    font-size: 0.7rem;
+  }
+
+  &__enrichment-phase-row {
+    padding: 0.25rem 0.5rem;
+
+    & + & {
+      border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.04));
+    }
+
+    pre {
+      margin: 0.15rem 0 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+      font-size: 0.7rem;
+      color: var(--color-text, #1d1d1f);
+      max-height: 150px;
+      overflow-y: auto;
+    }
+  }
+
+  &__enrichment-phase-label {
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
   &__tool-call-pending,
   &__tool-call-empty {
     display: block;
@@ -189,6 +256,12 @@
     &--warn {
       border-left-color: var(--color-warning, #f5a623);
       background: rgba(245, 166, 35, 0.06);
+      color: var(--color-text, #1d1d1f);
+    }
+
+    &--error {
+      border-left-color: var(--color-error, #ff3b30);
+      background: rgba(255, 59, 48, 0.06);
       color: var(--color-text, #1d1d1f);
     }
   }
