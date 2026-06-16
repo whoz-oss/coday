@@ -22,8 +22,10 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String, withDisabled: Boolean = true): List<AgentConfigNode>
-
+    fun findActiveByNamespaceId(
+        namespaceId: String,
+        withDisabled: Boolean = true,
+    ): List<AgentConfigNode>
 
     /**
      * Returns the union of [AgentConfigNode]s accessible to [userId] in [namespaceId]:
@@ -39,12 +41,14 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     @Query(
         $$"""
             MATCH (u:User {id: $userId})
-            MATCH (ns:Namespace {id: $namespaceId})
-            WHERE NOT COALESCE(u.removed, false)
-              AND NOT COALESCE(ns.removed, false)
+              WHERE NOT COALESCE(u.removed, false)
               AND u.isAdmin = true
+            MATCH (ns:Namespace {id: $namespaceId})
+              WHERE NOT COALESCE(ns.removed, false)
             MATCH (a:AgentConfig)
-              WHERE a.namespaceId = $namespaceId AND NOT COALESCE(a.removed, false)
+              WHERE a.namespaceId = $namespaceId 
+                AND a.enabled
+                AND NOT COALESCE(a.removed, false)
                 AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             UNION
@@ -72,5 +76,9 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             RETURN DISTINCT a
             """,
     )
-    fun findAvailableByNamespaceIdAndUserId(namespaceId: String, userId: String, agentName: String?): List<AgentConfigNode>
+    fun findAvailableByNamespaceIdAndUserId(
+        namespaceId: String,
+        userId: String,
+        agentName: String?,
+    ): List<AgentConfigNode>
 }
