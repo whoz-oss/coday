@@ -17,9 +17,9 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
      * Traverses the BELONGS_TO edge and filters by the Namespace id.
      */
     @Query(
-        $"""
+        $$"""
             MATCH (c:IntegrationConfig)-[r:BELONGS_TO]->(ns:Namespace)
-            WHERE ns.id = ${'$'}namespaceId AND (c.removed IS NULL OR c.removed = false) AND c.userId IS NULL
+            WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false) AND c.userId IS NULL
             RETURN c, r, ns ORDER BY c.name ASC
             """,
     )
@@ -33,9 +33,9 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
      * is added in story 6.2.
      */
     @Query(
-        $"""
+        $$"""
             MATCH (c:IntegrationConfig)
-            WHERE c.userId = ${'$'}userId AND (c.removed IS NULL OR c.removed = false)
+            WHERE c.userId = $userId AND (c.removed IS NULL OR c.removed = false)
             RETURN c ORDER BY c.name ASC
             """,
     )
@@ -70,8 +70,8 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
      * encoding identical to what was written via [IntegrationConfigNode.fromDomain].
      */
     @Query(
-        $"""
-            MATCH (c:IntegrationConfig {tripleKey: ${'$'}tripleKey})
+        $$"""
+            MATCH (c:IntegrationConfig {tripleKey: $tripleKey})
             WHERE c.removed IS NULL OR c.removed = false
             RETURN c
             LIMIT 1
@@ -80,10 +80,10 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     fun findActiveByTripleKey(tripleKey: String): IntegrationConfigNode?
 
     @Query(
-        $"""
+        $$"""
             MATCH (c:IntegrationConfig)
-            WHERE (c.namespaceId IS NULL OR c.namespaceId = ${'$'}namespaceId)
-            AND (c.userId IS NULL OR c.userId = ${'$'}userId)
+            WHERE (c.namespaceId IS NULL OR c.namespaceId = $namespaceId)
+            AND (c.userId IS NULL OR c.userId = $userId)
             AND (c.removed IS NULL OR c.removed = false)
             RETURN c
         """,
@@ -98,9 +98,9 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
      * matching the given name, across all namespaces.
      */
     @Query(
-        $"""
+        $$"""
             MATCH (c:IntegrationConfig)
-            WHERE c.name = ${'$'}name
+            WHERE c.name = $name
             AND c.userId IS NULL
             AND c.namespaceId IS NOT NULL
             AND (c.removed IS NULL OR c.removed = false)

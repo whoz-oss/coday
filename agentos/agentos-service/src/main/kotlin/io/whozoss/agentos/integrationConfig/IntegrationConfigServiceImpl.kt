@@ -292,11 +292,12 @@ class IntegrationConfigServiceImpl(
          * User × namespace (rank 3) lets the user restore a personal override
          * scoped to that specific namespace.
          */
-        val LAYER_COMPARATOR: Comparator<IntegrationConfig> = Comparator { a, b ->
-            val rankA = layerRank(a)
-            val rankB = layerRank(b)
-            rankA.compareTo(rankB)
-        }
+        val LAYER_COMPARATOR: Comparator<IntegrationConfig> =
+            Comparator { a, b ->
+                val rankA = layerRank(a)
+                val rankB = layerRank(b)
+                rankA.compareTo(rankB)
+            }
 
         private fun layerRank(config: IntegrationConfig): Int {
             val nsRank = if (config.namespaceId == null) 0 else 2
