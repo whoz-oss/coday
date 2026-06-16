@@ -29,10 +29,10 @@ private fun ToolResolverService.resolveConfigsFrom(
     configs: List<IntegrationConfig>,
     namespaceId: UUID? = null,
     userId: UUID? = null,
-    names: List<String> = emptyList(),
 ): List<IntegrationConfig> =
     resolveConfigs(
-        integrationConfigNames = names,
+        // Pass all config names so the mock returns them — mirrors an agent that declares all of them.
+        integrationConfigNames = configs.map { it.name },
         context =
             ToolContext(
                 namespaceId = namespaceId ?: UUID.randomUUID(),
@@ -52,10 +52,13 @@ class ToolResolverServiceSpec :
         // Shared fixtures
         // -------------------------------------------------------------------------
 
-        fun makeTool(name: String): StandardTool<Nothing> =
+        fun makeTool(
+            name: String,
+            integrationName: String? = null,
+        ): StandardTool<Nothing> =
             object : StandardTool<Nothing> {
                 override val name = name
-                override val description = "Tool $name"
+                override val description = (integrationName?.let { "${it}__" } ?: "") + name
                 override val inputSchema = """{"type":"object"}"""
                 override val version = "1.0.0"
                 override val paramType: Class<Nothing>? = null
@@ -78,7 +81,7 @@ class ToolResolverServiceSpec :
                     config: JsonNode?,
                     configName: String?,
                     context: ToolContext?,
-                ): List<StandardTool<*>> = toolNames.map { makeTool(it) }
+                ): List<StandardTool<*>> = toolNames.map { makeTool(it, configName) }
             }
 
         fun integrationConfig(
@@ -96,8 +99,7 @@ class ToolResolverServiceSpec :
             parameters = parameters,
         )
 
-        fun json(vararg pairs: Pair<String, String>): JsonNode =
-            mapper.createObjectNode().apply { pairs.forEach { (k, v) -> put(k, v) } }
+        fun json(vararg pairs: Pair<String, String>): JsonNode = mapper.createObjectNode().apply { pairs.forEach { (k, v) -> put(k, v) } }
 
         fun ctx(
             namespaceId: UUID,
@@ -111,8 +113,9 @@ class ToolResolverServiceSpec :
         )
 
         /**
-         * Scope-aware mock: returns the subset of [configs] reachable for (namespaceId, userId).
-         * When [names] is empty all reachable configs are returned; otherwise filtered by name.
+         * Scope-aware mock: returns the subset of [configs] matching the requested names,
+         * namespaceId, and userId. An empty [names] list returns nothing (mirrors the real
+         * repository behaviour: no names requested = no configs returned).
          */
         fun mockConfigService(configs: List<IntegrationConfig>): IntegrationConfigService =
             mockk<IntegrationConfigService>(relaxed = true).also { svc ->
@@ -132,7 +135,7 @@ class ToolResolverServiceSpec :
                                 (cfg.namespaceId == namespaceId && cfg.userId == null) ||
                                 (cfg.namespaceId == null && cfg.userId == userId) ||
                                 (cfg.namespaceId == namespaceId && cfg.userId == userId)
-                        val nameMatch = names.isEmpty() || cfg.name in names
+                        val nameMatch = cfg.name in names
                         scopeMatch && nameMatch
                     }
                 }
@@ -150,8 +153,7 @@ class ToolResolverServiceSpec :
         fun buildService(
             plugins: List<ToolPlugin> = emptyList(),
             configs: List<IntegrationConfig> = emptyList(),
-        ): ToolResolverService =
-            ToolResolverService(initRegistry(plugins), mockConfigService(configs), mergeStrategy)
+        ): ToolResolverService = ToolResolverService(initRegistry(plugins), mockConfigService(configs), mergeStrategy)
 
         /** Minimal service for resolveConfigs tests — no plugins needed. */
         fun buildMergeService(configs: List<IntegrationConfig>): ToolResolverService =
@@ -166,9 +168,10 @@ class ToolResolverServiceSpec :
             val plugin = makePlugin("DATETIME", "GetCurrentDateTime")
             val config = integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME")
             val service = buildService(plugins = listOf(plugin), configs = listOf(config))
+            val agentIntegrations = mapOf("MY_DATETIME" to null)
 
-            val tools1 = service.resolveToolsForRun(context = ctx(nsId))
-            val tools2 = service.resolveToolsForRun(context = ctx(nsId))
+            val tools1 = service.resolveToolsForRun(agentIntegrations = agentIntegrations, context = ctx(nsId))
+            val tools2 = service.resolveToolsForRun(agentIntegrations = agentIntegrations, context = ctx(nsId))
 
             tools1 shouldHaveSize 1
             tools2 shouldHaveSize 1
@@ -188,12 +191,13 @@ class ToolResolverServiceSpec :
         "resolveToolsForRun returns all tools from a matching namespace config" {
             val nsId = UUID.randomUUID()
             val config = integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME")
-            val service = buildService(plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime", "GetCurrentDate")), configs = listOf(config))
+            val service =
+                buildService(plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime", "GetCurrentDate")), configs = listOf(config))
 
-            val tools = service.resolveToolsForRun(context = ctx(nsId))
+            val tools = service.resolveToolsForRun(agentIntegrations = mapOf("MY_DATETIME" to null), context = ctx(nsId))
 
             tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetCurrentDate")
+            tools.map { it.name }.toSet() shouldBe setOf("MY_DATETIME__GetCurrentDateTime", "MY_DATETIME__GetCurrentDate")
         }
 
         "resolveToolsForRun combines tools from multiple IntegrationConfigs" {
@@ -208,20 +212,28 @@ class ToolResolverServiceSpec :
                         ),
                 )
 
-            val tools = service.resolveToolsForRun(context = ctx(nsId))
+            val tools =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("MY_DATETIME" to null, "JIRA_PROD" to null),
+                    context = ctx(nsId),
+                )
 
             tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetIssue")
+            tools.map { it.name }.toSet() shouldBe setOf("MY_DATETIME__GetCurrentDateTime", "JIRA_PROD__GetIssue")
         }
 
         "resolveToolsForRun returns no tools when config belongs to a different namespace" {
             val config = integrationConfig(namespaceId = UUID.randomUUID(), name = "JIRA_PROD", integrationType = "JIRA")
             val service = buildService(plugins = listOf(makePlugin("JIRA", "GetIssue")), configs = listOf(config))
 
-            service.resolveToolsForRun(context = ctx(UUID.randomUUID())).shouldBeEmpty()
+            service
+                .resolveToolsForRun(
+                    agentIntegrations = mapOf("JIRA_PROD" to null),
+                    context = ctx(UUID.randomUUID()),
+                ).shouldBeEmpty()
         }
 
-        "resolveToolsForRun de-duplicates tools with the same name from two configs of the same plugin" {
+        "resolveToolsForRun does not de-duplicates tools with same name from two differently named configs of the same plugin" {
             // Two IntegrationConfigs (JIRA_PROD, JIRA_STAGING) share the same integrationType.
             // The plugin returns tools with fixed names (GetIssue) regardless of configName,
             // producing a name collision across the two config instances.
@@ -238,14 +250,23 @@ class ToolResolverServiceSpec :
                 )
 
             // 2 tools × 2 configs = 4 raw tools, de-duplicated to 2 by name
-            service.resolveToolsForRun(context = ctx(nsId)) shouldHaveSize 2
+            val tools =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("JIRA_PROD" to null, "JIRA_STAGING" to null),
+                    context = ctx(nsId),
+                )
+
+            tools shouldHaveSize 4
+            tools.map { it.name }.toSet() shouldBe
+                setOf("JIRA_PROD__GetIssue", "JIRA_PROD__SearchIssues", "JIRA_STAGING__GetIssue", "JIRA_STAGING__SearchIssues")
         }
 
         // -------------------------------------------------------------------------
         // agentIntegrations filter
         // -------------------------------------------------------------------------
 
-        "resolveToolsForRun with agentIntegrations null returns all tools" {
+        "resolveToolsForRun with agentIntegrations null returns no tools" {
+            // null means the agent declared no integrations at all — no tools are loaded.
             val nsId = UUID.randomUUID()
             val service =
                 buildService(
@@ -257,7 +278,26 @@ class ToolResolverServiceSpec :
                         ),
                 )
 
-            service.resolveToolsForRun(agentIntegrations = null, context = ctx(nsId)) shouldHaveSize 2
+            service.resolveToolsForRun(agentIntegrations = null, context = ctx(nsId)).shouldBeEmpty()
+        }
+
+        "resolveToolsForRun with explicit integrations map returns all matching tools" {
+            // An agent that declares both integrations (with null allowed list = all tools) gets all tools.
+            val nsId = UUID.randomUUID()
+            val service =
+                buildService(
+                    plugins = listOf(makePlugin("JIRA", "GetIssue"), makePlugin("DATETIME", "GetCurrentDateTime")),
+                    configs =
+                        listOf(
+                            integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA"),
+                            integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
+                        ),
+                )
+
+            service.resolveToolsForRun(
+                agentIntegrations = mapOf("JIRA_PROD" to null, "MY_DATETIME" to null),
+                context = ctx(nsId),
+            ) shouldHaveSize 2
         }
 
         "resolveToolsForRun with agentIntegrations filters by IntegrationConfig name" {
@@ -293,7 +333,7 @@ class ToolResolverServiceSpec :
                 )
 
             tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetIssue", "SearchIssues")
+            tools.map { it.name }.toSet() shouldBe setOf("JIRA_PROD__GetIssue", "JIRA_PROD__SearchIssues")
         }
 
         "resolveToolsForRun with null allowed list returns all tools from that integration" {
@@ -340,8 +380,13 @@ class ToolResolverServiceSpec :
 
         "resolveConfigs: single config is returned unchanged" {
             val nsId = UUID.randomUUID()
-            val config = integrationConfig(namespaceId = nsId, name = "jira", integrationType = "JIRA",
-                parameters = json("host" to "h"))
+            val config =
+                integrationConfig(
+                    namespaceId = nsId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("host" to "h"),
+                )
 
             val result = buildMergeService(listOf(config)).resolveConfigsFrom(listOf(config), nsId)
 
@@ -357,67 +402,121 @@ class ToolResolverServiceSpec :
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
             // namespace-shared (priority 2) listed AFTER user-global (priority 1) intentionally
-            val userGlobal = integrationConfig(userId = userId, name = "jira", integrationType = "JIRA",
-                parameters = json("host" to "user-host", "token" to "user-token"))
-            val shared = integrationConfig(namespaceId = nsId, name = "jira", integrationType = "JIRA",
-                parameters = json("token" to "shared-token"))
+            val userGlobal =
+                integrationConfig(
+                    userId = userId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("host" to "user-host", "token" to "user-token"),
+                )
+            val shared =
+                integrationConfig(
+                    namespaceId = nsId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("token" to "shared-token"),
+                )
 
-            val result = buildMergeService(listOf(shared, userGlobal))
-                .resolveConfigsFrom(listOf(shared, userGlobal), nsId, userId)
+            val result =
+                buildMergeService(listOf(shared, userGlobal))
+                    .resolveConfigsFrom(listOf(shared, userGlobal), nsId, userId)
 
             result shouldHaveSize 1
-            result[0].parameters!!.get("host").asText() shouldBe "user-host"    // from user-global (base), not overridden
+            result[0].parameters!!.get("host").asText() shouldBe "user-host" // from user-global (base), not overridden
             result[0].parameters!!.get("token").asText() shouldBe "shared-token" // namespace-shared overrides user-global
         }
 
         "resolveConfigs: user-namespace (priority 3) wins over namespace-shared (priority 2)" {
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            val shared = integrationConfig(namespaceId = nsId, name = "jira", integrationType = "JIRA",
-                parameters = json("token" to "shared-token", "host" to "shared-host"))
-            val userNs = integrationConfig(namespaceId = nsId, userId = userId, name = "jira", integrationType = "JIRA",
-                parameters = json("token" to "ns-token"))
+            val shared =
+                integrationConfig(
+                    namespaceId = nsId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("token" to "shared-token", "host" to "shared-host"),
+                )
+            val userNs =
+                integrationConfig(
+                    namespaceId = nsId,
+                    userId = userId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("token" to "ns-token"),
+                )
 
-            val result = buildMergeService(listOf(userNs, shared))
-                .resolveConfigsFrom(listOf(userNs, shared), nsId, userId)
+            val result =
+                buildMergeService(listOf(userNs, shared))
+                    .resolveConfigsFrom(listOf(userNs, shared), nsId, userId)
 
             result shouldHaveSize 1
-            result[0].parameters!!.get("token").asText() shouldBe "ns-token"    // user×namespace overrides shared
-            result[0].parameters!!.get("host").asText() shouldBe "shared-host"  // inherited from shared
+            result[0].parameters!!.get("token").asText() shouldBe "ns-token" // user×namespace overrides shared
+            result[0].parameters!!.get("host").asText() shouldBe "shared-host" // inherited from shared
         }
 
         "resolveConfigs: full 4-layer merge — platform < user-global < shared < user-namespace" {
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            val platform = integrationConfig(name = "jira", integrationType = "JIRA",
-                parameters = json("host" to "platform-host", "port" to "443", "org" to "platform-org", "token" to "platform-token"))
-            val userGlobal = integrationConfig(userId = userId, name = "jira", integrationType = "JIRA",
-                parameters = json("org" to "user-org", "token" to "user-token"))
-            val shared = integrationConfig(namespaceId = nsId, name = "jira", integrationType = "JIRA",
-                parameters = json("org" to "ns-org", "token" to "shared-token"))
-            val userNs = integrationConfig(namespaceId = nsId, userId = userId, name = "jira", integrationType = "JIRA",
-                parameters = json("token" to "final-token"))
+            val platform =
+                integrationConfig(
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("host" to "platform-host", "port" to "443", "org" to "platform-org", "token" to "platform-token"),
+                )
+            val userGlobal =
+                integrationConfig(
+                    userId = userId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("org" to "user-org", "token" to "user-token"),
+                )
+            val shared =
+                integrationConfig(
+                    namespaceId = nsId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("org" to "ns-org", "token" to "shared-token"),
+                )
+            val userNs =
+                integrationConfig(
+                    namespaceId = nsId,
+                    userId = userId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("token" to "final-token"),
+                )
             val configs = listOf(userNs, userGlobal, platform, shared) // deliberately out of order
 
             val result = buildMergeService(configs).resolveConfigsFrom(configs, nsId, userId)
 
             result shouldHaveSize 1
             result[0].parameters!!.get("host").asText() shouldBe "platform-host" // platform, never overridden
-            result[0].parameters!!.get("port").asText() shouldBe "443"           // platform, never overridden
-            result[0].parameters!!.get("org").asText() shouldBe "ns-org"         // shared overrides user-global
-            result[0].parameters!!.get("token").asText() shouldBe "final-token"  // user×namespace wins all
+            result[0].parameters!!.get("port").asText() shouldBe "443" // platform, never overridden
+            result[0].parameters!!.get("org").asText() shouldBe "ns-org" // shared overrides user-global
+            result[0].parameters!!.get("token").asText() shouldBe "final-token" // user×namespace wins all
         }
 
         "resolveConfigs: null override parameters inherit base parameters" {
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            val shared = integrationConfig(namespaceId = nsId, name = "jira", integrationType = "JIRA",
-                parameters = json("host" to "shared-host", "token" to "shared-token"))
-            val userGlobal = integrationConfig(userId = userId, name = "jira", integrationType = "JIRA",
-                parameters = null)
+            val shared =
+                integrationConfig(
+                    namespaceId = nsId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("host" to "shared-host", "token" to "shared-token"),
+                )
+            val userGlobal =
+                integrationConfig(
+                    userId = userId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = null,
+                )
 
-            val result = buildMergeService(listOf(shared, userGlobal))
-                .resolveConfigsFrom(listOf(shared, userGlobal), nsId, userId)
+            val result =
+                buildMergeService(listOf(shared, userGlobal))
+                    .resolveConfigsFrom(listOf(shared, userGlobal), nsId, userId)
 
             result shouldHaveSize 1
             result[0].parameters!!.get("host").asText() shouldBe "shared-host"
@@ -425,11 +524,16 @@ class ToolResolverServiceSpec :
         }
 
         "resolveConfigs: platform-only config is reachable from any namespace" {
-            val platform = integrationConfig(name = "jira", integrationType = "JIRA",
-                parameters = json("host" to "platform-host"))
+            val platform =
+                integrationConfig(
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("host" to "platform-host"),
+                )
 
-            val result = buildMergeService(listOf(platform))
-                .resolveConfigsFrom(listOf(platform), namespaceId = UUID.randomUUID())
+            val result =
+                buildMergeService(listOf(platform))
+                    .resolveConfigsFrom(listOf(platform), namespaceId = UUID.randomUUID())
 
             result shouldHaveSize 1
             result[0].parameters!!.get("host").asText() shouldBe "platform-host"
@@ -439,21 +543,36 @@ class ToolResolverServiceSpec :
             // Without a namespace-shared layer, user-global (priority 1) is the highest override.
             val userId = UUID.randomUUID()
             val otherNsId = UUID.randomUUID()
-            val platform = integrationConfig(name = "jira", integrationType = "JIRA",
-                parameters = json("host" to "platform-host", "token" to "platform-token"))
-            val userGlobal = integrationConfig(userId = userId, name = "jira", integrationType = "JIRA",
-                parameters = json("token" to "user-token"))
+            val platform =
+                integrationConfig(
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("host" to "platform-host", "token" to "platform-token"),
+                )
+            val userGlobal =
+                integrationConfig(
+                    userId = userId,
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("token" to "user-token"),
+                )
             // shared belongs to a different namespace — excluded by scope filter
-            val sharedOtherNs = integrationConfig(namespaceId = UUID.randomUUID(), name = "jira", integrationType = "JIRA",
-                parameters = json("token" to "wrong-token"))
+            val sharedOtherNs =
+                integrationConfig(
+                    namespaceId = UUID.randomUUID(),
+                    name = "jira",
+                    integrationType = "JIRA",
+                    parameters = json("token" to "wrong-token"),
+                )
             val visible = listOf(platform, userGlobal)
 
-            val result = buildMergeService(visible + sharedOtherNs)
-                .resolveConfigsFrom(visible, otherNsId, userId)
+            val result =
+                buildMergeService(visible + sharedOtherNs)
+                    .resolveConfigsFrom(visible, otherNsId, userId)
 
             result shouldHaveSize 1
             result[0].parameters!!.get("host").asText() shouldBe "platform-host"
-            result[0].parameters!!.get("token").asText() shouldBe "user-token"  // user-global, no shared to override it
+            result[0].parameters!!.get("token").asText() shouldBe "user-token" // user-global, no shared to override it
         }
 
         // -------------------------------------------------------------------------
@@ -483,7 +602,11 @@ class ToolResolverServiceSpec :
                     configs = listOf(integrationConfig(namespaceId = nsId, name = "REDIRECT_all", integrationType = "REDIRECT")),
                 )
 
-            val tools = service.resolveToolsForRun(context = ctx(nsId))
+            val tools =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("REDIRECT_all" to null),
+                    context = ctx(nsId),
+                )
 
             capturedContext shouldNotBe null
             capturedContext!!.namespaceId shouldBe nsId
