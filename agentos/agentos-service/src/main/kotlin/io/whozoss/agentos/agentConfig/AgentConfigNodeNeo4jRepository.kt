@@ -17,13 +17,15 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
         $$"""
             MATCH (a:AgentConfig)
             WHERE a.namespaceId = $namespaceId
-              AND NOT COALESCE(a.removed, false)
+              AND NOT a.removed
               AND ($withDisabled OR a.enabled)
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String, withDisabled: Boolean = true): List<AgentConfigNode>
-
+    fun findActiveByNamespaceId(
+        namespaceId: String,
+        withDisabled: Boolean = true,
+    ): List<AgentConfigNode>
 
     /**
      * Returns the union of [AgentConfigNode]s accessible to [userId] in [namespaceId]:
@@ -44,7 +46,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns)
               WHERE NOT COALESCE(g.removed, false)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-              WHERE NOT COALESCE(a.removed, false)
+              WHERE NOT a.removed
                 AND a.enabled
                 AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
@@ -55,11 +57,15 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
               WHERE NOT COALESCE(ns.removed, false)
             MATCH (u)-[:MEMBER|ADMIN]->(ns)
             MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
-              WHERE NOT COALESCE(a.removed, false)
+              WHERE NOT a.removed
                 AND a.enabled
                 AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             """,
     )
-    fun findAvailableByNamespaceIdAndUserId(namespaceId: String, userId: String, agentName: String?): List<AgentConfigNode>
+    fun findAvailableByNamespaceIdAndUserId(
+        namespaceId: String,
+        userId: String,
+        agentName: String?,
+    ): List<AgentConfigNode>
 }

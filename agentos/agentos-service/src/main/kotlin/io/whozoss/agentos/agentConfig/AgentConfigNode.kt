@@ -47,7 +47,7 @@ data class AgentConfigNode(
     @CreatedBy val createdBy: String? = null,
     @LastModifiedDate val modified: Instant = Instant.now(),
     @LastModifiedBy val modifiedBy: String? = null,
-    val removed: Boolean? = null,
+    val removed: Boolean = false,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     val namespace: NamespaceNode? = null,
 ) {
@@ -60,7 +60,7 @@ data class AgentConfigNode(
                     createdBy = createdBy,
                     modified = modified,
                     modifiedBy = modifiedBy,
-                    removed = removed ?: false,
+                    removed = removed,
                     version = version,
                 ),
             namespaceId = UUID.fromString(namespaceId),
@@ -96,7 +96,7 @@ data class AgentConfigNode(
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,
                 modifiedBy = config.metadata.modifiedBy,
-                removed = config.metadata.removed.takeIf { it },
+                removed = config.metadata.removed,
             )
     }
 }

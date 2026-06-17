@@ -26,7 +26,7 @@ open class Neo4jAgentConfigRepository(
     override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AgentConfig> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { withRemoved || it.removed != true }
+            .filter { withRemoved || !it.removed }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<AgentConfig> =
@@ -42,7 +42,7 @@ open class Neo4jAgentConfigRepository(
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
-            ?.takeIf { it.removed != true }
+            ?.takeIf { !it.removed }
             ?.let { node ->
                 neo4jRepository.save(node.copy(removed = true))
                 logger.debug { "[Neo4jAgentConfigRepository] Soft-deleted agent config $id" }
