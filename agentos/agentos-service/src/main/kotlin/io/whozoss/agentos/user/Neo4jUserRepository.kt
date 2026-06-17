@@ -30,7 +30,7 @@ open class Neo4jUserRepository(
     override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<User> =
         userNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { withRemoved || it.removed != true }
+            .filter { withRemoved || !it.removed }
             .map { it.toDomain() }
 
     /**
@@ -49,7 +49,7 @@ open class Neo4jUserRepository(
     override fun delete(id: UUID): Boolean =
         userNodeNeo4jRepository
             .findByIdOrNull(id.toString())
-            ?.takeIf { it.removed != true }
+            ?.takeIf { !it.removed }
             ?.let { node ->
                 userNodeNeo4jRepository.save(node.copy(removed = true))
                 userNodeNeo4jRepository.setInactive(node.id)

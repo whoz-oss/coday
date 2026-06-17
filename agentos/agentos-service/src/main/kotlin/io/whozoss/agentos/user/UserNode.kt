@@ -33,7 +33,7 @@ data class UserNode(
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
-    val removed: Boolean? = null,
+    val removed: Boolean = false,
 ) {
     fun toDomain(): User =
         User(
@@ -44,7 +44,7 @@ data class UserNode(
                     createdBy = createdBy,
                     modified = modified,
                     modifiedBy = modifiedBy,
-                    removed = removed ?: false,
+                    removed = removed,
                 ),
             externalId = externalId,
             email = email,
@@ -68,7 +68,7 @@ data class UserNode(
                 createdBy = user.metadata.createdBy,
                 modified = user.metadata.modified,
                 modifiedBy = user.metadata.modifiedBy,
-                removed = user.metadata.removed.takeIf { it },
+                removed = user.metadata.removed,
             )
     }
 }
