@@ -1,3 +1,13 @@
+## 0.183.0 (2026-06-17)
+
+### 🚀 Features
+
+- admin users bypass DEPLOYED_TO filtering for agent access ([#984](https://github.com/whoz-oss/coday/pull/984))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.182.0 (2026-06-17)
 
 ### 🚀 Features
