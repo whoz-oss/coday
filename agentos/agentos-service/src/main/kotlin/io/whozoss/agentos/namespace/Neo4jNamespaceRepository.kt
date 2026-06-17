@@ -27,7 +27,7 @@ open class Neo4jNamespaceRepository(
     override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Namespace> =
         namespaceNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { withRemoved || it.removed != true }
+            .filter { withRemoved || !it.removed }
             .map { it.toDomain() }
 
     /**
@@ -39,7 +39,7 @@ open class Neo4jNamespaceRepository(
     override fun delete(id: UUID): Boolean =
         namespaceNodeNeo4jRepository
             .findByIdOrNull(id.toString())
-            ?.takeIf { it.removed != true }
+            ?.takeIf { !it.removed }
             ?.let { node ->
                 namespaceNodeNeo4jRepository.save(node.copy(removed = true))
                 namespaceNodeNeo4jRepository.setInactive(node.id)

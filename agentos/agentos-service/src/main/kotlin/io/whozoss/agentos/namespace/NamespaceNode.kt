@@ -28,7 +28,7 @@ data class NamespaceNode(
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
-    val removed: Boolean? = null,
+    val removed: Boolean = false,
 ) {
     fun toDomain(): Namespace =
         Namespace(
@@ -39,7 +39,7 @@ data class NamespaceNode(
                     createdBy = createdBy,
                     modified = modified,
                     modifiedBy = modifiedBy,
-                    removed = removed ?: false,
+                    removed = removed,
                 ),
             name = name,
             description = description,
@@ -61,7 +61,7 @@ data class NamespaceNode(
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,
                 modifiedBy = ns.metadata.modifiedBy,
-                removed = ns.metadata.removed.takeIf { it },
+                removed = ns.metadata.removed,
             )
     }
 }
