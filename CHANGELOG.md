@@ -1,3 +1,13 @@
+## 0.183.1 (2026-06-17)
+
+### 🩹 Fixes
+
+- wz-32561 add force stop intention to avoid execution hallucination ([#1029](https://github.com/whoz-oss/coday/pull/1029))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
 ## 0.183.0 (2026-06-17)
 
 ### 🚀 Features
