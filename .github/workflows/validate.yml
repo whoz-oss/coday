@@ -66,7 +66,7 @@ jobs:
       # nx affected cannot be used directly with --projects="tag:platform:jvm" because the tag filter
       # gets forwarded to the underlying Gradle/Jest commands as an unknown flag, causing build failures.
       # Instead, we resolve the affected JVM project names first via nx show projects, then pass the
-      # explicit names to nx run-many (which does not forward them to executors)
+      # explicit names to nx run-many (which does not forward them to executors).
       - name: Build and test JVM projects
         run: |
           AFFECTED_JVM=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm" --json --quiet | jq -r 'join(",")')
