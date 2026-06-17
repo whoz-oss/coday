@@ -438,6 +438,40 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Path 3: super-admin (user.isAdmin = true)
+        // -------------------------------------------------------------------------
+
+        "super-admin sees all enabled agents in the namespace without any deployment" {
+            val ns = namespaceRepo.save(namespace())
+            val agent1 = agentConfigRepo.save(agentConfig(ns.id, "admin-visible-1").copy(enabled = true))
+            val agent2 = agentConfigRepo.save(agentConfig(ns.id, "admin-visible-2").copy(enabled = true))
+            val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
+            // no deployment, no group, no namespace membership
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, admin.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("admin-visible-1", "admin-visible-2")
+        }
+
+        "super-admin does not see disabled agents" {
+            val ns = namespaceRepo.save(namespace())
+            agentConfigRepo.save(agentConfig(ns.id, "disabled-for-admin").copy(enabled = false))
+            val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
+
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, admin.id, null).shouldBeEmpty()
+        }
+
+        "super-admin does not see agents from a different namespace" {
+            val ns = namespaceRepo.save(namespace())
+            val otherNs = namespaceRepo.save(namespace())
+            agentConfigRepo.save(agentConfig(otherNs.id, "other-ns-agent").copy(enabled = true))
+            val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
+
+            // query against ns — admin has no agents there
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, admin.id, null).shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
         // findAvailableByNamespaceIdAndUserId — enabled filtering
         // -------------------------------------------------------------------------
 
