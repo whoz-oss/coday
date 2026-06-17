@@ -5,7 +5,7 @@ import mu.KLogging
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
-import java.util.*
+import java.util.UUID
 
 private data class UserExternalIdGroupRow(
     val externalId: String,
@@ -26,7 +26,10 @@ open class Neo4jUserGroupRepository(
                 if (!entity.metadata.removed) neo4jRepository.setActive(it.id)
             }.toDomain()
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<UserGroup> =
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<UserGroup> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { withRemoved || it.removed != true }
@@ -58,15 +61,13 @@ open class Neo4jUserGroupRepository(
     ) = neo4jClient
         .query(
             """
-                MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
-                WHERE $whereClause
-                OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-                  WHERE NOT COALESCE(a.removed, false)
-                OPTIONAL MATCH (u:User)-[:MEMBER|ADMIN]->(g)
-                  WHERE NOT COALESCE(u.removed, false)
-                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
-                       g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
-                ORDER BY g.name ASC
+            MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
+            WHERE $whereClause
+            OPTIONAL MATCH (a:AgentConfig {removed: false})-[:DEPLOYED_TO]->(g)
+            OPTIONAL MATCH (u:User {removed: false})-[:MEMBER|ADMIN]->(g)
+            RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
+                   g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+            ORDER BY g.name ASC
             """.trimIndent(),
         ).bind(paramValue)
         .to(paramName)
@@ -127,15 +128,15 @@ open class Neo4jUserGroupRepository(
         } else {
             namespaceClause = ""
         }
-        val query = $$"""
-            MATCH (u:User)-[:MEMBER]->(g:UserGroup)
+        val query =
+            $$"""
+            MATCH (u:User {removed: false})-[:MEMBER]->(g:UserGroup)
             WHERE u.externalId IN $externalIds
               AND NOT COALESCE(g.removed, false)
-              AND NOT COALESCE(u.removed, false)
               $$namespaceClause
             RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
             ORDER BY u.externalId ASC, g.name ASC
-        """.trimIndent()
+            """.trimIndent()
         return neo4jClient
             .query(query)
             .bindAll(params)

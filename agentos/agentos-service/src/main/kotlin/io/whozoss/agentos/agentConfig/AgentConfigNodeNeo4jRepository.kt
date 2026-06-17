@@ -39,27 +39,19 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      */
     @Query(
         $$"""
-            MATCH (u:User {id: $userId})
-              WHERE NOT COALESCE(u.removed, false)
-            MATCH (ns:Namespace {id: $namespaceId})
-              WHERE NOT COALESCE(ns.removed, false)
+            MATCH (u:User {id: $userId, removed: false})
+            MATCH (ns:Namespace {id: $namespaceId, removed: false})
             MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns)
               WHERE NOT COALESCE(g.removed, false)
-            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-              WHERE NOT a.removed
-                AND a.enabled
-                AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
+            MATCH (a:AgentConfig {removed: false, enabled: true})-[:DEPLOYED_TO]->(g)
+              WHERE (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             UNION
-            MATCH (u:User {id: $userId})
-              WHERE NOT COALESCE(u.removed, false)
-            MATCH (ns:Namespace {id: $namespaceId})
-              WHERE NOT COALESCE(ns.removed, false)
+            MATCH (u:User {id: $userId, removed: false})
+            MATCH (ns:Namespace {id: $namespaceId, removed: false})
             MATCH (u)-[:MEMBER|ADMIN]->(ns)
-            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
-              WHERE NOT a.removed
-                AND a.enabled
-                AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
+            MATCH (a:AgentConfig {removed: false, enabled: true})-[:DEPLOYED_TO]->(ns)
+              WHERE (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
             RETURN DISTINCT a
             """,
     )

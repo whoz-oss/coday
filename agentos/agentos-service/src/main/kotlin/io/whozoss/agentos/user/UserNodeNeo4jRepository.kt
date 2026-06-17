@@ -40,8 +40,7 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      */
     @Query(
         $$"""
-            MATCH (u:User)
-            WHERE u.externalId = $externalId AND (u.removed IS NULL OR u.removed = false)
+            MATCH (u:User {externalId: $externalId, removed: false})
             RETURN u LIMIT 1
             """,
     )
@@ -49,8 +48,8 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-            MATCH (u:User)
-            WHERE u.externalId IN $externalIds AND (u.removed IS NULL OR u.removed = false)
+            MATCH (u:User {removed: false})
+            WHERE u.externalId IN $externalIds
             RETURN u
             """,
     )
@@ -62,8 +61,7 @@ interface UserNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      */
     @Query(
         """
-            MATCH (u:User)
-            WHERE u.removed IS NULL OR u.removed = false
+            MATCH (u:User {removed: false})
             RETURN COUNT(u)
             """,
     )

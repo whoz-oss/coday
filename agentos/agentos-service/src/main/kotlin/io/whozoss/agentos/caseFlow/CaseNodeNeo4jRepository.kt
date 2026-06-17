@@ -42,7 +42,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
             WHERE (c.removed IS NULL OR c.removed = false)
               AND (
                 EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
-                OR EXISTS { MATCH (:User {id: $userId})-[:ADMIN]->(ns) }
+                OR EXISTS { MATCH (:User {id: $userId, removed: false})-[:ADMIN]->(ns) }
               )
             RETURN c, r, ns ORDER BY c.created ASC
             """,
@@ -62,7 +62,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     @Query(
         $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE (c.removed IS NULL OR c.removed = false)
-              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
+              AND EXISTS { MATCH (:User {id: $userId, removed: false})-[:ADMIN|MEMBER]->(c) }
             RETURN c, r, ns ORDER BY c.created ASC
             """,
     )
@@ -77,9 +77,12 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     @Query(
         $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
-              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
+              AND EXISTS { MATCH (:User {id: $userId, removed: false})-[:ADMIN|MEMBER]->(c) }
             RETURN c, r, ns ORDER BY c.created ASC
             """,
     )
-    fun findConcerningUserInNamespace(userId: String, namespaceId: String): List<CaseNode>
+    fun findConcerningUserInNamespace(
+        userId: String,
+        namespaceId: String,
+    ): List<CaseNode>
 }
