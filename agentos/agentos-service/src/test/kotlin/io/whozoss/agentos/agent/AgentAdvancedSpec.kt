@@ -61,7 +61,7 @@ import kotlin.io.path.writeText
 internal class TestRemoveTool(
     private val rootDir: java.nio.file.Path,
     override val name: String = "FILES__remove",
-    override val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
+    private val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
 ) : StandardTool<TestRemoveTool.Input> {
     data class Input(
         val path: String? = null,
@@ -84,6 +84,8 @@ internal class TestRemoveTool(
         }
         return ToolExecutionResult.success("File $path deleted successfully")
     }
+
+    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = confirmationMode
 
     override fun getConfirmationInstructions(): String = "Be strict: explicit confirmation only after the assistant's question."
 
@@ -1473,7 +1475,8 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.INFER
 
                     override suspend fun execute(
                         input: Map<String, Any>?,
@@ -1545,7 +1548,6 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.EVERY_TIME // static fallback
 
                     // Always returns NONE dynamically — mimicking a bypass condition
                     override suspend fun getConfirmationMode(
@@ -1619,7 +1621,8 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.INFER
 
                     override fun getConfirmationInstructions(): String = "Be strict: 'pourquoi pas' is not consent."
 
@@ -1698,7 +1701,6 @@ class AgentAdvancedSpec :
                     override val inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}"""
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.NONE
 
                     override suspend fun getConfirmationMode(
                         argsJson: String?,
@@ -1811,7 +1813,8 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.EVERY_TIME
+
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.EVERY_TIME
 
                     override suspend fun execute(
                         input: Map<String, Any>?,
@@ -1997,7 +2000,6 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
@@ -2067,7 +2069,6 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
@@ -2145,7 +2146,6 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns
                 """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("entity data")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -2218,7 +2218,6 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 

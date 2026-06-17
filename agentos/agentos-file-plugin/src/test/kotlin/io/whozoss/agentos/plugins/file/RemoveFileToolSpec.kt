@@ -111,9 +111,9 @@ class RemoveFileToolSpec : StringSpec() {
             file.exists() shouldBe true
         }
 
-        "confirmationMode is EVERY_TIME (implicit consent never trusted)" {
+        "getConfirmationMode returns EVERY_TIME (implicit consent never trusted)" {
             val tool = RemoveFileTool(tempDir)
-            tool.confirmationMode shouldBe ConfirmationMode.EVERY_TIME
+            tool.getConfirmationMode() shouldBe ConfirmationMode.EVERY_TIME
         }
     }
 }
