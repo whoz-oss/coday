@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -133,7 +134,22 @@ class AgentAdvanced(
                         // and can escalate to ForceStop if the loop persists.
                         accumulatedEvents.add(warnEvent)
                     }
-                    if (repetitionOutcome is RepetitionOutcome.ForceStop) break
+                    if (repetitionOutcome is RepetitionOutcome.ForceStop) {
+                        val forceStopIntention =
+                            IntentionGeneratedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = context.agentId,
+                                intention = "Previous tool execution was stopped due to too many repetitions, the operation is not completed.",
+                                toolName = ANSWER_TOOL,
+                                isFailedIntention = false,
+                            )
+                        emit(
+                            forceStopIntention,
+                        )
+                        lastIntention = forceStopIntention
+                        break
+                    }
 
                     val intention =
                         intentionGenerator.generate(

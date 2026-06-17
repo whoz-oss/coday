@@ -2773,7 +2773,8 @@ class AgentAdvancedSpec :
             //   iteration THRESHOLD: window has THRESHOLD identical → Warned
             //   iteration THRESHOLD+1: window still has ≥THRESHOLD identical → count > THRESHOLD → ForceStop
             // The loop must exit WITHOUT calling intentionGenerator again and must emit
-            // a second WarnEvent containing the force-stop message.
+            // a WarnEvent containing the force-stop message, an IntentionGeneratedEvent with
+            // toolName=Answer (the force-stop intention), and then a final generated response.
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
@@ -2835,6 +2836,27 @@ class AgentAdvancedSpec :
             val warnEvents = events.filterIsInstance<WarnEvent>()
             warnEvents shouldHaveSize 1
             warnEvents[0].message shouldContain "Forcing loop termination"
+
+            // A synthetic IntentionGeneratedEvent with toolName=Answer must be emitted
+            // so that generateFinalResponse is called and can explain the forced stop to the user.
+            val intentionEvents = events.filterIsInstance<IntentionGeneratedEvent>()
+            val forceStopIntention = intentionEvents.last()
+            forceStopIntention.toolName shouldBe AgentIntentionGenerator.ANSWER_TOOL
+            forceStopIntention.intention shouldContain "repetitions"
+            forceStopIntention.isFailedIntention shouldBe false
+
+            // generateFinalResponse must have been called: a TextChunkEvent and MessageEvent
+            // are produced from the mocked streaming response.
+            events.filterIsInstance<TextChunkEvent>() shouldHaveSize 1
+            events.filterIsInstance<TextChunkEvent>()[0].chunk shouldBe "Forced stop."
+            val agentMessages = events.filterIsInstance<MessageEvent>().filter { it.actor.role == ActorRole.AGENT }
+            agentMessages shouldHaveSize 1
+            (agentMessages[0].content.first() as MessageContent.Text).content shouldBe "Forced stop."
+
+            // The WarnEvent must appear before the force-stop IntentionGeneratedEvent.
+            val warnIdx = events.indexOf(warnEvents[0])
+            val intentionIdx = events.indexOf(forceStopIntention)
+            (warnIdx < intentionIdx) shouldBe true
 
             // The run must have terminated cleanly with AgentFinishedEvent.
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
