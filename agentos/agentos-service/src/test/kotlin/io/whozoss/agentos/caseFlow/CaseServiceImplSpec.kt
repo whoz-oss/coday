@@ -139,6 +139,9 @@ class CaseServiceImplSpec :
             mockk<Agent> {
                 every { metadata } returns EntityMetadata(id = agentId)
                 every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
                 every { run(any<List<CaseEvent>>(), any()) } answers {
                     val caseId = firstArg<List<CaseEvent>>().first().caseId
                     flow {
@@ -225,6 +228,9 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         runCallCount++
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
@@ -522,6 +528,9 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
@@ -688,6 +697,9 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = namespaceAgentId)
                     every { name } returns namespaceDefaultName
+                    every { id } returns namespaceAgentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
@@ -950,6 +962,9 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = selectedAgentId)
                     every { name } returns selectedAgentName
+                    every { id } returns selectedAgentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         agentCallNames.add(selectedAgentName)
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
@@ -1052,6 +1067,9 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
                     every { name } returns inspectorName
+                    every { id } returns inspectorId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
@@ -1124,6 +1142,9 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
                     every { name } returns inspectorName
+                    every { id } returns inspectorId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
@@ -1182,6 +1203,9 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
                     every { run(any<List<CaseEvent>>(), any()) } answers {
                         runCallCount++
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
@@ -1233,5 +1257,120 @@ class CaseServiceImplSpec :
             runCallCount shouldBe 2
             service.getById(case.id).status shouldBe CaseStatus.IDLE
             verify(exactly = 2) { allowAllAgentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, agentName) }
+        }
+
+        // -------------------------------------------------------------------------
+        // Rehydration: crash recovery from persisted AgentRunningEvent
+        // -------------------------------------------------------------------------
+
+        "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
+            // Regression: when a case is rehydrated from persistence after a crash,
+            // the last persisted event may be an AgentRunningEvent (emitted by runAgent
+            // before agent.run()). processNextStep finds it and calls runAgent, which
+            // now emits ANOTHER AgentRunningEvent. After the agent finishes, the second
+            // AgentRunningEvent could be found by the next processNextStep iteration
+            // (it's newer than AgentFinishedEvent), causing an infinite loop.
+            //
+            // Expected: the agent runs exactly once, no infinite loop, case reaches IDLE.
+
+            var runCallCount = 0
+            val countingAgent =
+                mockk<Agent> {
+                    every { id } returns agentId
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        runCallCount++
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+
+            // Build the service with a pre-existing case that has events simulating a crash
+            // after AgentRunningEvent was emitted but before AgentFinishedEvent.
+            val caseEventRepo = InMemoryCaseEventRepository()
+            val caseEventService = CaseEventServiceImpl(caseEventRepo)
+            val caseRepository = InMemoryCaseRepository()
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any()) } returns countingAgent
+                }
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service =
+                CaseServiceImpl(
+                    agentService,
+                    allowAllAgentConfigService,
+                    AgentConfigProperties(),
+                    caseRepository,
+                    caseEventService,
+                    userService,
+                    namespaceService,
+                )
+
+            // Insert the case directly into the repository so no runtime is created in
+            // activeRuntimes. The subsequent getCaseRuntime() call will then trigger
+            // rehydrate(), which loads the pre-populated events from the event store
+            // and passes them as inputEvents to buildRuntime().
+            val case = Case(namespaceId = namespaceId, status = CaseStatus.RUNNING)
+            caseRepository.save(case)
+
+            // Pre-populate events as if the case crashed after AgentRunningEvent
+            val existingMessage = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            val existingSelected = AgentSelectedEvent(
+                namespaceId = namespaceId,
+                caseId = case.id,
+                agentId = agentId,
+                agentName = agentName,
+            )
+            val existingRunning = AgentRunningEvent(
+                namespaceId = namespaceId,
+                caseId = case.id,
+                agentId = agentId,
+                agentName = agentName,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
+            )
+            caseEventService.create(existingMessage)
+            caseEventService.create(existingSelected)
+            caseEventService.create(existingRunning)
+
+            // Rehydrate: getCaseRuntime loads past events from the event store
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+
+            // Trigger the run loop — no new message, just resume from persisted state
+            runtime.run()
+
+            awaiter.join()
+
+            runCallCount shouldBe 1
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
     })
