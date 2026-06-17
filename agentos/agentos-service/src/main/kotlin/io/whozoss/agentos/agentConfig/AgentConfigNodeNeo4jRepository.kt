@@ -42,14 +42,14 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
         $$"""
             MATCH (u:User {id: $userId, removed: false})
             MATCH (ns:Namespace {id: $namespaceId, removed: false})
-            MATCH (a:AgentConfig {removed: false)
+            MATCH (a:AgentConfig {removed: false})
             WHERE (a.namespaceId = $namespaceId OR a.namespaceId IS NULL)
               AND a.enabled
               AND NOT COALESCE(a.removed, false)
               AND ($agentName IS NULL OR toLower(a.name) = toLower($agentName))
               AND (
                 u.isAdmin = true
-                OR EXISTS { MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns) MATCH (a)-[:DEPLOYED_TO]->(g) WHERE NOT COALESCE(g.removed, false) }
+                OR EXISTS { MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns) MATCH (a)-[:DEPLOYED_TO]->(g) WHERE g.removed IS NULL OR g.removed = false }
                 OR EXISTS { MATCH (u)-[:MEMBER|ADMIN]->(ns) MATCH (a)-[:DEPLOYED_TO]->(ns) }
               )
             RETURN DISTINCT a ORDER BY a.name ASC
