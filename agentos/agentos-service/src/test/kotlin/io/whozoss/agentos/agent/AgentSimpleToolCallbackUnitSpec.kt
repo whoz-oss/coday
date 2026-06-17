@@ -65,6 +65,8 @@ class AgentSimpleToolCallbackUnitSpec :
                 name = "TestAgent",
                 chatClient = chatClient,
                 tools = tools,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
             )
 
         fun userMessage(

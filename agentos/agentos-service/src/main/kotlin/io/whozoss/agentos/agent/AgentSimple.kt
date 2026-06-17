@@ -69,6 +69,8 @@ class AgentSimple(
     private val userExternalId: String? = null,
     /** Returns the live event list of the current case at the moment of invocation. */
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
+    override val llmProvider: String,
+    override val llmModel: String,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -113,6 +115,8 @@ class AgentSimple(
                             caseId = caseId,
                             agentId = id,
                             agentName = name,
+                            llmProvider = llmProvider,
+                            llmModel = llmModel,
                         ),
                     )
                     return@flow
@@ -224,6 +228,8 @@ class AgentSimple(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
             } catch (e: AgentInterrupt) {
@@ -234,9 +240,9 @@ class AgentSimple(
                 for (toolEvent in toolEventChannel) {
                     emit(toolEvent)
                 }
-                emitInterruptEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+                emitInterruptAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: NonTransientAiException) {
-                emitProviderErrorEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+                emitProviderErrorAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -253,6 +259,8 @@ class AgentSimple(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
             }

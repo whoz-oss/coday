@@ -186,7 +186,7 @@ class CaseRuntimeSpec : StringSpec() {
         // Event sequence
         // -------------------------------------------------------------------------
 
-        "AgentSelectedEvent then AgentRunningEvent then AgentFinishedEvent are saved in order" {
+        "AgentSelectedEvent then AgentFinishedEvent are saved in order" {
             val (runtime, _, _, savedEvents) = buildRuntime()
 
             runtime.addUserMessage(userActor, userMessage)
@@ -194,27 +194,14 @@ class CaseRuntimeSpec : StringSpec() {
 
             val agentEvents =
                 savedEvents.filter {
-                    it is AgentSelectedEvent || it is AgentRunningEvent || it is AgentFinishedEvent
+                    it is AgentSelectedEvent || it is AgentFinishedEvent
                 }
-            agentEvents shouldHaveAtLeastSize 3
+            agentEvents shouldHaveAtLeastSize 2
             agentEvents[0].shouldBeInstanceOf<AgentSelectedEvent>()
-            agentEvents[1].shouldBeInstanceOf<AgentRunningEvent>()
-            agentEvents[2].shouldBeInstanceOf<AgentFinishedEvent>()
+            agentEvents[1].shouldBeInstanceOf<AgentFinishedEvent>()
         }
 
-        "AgentSelectedEvent and AgentRunningEvent carry the same agentId and agentName" {
-            val (runtime, _, _, savedEvents) = buildRuntime(agentName = "gemini-flash")
 
-            runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
-
-            val selected = savedEvents.filterIsInstance<AgentSelectedEvent>().first()
-            val running = savedEvents.filterIsInstance<AgentRunningEvent>().first()
-
-            selected.agentName shouldBe "gemini-flash"
-            running.agentName shouldBe "gemini-flash"
-            selected.agentId shouldBe running.agentId
-        }
 
         // -------------------------------------------------------------------------
         // selectAgent returning a WarnEvent + AgentSelectedEvent
@@ -268,7 +255,7 @@ class CaseRuntimeSpec : StringSpec() {
         // processNextStep: AgentSelectedEvent -> AgentRunningEvent ordering
         // -------------------------------------------------------------------------
 
-        "processNextStep emits AgentRunningEvent before runAgent is ever called" {
+        "processNextStep calls runAgent after AgentSelectedEvent is stored" {
             val agentName = "ordered-agent"
             val callOrder = mutableListOf<String>()
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
@@ -300,7 +287,7 @@ class CaseRuntimeSpec : StringSpec() {
                     namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
-                        if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
+                        if (event is AgentSelectedEvent) callOrder.add("AgentSelectedEvent saved")
                         event
                     },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) },
@@ -316,16 +303,12 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
 
-            val runningIdx = callOrder.indexOf("AgentRunningEvent saved")
+            val selectedIdx = callOrder.indexOf("AgentSelectedEvent saved")
             val runIdx = callOrder.indexOf("runAgent")
 
-            (runningIdx >= 0) shouldBe true
-            (runIdx > runningIdx) shouldBe true
+            (selectedIdx >= 0) shouldBe true
+            (runIdx > selectedIdx) shouldBe true
         }
-
-        // -------------------------------------------------------------------------
-        // AgentRunningEvent already in history (case resumed mid-run)
-        // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
         // shouldContinue lambda contract
@@ -507,7 +490,7 @@ class CaseRuntimeSpec : StringSpec() {
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                runAgent = runAgent.asCallback,
+                    runAgent = runAgent.asCallback,
             )
 
             runtime.addUserMessage(userActor, userMessage)
@@ -567,7 +550,7 @@ class CaseRuntimeSpec : StringSpec() {
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
                 isAgentAuthorized = { name, _ -> name == agentA }, // agentB not authorized
-                runAgent = runAgent.asCallback,
+                    runAgent = runAgent.asCallback,
             )
 
             runtime.addUserMessage(userActor, userMessage)

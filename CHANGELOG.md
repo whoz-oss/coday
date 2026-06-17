@@ -1,3 +1,18 @@
+## 0.182.0 (2026-06-17)
+
+### 🚀 Features
+
+- #WZ-32677 use textarea for namespace description field ([#1005](https://github.com/whoz-oss/coday/pull/1005))
+
+### 🩹 Fixes
+
+- wz-31546 enrich AgentRunningEvent with llmProvider and llmModel ([#1007](https://github.com/whoz-oss/coday/pull/1007))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- vincent-audibert-whoz
+
 ## 0.181.0 (2026-06-16)
 
 ### 🚀 Features

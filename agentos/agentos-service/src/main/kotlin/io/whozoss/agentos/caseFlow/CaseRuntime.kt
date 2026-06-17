@@ -39,8 +39,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
  *   is accessible to the current user. Called at redirect time — not pre-computed.
  * @param runAgent fetches the named agent, runs it against the current event history,
- *   and pipes each produced event through [storeEvent]. Error handling is the
- *   responsibility of the service implementation.
+ *   and pipes each produced event through [storeEvent]. The implementation is responsible
+ *   for deciding whether to emit [AgentRunningEvent] by inspecting the event history
+ *   (e.g. skip if already the most recent orchestration event, to avoid duplicates on
+ *   rehydration). Error handling is the responsibility of the service implementation.
  */
 class CaseRuntime(
     val id: UUID,
@@ -295,15 +297,17 @@ class CaseRuntime(
                 }
 
                 is AgentRunningEvent -> {
-                    logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
+                    // Rehydration: agent was running when the case crashed.
+                    // Delegate to runAgent which inspects the event history
+                    // and skips the duplicate AgentRunningEvent emission.
+                    logger.info { "[CaseRuntime $id] Rehydrating from AgentRunningEvent for agent: ${event.agentName}" }
                     runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events)) { !interruptRequested.get() }
                     return
                 }
 
                 is AgentSelectedEvent -> {
                     logger.info {
-                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, " +
-                            "transitioning to running"
+                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}"
                     }
                     val userId = resolveUserId(events)
                     if (!isAgentAuthorized(event.agentName, userId)) {
@@ -321,14 +325,7 @@ class CaseRuntime(
                         interruptRequested.set(true)
                         return
                     }
-                    storeAndEmitEvent(
-                        AgentRunningEvent(
-                            namespaceId = namespaceId,
-                            caseId = id,
-                            agentId = event.agentId,
-                            agentName = event.agentName,
-                        ),
-                    )
+                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, userId) { !interruptRequested.get() }
                     return
                 }
 

@@ -9,6 +9,7 @@ import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
@@ -402,9 +403,25 @@ class CaseServiceImpl(
                 userId = userId,
                 caseEventsProvider = eventsProvider,
             )
-        agentService
-            .findAgentByName(agentName, context)
-            .run(events, shouldContinue)
+        val agent = agentService.findAgentByName(agentName, context)
+
+        if (shouldEmitRunningEvent(events)) {
+            val runningEvent =
+                AgentRunningEvent(
+                    namespaceId = runtime.namespaceId,
+                    caseId = caseId,
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    llmProvider = agent.llmProvider,
+                    llmModel = agent.llmModel,
+                )
+            storeEvent(runningEvent).also { saved ->
+                runtime.pushEvents(listOf(saved))
+                runtime.emitEvent(saved)
+            }
+        }
+
+        agent.run(events, shouldContinue)
             .catch { error ->
                 logger.error(error) { "Error in agent $agentName for case $caseId" }
                 storeEvent(
@@ -528,6 +545,31 @@ class CaseServiceImpl(
         activeRuntimes.clear()
         scope.cancel()
         logger.info { "CaseService shutdown complete" }
+    }
+
+    /**
+     * Determines whether a new [AgentRunningEvent] should be emitted by inspecting
+     * the event history.
+     *
+     * Returns `true` when the most recent [AgentSelectedEvent] is newer than the most
+     * recent [AgentRunningEvent] (or when no [AgentRunningEvent] exists yet) — this is
+     * the normal fresh-run path.
+     *
+     * Returns `false` when [AgentRunningEvent] is already the most recent of the two —
+     * the case is rehydrating from a crash and emitting a duplicate would cause
+     * [CaseRuntime.processNextStep] to re-trigger execution indefinitely.
+     *
+     * This comparison is safe because agent execution is strictly sequential within a
+     * case: [CaseRuntime.run] is guarded by an [AtomicBoolean] that prevents concurrent
+     * invocations, and [runAgent] suspends in [Flow.collect] until the agent's flow
+     * terminates. No two agents can overlap, so the relative positions of
+     * [AgentSelectedEvent] and [AgentRunningEvent] in the event list are always
+     * well-ordered.
+     */
+    private fun shouldEmitRunningEvent(events: List<CaseEvent>): Boolean {
+        val lastSelectedIndex = events.indexOfLast { it is AgentSelectedEvent }
+        val lastRunningIndex = events.indexOfLast { it is AgentRunningEvent }
+        return lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
     }
 
     companion object : KLogging() {

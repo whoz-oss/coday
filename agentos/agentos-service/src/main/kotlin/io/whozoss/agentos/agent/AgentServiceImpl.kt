@@ -278,6 +278,8 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
+                llmProvider = providerConfig.name,
+                llmModel = modelConfig.apiModelName,
             )
         } else {
             AgentSimple(
@@ -290,6 +292,8 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
+                llmProvider = providerConfig.name,
+                llmModel = modelConfig.apiModelName,
             )
         }
     }

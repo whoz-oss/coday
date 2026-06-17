@@ -48,6 +48,8 @@ class AgentAdvanced(
     private val userExternalId: String? = null,
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     private val maxIterations: Int = 20,
+    override val llmProvider: String,
+    override val llmModel: String,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -86,6 +88,8 @@ class AgentAdvanced(
                                 caseId = caseId,
                                 agentId = id,
                                 agentName = name,
+                                llmProvider = llmProvider,
+                                llmModel = llmModel,
                             ),
                         )
                         return@flow
@@ -196,14 +200,16 @@ class AgentAdvanced(
                             caseId = caseId,
                             agentId = id,
                             agentName = name,
+                            llmProvider = llmProvider,
+                            llmModel = llmModel,
                         ),
                     )
                 }
             } catch (e: AgentInterrupt) {
                 // Not an error: a tool requested a structured interruption of this agent run.
-                emitInterruptEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+                emitInterruptAndFinishEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: NonTransientAiException) {
-                emitProviderErrorEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+                emitProviderErrorAndFinishEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
             } catch (e: ConfirmationConfigurationException) {
                 // DI wiring bug — surface loudly so prod logs catch it. Still emit a WarnEvent
                 // so the per-case lifecycle terminates cleanly, but the operator-facing signal
@@ -533,6 +539,8 @@ class AgentAdvanced(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
                 GateOutcome.AwaitingConfirmation
