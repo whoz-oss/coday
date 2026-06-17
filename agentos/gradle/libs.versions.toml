@@ -48,10 +48,20 @@ logstashLogbackEncoder = "8.1"
 okhttp = "4.12.0"
 
 # AgentOS modules versions
-agentosSdk = "0.181.0"
-agentosService = "0.181.0"
+agentosSdk = "0.182.0"
+agentosService = "0.182.0"
 
 [libraries]
+# Jakarta Validation API — annotation-only, for compileOnly use in agentos-sdk
+jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version = "3.0.2" }
+# Spring Web — annotation-only (just @RequestMapping etc.), for compileOnly use in agentos-sdk.
+# Version aligned with Spring Boot 3.5.7's managed spring-framework version (6.2.x).
+spring-web = { module = "org.springframework:spring-web", version = "6.2.9" }
+# Swagger / OpenAPI annotations — annotation-only, for compileOnly use in agentos-sdk.
+# swagger-annotations 2.x is the transitive dependency of springdoc-openapi-starter 2.x.
+# Must stay in sync with the springdoc version used in agentos-service.
+swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version = "2.2.28" }
+
 # Kotlin
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }

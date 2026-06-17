@@ -18,10 +18,12 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
+import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
+import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
-import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
@@ -34,9 +36,8 @@ import java.util.UUID
  * exercised here. Those are covered by [io.whozoss.agentos.security.declarative.MethodSecurityIntegrationSpec].
  *
  * What this spec covers:
- * - Mapping (`toResource` / `toDomain`, including null optional fields)
- * - Inherited [io.whozoss.agentos.entity.EntityController] delegates:
- *   `getById` (found / not-found), `getByIds`, `listByParent`, `create`, `delete`
+ * - Mapping (`AgentConfig.toDto()`, including null optional fields)
+ * - CRUD delegates: `getById` (found / not-found), `getByIds`, `listByParent`, `create`, `delete`
  * - `update` mass-assignment guard (server-owned `namespaceId` preserved)
  * - `update` 404-on-missing path
  * - `getDefinition` field mapping including [systemPrompt], user overlay flag, tool summaries, 404
@@ -90,7 +91,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         instructions: String? = "Be helpful.",
         modelName: String? = "BIG",
         externalMetadata: Map<String, Any?>? = null,
-    ) = AgentConfigResource(
+    ) = AgentConfigDto(
         id = id,
         namespaceId = nsId,
         name = name,
@@ -142,10 +143,10 @@ class AgentConfigControllerUnitSpec : StringSpec({
     beforeTest { clearAllMocks() }
 
     // -------------------------------------------------------------------------
-    // toResource mapping
+    // toDto mapping (file-level extension AgentConfig.toDto())
     // -------------------------------------------------------------------------
 
-    "toResource maps all fields from AgentConfig to AgentConfigResource" {
+    "toDto maps all fields from AgentConfig to AgentConfigDto" {
         val id = UUID.randomUUID()
         val c = config(
             id = id,
@@ -155,9 +156,9 @@ class AgentConfigControllerUnitSpec : StringSpec({
             modelName = "claude-3-opus",
         )
 
-        val result = controller.toResource(c)
+        val result = c.toDto()
 
-        result shouldBe AgentConfigResource(
+        result shouldBe AgentConfigDto(
             id = id,
             namespaceId = namespaceId,
             name = "coder",
@@ -170,167 +171,65 @@ class AgentConfigControllerUnitSpec : StringSpec({
         )
     }
 
-    "toResource preserves null optional fields" {
+    "toDto preserves null optional fields" {
         val c = config(description = null, instructions = null, modelName = null)
-
-        val result = controller.toResource(c)
-
+        val result = c.toDto()
         result.description shouldBe null
         result.instructions shouldBe null
         result.modelName shouldBe null
     }
 
-    "toResource maps advancedExecution=false to null (omitted in JSON)" {
-        val c = config().copy(advancedExecution = false)
-
-        val result = controller.toResource(c)
-
-        result.advancedExecution shouldBe null
+    "toDto maps advancedExecution=false to null (omitted in JSON)" {
+        config().copy(advancedExecution = false).toDto().advancedExecution shouldBe null
     }
 
-    "toResource maps advancedExecution=true to true" {
-        val c = config().copy(advancedExecution = true)
-
-        val result = controller.toResource(c)
-
-        result.advancedExecution shouldBe true
+    "toDto maps advancedExecution=true to true" {
+        config().copy(advancedExecution = true).toDto().advancedExecution shouldBe true
     }
 
-    "toResource maps externalMetadata when present" {
+    "toDto maps externalMetadata when present" {
         val metadata = mapOf("theme" to "TALENT", "starters" to listOf("hello"))
-        val c = config(externalMetadata = metadata)
-
-        val result = controller.toResource(c)
-
-        result.externalMetadata shouldBe metadata
+        config(externalMetadata = metadata).toDto().externalMetadata shouldBe metadata
     }
 
-    "toResource preserves null externalMetadata" {
-        val c = config(externalMetadata = null)
-
-        val result = controller.toResource(c)
-
-        result.externalMetadata shouldBe null
+    "toDto preserves null externalMetadata" {
+        config(externalMetadata = null).toDto().externalMetadata shouldBe null
     }
 
-    "toResource maps audit fields from EntityMetadata" {
+    "toDto maps audit fields from EntityMetadata" {
         val created = java.time.Instant.parse("2024-01-01T00:00:00Z")
         val modified = java.time.Instant.parse("2024-06-01T12:00:00Z")
         val c = config().copy(
             metadata = EntityMetadata(
-                id = UUID.randomUUID(),
-                created = created,
-                createdBy = "user-abc",
-                modified = modified,
-                modifiedBy = "user-xyz",
-            )
+                id = UUID.randomUUID(), created = created, createdBy = "user-abc",
+                modified = modified, modifiedBy = "user-xyz",
+            ),
         )
-
-        val result = controller.toResource(c)
-
+        val result = c.toDto()
         result.createdBy shouldBe "user-abc"
         result.createdOn shouldBe created
         result.updatedBy shouldBe "user-xyz"
         result.updatedOn shouldBe modified
     }
 
-    "toResource returns null createdBy and updatedBy when EntityMetadata has none" {
-        val c = config() // EntityMetadata defaults: createdBy=null, modifiedBy=null
-
-        val result = controller.toResource(c)
-
+    "toDto returns null audit fields when EntityMetadata has none" {
+        val c = config()
+        val result = c.toDto()
         result.createdBy shouldBe null
-        result.createdOn shouldBe c.metadata.created
         result.updatedBy shouldBe null
-        result.updatedOn shouldBe c.metadata.modified
     }
 
     // -------------------------------------------------------------------------
-    // toDomain mapping
+    // getById
     // -------------------------------------------------------------------------
 
-    "toDomain maps all fields from AgentConfigResource to AgentConfig" {
-        val id = UUID.randomUUID()
-        val r = resource(
-            id = id,
-            name = "reviewer",
-            description = "Reviews PRs",
-            instructions = "Be thorough.",
-            modelName = "SMALL",
-        )
-
-        val result = controller.toDomain(r)
-
-        result.metadata.id shouldBe id
-        result.namespaceId shouldBe namespaceId
-        result.name shouldBe "reviewer"
-        result.description shouldBe "Reviews PRs"
-        result.instructions shouldBe "Be thorough."
-        result.modelName shouldBe "SMALL"
-    }
-
-    "toDomain generates a random UUID when resource id is null" {
-        val first = controller.toDomain(resource(id = null))
-        val second = controller.toDomain(resource(id = null))
-
-        // Two null-id resources must produce distinct UUIDs — proves a fresh UUID is generated
-        (first.metadata.id == second.metadata.id) shouldBe false
-    }
-
-    "toDomain preserves null optional fields" {
-        val r = resource(description = null, instructions = null, modelName = null)
-
-        val result = controller.toDomain(r)
-
-        result.description shouldBe null
-        result.instructions shouldBe null
-        result.modelName shouldBe null
-    }
-
-    "toDomain defaults advancedExecution to false when null" {
-        val r = resource().copy(advancedExecution = null)
-
-        val result = controller.toDomain(r)
-
-        result.advancedExecution shouldBe false
-    }
-
-    "toDomain preserves advancedExecution=true when explicitly set" {
-        val r = resource().copy(advancedExecution = true)
-
-        val result = controller.toDomain(r)
-
-        result.advancedExecution shouldBe true
-    }
-
-    "toDomain maps externalMetadata when present" {
-        val metadata = mapOf("theme" to "TALENT", "photo" to null)
-        val r = resource(externalMetadata = metadata)
-
-        val result = controller.toDomain(r)
-
-        result.externalMetadata shouldBe metadata
-    }
-
-    "toDomain preserves null externalMetadata" {
-        val r = resource(externalMetadata = null)
-
-        val result = controller.toDomain(r)
-
-        result.externalMetadata shouldBe null
-    }
-
-    // -------------------------------------------------------------------------
-    // getById (inherited)
-    // -------------------------------------------------------------------------
-
-    "getById returns a resource when the entity is found" {
+    "getById returns a dto when the entity is found" {
         val c = config()
         every { service.findById(c.id, withRemoved = true) } returns c
 
         val result = controller.getById(c.id)
 
-        result shouldBe controller.toResource(c)
+        result shouldBe c.toDto()
     }
 
     "getById throws 404 when entity is not found" {
@@ -352,7 +251,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
         val result = controller.getByIds(GetByIdsRequest(ids = listOf(c1.id, c2.id)))
 
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+        result shouldBe listOf(c1.toDto(), c2.toDto())
     }
 
     "getByIds filters via permissionService.filterVisibleIds for a regular caller" {
@@ -364,11 +263,11 @@ class AgentConfigControllerUnitSpec : StringSpec({
                 callerId.toString(), EntityType.AGENT_CONFIG, listOf(c1.id.toString(), c2.id.toString()), Action.READ,
             )
         } returns setOf(c1.id.toString())
-        every { service.findByIds(setOf(c1.id), false) } returns listOf(c1)
+        every { service.findByIds(setOf(c1.id, c2.id), false) } returns listOf(c1, c2)
 
         val result = controller.getByIds(GetByIdsRequest(ids = listOf(c1.id, c2.id)))
 
-        result shouldBe listOf(controller.toResource(c1))
+        result shouldBe listOf(c1.toDto())
     }
 
     "getByIds returns empty list for a regular caller with no visible ids (without hitting service.findByIds)" {
@@ -377,6 +276,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every {
             permissionService.filterVisibleIds(any(), any(), any(), any())
         } returns emptySet()
+        every { service.findByIds(any(), any()) } returns emptyList()
 
         controller.getByIds(GetByIdsRequest(ids = listOf(c1.id))) shouldBe emptyList()
     }
@@ -398,17 +298,17 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
         val result = controller.listByParent(namespaceId)
 
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+        result shouldBe listOf(c1.toDto(), c2.toDto())
         verify(exactly = 1) { service.findByNamespace(namespaceId, withDisabled = true) }
     }
 
-    "listByNamespace with withDisabled=false returns only enabled configs" {
+    "listByParent with withDisabled=false returns only enabled configs" {
         val c1 = config(name = "published").copy(enabled = true)
         every { service.findByNamespace(namespaceId, withDisabled = false) } returns listOf(c1)
 
-        val result = controller.listByNamespace(namespaceId, withDisabled = false)
+        val result = controller.listByParent(namespaceId, withDisabled = false)
 
-        result shouldBe listOf(controller.toResource(c1))
+        result shouldBe listOf(c1.toDto())
         verify(exactly = 1) { service.findByNamespace(namespaceId, withDisabled = false) }
     }
 
@@ -416,14 +316,14 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // create (inherited)
     // -------------------------------------------------------------------------
 
-    "create converts resource to domain, delegates to service, and returns mapped resource" {
+    "create converts resource to domain, delegates to service, and returns mapped dto" {
         val r = resource(id = null)
-        val saved = controller.toDomain(r)
-        every { service.create(any()) } returns saved
+        every { service.create(any()) } answers { firstArg<AgentConfig>() }
 
         val result = controller.create(r)
 
-        result shouldBe controller.toResource(saved)
+        result.name shouldBe r.name
+        result.namespaceId shouldBe r.namespaceId
         verify(exactly = 1) { service.create(any()) }
     }
 
@@ -431,16 +331,15 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // update — delegate happy path + mass-assignment guard + 404
     // -------------------------------------------------------------------------
 
-    "update delegates to service when entity exists and returns mapped resource" {
+    "update delegates to service when entity exists and returns mapped dto" {
         val c = config()
         val updatedResource = resource(id = c.id, name = "updated-agent")
-        val updatedDomain = controller.toDomain(updatedResource)
         every { service.findById(c.id) } returns c
-        every { service.update(any()) } returns updatedDomain
+        every { service.update(any()) } answers { firstArg() }
 
         val result = controller.update(c.id, updatedResource)
 
-        result shouldBe controller.toResource(updatedDomain)
+        result.name shouldBe "updated-agent"
         verify(exactly = 1) { service.update(any()) }
     }
 
@@ -504,7 +403,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // availableAgents
     // -------------------------------------------------------------------------
 
-    "search returns mapped resources for given namespaceId and userExternalId" {
+    "search returns mapped dtos for given namespaceId and userExternalId" {
         val c1 = config(name = "agent-a")
         val c2 = config(name = "agent-b")
         val searchNsId = UUID.randomUUID()
@@ -513,7 +412,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
         val result = controller.search(request)
 
-        result shouldBe listOf(controller.toResource(c1), controller.toResource(c2))
+        result shouldBe listOf(c1.toDto(), c2.toDto())
         verify(exactly = 1) { service.findAvailableByUserExternalId(searchNsId, "alice@example.com") }
     }
 

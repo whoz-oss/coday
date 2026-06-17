@@ -33,7 +33,7 @@ class AiModelGuard(
      * referenced by [resource.aiProviderId]. Returns false (→ 403) for missing or user-scoped
      * providers — a strict fail-closed posture aligned with  .
      */
-    fun canCreate(resource: AiModelResource): Boolean {
+    fun canCreate(resource: io.whozoss.agentos.sdk.api.aiProvider.AiModelDto): Boolean {
         val providerId = resource.aiProviderId ?: return false
         val provider = aiProviderService.findById(providerId) ?: return false
         val nsId = provider.namespaceId ?: return false

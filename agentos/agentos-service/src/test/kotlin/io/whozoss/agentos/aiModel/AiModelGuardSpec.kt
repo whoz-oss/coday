@@ -10,6 +10,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.aiProvider.AiModelDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -46,7 +47,7 @@ class AiModelGuardSpec : StringSpec({
         apiType = AiApiType.Anthropic,
     )
 
-    fun resource(providerId: UUID? = aiProviderId) = AiModelResource(
+    fun resource(providerId: UUID? = aiProviderId) = AiModelDto(
         id = null,
         aiProviderId = providerId,
         namespaceId = null,

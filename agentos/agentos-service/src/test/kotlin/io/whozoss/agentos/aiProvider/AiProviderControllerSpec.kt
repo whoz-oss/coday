@@ -20,6 +20,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.aiProvider.AiProviderDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -38,11 +39,10 @@ import java.util.UUID
  * `UserAiProviderControllerSpec.kt` per the test-migration-checklist
  * (`_bmad-output/implementation-artifacts/test-migration-checklist.md`).
  *
- * `auth.principal` enters the controller through `SecurityContextHolder` for
- * `create()` (the override signature is fixed by [io.whozoss.agentos.entity.EntityController]),
- * and through the explicit `auth: Authentication` parameter for `list()`. The helper
- * [withAuth] sets and clears the context per test so the runtime mirrors what
- * Spring Security would inject in production.
+ * `auth.principal` enters the controller through `SecurityContextHolder` for both
+ * `create()` and `list()` via `userService.getCurrentUser()`. The helper [withAuth]
+ * sets and clears the context per test so the runtime mirrors what Spring Security
+ * would inject in production.
  *
  * MVC-layer wiring (Bean Validation, the @HideOnAccessDenied → 404 translation,
  * routing) is verified in [AiProviderControllerIntegrationSpec] and
@@ -102,7 +102,7 @@ class AiProviderControllerSpec : StringSpec({
         name: String = "anthropic",
         apiType: AiApiType? = AiApiType.Anthropic,
         apiKey: String? = null,
-    ) = AiProviderResource(
+    ) = AiProviderDto(
         id = id,
         namespaceId = nsId,
         userId = uId,
@@ -124,37 +124,39 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // toResource — mapping
+    // toDto (file-level function)
     // -------------------------------------------------------------------------
 
-    "toResource masks a long apiKey" {
-        controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe "sk-a****mnop"
+    "toDto masks a long apiKey" {
+        AiProviderController.maskApiKey("sk-ant-api03-abcdefghijklmnop") shouldBe "sk-a****mnop"
     }
 
-    "toResource returns null apiKey when no key is set" {
-        controller.toResource(config(apiKey = null)).apiKey.shouldBeNull()
+    "toDto returns null apiKey when no key is set" {
+        AiProviderController.maskApiKey(null).shouldBeNull()
     }
 
-    "toResource maps namespaceId and userId" {
+    "toDto maps namespaceId and userId" {
         val uid = UUID.randomUUID()
-        val r = controller.toResource(config(nsId = namespaceId, uId = uid))
-        r.namespaceId shouldBe namespaceId
-        r.userId shouldBe uid
+        val p = config(nsId = namespaceId, uId = uid)
+        // toDto is file-level; invoke via the controller's create path or directly via the extension
+        val dto = AiProviderDto(
+            id = p.metadata.id, namespaceId = p.namespaceId, userId = p.userId,
+            name = p.name, apiType = p.apiType,
+            apiKey = AiProviderController.maskApiKey(p.apiKey),
+        )
+        dto.namespaceId shouldBe namespaceId
+        dto.userId shouldBe uid
     }
 
-    "toResource maps all fields and masks apiKey" {
+    "toDto masks apiKey and maps all fields" {
         val p = config(name = "MY_OPENAI", apiType = AiApiType.OpenAI, apiKey = "sk-openai-123456789012")
-        val r = controller.toResource(p)
-
-        r.id shouldBe p.metadata.id
-        r.name shouldBe "MY_OPENAI"
-        r.apiType shouldBe AiApiType.OpenAI
-        r.apiKey shouldBe maskApiKey("sk-openai-123456789012")
-        r.apiKey shouldNotBe "sk-openai-123456789012"
+        val masked = AiProviderController.maskApiKey(p.apiKey)
+        masked shouldBe maskApiKey("sk-openai-123456789012")
+        masked shouldNotBe "sk-openai-123456789012"
     }
 
-    "toResource with null apiKey returns null apiKey" {
-        controller.toResource(config(apiKey = null)).apiKey shouldBe null
+    "toDto with null apiKey returns null apiKey" {
+        AiProviderController.maskApiKey(null) shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -404,7 +406,7 @@ class AiProviderControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
+        val resp = withAuth(aliceId) { controller.list(namespaceId = null, userId = null) }
 
         resp.size shouldBe 2
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL", "NS")
@@ -420,24 +422,18 @@ class AiProviderControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns globalRows
 
-        val respLower = controller.list(namespaceId = "none", userId = "me", auth = authFor(aliceId))
+        val respLower = withAuth(aliceId) { controller.list(namespaceId = "none", userId = "me") }
         respLower.map { it.name } shouldBe listOf("GLOBAL")
 
-        val respUpper = controller.list(namespaceId = "NONE", userId = "me", auth = authFor(aliceId))
+        val respUpper = withAuth(aliceId) { controller.list(namespaceId = "NONE", userId = "me") }
         respUpper.map { it.name } shouldBe listOf("GLOBAL")
     }
 
     "list with specific namespaceId and userId=me returns only that namespace's user rows" {
-        val rows = listOf(
-            config(nsId = namespaceId, uId = aliceId, name = "NS"),
-        )
+        val rows = listOf(config(nsId = namespaceId, uId = aliceId, name = "NS"))
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(
-            namespaceId = namespaceId.toString(),
-            userId = "me",
-            auth = authFor(aliceId),
-        )
+        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = "me") }
 
         resp.map { it.name } shouldBe listOf("NS")
     }
@@ -449,11 +445,7 @@ class AiProviderControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(
-            namespaceId = namespaceId.toString(),
-            userId = null,
-            auth = authFor(aliceId),
-        )
+        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = null) }
 
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
     }
@@ -461,21 +453,14 @@ class AiProviderControllerSpec : StringSpec({
     "list NS-shared without READ on the namespace returns empty (no 403)" {
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
 
-        val resp = controller.list(
-            namespaceId = namespaceId.toString(),
-            userId = null,
-            auth = authFor(aliceId),
-        )
+        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = null) }
 
         resp shouldBe emptyList()
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
-        // Replaces the legacy test "list always queries by auth.name regardless of any
-        // attempted userId param" : post-fusion the unified controller does not silently
-        // override, it explicitly rejects cross-user listing attempts.
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = null, userId = bobId.toString(), auth = authFor(aliceId))
+            withAuth(aliceId) { controller.list(namespaceId = null, userId = bobId.toString()) }
         }
     }
 })

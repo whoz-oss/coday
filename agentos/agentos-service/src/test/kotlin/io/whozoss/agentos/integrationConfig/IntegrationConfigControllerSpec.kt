@@ -17,6 +17,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -33,9 +34,8 @@ import java.util.UUID
  * `UserIntegrationConfigControllerSpec.kt` per the test-migration-checklist
  * (`_bmad-output/implementation-artifacts/test-migration-checklist.md`).
  *
- * The controller reads `auth.principal` from `SecurityContextHolder` for `create()`
- * (signature is fixed by [io.whozoss.agentos.entity.EntityController]). [withAuth]
- * sets / clears the context per test.
+ * The controller reads `auth.principal` from `SecurityContextHolder` via
+ * `userService.getCurrentUser()`. [withAuth] sets / clears the context per test.
  *
  * MVC-layer wiring is verified in [IntegrationConfigControllerMvcIntegrationSpec]
  * and [IntegrationConfigCrossUserIsolationSpec].
@@ -94,7 +94,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         userId: UUID? = null,
         name: String = "JIRA_PROD",
         integrationType: String = "JIRA",
-    ) = IntegrationConfigResource(
+    ) = IntegrationConfigDto(
         id = id,
         namespaceId = nsId,
         userId = userId,
@@ -117,12 +117,12 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // toResource — mapping
+    // toDto mapping (file-level function)
     // -------------------------------------------------------------------------
 
-    "toResource maps id, namespaceId, userId, name, integrationType, description, parameters" {
+    "toDto maps id, namespaceId, userId, name, integrationType, description, parameters" {
         val cfg = config(name = "SLACK_DEV", integrationType = "SLACK", userId = aliceId).copy(description = "Dev Slack")
-        val r = controller.toResource(cfg)
+        val r = toDto(cfg)
 
         r.id shouldBe cfg.metadata.id
         r.namespaceId shouldBe namespaceId
@@ -133,21 +133,16 @@ class IntegrationConfigControllerSpec : StringSpec({
         r.parameters shouldBe params
     }
 
-    "toResource maps all fields" {
-        val c = config(name = "SLACK_DEV", integrationType = "SLACK").copy(description = "Dev Slack")
-        val r = controller.toResource(c)
+    "create produces distinct ids when called twice with id=null" {
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        } returns true
+        every { service.create(any()) } answers { firstArg() }
 
-        r.name shouldBe "SLACK_DEV"
-        r.integrationType shouldBe "SLACK"
-        r.description shouldBe "Dev Slack"
-        r.parameters shouldBe params
-    }
+        val r1 = withAuth(aliceId) { controller.create(resource(id = null, nsId = namespaceId, userId = null)) }
+        val r2 = withAuth(aliceId) { controller.create(resource(id = null, nsId = namespaceId, userId = null)) }
 
-    "toDomain maps all fields and generates UUID when id is null" {
-        val first = controller.toDomain(resource(id = null))
-        val second = controller.toDomain(resource(id = null))
-
-        (first.metadata.id == second.metadata.id) shouldBe false
+        (r1.id == r2.id) shouldBe false
     }
 
     // -------------------------------------------------------------------------
@@ -339,46 +334,33 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
+        val resp = withAuth(aliceId) { controller.list(namespaceId = null, userId = null) }
 
         resp.size shouldBe 2
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
     }
 
     "list with namespaceId=none returns only user-global rows" {
-        val rows = listOf(
-            config(nsId = null, userId = aliceId, name = "GLOBAL"),
-        )
+        val rows = listOf(config(nsId = null, userId = aliceId, name = "GLOBAL"))
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = "none", userId = "me", auth = authFor(aliceId))
-
+        val resp = withAuth(aliceId) { controller.list(namespaceId = "none", userId = "me") }
         resp.map { it.name } shouldBe listOf("GLOBAL")
     }
 
     "list with namespaceId=NONE (uppercase) is also user-global" {
-        val rows = listOf(
-            config(nsId = null, userId = aliceId, name = "GLOBAL"),
-        )
+        val rows = listOf(config(nsId = null, userId = aliceId, name = "GLOBAL"))
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = "NONE", userId = "me", auth = authFor(aliceId))
-
+        val resp = withAuth(aliceId) { controller.list(namespaceId = "NONE", userId = "me") }
         resp.map { it.name } shouldBe listOf("GLOBAL")
     }
 
     "list with specific namespaceId and userId=me returns only that namespace's user rows" {
-        val rows = listOf(
-            config(nsId = namespaceId, userId = aliceId, name = "NS"),
-        )
+        val rows = listOf(config(nsId = namespaceId, userId = aliceId, name = "NS"))
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(
-            namespaceId = namespaceId.toString(),
-            userId = "me",
-            auth = authFor(aliceId),
-        )
-
+        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = "me") }
         resp.map { it.name } shouldBe listOf("NS")
     }
 
@@ -389,36 +371,26 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(
-            namespaceId = namespaceId.toString(),
-            userId = null,
-            auth = authFor(aliceId),
-        )
-
+        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = null) }
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
 
-        val resp = controller.list(
-            namespaceId = namespaceId.toString(),
-            userId = null,
-            auth = authFor(aliceId),
-        )
-
+        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = null) }
         resp shouldBe emptyList()
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = null, userId = bobId.toString(), auth = authFor(aliceId))
+            withAuth(aliceId) { controller.list(namespaceId = null, userId = bobId.toString()) }
         }
     }
 
     "list with invalid namespaceId throws 400 BAD_REQUEST" {
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null, auth = authFor(aliceId))
+            withAuth(aliceId) { controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null) }
         }
     }
 })

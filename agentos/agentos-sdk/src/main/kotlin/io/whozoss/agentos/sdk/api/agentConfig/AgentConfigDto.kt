@@ -1,5 +1,6 @@
-package io.whozoss.agentos.agentConfig
+package io.whozoss.agentos.sdk.api.agentConfig
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
@@ -8,21 +9,25 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * HTTP resource (DTO) for [AgentConfig] entities.
+ * HTTP DTO for AgentConfig entities — used as both request body and response body on
+ * the `/api/agent-configs` endpoints.
  *
- * Annotated with @Schema(name = "AgentConfig") so that the generated OpenAPI spec
- * keeps the schema name "AgentConfig" instead of "AgentConfigResource".
+ * [namespaceId] and [name] are required on create. All other fields are optional.
  *
- * [namespaceId] is required — agent configs are always scoped to a namespace.
- * [name] is required — an agent must have a name.
- * [description], [instructions], [modelName], and [integrations] are optional.
- *
- * [integrations] maps integration names to an optional list of allowed tool names.
+ * [integrations] maps integration type names to an optional list of allowed tool names.
  * A null list means all tools from that integration are allowed.
+ *
+ * [externalMetadata] is an opaque map that AgentOS persists as-is without interpreting
+ * its content. Used by external consumers (e.g. Copilot) to store application-specific
+ * metadata alongside the agent configuration.
+ *
+ * [enabled] controls whether the agent is published and visible to end-users.
+ * Null on input is treated as false (unpublished) by the service.
  */
 @Schema(name = "AgentConfig")
+@JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-data class AgentConfigResource(
+data class AgentConfigDto(
     val id: UUID? = null,
     @field:NotNull(message = "namespaceId must not be null")
     val namespaceId: UUID,
@@ -33,15 +38,10 @@ data class AgentConfigResource(
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     val advancedExecution: Boolean? = null,
-    /**
-     * Opaque metadata map for external consumers (e.g. Copilot).
-     * AgentOS persists this field as-is without interpreting its content.
-     */
     val externalMetadata: Map<String, Any?>? = null,
     val createdBy: String? = null,
-    val createdOn: Instant = Instant.now(),
+    val createdOn: Instant? = null,
     val updatedBy: String? = null,
-    val updatedOn: Instant = Instant.now(),
-    /** Whether this agent is published. Null on input is treated as false (unpublished). */
+    val updatedOn: Instant? = null,
     val enabled: Boolean? = null,
 )

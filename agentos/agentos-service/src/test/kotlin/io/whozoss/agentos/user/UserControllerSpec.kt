@@ -6,9 +6,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.userGroup.UserGroupService
 import org.springframework.security.core.Authentication
@@ -35,12 +36,10 @@ private inline fun <T> withAuthContext(auth: Authentication, block: () -> T): T 
  *
  * The controller is instantiated directly with MockK stubs — no Spring context.
  * Tests cover:
- * - [UserController.toResource]  — domain → HTTP DTO mapping
- * - [UserController.toDomain]    — HTTP DTO → domain mapping
- * - [UserController.listAll]     — delegates to [UserService.findAll] and maps results
- * - [UserController.getMe]       — delegates to [UserService.getCurrentUser] and maps result
- * - Inherited [EntityController] endpoints: getById (found / not-found),
- *   getByIds, create, update (found / not-found), delete (found / not-found)
+ * - `User.toDto()` file-level mapping
+ * - [UserController.listAll] — delegates to [UserService.findAll] and maps results
+ * - [UserController.getMe] — delegates to [UserService.getCurrentUser] and maps result
+ * - getById (found / not-found), getByIds, create, update (found / not-found), delete (found / not-found)
  */
 class UserControllerSpec : StringSpec({
     timeout = 5000
@@ -75,7 +74,7 @@ class UserControllerSpec : StringSpec({
         lastname: String? = "Smith",
         bio: String? = null,
         isAdmin: Boolean = false,
-    ) = UserResource(
+    ) = UserDto(
         id = id,
         email = email,
         firstname = firstname,
@@ -85,56 +84,25 @@ class UserControllerSpec : StringSpec({
     )
 
     // -------------------------------------------------------------------------
-    // toResource mapping
+    // toDto mapping (file-level extension User.toDto())
     // -------------------------------------------------------------------------
 
-    "toResource maps all fields from User to UserResource" {
+    "toDto maps all fields from User to UserDto" {
         val id = UUID.randomUUID()
         val u = user(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev")
-
-        val result = controller.toResource(u)
-
-        result shouldBe UserResource(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false)
+        val result = toDto(u)
+        result shouldBe UserDto(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false)
     }
 
-    "toResource returns null email when user has no email (local mode)" {
-        val u = user(email = "", externalId = "local-username")
-
-        val result = controller.toResource(u)
-
-        result.email shouldBe null
-    }
-
-    // -------------------------------------------------------------------------
-    // toDomain mapping
-    // -------------------------------------------------------------------------
-
-    "toDomain maps all fields from UserResource to User" {
-        val id = UUID.randomUUID()
-        val r = resource(id = id, email = "carol@example.com", firstname = "Carol", lastname = "White", bio = "qa")
-
-        val result = controller.toDomain(r)
-
-        result.metadata.id shouldBe id
-        result.email shouldBe "carol@example.com"
-        result.externalId shouldBe ""   // server-managed — never sourced from request body
-        result.firstname shouldBe "Carol"
-        result.lastname shouldBe "White"
-        result.bio shouldBe "qa"
-    }
-
-    "toDomain generates a random UUID when resource id is null" {
-        val r = resource(id = null, email = "new@example.com")
-        val result = controller.toDomain(r)
-        // Should not throw and should produce a valid (non-null) UUID
-        result.metadata.id shouldBe result.metadata.id // non-null assertion via shouldBe itself
+    "toDto returns null email when user has no email (local mode)" {
+        toDto(user(email = "", externalId = "local-username")).email shouldBe null
     }
 
     // -------------------------------------------------------------------------
     // listAll
     // -------------------------------------------------------------------------
 
-    "listAll returns all users mapped to UserResource" {
+    "listAll returns all users mapped to UserDto" {
         val adminUser = user(email = "admin@example.com", isAdmin = true)
         val u1 = user(email = "alice@example.com")
         val u2 = user(email = "bob@example.com")
@@ -143,7 +111,7 @@ class UserControllerSpec : StringSpec({
 
         val result = controller.listAll()
 
-        result shouldBe listOf(controller.toResource(u1), controller.toResource(u2))
+        result shouldBe listOf(toDto(u1), toDto(u2))
         verify(exactly = 1) { userService.findAll() }
     }
 
@@ -159,21 +127,21 @@ class UserControllerSpec : StringSpec({
     // getMe
     // -------------------------------------------------------------------------
 
-    "getMe delegates to UserService.getCurrentUser and returns a UserResource" {
+    "getMe delegates to UserService.getCurrentUser and returns a UserDto" {
         val u = user(email = "me@example.com")
         every { userService.getCurrentUser() } returns u
 
         val result = controller.getMe()
 
-        result shouldBe controller.toResource(u)
+        result shouldBe toDto(u)
         verify(exactly = 1) { userService.getCurrentUser() }
     }
 
     // -------------------------------------------------------------------------
-    // getById (inherited from EntityController)
+    // getById
     // -------------------------------------------------------------------------
 
-    "getById returns a UserResource when user is found (accessing own profile)" {
+    "getById returns a UserDto when user is found" {
         val u = user()
         every { userService.getCurrentUser() } returns u
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
@@ -181,7 +149,7 @@ class UserControllerSpec : StringSpec({
 
         val result = controller.getById(u.id)
 
-        result shouldBe controller.toResource(u)
+        result shouldBe toDto(u)
     }
 
     "getById throws 404 when user not found" {
@@ -200,7 +168,7 @@ class UserControllerSpec : StringSpec({
     // getByIds (inherited from EntityController)
     // -------------------------------------------------------------------------
 
-    "getByIds returns matching users mapped to UserResource (admin)" {
+    "getByIds returns matching users mapped to UserDto (admin)" {
         val adminUser = user(isAdmin = true)
         val u1 = user(email = "a@x.com")
         val u2 = user(email = "b@x.com")
@@ -209,24 +177,22 @@ class UserControllerSpec : StringSpec({
 
         val result = controller.getByIds(GetByIdsRequest(ids = listOf(u1.id, u2.id)))
 
-        result shouldBe listOf(controller.toResource(u1), controller.toResource(u2))
+        result shouldBe listOf(toDto(u1), toDto(u2))
     }
 
     // -------------------------------------------------------------------------
-    // create (inherited from EntityController)
+    // create
     // -------------------------------------------------------------------------
 
-    "create converts resource to domain, delegates to service, and returns mapped resource (admin)" {
+    "create converts resource to domain, delegates to service, and returns mapped dto (admin)" {
         val adminUser = user(isAdmin = true)
         val r = resource(id = null, email = "new@example.com")
-        val domain = controller.toDomain(r)
-        val saved = domain.copy(metadata = domain.metadata)
         every { userService.getCurrentUser() } returns adminUser
-        every { userService.create(any()) } returns saved
+        every { userService.create(any()) } answers { firstArg() }
 
         val result = controller.create(r)
 
-        result shouldBe controller.toResource(saved)
+        result.email shouldBe r.email
         verify(exactly = 1) { userService.create(any()) }
     }
 
@@ -370,20 +336,19 @@ class UserControllerSpec : StringSpec({
         controller.listByExternalIds(emptyList()) shouldBe emptyList()
     }
 
-    "listByExternalIds returns all matching users mapped to UserResource" {
+    "listByExternalIds returns all matching users mapped to UserDto" {
         val u1 = user(email = "alice@example.com", externalId = "alice@example.com")
         val u2 = user(email = "bob@example.com", externalId = "bob@example.com")
         every { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) } returns listOf(u1, u2)
 
         val result = controller.listByExternalIds(listOf("alice@example.com", "bob@example.com"))
 
-        result shouldBe listOf(controller.toResource(u1), controller.toResource(u2))
+        result shouldBe listOf(toDto(u1), toDto(u2))
         verify(exactly = 1) { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) }
     }
 
     "listByExternalIds silently omits external ids that match no user" {
         every { userService.findByExternalIds(setOf("ghost@example.com")) } returns emptyList()
-
         controller.listByExternalIds(listOf("ghost@example.com")) shouldBe emptyList()
     }
 
@@ -393,8 +358,7 @@ class UserControllerSpec : StringSpec({
 
         val result = controller.listByExternalIds(listOf("alice@example.com", "alice@example.com"))
 
-        result shouldBe listOf(controller.toResource(u))
-        // The Set conversion means the service is called with a deduplicated set
+        result shouldBe listOf(toDto(u))
         verify(exactly = 1) { userService.findByExternalIds(setOf("alice@example.com")) }
     }
 
