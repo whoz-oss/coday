@@ -280,7 +280,8 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
           AND e.id IN $ids
           AND (e.removed IS NULL OR e.removed = false)
           AND (
-            EXISTS { (u)-[:ADMIN]->(e) }
+            (u.isAdmin = true AND $checkPlatform AND e.namespaceId IS NULL)
+            OR EXISTS { (u)-[:ADMIN]->(e) }
             OR EXISTS { (e)-[:BELONGS_TO]->(n:Namespace)<-[:ADMIN]-(u) }
           )
         RETURN e.id
@@ -290,5 +291,6 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("userId") userId: String,
         @Param("entityLabel") entityLabel: String,
         @Param("ids") ids: Collection<String>,
+        @Param("checkPlatform") checkPlatform: Boolean,
     ): List<String>
 }

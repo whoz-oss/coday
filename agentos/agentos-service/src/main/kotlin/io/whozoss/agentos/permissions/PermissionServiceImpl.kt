@@ -90,8 +90,10 @@ class PermissionServiceImpl(
         // Determine required relation based on action
         val requiredRelation =
             when (action) {
-                Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
+                Action.READ -> PermissionRelation.MEMBER
+
+                // MEMBER or ADMIN can READ
+                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
             }
 
         // Check direct permission first
@@ -164,8 +166,10 @@ class PermissionServiceImpl(
         try {
             val requiredRelation =
                 when (action) {
-                    Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
+                    Action.READ -> PermissionRelation.MEMBER
+
+                    // MEMBER or ADMIN can READ
+                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
                 }
             permissionRepository.listEntitiesForUser(userId, entityType, requiredRelation)
         } catch (e: Exception) {
@@ -181,15 +185,12 @@ class PermissionServiceImpl(
     ): Set<String> {
         if (ids.isEmpty()) return emptySet()
         return try {
-            val user = userService.findById(UUID.fromString(userId))
-            if (user?.isAdmin == true) {
-                return ids.toSet()
-            }
-
             val requiredRelation =
                 when (action) {
-                    Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
+                    Action.READ -> PermissionRelation.MEMBER
+
+                    // MEMBER or ADMIN can READ
+                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
                 }
             permissionRepository.filterVisibleIds(userId, entityType, ids, requiredRelation)
         } catch (e: Exception) {

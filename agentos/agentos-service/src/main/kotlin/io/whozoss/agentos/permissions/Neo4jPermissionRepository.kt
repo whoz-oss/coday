@@ -258,14 +258,16 @@ class Neo4jPermissionRepository(
         entityType: EntityType,
         ids: Collection<String>,
         relation: PermissionRelation,
-    ): Set<String> =
-        try {
+    ): Set<String> {
+        val checkPlatform = isNamespaceChildEntity(entityType)
+        return try {
             when (relation) {
                 PermissionRelation.ADMIN -> {
                     permissionNodeRepository.filterIdsWhereUserIsAdmin(
                         userId = userId,
                         entityLabel = entityType.label,
                         ids = ids,
+                        checkPlatform = checkPlatform,
                     )
                 }
 
@@ -278,6 +280,7 @@ class Neo4jPermissionRepository(
                             userId = userId,
                             entityLabel = entityType.label,
                             ids = ids,
+                            checkPlatform = checkPlatform,
                         )
                     } else {
                         // Namespace-child entities may have platform-scoped instances
@@ -288,7 +291,7 @@ class Neo4jPermissionRepository(
                             userId = userId,
                             entityLabel = entityType.label,
                             ids = ids,
-                            checkPlatform = isNamespaceChildEntity(entityType),
+                            checkPlatform = checkPlatform,
                         )
                     }
                 }
@@ -297,6 +300,7 @@ class Neo4jPermissionRepository(
             logger.error(e) { "Error filtering visible ids for user=$userId, type=$entityType, relation=$relation" }
             emptySet() // Fail-closed: return empty set on error
         }
+    }
 
     /**
      * Checks if the entity type is a child of Namespace in the hierarchy.
