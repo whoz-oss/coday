@@ -1,3 +1,14 @@
+## 0.183.2 (2026-06-18)
+
+### 🩹 Fixes
+
+- WZ-32794 include link to created object in agent final response ([6a882308](https://github.com/whoz-oss/coday/commit/6a882308))
+- WZ-32794 include link to created object in agent final response ([#1033](https://github.com/whoz-oss/coday/pull/1033))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
 ## 0.183.1 (2026-06-17)
 
 ### 🩹 Fixes
