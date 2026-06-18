@@ -1,3 +1,15 @@
+## 0.183.3 (2026-06-18)
+
+### 🩹 Fixes
+
+- wz-32810 clarify what FindXXX tools do in intention ([3ec1c28f](https://github.com/whoz-oss/coday/commit/3ec1c28f))
+- wz-32810 clarify what FindXXX tools do in intention ([#1034](https://github.com/whoz-oss/coday/pull/1034))
+
+### ❤️ Thank You
+
+- Ivan Sfeir @ivan-sfeir-whoz
+- IvanSfeir @ivan-sfeir-whoz
+
 ## 0.183.2 (2026-06-18)
 
 ### 🩹 Fixes
