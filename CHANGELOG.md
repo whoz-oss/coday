@@ -1,3 +1,13 @@
+## 0.183.4 (2026-06-18)
+
+### 🩹 Fixes
+
+- wz-32642 use max character count to filter ToolResponse in context ([#1035](https://github.com/whoz-oss/coday/pull/1035))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
 ## 0.183.3 (2026-06-18)
 
 ### 🩹 Fixes
