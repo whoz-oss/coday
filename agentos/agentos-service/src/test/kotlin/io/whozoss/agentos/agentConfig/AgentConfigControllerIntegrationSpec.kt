@@ -48,13 +48,10 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         // POST /api/agent-configs — create
         // -------------------------------------------------------------------------
 
-        "POST /api/agent-configs with missing namespaceId returns 400" {
-            mockMvc.perform(
-                post("/api/agent-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "name": "my-agent" }""")
-            ).andExpect(status().isBadRequest)
-        }
+        // Note: namespaceId is intentionally nullable (platform agents have null namespaceId)
+        // so missing namespaceId is valid at the Bean Validation layer.
+        // Authorization for platform-level agents (null namespaceId) requires super-admin
+        // and is enforced imperatively in AgentConfigController.authorizeWriteForPlatformOrNamespace.
 
         "POST /api/agent-configs with blank name returns 400" {
             mockMvc.perform(

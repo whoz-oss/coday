@@ -10,6 +10,7 @@ import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -33,6 +35,11 @@ import java.util.UUID
  *
  * The `update` override preserves [AgentConfig.namespaceId] from the persisted entity
  * (mass-assignment guard); permission is checked declaratively before the body runs.
+ *
+ * **Platform agents** (namespaceId = null): creation, update, and deletion require super-admin
+ * (`user.isAdmin`). The check is enforced imperatively in [create], [update], and [delete]
+ * bodies via [authorizeWriteForPlatformOrNamespace], because SpEL `@PreAuthorize` cannot
+ * express “null means super-admin only” in a single annotation.
  */
 @RestController
 @RequestMapping(
@@ -44,7 +51,7 @@ class AgentConfigController(
     private val agentService: AgentService,
     userService: UserService,
     permissionService: PermissionService,
-) : EntityController<AgentConfig, UUID, AgentConfigResource>(agentConfigService, userService, permissionService) {
+) : EntityController<AgentConfig, UUID?, AgentConfigResource>(agentConfigService, userService, permissionService) {
     override val entityType = EntityType.AGENT_CONFIG
 
     override fun toResource(entity: AgentConfig): AgentConfigResource =
@@ -123,7 +130,9 @@ class AgentConfigController(
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    override fun listByParent(@PathVariable parentId: UUID): List<AgentConfigResource> = listByNamespace(parentId, withDisabled = true)
+    override fun listByParent(
+        @PathVariable parentId: UUID?,
+    ): List<AgentConfigResource> = listByNamespace(parentId, withDisabled = true)
 
     /**
      * GET /api/agent-configs/by-parentId/{parentId}?withDisabled=...
@@ -137,7 +146,7 @@ class AgentConfigController(
     @GetMapping("/by-parentId/{parentId}", params = ["withDisabled"])
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     fun listByNamespace(
-        @PathVariable parentId: UUID,
+        @PathVariable parentId: UUID?,
         @RequestParam(required = false, defaultValue = "true") withDisabled: Boolean,
     ): List<AgentConfigResource> = agentConfigService.findByNamespace(parentId, withDisabled = withDisabled).map { toResource(it) }
 
@@ -169,7 +178,7 @@ class AgentConfigController(
      * POST /api/agent-configs/{id}/enable
      *
      * Enables an agent, making it active.
-     * Requires WRITE permission (namespace ADMIN).
+     * Requires WRITE permission (namespace ADMIN, or super-admin for platform agents).
      */
     @PostMapping("/{id}/enable")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
@@ -184,7 +193,7 @@ class AgentConfigController(
      * POST /api/agent-configs/{id}/disable
      *
      * Disables an agent, making it inactive.
-     * Requires WRITE permission (namespace ADMIN).
+     * Requires WRITE permission (namespace ADMIN, or super-admin for platform agents).
      */
     @PostMapping("/{id}/disable")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
@@ -225,22 +234,34 @@ class AgentConfigController(
      * When [withUserOverlay] is `true`, the definition is resolved with the caller's user
      * context (3-tier provider/tool overlays applied). When false (default), the definition
      * is resolved without any user-specific overlay (namespace-only resolution).
+     *
+     * For platform agents (namespaceId = null), a [namespaceId] query parameter is required
+     * to resolve the model and provider in the context of a specific namespace.
      */
     @GetMapping("/{id}/definition")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
     suspend fun getDefinition(
         @PathVariable id: UUID,
-        @RequestParam(required = false, defaultValue = "false") withUserOverlay: Boolean,
+        @RequestParam(required = false, defaultValue = "false") withUserOverlay: Boolean = false,
+        @RequestParam(required = false) namespaceId: UUID? = null,
     ): AgentDefinitionResource {
         val agentConfig =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        // For namespace-scoped agents, use the agent's own namespaceId.
+        // For platform agents, a namespaceId query param is required for model/provider resolution.
+        val resolvedNamespaceId =
+            agentConfig.namespaceId ?: namespaceId
+                ?: throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "namespaceId query parameter is required for platform-level agent configs",
+                )
         val resolvedUserId = if (withUserOverlay) userService.getCurrentUser().metadata.id else null
         val definition =
             agentService.resolveDefinition(
                 agentConfigId = id,
-                namespaceId = agentConfig.namespaceId,
+                namespaceId = resolvedNamespaceId,
                 userId = resolvedUserId,
             )
         return AgentDefinitionResource(

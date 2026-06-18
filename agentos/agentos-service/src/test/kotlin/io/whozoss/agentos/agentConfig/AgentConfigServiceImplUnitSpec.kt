@@ -16,18 +16,18 @@ import java.util.UUID
 class AgentConfigServiceImplUnitSpec : StringSpec({
 
     fun repository(): AgentConfigRepository {
-        val inMemory = InMemoryEntityRepository<AgentConfig, UUID>(
+        val inMemory = InMemoryEntityRepository<AgentConfig, UUID?>(
             parentIdExtractor = { it.namespaceId },
             comparator = compareBy { it.name },
         )
         return object : AgentConfigRepository,
-            io.whozoss.agentos.entity.EntityRepository<AgentConfig, UUID> by inMemory {
+            io.whozoss.agentos.entity.EntityRepository<AgentConfig, UUID?> by inMemory {
             // findAvailableByNamespaceIdAndUserId is a Neo4j-only query; not exercised in unit tests.
             override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
                 throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
 
             // Returns configs from the in-memory store, filtered by withDisabled.
-            override fun findByParent(parentId: UUID, withDisabled: Boolean): List<AgentConfig> =
+            override fun findByParent(parentId: UUID?, withDisabled: Boolean): List<AgentConfig> =
                 if (withDisabled) inMemory.findByParent(parentId)
                 else inMemory.findByParent(parentId).filter { it.enabled }
         }

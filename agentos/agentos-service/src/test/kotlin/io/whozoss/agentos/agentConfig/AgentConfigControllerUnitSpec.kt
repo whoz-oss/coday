@@ -413,12 +413,14 @@ class AgentConfigControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // create (inherited)
+    // create
     // -------------------------------------------------------------------------
 
     "create converts resource to domain, delegates to service, and returns mapped resource" {
         val r = resource(id = null)
         val saved = controller.toDomain(r)
+        // Namespace-scoped create: super-admin bypasses permission check.
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.create(any()) } returns saved
 
         val result = controller.create(r)
@@ -435,6 +437,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val c = config()
         val updatedResource = resource(id = c.id, name = "updated-agent")
         val updatedDomain = controller.toDomain(updatedResource)
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } returns updatedDomain
 
@@ -448,6 +451,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val c = config()
         val otherNs = UUID.randomUUID()
         val payload = resource(id = c.id, nsId = otherNs, name = "renamed")
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } answers {
             val saved = firstArg<AgentConfig>()
@@ -472,6 +476,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val metadata = mapOf("theme" to "OPERATIONS", "starters" to emptyList<String>())
         val c = config()
         val payload = resource(id = c.id, externalMetadata = metadata)
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } answers {
             val saved = firstArg<AgentConfig>()
@@ -488,6 +493,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val existingMetadata = mapOf("theme" to "TALENT")
         val c = config(externalMetadata = existingMetadata)
         val payload = resource(id = c.id, externalMetadata = null)
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } answers {
             val saved = firstArg<AgentConfig>()
@@ -525,21 +531,23 @@ class AgentConfigControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // delete (inherited)
+    // delete
     // -------------------------------------------------------------------------
 
     "delete succeeds when entity exists" {
-        val id = UUID.randomUUID()
-        every { service.delete(id) } returns true
+        val c = config()
+        every { userService.getCurrentUser() } returns superAdmin
+        every { service.findById(c.id) } returns c
+        every { service.delete(c.id) } returns true
 
-        controller.delete(id)
+        controller.delete(c.id)
 
-        verify(exactly = 1) { service.delete(id) }
+        verify(exactly = 1) { service.delete(c.id) }
     }
 
-    "delete throws 404 when service returns false" {
+    "delete throws 404 when entity is not found" {
         val id = UUID.randomUUID()
-        every { service.delete(id) } returns false
+        every { service.findById(id) } returns null
 
         shouldThrow<ResourceNotFoundException> { controller.delete(id) }
     }
@@ -560,7 +568,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = false)
+        val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
 
         result.agentConfigId shouldBe configId
         result.name shouldBe definition.name
@@ -581,7 +589,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = false)
+        val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
 
         result.systemPrompt shouldBe null
     }
@@ -594,7 +602,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, callerId) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = true)
+        val result = controller.getDefinition(configId, withUserOverlay = true, namespaceId = null)
 
         result.userId shouldBe callerId
         coVerify(exactly = 1) { agentService.resolveDefinition(configId, namespaceId, callerId) }
@@ -613,7 +621,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = false)
+        val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
 
         result.tools.size shouldBe 1
         result.tools[0].name shouldBe "get-issue"
@@ -625,6 +633,6 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null
 
-        shouldThrow<ResourceNotFoundException> { controller.getDefinition(id, withUserOverlay = false) }
+        shouldThrow<ResourceNotFoundException> { controller.getDefinition(id, withUserOverlay = false, namespaceId = null) }
     }
 })

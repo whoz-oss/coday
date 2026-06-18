@@ -22,14 +22,14 @@ class AgentConfigServiceImpl(
 
     override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AgentConfig> = agentConfigRepository.findByIds(ids, withRemoved)
 
-    override fun findByParent(parentId: UUID): List<AgentConfig> = agentConfigRepository.findByParent(parentId)
+    override fun findByParent(parentId: UUID?): List<AgentConfig> = agentConfigRepository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean = agentConfigRepository.delete(id)
 
-    override fun deleteByParent(parentId: UUID): Int = agentConfigRepository.deleteByParent(parentId)
+    override fun deleteByParent(parentId: UUID?): Int = agentConfigRepository.deleteByParent(parentId)
 
     override fun findByName(
-        namespaceId: UUID,
+        namespaceId: UUID?,
         name: String,
     ): AgentConfig? =
         agentConfigRepository
@@ -45,12 +45,10 @@ class AgentConfigServiceImpl(
         return agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = user.id, agentName = null)
     }
 
-    companion object : KLogging()
-
     override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
         agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
 
-    override fun findByNamespace(namespaceId: UUID, withDisabled: Boolean): List<AgentConfig> =
+    override fun findByNamespace(namespaceId: UUID?, withDisabled: Boolean): List<AgentConfig> =
         agentConfigRepository.findByParent(namespaceId, withDisabled)
 
     override fun enable(id: UUID): AgentConfig {
@@ -64,4 +62,6 @@ class AgentConfigServiceImpl(
             ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         return agentConfigRepository.save(existing.copy(enabled = false))
     }
+
+    companion object : KLogging()
 }

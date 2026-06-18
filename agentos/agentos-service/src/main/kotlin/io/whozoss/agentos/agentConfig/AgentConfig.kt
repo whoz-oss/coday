@@ -38,7 +38,14 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AgentConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val namespaceId: UUID,
+    /**
+     * The namespace this agent belongs to, or `null` for platform-level agents.
+     *
+     * Platform agents (namespaceId = null) are visible across all namespaces via
+     * [findAvailableByNamespaceIdAndUserId] but are not scoped to any specific namespace.
+     * Creating, updating, or deleting a platform agent requires super-admin (`user.isAdmin`).
+     */
+    val namespaceId: UUID?,
     val name: String,
     val description: String? = null,
     val instructions: String? = null,
