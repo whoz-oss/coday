@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Service
 
 /**
@@ -40,6 +41,7 @@ import org.springframework.stereotype.Service
  * picking a winner would be arbitrary; an operator must intervene explicitly.
  */
 @Service
+@Order(2)
 @ConditionalOnProperty(
     prefix = "agentos.bootstrap",
     name = ["enabled"],
