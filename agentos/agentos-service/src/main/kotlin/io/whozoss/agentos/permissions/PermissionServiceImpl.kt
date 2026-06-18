@@ -33,7 +33,7 @@ class PermissionServiceImpl(
     override fun hasPermission(
         userId: String,
         entityType: EntityType,
-        entityId: String,
+        entityId: String?,
         action: Action
     ): Boolean {
         return try {
@@ -49,17 +49,26 @@ class PermissionServiceImpl(
                 return true
             }
 
-            // 2. Cache lookup
+            // 2. Platform-scope check (entityId = null means the entity belongs to no namespace).
+            //    READ is open to any authenticated user; WRITE/DELETE are super-admin only
+            //    (already handled by the bypass above, so we deny here for non-admins).
+            if (entityId == null) {
+                val granted = action == Action.READ
+                logger.debug { "Platform-scope check: user=$userId, action=$action -> $granted" }
+                return granted
+            }
+
+            // 3. Cache lookup
             val cacheKey = PermissionCache.generateKey(userId, entityType, entityId, action)
             permissionCache.get(cacheKey)?.let { cached ->
                 logger.debug { "Cache hit for permission check: $cacheKey -> $cached" }
                 return cached
             }
 
-            // 3. Evaluate permissions
+            // 4. Evaluate permissions
             val hasPermission = evaluatePermission(userId, entityType, entityId, action)
 
-            // 4. Cache the result
+            // 5. Cache the result
             permissionCache.put(cacheKey, hasPermission)
 
             hasPermission

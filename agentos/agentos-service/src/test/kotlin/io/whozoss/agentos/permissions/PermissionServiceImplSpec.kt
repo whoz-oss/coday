@@ -262,6 +262,57 @@ class PermissionServiceImplSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // Platform-scope (entityId = null)
+    // -------------------------------------------------------------------------
+
+    "platform-scope READ is granted to any non-admin authenticated user" {
+        val regularUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "user@example.com",
+            email = "user@example.com",
+            isAdmin = false
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
+
+        val result = permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, null, Action.READ)
+
+        result shouldBe true
+        // Repository must NOT be consulted — no entityId to query.
+        verify(exactly = 0) { mockPermissionRepository.hasDirectPermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { mockPermissionCache.get(any<String>()) }
+    }
+
+    "platform-scope WRITE is denied for non-admin users" {
+        val regularUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "user@example.com",
+            email = "user@example.com",
+            isAdmin = false
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
+
+        val result = permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, null, Action.WRITE)
+
+        result shouldBe false
+        verify(exactly = 0) { mockPermissionRepository.hasDirectPermission(any(), any(), any(), any()) }
+    }
+
+    "platform-scope WRITE is granted to super-admin via the existing bypass" {
+        val adminUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "admin@example.com",
+            email = "admin@example.com",
+            isAdmin = true
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns adminUser
+
+        val result = permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, null, Action.WRITE)
+
+        result shouldBe true
+        verify(exactly = 0) { mockPermissionRepository.hasDirectPermission(any(), any(), any(), any()) }
+    }
+
+    // -------------------------------------------------------------------------
     // filterVisibleIds — batch authorization (story 5-3)
     // -------------------------------------------------------------------------
 
