@@ -133,8 +133,10 @@ class PermissionServiceImplSpec :
             verify { mockPermissionCache.put(any(), true) }
         }
 
-        "should return false (fail-closed) when user not found" {
-            // Given
+        "should return false when user not found — falls through to direct/transitive checks which deny" {
+            // User not found means isAdmin is null/false — no bypass. The code then
+            // proceeds to the normal evaluation path, which returns false here because
+            // neither direct nor transitive permission is granted.
             every { mockUserService.findById(UUID.fromString(userId)) } returns null
             every { mockPermissionCache.get(any<String>()) } returns null
             every { mockPermissionCache.put(any(), any()) } just Runs
@@ -145,10 +147,8 @@ class PermissionServiceImplSpec :
                 mockPermissionRepository.hasTransitivePermission(any(), any(), any(), any())
             } returns false
 
-            // When
             val result = permissionService.hasPermission(userId, entityType, entityId, Action.READ)
 
-            // Then
             result shouldBe false
         }
 
@@ -254,23 +254,13 @@ class PermissionServiceImplSpec :
         }
 
         "should return empty list when listing entities fails" {
-            // Given
-            val regularUser =
-                User(
-                    metadata = EntityMetadata(id = UUID.fromString(userId)),
-                    externalId = "user@example.com",
-                    email = "user@example.com",
-                    isAdmin = false,
-                )
-            every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
+            // listEntitiesForUser does not resolve the user — no userService stub needed.
             every {
                 mockPermissionRepository.listEntitiesForUser(any(), any(), any())
             } throws RuntimeException("Database error")
 
-            // When
             val result = permissionService.listEntitiesForUser(userId, entityType, Action.READ)
 
-            // Then
             result shouldBe emptyList()
         }
 

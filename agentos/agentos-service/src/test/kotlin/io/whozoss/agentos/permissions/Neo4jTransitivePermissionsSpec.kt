@@ -18,13 +18,13 @@ import io.whozoss.agentos.persistence.neo4j.Neo4jContainerSupport
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
-import io.whozoss.agentos.user.UserService
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import java.util.UUID
 
 /**
  * Integration tests for Transitive Permission Evaluation.
@@ -40,8 +40,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
     companion object {
         @JvmStatic
         @DynamicPropertySource
-        fun registerNeo4jProperties(registry: DynamicPropertyRegistry) =
-            Neo4jContainerSpec.registerProperties(registry)
+        fun registerNeo4jProperties(registry: DynamicPropertyRegistry) = Neo4jContainerSpec.registerProperties(registry)
     }
 
     @Autowired
@@ -65,24 +64,27 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
     @Autowired
     lateinit var driver: Driver
 
-    private fun createUser(externalId: String = "test@example.com", isAdmin: Boolean = false): User =
+    private fun createUser(
+        externalId: String = "test@example.com",
+        isAdmin: Boolean = false,
+    ): User =
         userRepository.save(
             User(
                 metadata = EntityMetadata(),
                 externalId = externalId,
                 email = externalId,
-                isAdmin = isAdmin
-            )
+                isAdmin = isAdmin,
+            ),
         )
 
     private fun createNamespace(name: String = "test-namespace"): Namespace =
         namespaceRepository.save(
-            Namespace(metadata = EntityMetadata(), name = name)
+            Namespace(metadata = EntityMetadata(), name = name),
         )
 
     private fun createCase(namespaceId: java.util.UUID): Case =
         caseRepository.save(
-            Case(metadata = EntityMetadata(), namespaceId = namespaceId)
+            Case(metadata = EntityMetadata(), namespaceId = namespaceId),
         )
 
     init {
@@ -97,23 +99,35 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
+                entityLabel = "Namespace",
             )
 
             // Verify transitive READ on child Case
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.READ,
+                ).shouldBeTrue()
 
             // Verify transitive WRITE on child Case
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.WRITE,
+                ).shouldBeTrue()
 
             // Verify transitive DELETE on child Case
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.DELETE,
+                ).shouldBeTrue()
         }
 
         /**
@@ -131,13 +145,17 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createMemberPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
+                entityLabel = "Namespace",
             )
 
             // Before this returned true (bug). It must now be false.
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.READ,
+                ).shouldBeFalse()
         }
 
         "MEMBER with direct ADMIN on a case retains full access" {
@@ -149,25 +167,37 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createMemberPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
+                entityLabel = "Namespace",
             )
             // Plus direct ADMIN on the case (simulates the auto-grant)
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
-                entityLabel = "Case"
+                entityLabel = "Case",
             )
 
             // Direct relation grants full access regardless of the transitive rule
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
-            ).shouldBeTrue()
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
-            ).shouldBeTrue()
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.READ,
+                ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.WRITE,
+                ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.DELETE,
+                ).shouldBeTrue()
         }
 
         /**
@@ -191,14 +221,15 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
-                entityLabel = "Case"
+                entityLabel = "Case",
             )
             // Sanity check: ADMIN relation exists before the delete
-            permissionNodeRepository.hasAdminPermission(
-                userId = user.id.toString(),
-                entityId = case.id.toString(),
-                entityLabel = "Case"
-            ).shouldBeTrue()
+            permissionNodeRepository
+                .hasAdminPermission(
+                    userId = user.id.toString(),
+                    entityId = case.id.toString(),
+                    entityLabel = "Case",
+                ).shouldBeTrue()
 
             // Soft-delete the case via the repository
             val deleted = caseRepository.delete(case.id)
@@ -208,11 +239,12 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             caseRepository.findByIds(listOf(case.id)).shouldBeEmpty()
 
             // But the direct [:ADMIN] relation in Neo4j is preserved for audit
-            permissionNodeRepository.hasAdminPermission(
-                userId = user.id.toString(),
-                entityId = case.id.toString(),
-                entityLabel = "Case"
-            ).shouldBeTrue()
+            permissionNodeRepository
+                .hasAdminPermission(
+                    userId = user.id.toString(),
+                    entityId = case.id.toString(),
+                    entityLabel = "Case",
+                ).shouldBeTrue()
         }
 
         /**
@@ -226,13 +258,14 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val member = createUser("member@example.com")
             val admin = createUser("admin@example.com")
             val namespace = createNamespace()
-            val config = agentConfigRepository.save(
-                AgentConfig(
-                    metadata = EntityMetadata(),
-                    namespaceId = namespace.id,
-                    name = "shared-agent",
-                ),
-            )
+            val config =
+                agentConfigRepository.save(
+                    AgentConfig(
+                        metadata = EntityMetadata(),
+                        namespaceId = namespace.id,
+                        name = "shared-agent",
+                    ),
+                )
 
             // member gets MEMBER on namespace → should READ transitively but NOT WRITE/DELETE
             permissionNodeRepository.createMemberPermission(
@@ -240,15 +273,27 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityId = namespace.id.toString(),
                 entityLabel = "Namespace",
             )
-            permissionService.hasPermission(
-                member.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.READ,
-            ).shouldBeTrue()
-            permissionService.hasPermission(
-                member.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.WRITE,
-            ).shouldBeFalse()
-            permissionService.hasPermission(
-                member.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.DELETE,
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    member.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    config.metadata.id.toString(),
+                    Action.READ,
+                ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    member.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    config.metadata.id.toString(),
+                    Action.WRITE,
+                ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    member.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    config.metadata.id.toString(),
+                    Action.DELETE,
+                ).shouldBeFalse()
 
             // admin gets ADMIN on namespace → full transitive CRUD
             permissionNodeRepository.createAdminPermission(
@@ -256,22 +301,39 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityId = namespace.id.toString(),
                 entityLabel = "Namespace",
             )
-            permissionService.hasPermission(
-                admin.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.READ,
-            ).shouldBeTrue()
-            permissionService.hasPermission(
-                admin.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.WRITE,
-            ).shouldBeTrue()
-            permissionService.hasPermission(
-                admin.id.toString(), EntityType.AGENT_CONFIG, config.metadata.id.toString(), Action.DELETE,
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    admin.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    config.metadata.id.toString(),
+                    Action.READ,
+                ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    admin.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    config.metadata.id.toString(),
+                    Action.WRITE,
+                ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    admin.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    config.metadata.id.toString(),
+                    Action.DELETE,
+                ).shouldBeTrue()
         }
 
         "namespace MEMBER still grants transitive READ on non-Case shared entities" {
             val user = createUser()
             val namespace = createNamespace()
-            // Create an AgentConfig-like node directly in Neo4j with a BELONGS_TO edge
-            val agentConfigId = java.util.UUID.randomUUID().toString()
+            // Node created directly via Cypher rather than agentConfigRepository.save() to
+            // avoid coupling this anti-regression test to the domain layer — the point is
+            // purely to verify the Cypher traversal, not the repository mapping.
+            val agentConfigId =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
             driver.session().use { session ->
                 session.run(
                     "MATCH (ns:Namespace {id: \$nsId}) " +
@@ -283,13 +345,17 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createMemberPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
+                entityLabel = "Namespace",
             )
 
             // MEMBER transitivity DOES apply to AgentConfig (FR21 legitimate)
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.AGENT_CONFIG, agentConfigId, Action.READ
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    agentConfigId,
+                    Action.READ,
+                ).shouldBeTrue()
         }
 
         "MEMBER on namespace denies WRITE on child Case" {
@@ -301,13 +367,17 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createMemberPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
+                entityLabel = "Namespace",
             )
 
             // MEMBER should NOT grant WRITE
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.WRITE,
+                ).shouldBeFalse()
         }
 
         "MEMBER on namespace denies DELETE on child Case" {
@@ -319,13 +389,17 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createMemberPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
+                entityLabel = "Namespace",
             )
 
             // MEMBER should NOT grant DELETE
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.DELETE,
+                ).shouldBeFalse()
         }
 
         "direct permission takes precedence over transitive permission" {
@@ -337,20 +411,24 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             permissionNodeRepository.createMemberPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
+                entityLabel = "Namespace",
             )
 
             // Grant direct ADMIN on the Case
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
-                entityLabel = "Case"
+                entityLabel = "Case",
             )
 
             // Direct ADMIN should grant WRITE even though namespace is only MEMBER
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.WRITE,
+                ).shouldBeTrue()
         }
 
         "no permission on namespace denies all actions on child Case" {
@@ -359,17 +437,29 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val case = createCase(namespace.id)
 
             // No permission granted - should deny all actions (fail-closed)
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.READ,
+                ).shouldBeFalse()
 
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.WRITE,
+                ).shouldBeFalse()
 
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.DELETE,
+                ).shouldBeFalse()
         }
 
         "super-admin bypass works with real Neo4j" {
@@ -378,17 +468,29 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val case = createCase(namespace.id)
 
             // No permission relations - super-admin should bypass all checks
-            permissionService.hasPermission(
-                superAdmin.id.toString(), EntityType.CASE, case.id.toString(), Action.READ
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    superAdmin.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.READ,
+                ).shouldBeTrue()
 
-            permissionService.hasPermission(
-                superAdmin.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    superAdmin.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.WRITE,
+                ).shouldBeTrue()
 
-            permissionService.hasPermission(
-                superAdmin.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE
-            ).shouldBeTrue()
+            permissionService
+                .hasPermission(
+                    superAdmin.id.toString(),
+                    EntityType.CASE,
+                    case.id.toString(),
+                    Action.DELETE,
+                ).shouldBeTrue()
         }
 
         "hasPermission returns false when no relation exists (fail-closed)" {
@@ -396,9 +498,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val namespace = createNamespace()
 
             // No relation exists at all
-            permissionService.hasPermission(
-                user.id.toString(), EntityType.NAMESPACE, namespace.id.toString(), Action.READ
-            ).shouldBeFalse()
+            permissionService
+                .hasPermission(
+                    user.id.toString(),
+                    EntityType.NAMESPACE,
+                    namespace.id.toString(),
+                    Action.READ,
+                ).shouldBeFalse()
         }
 
         /**
@@ -436,15 +542,27 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             // adminUser has NO direct relation on either case, yet should have
             // full ADMIN privileges via transitive namespace ADMIN.
             listOf(case1, case2).forEach { case ->
-                permissionService.hasPermission(
-                    adminUser.id.toString(), EntityType.CASE, case.id.toString(), Action.READ,
-                ).shouldBeTrue()
-                permissionService.hasPermission(
-                    adminUser.id.toString(), EntityType.CASE, case.id.toString(), Action.WRITE,
-                ).shouldBeTrue()
-                permissionService.hasPermission(
-                    adminUser.id.toString(), EntityType.CASE, case.id.toString(), Action.DELETE,
-                ).shouldBeTrue()
+                permissionService
+                    .hasPermission(
+                        adminUser.id.toString(),
+                        EntityType.CASE,
+                        case.id.toString(),
+                        Action.READ,
+                    ).shouldBeTrue()
+                permissionService
+                    .hasPermission(
+                        adminUser.id.toString(),
+                        EntityType.CASE,
+                        case.id.toString(),
+                        Action.WRITE,
+                    ).shouldBeTrue()
+                permissionService
+                    .hasPermission(
+                        adminUser.id.toString(),
+                        EntityType.CASE,
+                        case.id.toString(),
+                        Action.DELETE,
+                    ).shouldBeTrue()
             }
 
             // Service layer: findByParent returns every case in the namespace,
@@ -461,15 +579,18 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             val memberUser = createUser("member@example.com")
             val nsAccessible = createNamespace("ns-accessible")
             val nsForeign = createNamespace("ns-foreign")
-            val agentInside1 = agentConfigRepository.save(
-                AgentConfig(metadata = EntityMetadata(), namespaceId = nsAccessible.id, name = "agent-1"),
-            )
-            val agentInside2 = agentConfigRepository.save(
-                AgentConfig(metadata = EntityMetadata(), namespaceId = nsAccessible.id, name = "agent-2"),
-            )
-            val agentForeign = agentConfigRepository.save(
-                AgentConfig(metadata = EntityMetadata(), namespaceId = nsForeign.id, name = "agent-foreign"),
-            )
+            val agentInside1 =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(), namespaceId = nsAccessible.id, name = "agent-1"),
+                )
+            val agentInside2 =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(), namespaceId = nsAccessible.id, name = "agent-2"),
+                )
+            val agentForeign =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(), namespaceId = nsForeign.id, name = "agent-foreign"),
+                )
 
             // memberUser has MEMBER on ns-accessible only — should inherit READ
             // on agent-1 and agent-2 transitively, NOT on agent-foreign.
@@ -479,18 +600,20 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityLabel = "Namespace",
             )
 
-            val candidateIds = listOf(
-                agentInside1.id.toString(),
-                agentInside2.id.toString(),
-                agentForeign.id.toString(),
-            )
+            val candidateIds =
+                listOf(
+                    agentInside1.id.toString(),
+                    agentInside2.id.toString(),
+                    agentForeign.id.toString(),
+                )
 
-            val visible = permissionService.filterVisibleIds(
-                memberUser.id.toString(),
-                EntityType.AGENT_CONFIG,
-                candidateIds,
-                Action.READ,
-            )
+            val visible =
+                permissionService.filterVisibleIds(
+                    memberUser.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    candidateIds,
+                    Action.READ,
+                )
 
             visible shouldHaveSize 2
             visible shouldBe setOf(agentInside1.id.toString(), agentInside2.id.toString())
@@ -499,8 +622,14 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
         "filterVisibleIds includes platform AgentConfigs (namespaceId = null) for any authenticated user" {
             val regularUser = createUser("regular@example.com")
             val namespace = createNamespace("ns-for-platform-test")
-            val namespacedAgentId = java.util.UUID.randomUUID().toString()
-            val platformAgentId = java.util.UUID.randomUUID().toString()
+            val namespacedAgentId =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
+            val platformAgentId =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
             driver.session().use { session ->
                 // Namespaced agent — has BELONGS_TO edge and a namespaceId property
                 session.run(
@@ -516,12 +645,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             }
 
             // regularUser has NO permission on any namespace — should still see the platform agent.
-            val visible = permissionService.filterVisibleIds(
-                regularUser.id.toString(),
-                EntityType.AGENT_CONFIG,
-                listOf(namespacedAgentId, platformAgentId),
-                Action.READ,
-            )
+            val visible =
+                permissionService.filterVisibleIds(
+                    regularUser.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    listOf(namespacedAgentId, platformAgentId),
+                    Action.READ,
+                )
 
             // Only the platform agent is visible — no namespace relation for the namespaced one.
             visible shouldBe setOf(platformAgentId)
@@ -529,7 +659,10 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
 
         "filterVisibleIds excludes platform AgentConfigs from WRITE results for non-admin users" {
             val regularUser = createUser("regular-write@example.com")
-            val platformAgentId = java.util.UUID.randomUUID().toString()
+            val platformAgentId =
+                java.util.UUID
+                    .randomUUID()
+                    .toString()
             driver.session().use { session ->
                 session.run(
                     "CREATE (e:AgentConfig {id: \$id, removed: false})",
@@ -538,20 +671,154 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             }
 
             // WRITE on a platform entity requires super-admin — regular user must get nothing.
+            permissionService
+                .filterVisibleIds(
+                    regularUser.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    listOf(platformAgentId),
+                    Action.WRITE,
+                ).shouldBeEmpty()
+        }
+
+        "filterVisibleIds returns all ids for super-admin including removed and platform entities" {
+            val superAdmin = createUser("super-admin-filter@example.com", isAdmin = true)
+            val namespace = createNamespace("ns-super-admin-filter")
+            val activeAgentId = UUID.randomUUID().toString()
+            val removedAgentId = UUID.randomUUID().toString()
+            val platformAgentId = UUID.randomUUID().toString()
+            driver.session().use { session ->
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, removed: false})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to activeAgentId, "nsId" to namespace.id.toString()),
+                )
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, removed: true})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to removedAgentId, "nsId" to namespace.id.toString()),
+                )
+                session.run(
+                    "CREATE (e:AgentConfig {id: \$id})",
+                    mapOf("id" to platformAgentId),
+                )
+            }
+
+            // The service-level bypass (user.isAdmin == true) short-circuits before any
+            // Cypher query runs — the graph state is irrelevant. The unit test in
+            // PermissionServiceImplSpec verifies the bypass itself; this test verifies
+            // that the bypass correctly propagates through the full Spring context.
+            val visible =
+                permissionService.filterVisibleIds(
+                    superAdmin.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    listOf(activeAgentId, removedAgentId, platformAgentId),
+                    Action.READ,
+                )
+
+            visible shouldBe setOf(activeAgentId, removedAgentId, platformAgentId)
+        }
+
+        "filterVisibleIds for namespace ADMIN returns entities in own namespace and excludes other namespaces" {
+            val adminUser = createUser("admin-filter@example.com")
+            val ownNamespace = createNamespace("ns-admin-own")
+            val otherNamespace = createNamespace("ns-admin-other")
+            val ownAgentId = UUID.randomUUID().toString()
+            val otherAgentId = UUID.randomUUID().toString()
+            driver.session().use { session ->
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, namespaceId: \$nsId, removed: false})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to ownAgentId, "nsId" to ownNamespace.id.toString()),
+                )
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, namespaceId: \$nsId, removed: false})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to otherAgentId, "nsId" to otherNamespace.id.toString()),
+                )
+            }
+            permissionNodeRepository.createAdminPermission(
+                userId = adminUser.id.toString(),
+                entityId = ownNamespace.id.toString(),
+                entityLabel = "Namespace",
+            )
+
+            val visible =
+                permissionService.filterVisibleIds(
+                    adminUser.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    listOf(ownAgentId, otherAgentId),
+                    Action.READ,
+                )
+
+            visible shouldBe setOf(ownAgentId)
+        }
+
+        "filterVisibleIds for namespace ADMIN grants WRITE on own namespace entities" {
+            val adminUser = createUser("admin-write-filter@example.com")
+            val namespace = createNamespace("ns-admin-write")
+            val agentId = UUID.randomUUID().toString()
+            driver.session().use { session ->
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, namespaceId: \$nsId, removed: false})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to agentId, "nsId" to namespace.id.toString()),
+                )
+            }
+            permissionNodeRepository.createAdminPermission(
+                userId = adminUser.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace",
+            )
+
             permissionService.filterVisibleIds(
-                regularUser.id.toString(),
+                adminUser.id.toString(),
                 EntityType.AGENT_CONFIG,
-                listOf(platformAgentId),
+                listOf(agentId),
                 Action.WRITE,
-            ).shouldBeEmpty()
+            ) shouldBe setOf(agentId)
+        }
+
+        "filterVisibleIds excludes removed entities for namespace MEMBER" {
+            val memberUser = createUser("member-removed@example.com")
+            val namespace = createNamespace("ns-removed-filter")
+            val activeAgentId = UUID.randomUUID().toString()
+            val removedAgentId = UUID.randomUUID().toString()
+            driver.session().use { session ->
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, namespaceId: \$nsId, removed: false})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to activeAgentId, "nsId" to namespace.id.toString()),
+                )
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, namespaceId: \$nsId, removed: true})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to removedAgentId, "nsId" to namespace.id.toString()),
+                )
+            }
+            permissionNodeRepository.createMemberPermission(
+                userId = memberUser.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace",
+            )
+
+            val visible =
+                permissionService.filterVisibleIds(
+                    memberUser.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    listOf(activeAgentId, removedAgentId),
+                    Action.READ,
+                )
+
+            visible shouldBe setOf(activeAgentId)
         }
 
         "filterVisibleIds with WRITE action requires ADMIN — namespace MEMBER returns empty set" {
             val memberUser = createUser("member-write@example.com")
             val namespace = createNamespace("ns-member-write")
-            val agent = agentConfigRepository.save(
-                AgentConfig(metadata = EntityMetadata(), namespaceId = namespace.id, name = "agent-write"),
-            )
+            val agent =
+                agentConfigRepository.save(
+                    AgentConfig(metadata = EntityMetadata(), namespaceId = namespace.id, name = "agent-write"),
+                )
 
             // Member-only relation — no ADMIN propagation.
             permissionNodeRepository.createMemberPermission(
@@ -560,12 +827,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 entityLabel = "Namespace",
             )
 
-            permissionService.filterVisibleIds(
-                memberUser.id.toString(),
-                EntityType.AGENT_CONFIG,
-                listOf(agent.id.toString()),
-                Action.WRITE,
-            ).shouldBeEmpty()
+            permissionService
+                .filterVisibleIds(
+                    memberUser.id.toString(),
+                    EntityType.AGENT_CONFIG,
+                    listOf(agent.id.toString()),
+                    Action.WRITE,
+                ).shouldBeEmpty()
         }
     }
 }
