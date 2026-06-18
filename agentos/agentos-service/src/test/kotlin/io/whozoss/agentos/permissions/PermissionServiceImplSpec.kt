@@ -317,6 +317,13 @@ class PermissionServiceImplSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "filterVisibleIds returns the subset reported visible by the repository" {
+        val regularUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "user@example.com",
+            email = "user@example.com",
+            isAdmin = false,
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
         val id3 = UUID.randomUUID().toString()
@@ -328,6 +335,13 @@ class PermissionServiceImplSpec : StringSpec({
     }
 
     "filterVisibleIds maps WRITE/DELETE actions to ADMIN relation" {
+        val regularUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "user@example.com",
+            email = "user@example.com",
+            isAdmin = false,
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         val id1 = UUID.randomUUID().toString()
         every {
             mockPermissionRepository.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1), PermissionRelation.ADMIN)
@@ -349,6 +363,13 @@ class PermissionServiceImplSpec : StringSpec({
     }
 
     "filterVisibleIds returns empty set when no candidate id is visible" {
+        val regularUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "user@example.com",
+            email = "user@example.com",
+            isAdmin = false,
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
         every {
@@ -359,11 +380,35 @@ class PermissionServiceImplSpec : StringSpec({
     }
 
     "filterVisibleIds returns empty set (fail-closed) when the repository throws" {
+        val regularUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "user@example.com",
+            email = "user@example.com",
+            isAdmin = false,
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns regularUser
         val id1 = UUID.randomUUID().toString()
         every {
             mockPermissionRepository.filterVisibleIds(any(), any(), any(), any())
         } throws RuntimeException("Cypher failure")
 
         permissionService.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1), Action.READ) shouldBe emptySet()
+    }
+
+    "filterVisibleIds returns all ids for a super-admin WITHOUT calling the repository" {
+        val adminUser = User(
+            metadata = EntityMetadata(id = UUID.fromString(userId)),
+            externalId = "admin@example.com",
+            email = "admin@example.com",
+            isAdmin = true,
+        )
+        every { mockUserService.findById(UUID.fromString(userId)) } returns adminUser
+        val id1 = UUID.randomUUID().toString()
+        val id2 = UUID.randomUUID().toString()
+
+        val result = permissionService.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1, id2), Action.READ)
+
+        result shouldBe setOf(id1, id2)
+        verify(exactly = 0) { mockPermissionRepository.filterVisibleIds(any(), any(), any(), any()) }
     }
 })

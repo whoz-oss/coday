@@ -252,12 +252,16 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(n:Namespace)<-[:BELONGS_TO]-(e)
-        WHERE $entityLabel IN labels(e) AND e.id IN $ids
-        RETURN e.id
-        UNION
-        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(e)
-        WHERE $entityLabel IN labels(e) AND e.id IN $ids
+        MATCH (u:User {id: $userId})
+        MATCH (e)
+        WHERE $entityLabel IN labels(e)
+          AND e.id IN $ids
+          AND (e.removed IS NULL OR e.removed = false)
+          AND (
+            ($checkPlatform AND e.namespaceId IS NULL)
+            OR EXISTS { (u)-[:ADMIN|MEMBER]->(e) }
+            OR EXISTS { (e)-[:BELONGS_TO]->(n:Namespace)<-[:ADMIN|MEMBER]-(u) }
+          )
         RETURN e.id
     """,
     )
@@ -265,16 +269,20 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("userId") userId: String,
         @Param("entityLabel") entityLabel: String,
         @Param("ids") ids: Collection<String>,
+        @Param("checkPlatform") checkPlatform: Boolean,
     ): List<String>
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[:ADMIN]->(n:Namespace)<-[:BELONGS_TO]-(e)
-        WHERE $entityLabel IN labels(e) AND e.id IN $ids
-        RETURN e.id
-        UNION
-        MATCH (u:User {id: $userId})-[:ADMIN]->(e)
-        WHERE $entityLabel IN labels(e) AND e.id IN $ids
+        MATCH (u:User {id: $userId})
+        MATCH (e)
+        WHERE $entityLabel IN labels(e)
+          AND e.id IN $ids
+          AND (e.removed IS NULL OR e.removed = false)
+          AND (
+            EXISTS { (u)-[:ADMIN]->(e) }
+            OR EXISTS { (e)-[:BELONGS_TO]->(n:Namespace)<-[:ADMIN]-(u) }
+          )
         RETURN e.id
     """,
     )

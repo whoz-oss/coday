@@ -496,6 +496,56 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
             visible shouldBe setOf(agentInside1.id.toString(), agentInside2.id.toString())
         }
 
+        "filterVisibleIds includes platform AgentConfigs (namespaceId = null) for any authenticated user" {
+            val regularUser = createUser("regular@example.com")
+            val namespace = createNamespace("ns-for-platform-test")
+            val namespacedAgentId = java.util.UUID.randomUUID().toString()
+            val platformAgentId = java.util.UUID.randomUUID().toString()
+            driver.session().use { session ->
+                // Namespaced agent — has BELONGS_TO edge and a namespaceId property
+                session.run(
+                    "MATCH (ns:Namespace {id: \$nsId}) " +
+                        "CREATE (e:AgentConfig {id: \$id, namespaceId: \$nsId, removed: false})-[:BELONGS_TO]->(ns)",
+                    mapOf("id" to namespacedAgentId, "nsId" to namespace.id.toString()),
+                )
+                // Platform agent — no BELONGS_TO edge, namespaceId IS NULL
+                session.run(
+                    "CREATE (e:AgentConfig {id: \$id, removed: false})",
+                    mapOf("id" to platformAgentId),
+                )
+            }
+
+            // regularUser has NO permission on any namespace — should still see the platform agent.
+            val visible = permissionService.filterVisibleIds(
+                regularUser.id.toString(),
+                EntityType.AGENT_CONFIG,
+                listOf(namespacedAgentId, platformAgentId),
+                Action.READ,
+            )
+
+            // Only the platform agent is visible — no namespace relation for the namespaced one.
+            visible shouldBe setOf(platformAgentId)
+        }
+
+        "filterVisibleIds excludes platform AgentConfigs from WRITE results for non-admin users" {
+            val regularUser = createUser("regular-write@example.com")
+            val platformAgentId = java.util.UUID.randomUUID().toString()
+            driver.session().use { session ->
+                session.run(
+                    "CREATE (e:AgentConfig {id: \$id, removed: false})",
+                    mapOf("id" to platformAgentId),
+                )
+            }
+
+            // WRITE on a platform entity requires super-admin — regular user must get nothing.
+            permissionService.filterVisibleIds(
+                regularUser.id.toString(),
+                EntityType.AGENT_CONFIG,
+                listOf(platformAgentId),
+                Action.WRITE,
+            ).shouldBeEmpty()
+        }
+
         "filterVisibleIds with WRITE action requires ADMIN — namespace MEMBER returns empty set" {
             val memberUser = createUser("member-write@example.com")
             val namespace = createNamespace("ns-member-write")
