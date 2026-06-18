@@ -77,6 +77,23 @@ management:
       # 'always' so that Eureka can read the health status without credentials.
       # The health endpoint itself does not expose sensitive data.
       show-details: always
+  # Datadog metrics export — disabled by default, opt-in via environment variables.
+  # Set DATADOG_API_KEY (required) and DATADOG_METRICS_ENABLED=true to activate.
+  # DATADOG_SITE defaults to the US endpoint; override to 'datadoghq.eu' for EU tenants.
+  datadog:
+    metrics:
+      export:
+        enabled: ${DATADOG_METRICS_ENABLED:false}
+        api-key: ${DATADOG_API_KEY:}
+        application-key: ${DATADOG_APP_KEY:}
+        uri: https://api.${DATADOG_SITE:datadoghq.com}
+        # Push interval — 30s balances freshness against Datadog ingest costs.
+        step: 30s
+  # Common tags applied to all metrics exported by this service.
+  metrics:
+    tags:
+      application: agentos
+      environment: ${SPRING_PROFILES_ACTIVE:local}
 
 agentos:
   defaults:

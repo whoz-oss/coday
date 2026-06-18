@@ -23,6 +23,8 @@ import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.metrics.ConfirmationOutcome
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptResult
 import io.whozoss.agentos.util.AttemptSuccess
@@ -51,6 +53,8 @@ class AgentAdvanced(
     private val maxIterations: Int = 20,
     override val llmProvider: String,
     override val llmModel: String,
+    /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
+    private val toolMetricsService: ToolMetricsService? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -871,16 +875,29 @@ class AgentAdvanced(
         emitEvent(syntheticResponse)
         appendTo += syntheticResponse
 
-        return when {
+        val confirmationOutcome =
+            when {
+                confirmed && !executionFailed -> ConfirmationOutcome.APPLIED
+                !confirmed -> ConfirmationOutcome.REJECTED
+                else -> ConfirmationOutcome.ABORTED
+            }
+        toolMetricsService?.recordConfirmation(
+            toolName = pending.toolName,
+            agentName = name,
+            namespaceId = namespaceId,
+            outcome = confirmationOutcome,
+        )
+
+        return when (confirmationOutcome) {
             // User confirmed AND tool ran successfully → fall through, LLM can comment.
-            confirmed && !executionFailed -> ConfirmationResolution.Applied
+            ConfirmationOutcome.APPLIED -> ConfirmationResolution.Applied
 
             // User explicitly refused → fall through, LLM can produce a natural follow-up.
-            !confirmed -> ConfirmationResolution.Rejected
+            ConfirmationOutcome.REJECTED -> ConfirmationResolution.Rejected
 
             // Confirmed but the tool threw (executionFailed=true) → no useful continuation;
             // the user just got bitten by a real failure, don't push the LLM to retry.
-            else -> ConfirmationResolution.Aborted
+            ConfirmationOutcome.ABORTED -> ConfirmationResolution.Aborted
         }
     }
 
@@ -1260,6 +1277,11 @@ Output requirements:
             val message =
                 "Failed to generate valid JSON parameters for '${tool.name}' after $MAX_PARAMETER_ATTEMPTS attempts."
             emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = message))
+            toolMetricsService?.recordParameterGenerationFailure(
+                toolName = tool.name,
+                agentName = name,
+                namespaceId = namespaceId,
+            )
         }
 
         return result
@@ -1451,7 +1473,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
             }
 
             else -> {
-                val startMs = System.currentTimeMillis()
+                val sample = toolMetricsService?.startTimer()
                 try {
                     val filteredEvents = filterEventsByIntegration(toolRequest.toolName, caseEventsProvider())
                     val result: ToolExecutionResult =
@@ -1464,6 +1486,13 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                                 caseEvents = filteredEvents,
                             ),
                         )
+                    val durationMs = toolMetricsService?.stopTimer(
+                        sample = sample,
+                        toolName = toolRequest.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = result.success,
+                    )
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
@@ -1471,17 +1500,32 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                         toolName = toolRequest.toolName,
                         output = MessageContent.Text(result.output),
                         success = result.success,
-                        durationMs = System.currentTimeMillis() - startMs,
+                        durationMs = durationMs,
                         toolMetadata = result.metadata,
                     )
                 } catch (e: AgentInterrupt) {
                     // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent
                     // before the interrupt propagates to the run() catch block.
+                    // Stop the timer here so the sample is not leaked.
+                    toolMetricsService?.stopTimer(
+                        sample = sample,
+                        toolName = toolRequest.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = true,
+                    )
                     throw e
                 } catch (e: Exception) {
                     logger.warn(e) {
                         "[AgentAdvanced] error during tool execution for ${tool.name}"
                     }
+                    val durationMs = toolMetricsService?.stopTimer(
+                        sample = sample,
+                        toolName = toolRequest.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = false,
+                    )
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
@@ -1489,7 +1533,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                         toolName = toolRequest.toolName,
                         output = MessageContent.Text("Error executing tool: ${e.message}"),
                         success = false,
-                        durationMs = System.currentTimeMillis() - startMs,
+                        durationMs = durationMs,
                     )
                 }
             }

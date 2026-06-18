@@ -8,6 +8,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -45,6 +46,7 @@ class AgentServiceImpl(
     private val confirmationManager: ConfirmationManager,
     private val objectMapper: ObjectMapper,
     private val toolRegistryService: ToolRegistryService,
+    private val toolMetricsService: ToolMetricsService,
 ) : AgentService {
     override suspend fun findAgentByName(
         namePart: String,
@@ -280,6 +282,7 @@ class AgentServiceImpl(
                 caseEventsProvider = context.caseEventsProvider,
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
+                toolMetricsService = toolMetricsService,
             )
         } else {
             AgentSimple(

@@ -118,6 +118,10 @@ dependencies {
     // Logstash Logback Encoder — JSON structured logging (used by logback-spring.xml docker profile)
     runtimeOnly(libs.logstash.logback.encoder)
 
+    // Micrometer Datadog registry — exports tool-call metrics to Datadog.
+    // Disabled by default (requires DATADOG_API_KEY + management.datadog.metrics.export.enabled=true).
+    implementation(libs.micrometer.registry.datadog)
+
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)
 
