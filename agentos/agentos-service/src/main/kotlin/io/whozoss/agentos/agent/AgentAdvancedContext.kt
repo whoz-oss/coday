@@ -57,12 +57,11 @@ data class AgentAdvancedContext(
      */
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
-        maxDetailedToolCalls: Int = 6,
-        maxDetailedMessagesWithSteps: Int = 3,
+        maxDetailedChars: Int = 100_000,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
-            selectDetailedToolRequestIds(events, maxDetailedToolCalls, maxDetailedMessagesWithSteps)
+            selectDetailedToolRequestIds(events, responsesByRequestId, maxDetailedChars)
 
         val lastUserMsgIndex =
             events.indexOfLast {
@@ -101,34 +100,33 @@ data class AgentAdvancedContext(
 
     private fun selectDetailedToolRequestIds(
         events: List<CaseEvent>,
-        maxPairs: Int,
-        maxTurns: Int,
+        responsesByRequestId: Map<String, ToolResponseEvent>,
+        maxDetailedChars: Int,
     ): Set<String> {
         val result = mutableSetOf<String>()
-        var pairsCollected = 0
-        var turnsCollected = 0
-        var inTurn = false
+        var charsCollected = 0
 
         for (event in events.reversed()) {
-            if (pairsCollected >= maxPairs || turnsCollected >= maxTurns) break
-            when (event) {
-                is ToolRequestEvent -> {
-                    if (!inTurn) {
-                        turnsCollected++
-                        inTurn = true
-                    }
-                    result.add(event.toolRequestId)
-                    pairsCollected++
-                }
+            if (event !is ToolRequestEvent) continue
 
-                is MessageEvent, is IntentionGeneratedEvent -> {
-                    inTurn = false
-                }
+            val response = responsesByRequestId[event.toolRequestId]
+            val cost = estimateDetailedCharCost(event, response)
 
-                else -> {}
-            }
+            if (charsCollected + cost > maxDetailedChars) break
+
+            result.add(event.toolRequestId)
+            charsCollected += cost
         }
         return result
+    }
+
+    private fun estimateDetailedCharCost(
+        request: ToolRequestEvent,
+        response: ToolResponseEvent?,
+    ): Int {
+        val argsCost = request.args?.length ?: 0
+        val responseCost = response?.let { extractText(it.output).length } ?: 0
+        return argsCost + responseCost
     }
 
     private fun toToolMessages(
