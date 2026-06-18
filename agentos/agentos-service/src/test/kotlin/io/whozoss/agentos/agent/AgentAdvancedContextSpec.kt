@@ -267,7 +267,7 @@ class AgentAdvancedContextSpec :
                             toolResponse("r$i", "TOOL__x", "result $i"),
                         )
                     }
-            val messages = context.convertEventsToMessages(events, maxDetailedToolCalls = 3)
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = 30)
 
             // First message is the user message
             messages[0].shouldBeInstanceOf<UserMessage>()
@@ -312,7 +312,7 @@ class AgentAdvancedContextSpec :
                     toolRequest("r6", "TOOL__x"),
                     toolResponse("r6", "TOOL__x", "ok"),
                 )
-            val messages = context.convertEventsToMessages(events, maxDetailedToolCalls = 2)
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = 8)
 
             val userMessages = messages.filterIsInstance<UserMessage>()
             userMessages shouldHaveSize 2
@@ -329,7 +329,7 @@ class AgentAdvancedContextSpec :
                     toolRequest("r2", "TOOL__x"),
                     toolResponse("r2", "TOOL__x", "ok"),
                 )
-            val messages = context.convertEventsToMessages(events, maxDetailedToolCalls = 6)
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = 100)
 
             // No summary messages — all tool calls are in native format
             val summaries =
@@ -350,7 +350,7 @@ class AgentAdvancedContextSpec :
                     toolRequest("r2", "TOOL__x"),
                     toolResponse("r2", "TOOL__x", "ok"),
                 )
-            val messages = context.convertEventsToMessages(events, maxDetailedToolCalls = 1)
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = 4)
 
             val summaries =
                 messages.filterIsInstance<AssistantMessage>().filter {
@@ -371,7 +371,7 @@ class AgentAdvancedContextSpec :
                     toolRequest("r2", "TOOL__new"),
                     toolResponse("r2", "TOOL__new", "new result"),
                 )
-            val messages = context.convertEventsToMessages(events, maxDetailedToolCalls = 1)
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = 12)
 
             val intentionMessages =
                 messages.filterIsInstance<AssistantMessage>().filter {
@@ -424,7 +424,7 @@ class AgentAdvancedContextSpec :
                     toolRequest("r1", "TOOL__x"),
                     toolResponse("r1", "TOOL__x", "ok"),
                 )
-            val messages = context.convertEventsToMessages(events, maxDetailedToolCalls = 1)
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = 4)
 
             // The orphaned request should be summarized, not detailed
             val summaries =
