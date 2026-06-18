@@ -1050,6 +1050,11 @@ class AgentAdvanced(
                     "Do not reference technical IDs unless explicitly asked. Instead, use a readable format " +
                         "such as the object's name, title, or a markdown representation.",
                 )
+                add(
+                    "When you have just created an object, always include a direct link " +
+                        "or navigation path to it in your response so the user can access it immediately. " +
+                        "Use the URL or the most actionable reference available in the tool response.",
+                )
             }
         return lines.joinToString("\n").ifBlank { null }
     }
