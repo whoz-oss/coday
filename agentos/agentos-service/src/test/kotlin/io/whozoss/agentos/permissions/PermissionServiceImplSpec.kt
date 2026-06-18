@@ -421,21 +421,20 @@ class PermissionServiceImplSpec :
             permissionService.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1), Action.READ) shouldBe emptySet()
         }
 
-        "filterVisibleIds returns all ids for a super-admin WITHOUT calling the repository" {
-            val adminUser =
-                User(
-                    metadata = EntityMetadata(id = UUID.fromString(userId)),
-                    externalId = "admin@example.com",
-                    email = "admin@example.com",
-                    isAdmin = true,
-                )
-            every { mockUserService.findById(UUID.fromString(userId)) } returns adminUser
+        "filterVisibleIds delegates to the repository for super-admin (no service-level bypass)" {
+            // Super-admin access to platform entities is handled inside the Cypher query
+            // (u.isAdmin = true AND checkPlatform AND e.namespaceId IS NULL), not by a
+            // service-level short-circuit. Removed entities are filtered by the query for
+            // everyone, including super-admins.
             val id1 = UUID.randomUUID().toString()
             val id2 = UUID.randomUUID().toString()
+            every {
+                mockPermissionRepository.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1, id2), PermissionRelation.MEMBER)
+            } returns setOf(id1, id2)
 
             val result = permissionService.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1, id2), Action.READ)
 
             result shouldBe setOf(id1, id2)
-            verify(exactly = 0) { mockPermissionRepository.filterVisibleIds(any(), any(), any(), any()) }
+            verify(exactly = 1) { mockPermissionRepository.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1, id2), PermissionRelation.MEMBER) }
         }
     })

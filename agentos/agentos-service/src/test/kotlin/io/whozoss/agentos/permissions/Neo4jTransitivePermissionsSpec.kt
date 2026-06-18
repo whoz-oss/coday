@@ -680,7 +680,11 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                 ).shouldBeEmpty()
         }
 
-        "filterVisibleIds returns all ids for super-admin including removed and platform entities" {
+        "filterVisibleIds for super-admin returns active and platform entities but excludes removed" {
+            // Super-admin access to platform entities is resolved in the Cypher query via
+            // (u.isAdmin = true AND checkPlatform AND e.namespaceId IS NULL). Removed entities
+            // are filtered by (e.removed IS NULL OR e.removed = false) for everyone, including
+            // super-admins — there is no service-level bypass for filterVisibleIds.
             val superAdmin = createUser("super-admin-filter@example.com", isAdmin = true)
             val namespace = createNamespace("ns-super-admin-filter")
             val activeAgentId = UUID.randomUUID().toString()
@@ -697,16 +701,13 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                         "CREATE (e:AgentConfig {id: \$id, removed: true})-[:BELONGS_TO]->(ns)",
                     mapOf("id" to removedAgentId, "nsId" to namespace.id.toString()),
                 )
+                // Platform agent: no BELONGS_TO edge, namespaceId IS NULL
                 session.run(
                     "CREATE (e:AgentConfig {id: \$id})",
                     mapOf("id" to platformAgentId),
                 )
             }
 
-            // The service-level bypass (user.isAdmin == true) short-circuits before any
-            // Cypher query runs — the graph state is irrelevant. The unit test in
-            // PermissionServiceImplSpec verifies the bypass itself; this test verifies
-            // that the bypass correctly propagates through the full Spring context.
             val visible =
                 permissionService.filterVisibleIds(
                     superAdmin.id.toString(),
@@ -715,7 +716,7 @@ class Neo4jTransitivePermissionsSpec : StringSpec() {
                     Action.READ,
                 )
 
-            visible shouldBe setOf(activeAgentId, removedAgentId, platformAgentId)
+            visible shouldBe setOf(activeAgentId, platformAgentId)
         }
 
         "filterVisibleIds for namespace ADMIN returns entities in own namespace and excludes other namespaces" {
