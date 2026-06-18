@@ -40,7 +40,10 @@ data class AgentAdvancedContext(
      *   generation, final response, etc.). Null when the caller needs the base history
      *   without any additional prompt (e.g. confirmation manager calls).
      */
-    internal fun buildMessages(events: List<CaseEvent>, prompt: String? = null): List<Message> {
+    internal fun buildMessages(
+        events: List<CaseEvent>,
+        prompt: String? = null,
+    ): List<Message> {
         val history = convertEventsToMessages(events)
         val operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
         val messages = if (operationalMessage != null) history + UserMessage(operationalMessage) else history
@@ -57,7 +60,7 @@ data class AgentAdvancedContext(
      */
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
-        maxDetailedChars: Int = 100_000,
+        maxDetailedChars: Int = 300_000,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
