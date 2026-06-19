@@ -8,6 +8,7 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -122,6 +123,8 @@ class CaseRuntimeSpec : StringSpec() {
      * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and
      *   feeds each produced event back through pushEvents so the loop can detect
      *   [AgentFinishedEvent] and stop.
+     * - [updateStatus] defaults to a no-op: status transitions are observable via
+     *   [CaseRuntime.statusFlow] without needing a callback.
      */
     fun buildRuntime(
         agentName: String = "default-agent",
@@ -172,6 +175,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.run()
 
             runAgent.callCount shouldBe 1
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
 
         "selectAgent is called exactly once per user message" {
@@ -199,6 +203,7 @@ class CaseRuntimeSpec : StringSpec() {
             agentEvents shouldHaveAtLeastSize 2
             agentEvents[0].shouldBeInstanceOf<AgentSelectedEvent>()
             agentEvents[1].shouldBeInstanceOf<AgentFinishedEvent>()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
 
 
@@ -426,6 +431,54 @@ class CaseRuntimeSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // Redirect: AgentFinishedEvent followed by AgentSelectedEvent
         // -------------------------------------------------------------------------
+
+        "statusFlow reflects RUNNING during run() and IDLE after normal completion" {
+            val (runtime) = buildRuntime()
+
+            runtime.statusFlow.value shouldBe CaseStatus.PENDING
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "statusFlow reflects ERROR when max iterations are exceeded" {
+            // An agent that never emits AgentFinishedEvent forces the loop to hit maxIterations.
+            val loopingAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = UUID.randomUUID())
+                every { name } returns "looping"
+                every { run(any<List<CaseEvent>>(), any()) } returns flow { /* never finishes */ }
+            }
+            val (runtime) = buildRuntime(agentName = "looping", agent = loopingAgent)
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.ERROR
+        }
+
+        "statusFlow reflects KILLED after requestKill during run" {
+            // requestKill() must be called while run() is executing — run() resets
+            // the kill flag at startup, so calling it before run() has no effect.
+            val runtimeId = UUID.randomUUID()
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatus = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { _, _, _, _, _ ->
+                    // Signal kill from inside runAgent — before pushing AgentFinishedEvent.
+                    runtime.requestKill()
+                },
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.KILLED
+        }
 
         "runAgent is called twice when agent A redirects to agent B" {
             // Regression: processNextStep scanned events newest-first and stopped at
