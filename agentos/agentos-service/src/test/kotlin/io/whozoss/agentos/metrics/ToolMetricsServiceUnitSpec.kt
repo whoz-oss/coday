@@ -7,256 +7,285 @@ import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import java.util.UUID
 
-class ToolMetricsServiceUnitSpec : StringSpec({
+class ToolMetricsServiceUnitSpec :
+    StringSpec({
 
-    fun registry() = SimpleMeterRegistry()
+        fun registry() = SimpleMeterRegistry()
 
-    // -------------------------------------------------------------------------
-    // startTimer / stopTimer
-    // -------------------------------------------------------------------------
+        // -------------------------------------------------------------------------
+        // startTimer / stopTimer
+        // -------------------------------------------------------------------------
 
-    "stopTimer increments counter with success tag and records timer" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-        val namespaceId = UUID.randomUUID()
+        "stopTimer increments counter with success tag and records timer" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+            val namespaceId = UUID.randomUUID()
 
-        val sample = service.startTimer()
-        service.stopTimer(
-            sample = sample,
-            toolName = "FILES__read",
-            agentName = "my-agent",
-            namespaceId = namespaceId,
-            success = true,
-        )
-
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
-            .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
-            .tag(ToolMetricsService.TAG_INTEGRATION_TYPE, "FILES")
-            .tag(ToolMetricsService.TAG_AGENT_NAME, "my-agent")
-            .tag(ToolMetricsService.TAG_NAMESPACE_ID, namespaceId.toString())
-            .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
-            .counter()
-
-        counter?.count() shouldBe 1.0
-
-        val timer = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_DURATION)
-            .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
-            .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
-            .timer()
-
-        timer.shouldNotBeNull()
-        timer.count() shouldBe 1L
-    }
-
-    "stopTimer increments counter with failure tag" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-        val namespaceId = UUID.randomUUID()
-
-        val sample = service.startTimer()
-        service.stopTimer(
-            sample = sample,
-            toolName = "JIRA__getIssue",
-            agentName = "jira-agent",
-            namespaceId = namespaceId,
-            success = false,
-        )
-
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
-            .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_FAILURE)
-            .counter()
-
-        counter?.count() shouldBe 1.0
-    }
-
-    "stopTimer returns elapsed milliseconds (non-negative)" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-
-        val sample = service.startTimer()
-        val elapsedMs = service.stopTimer(
-            sample = sample,
-            toolName = "FILES__read",
-            agentName = "agent",
-            namespaceId = UUID.randomUUID(),
-            success = true,
-        )
-
-        elapsedMs shouldBeGreaterThanOrEqualTo 0L
-    }
-
-    "stopTimer with null sample still increments counter and returns 0" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-
-        val elapsedMs = service.stopTimer(
-            sample = null,
-            toolName = "FILES__read",
-            agentName = "agent",
-            namespaceId = UUID.randomUUID(),
-            success = true,
-        )
-
-        elapsedMs shouldBe 0L
-
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
-            .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
-            .counter()
-
-        counter?.count() shouldBe 1.0
-    }
-
-    "stopTimer uses 'unknown' integration type for tools without __ separator" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-
-        val sample = service.startTimer()
-        service.stopTimer(
-            sample = sample,
-            toolName = "redirect",
-            agentName = "agent",
-            namespaceId = UUID.randomUUID(),
-            success = true,
-        )
-
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
-            .tag(ToolMetricsService.TAG_INTEGRATION_TYPE, ToolMetricsService.INTEGRATION_TYPE_UNKNOWN)
-            .counter()
-
-        counter?.count() shouldBe 1.0
-    }
-
-    "stopTimer accumulates multiple calls" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-        val namespaceId = UUID.randomUUID()
-
-        repeat(3) {
             val sample = service.startTimer()
-            service.stopTimer(
+            service.stopTimerAndSendMetrics(
                 sample = sample,
                 toolName = "FILES__read",
-                agentName = "agent",
+                agentName = "my-agent",
                 namespaceId = namespaceId,
                 success = true,
             )
+
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
+                    .tag(ToolMetricsService.TAG_INTEGRATION_TYPE, "FILES")
+                    .tag(ToolMetricsService.TAG_AGENT_NAME, "my-agent")
+                    .tag(ToolMetricsService.TAG_NAMESPACE_ID, namespaceId.toString())
+                    .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
+                    .counter()
+
+            counter?.count() shouldBe 1.0
+
+            val timer =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_DURATION)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
+                    .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
+                    .timer()
+
+            timer.shouldNotBeNull()
+            timer.count() shouldBe 1L
         }
 
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
-            .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
-            .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
-            .counter()
+        "stopTimer increments counter with failure tag" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+            val namespaceId = UUID.randomUUID()
 
-        counter?.count() shouldBe 3.0
+            val sample = service.startTimer()
+            service.stopTimerAndSendMetrics(
+                sample = sample,
+                toolName = "JIRA__getIssue",
+                agentName = "jira-agent",
+                namespaceId = namespaceId,
+                success = false,
+            )
 
-        val timer = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_DURATION)
-            .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
-            .timer()
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
+                    .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_FAILURE)
+                    .counter()
 
-        timer?.count() shouldBe 3L
-    }
+            counter?.count() shouldBe 1.0
+        }
 
-    // -------------------------------------------------------------------------
-    // recordParameterGenerationFailure
-    // -------------------------------------------------------------------------
+        "stopTimer returns elapsed milliseconds (non-negative)" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
 
-    "recordParameterGenerationFailure increments the dedicated counter" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-        val namespaceId = UUID.randomUUID()
+            val sample = service.startTimer()
+            val elapsedMs =
+                service.stopTimerAndSendMetrics(
+                    sample = sample,
+                    toolName = "FILES__read",
+                    agentName = "agent",
+                    namespaceId = UUID.randomUUID(),
+                    success = true,
+                )
 
-        service.recordParameterGenerationFailure(
-            toolName = "FILES__read",
-            agentName = "agent",
-            namespaceId = namespaceId,
-        )
+            elapsedMs shouldBeGreaterThanOrEqualTo 0L
+        }
 
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_PARAM_FAILURES)
-            .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
-            .tag(ToolMetricsService.TAG_AGENT_NAME, "agent")
-            .tag(ToolMetricsService.TAG_NAMESPACE_ID, namespaceId.toString())
-            .counter()
+        "stopTimer with null sample still increments counter and returns 0" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
 
-        counter?.count() shouldBe 1.0
-    }
+            val elapsedMs =
+                service.stopTimerAndSendMetrics(
+                    sample = null,
+                    toolName = "FILES__read",
+                    agentName = "agent",
+                    namespaceId = UUID.randomUUID(),
+                    success = true,
+                )
 
-    // -------------------------------------------------------------------------
-    // recordConfirmation
-    // -------------------------------------------------------------------------
+            elapsedMs shouldBe 0L
 
-    "recordConfirmation increments counter with APPLIED outcome" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
+                    .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
+                    .counter()
 
-        service.recordConfirmation(
-            toolName = "FILES__remove",
-            agentName = "agent",
-            namespaceId = UUID.randomUUID(),
-            outcome = ConfirmationOutcome.APPLIED,
-        )
+            counter?.count() shouldBe 1.0
+        }
 
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CONFIRMATION_TOTAL)
-            .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__remove")
-            .tag(ToolMetricsService.TAG_OUTCOME, "applied")
-            .counter()
+        "stopTimer uses 'unknown' integration type for tools without __ separator" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
 
-        counter?.count() shouldBe 1.0
-    }
+            val sample = service.startTimer()
+            service.stopTimerAndSendMetrics(
+                sample = sample,
+                toolName = "redirect",
+                agentName = "agent",
+                namespaceId = UUID.randomUUID(),
+                success = true,
+            )
 
-    "recordConfirmation increments counter with REJECTED outcome" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
+                    .tag(ToolMetricsService.TAG_INTEGRATION_TYPE, ToolMetricsService.INTEGRATION_TYPE_UNKNOWN)
+                    .counter()
 
-        service.recordConfirmation(
-            toolName = "FILES__remove",
-            agentName = "agent",
-            namespaceId = UUID.randomUUID(),
-            outcome = ConfirmationOutcome.REJECTED,
-        )
+            counter?.count() shouldBe 1.0
+        }
 
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CONFIRMATION_TOTAL)
-            .tag(ToolMetricsService.TAG_OUTCOME, "rejected")
-            .counter()
+        "stopTimer accumulates multiple calls" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+            val namespaceId = UUID.randomUUID()
 
-        counter?.count() shouldBe 1.0
-    }
+            repeat(3) {
+                val sample = service.startTimer()
+                service.stopTimerAndSendMetrics(
+                    sample = sample,
+                    toolName = "FILES__read",
+                    agentName = "agent",
+                    namespaceId = namespaceId,
+                    success = true,
+                )
+            }
 
-    "recordConfirmation increments counter with ABORTED outcome" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
+                    .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_SUCCESS)
+                    .counter()
 
-        service.recordConfirmation(
-            toolName = "FILES__remove",
-            agentName = "agent",
-            namespaceId = UUID.randomUUID(),
-            outcome = ConfirmationOutcome.ABORTED,
-        )
+            counter?.count() shouldBe 3.0
 
-        val counter = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CONFIRMATION_TOTAL)
-            .tag(ToolMetricsService.TAG_OUTCOME, "aborted")
-            .counter()
+            val timer =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_DURATION)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
+                    .timer()
 
-        counter?.count() shouldBe 1.0
-    }
+            timer?.count() shouldBe 3L
+        }
 
-    "different namespaces produce distinct counter series" {
-        val meterRegistry = registry()
-        val service = ToolMetricsService(meterRegistry)
-        val ns1 = UUID.randomUUID()
-        val ns2 = UUID.randomUUID()
+        // -------------------------------------------------------------------------
+        // recordParameterGenerationFailure
+        // -------------------------------------------------------------------------
 
-        service.stopTimer(service.startTimer(), "FILES__read", "agent", ns1, success = true)
-        service.stopTimer(service.startTimer(), "FILES__read", "agent", ns2, success = true)
-        service.stopTimer(service.startTimer(), "FILES__read", "agent", ns1, success = true)
+        "recordParameterGenerationFailure increments the dedicated counter" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+            val namespaceId = UUID.randomUUID()
 
-        val counterNs1 = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
-            .tag(ToolMetricsService.TAG_NAMESPACE_ID, ns1.toString())
-            .counter()
-        val counterNs2 = meterRegistry.find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
-            .tag(ToolMetricsService.TAG_NAMESPACE_ID, ns2.toString())
-            .counter()
+            service.recordParameterGenerationFailure(
+                toolName = "FILES__read",
+                agentName = "agent",
+                namespaceId = namespaceId,
+            )
 
-        counterNs1?.count() shouldBe 2.0
-        counterNs2?.count() shouldBe 1.0
-    }
-})
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_PARAM_FAILURES)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__read")
+                    .tag(ToolMetricsService.TAG_AGENT_NAME, "agent")
+                    .tag(ToolMetricsService.TAG_NAMESPACE_ID, namespaceId.toString())
+                    .counter()
+
+            counter?.count() shouldBe 1.0
+        }
+
+        // -------------------------------------------------------------------------
+        // recordConfirmation
+        // -------------------------------------------------------------------------
+
+        "recordConfirmation increments counter with APPLIED outcome" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+
+            service.recordConfirmation(
+                toolName = "FILES__remove",
+                agentName = "agent",
+                namespaceId = UUID.randomUUID(),
+                outcome = ConfirmationOutcome.APPLIED,
+            )
+
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CONFIRMATION_TOTAL)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "FILES__remove")
+                    .tag(ToolMetricsService.TAG_OUTCOME, "applied")
+                    .counter()
+
+            counter?.count() shouldBe 1.0
+        }
+
+        "recordConfirmation increments counter with REJECTED outcome" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+
+            service.recordConfirmation(
+                toolName = "FILES__remove",
+                agentName = "agent",
+                namespaceId = UUID.randomUUID(),
+                outcome = ConfirmationOutcome.REJECTED,
+            )
+
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CONFIRMATION_TOTAL)
+                    .tag(ToolMetricsService.TAG_OUTCOME, "rejected")
+                    .counter()
+
+            counter?.count() shouldBe 1.0
+        }
+
+        "recordConfirmation increments counter with ABORTED outcome" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+
+            service.recordConfirmation(
+                toolName = "FILES__remove",
+                agentName = "agent",
+                namespaceId = UUID.randomUUID(),
+                outcome = ConfirmationOutcome.ABORTED,
+            )
+
+            val counter =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CONFIRMATION_TOTAL)
+                    .tag(ToolMetricsService.TAG_OUTCOME, "aborted")
+                    .counter()
+
+            counter?.count() shouldBe 1.0
+        }
+
+        "different namespaces produce distinct counter series" {
+            val meterRegistry = registry()
+            val service = ToolMetricsService(meterRegistry)
+            val ns1 = UUID.randomUUID()
+            val ns2 = UUID.randomUUID()
+
+            service.stopTimerAndSendMetrics(service.startTimer(), "FILES__read", "agent", ns1, success = true)
+            service.stopTimerAndSendMetrics(service.startTimer(), "FILES__read", "agent", ns2, success = true)
+            service.stopTimerAndSendMetrics(service.startTimer(), "FILES__read", "agent", ns1, success = true)
+
+            val counterNs1 =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
+                    .tag(ToolMetricsService.TAG_NAMESPACE_ID, ns1.toString())
+                    .counter()
+            val counterNs2 =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_TOTAL)
+                    .tag(ToolMetricsService.TAG_NAMESPACE_ID, ns2.toString())
+                    .counter()
+
+            counterNs1?.count() shouldBe 2.0
+            counterNs2?.count() shouldBe 1.0
+        }
+    })

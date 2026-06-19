@@ -3,6 +3,8 @@ package io.whozoss.agentos.metrics
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
 import io.micrometer.core.instrument.Timer
+import io.whozoss.agentos.metrics.ToolMetricsService.Companion.METRIC_TOOL_CALLS_DURATION
+import io.whozoss.agentos.metrics.ToolMetricsService.Companion.METRIC_TOOL_CALLS_TOTAL
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -31,7 +33,7 @@ import java.util.UUID
  * Distribution of wall-clock tool execution durations, measured with [Timer.Sample]
  * (nanosecond precision via [MeterRegistry.config().clock()]).
  * Same tags as `agentos.tool.calls.total`.
- * Use [startTimer] before execution and [stopTimer] after to record a sample.
+ * Use [startTimer] before execution and [stopTimerAndSendMetrics] after to record a sample.
  *
  * ### `agentos.tool.parameter_generation.failures` (Counter)
  * Incremented when [AgentAdvanced] exhausts all retry attempts and falls back
@@ -57,7 +59,7 @@ class ToolMetricsService(
      * Starts a [Timer.Sample] using the registry's clock.
      *
      * Call this immediately before the tool execution block, then pass the returned
-     * sample to [stopTimer] in both the success and error branches.
+     * sample to [stopTimerAndSendMetrics] in both the success and error branches.
      *
      * Returns `null` only when the meter registry is unavailable (defensive — in
      * practice the registry is always present when this service is instantiated).
@@ -76,7 +78,7 @@ class ToolMetricsService(
      * @param success     Whether the tool reported a successful result.
      * @return Elapsed duration in whole milliseconds.
      */
-    fun stopTimer(
+    fun stopTimerAndSendMetrics(
         sample: Timer.Sample?,
         toolName: String,
         agentName: String,
@@ -109,9 +111,12 @@ class ToolMetricsService(
     ) {
         val tags =
             Tags.of(
-                TAG_TOOL_NAME, toolName,
-                TAG_AGENT_NAME, agentName,
-                TAG_NAMESPACE_ID, namespaceId.toString(),
+                TAG_TOOL_NAME,
+                toolName,
+                TAG_AGENT_NAME,
+                agentName,
+                TAG_NAMESPACE_ID,
+                namespaceId.toString(),
             )
 
         meterRegistry
@@ -135,10 +140,14 @@ class ToolMetricsService(
     ) {
         val tags =
             Tags.of(
-                TAG_TOOL_NAME, toolName,
-                TAG_AGENT_NAME, agentName,
-                TAG_NAMESPACE_ID, namespaceId.toString(),
-                TAG_OUTCOME, outcome.tagValue,
+                TAG_TOOL_NAME,
+                toolName,
+                TAG_AGENT_NAME,
+                agentName,
+                TAG_NAMESPACE_ID,
+                namespaceId.toString(),
+                TAG_OUTCOME,
+                outcome.tagValue,
             )
 
         meterRegistry
@@ -157,11 +166,16 @@ class ToolMetricsService(
         status: String,
     ): Tags =
         Tags.of(
-            TAG_TOOL_NAME, toolName,
-            TAG_INTEGRATION_TYPE, toolName.substringBefore("__", missingDelimiterValue = INTEGRATION_TYPE_UNKNOWN),
-            TAG_AGENT_NAME, agentName,
-            TAG_NAMESPACE_ID, namespaceId.toString(),
-            TAG_STATUS, status,
+            TAG_TOOL_NAME,
+            toolName,
+            TAG_INTEGRATION_TYPE,
+            toolName.substringBefore("__", missingDelimiterValue = INTEGRATION_TYPE_UNKNOWN),
+            TAG_AGENT_NAME,
+            agentName,
+            TAG_NAMESPACE_ID,
+            namespaceId.toString(),
+            TAG_STATUS,
+            status,
         )
 
     // -------------------------------------------------------------------------
