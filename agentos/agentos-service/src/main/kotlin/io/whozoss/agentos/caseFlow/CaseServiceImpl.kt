@@ -24,6 +24,7 @@ import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -65,6 +66,12 @@ class CaseServiceImpl(
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
+    /**
+     * Eviction watcher [Job] per active runtime, keyed by case id.
+     * Cancelled whenever the runtime leaves [activeRuntimes] (terminal status or eviction).
+     */
+    private val watcherJobs = ConcurrentHashMap<UUID, Job>()
+
     // ======================================================
     // EntityService
     // ======================================================
@@ -76,6 +83,7 @@ class CaseServiceImpl(
         val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
+        // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
         return saved
     }
 
@@ -145,6 +153,7 @@ class CaseServiceImpl(
         val pastEvents = caseEventService.findByParent(caseId)
         logger.info { "Rehydrating case $caseId with ${pastEvents.size} past events" }
         return buildRuntime(case, pastEvents)
+        // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
     }
 
     /**
@@ -170,7 +179,7 @@ class CaseServiceImpl(
      * cancelled when [scope] is cancelled (service shutdown).
      */
     private fun startEvictionWatcher(caseId: UUID, runtime: CaseRuntime) {
-        scope.launch {
+        val job = scope.launch {
             combine(runtime.subscriptionCount, runtime.statusFlow) { count, status ->
                 count == 0 && status == CaseStatus.IDLE
             }
@@ -186,6 +195,7 @@ class CaseServiceImpl(
                         runtime.statusFlow.value == CaseStatus.IDLE
                     ) {
                         activeRuntimes.remove(caseId)
+                        cancelEvictionWatcher(caseId)
                         logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
                     } else {
                         logger.debug {
@@ -195,6 +205,12 @@ class CaseServiceImpl(
                     }
                 }
         }
+        watcherJobs[caseId] = job
+    }
+
+    /** Cancels the eviction watcher for [caseId] and removes it from [watcherJobs]. */
+    private fun cancelEvictionWatcher(caseId: UUID) {
+        watcherJobs.remove(caseId)?.cancel()
     }
 
     /** Constructs a [CaseRuntime] wired with all service callbacks. */
@@ -228,6 +244,7 @@ class CaseServiceImpl(
                 )
             },
             inputEvents = inputEvents,
+            initialStatus = case.status,
         ).also { startEvictionWatcher(case.id, it) }
 
     // ======================================================
@@ -562,6 +579,7 @@ class CaseServiceImpl(
             it.emitEvent(savedStatusEvent)
             if (newStatus.isTerminal()) {
                 activeRuntimes.remove(caseId)
+                cancelEvictionWatcher(caseId)
                 logger.info { "Case $caseId reached terminal status $newStatus, evicted" }
             }
         }

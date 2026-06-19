@@ -56,6 +56,7 @@ class CaseRuntime(
     private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
     private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
+    initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
@@ -87,7 +88,7 @@ class CaseRuntime(
     private val maxIterations = 100
     private var iterationCount = 0
 
-    private val _statusFlow = MutableStateFlow(CaseStatus.PENDING)
+    private val _statusFlow = MutableStateFlow(initialStatus)
 
     // -------------------------------------------------------------------------
     // Public state
@@ -95,8 +96,9 @@ class CaseRuntime(
 
     /**
      * Reactive view of the current [CaseStatus].
-     * Updated synchronously inside [run] before and after each transition,
-     * and by [requestKill] for the terminal path.
+     * Updated synchronously inside [run] before and after each transition.
+     * Initialised to [initialStatus] so rehydrated runtimes start with the
+     * correct persisted status rather than always [CaseStatus.PENDING].
      * Consumers can combine this with [subscriptionCount] to react to the
      * conjunction of "case is idle" and "no SSE subscribers".
      */
