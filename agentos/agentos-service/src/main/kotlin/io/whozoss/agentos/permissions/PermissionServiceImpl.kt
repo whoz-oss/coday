@@ -167,8 +167,6 @@ class PermissionServiceImpl(
             val requiredRelation =
                 when (action) {
                     Action.READ -> PermissionRelation.MEMBER
-
-                    // MEMBER or ADMIN can READ
                     Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
                 }
             permissionRepository.listEntitiesForUser(userId, entityType, requiredRelation)
@@ -188,8 +186,6 @@ class PermissionServiceImpl(
             val requiredRelation =
                 when (action) {
                     Action.READ -> PermissionRelation.MEMBER
-
-                    // MEMBER or ADMIN can READ
                     Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
                 }
             permissionRepository.filterVisibleIds(userId, entityType, ids, requiredRelation)
