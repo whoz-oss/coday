@@ -25,8 +25,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
@@ -42,6 +45,17 @@ class CaseServiceImpl(
     private val caseEventService: CaseEventService,
     private val userService: UserService,
     private val namespaceService: NamespaceService,
+    /**
+     * How long to wait for SSE subscribers to disconnect before giving up and keeping the runtime.
+     * After this timeout with subscribers still active, eviction is skipped. Defaults to 30 s.
+     */
+    private val idleEvictionTimeoutMs: Long = 30_000L,
+    /**
+     * Stabilisation grace period after the last SSE subscriber disconnects.
+     * Prevents evicting a runtime that is briefly between reconnects (e.g. page refresh).
+     * Defaults to 5 s.
+     */
+    private val idleEvictionGraceMs: Long = 5_000L,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -496,9 +510,12 @@ class CaseServiceImpl(
         // Emit the status event before eviction so SSE clients receive it.
         activeRuntimes[caseId]?.let {
             it.emitEvent(savedStatusEvent)
-            if (newStatus.isTerminal()) {
-                activeRuntimes.remove(caseId)
-                logger.info { "Case $caseId reached terminal status $newStatus, evicted" }
+            when {
+                newStatus.isTerminal() -> {
+                    activeRuntimes.remove(caseId)
+                    logger.info { "Case $caseId reached terminal status $newStatus, evicted" }
+                }
+                newStatus == CaseStatus.IDLE -> scheduleIdleEviction(caseId, it)
             }
         }
     }
@@ -506,6 +523,50 @@ class CaseServiceImpl(
     // ======================================================
     // Execution control
     // ======================================================
+
+    /**
+     * Schedules eviction of an IDLE runtime once all SSE subscribers have disconnected.
+     *
+     * After the grace period ([idleEvictionDelayMs]) expires, the runtime is evicted only
+     * if it is still IDLE and still has no active SSE subscribers. If a new user message
+     * arrives in the meantime the runtime transitions back to RUNNING and the eviction
+     * guard (`subscriptionCount > 0 || status != IDLE`) prevents premature removal.
+     *
+     * The eviction uses a two-step check:
+     * 1. Wait up to [idleEvictionDelayMs] for subscriptionCount to reach 0.
+     * 2. Once at 0, apply the grace delay, then re-check subscriptionCount and the
+     *    persisted case status before removing from [activeRuntimes].
+     */
+    private fun scheduleIdleEviction(caseId: UUID, runtime: CaseRuntime) {
+        scope.launch {
+            // Step 1: wait for all SSE subscribers to disconnect.
+            // If they are still connected after the timeout, keep the runtime alive.
+            val disconnected = withTimeoutOrNull(idleEvictionTimeoutMs) {
+                runtime.subscriptionCount.first { it == 0 }
+            }
+            if (disconnected == null) {
+                logger.debug { "Case $caseId: SSE subscribers still connected after ${idleEvictionTimeoutMs}ms, skipping eviction" }
+                return@launch
+            }
+
+            // Step 2: stabilisation grace period — handles brief reconnects (e.g. page refresh).
+            delay(idleEvictionGraceMs)
+
+            // Step 3: re-check before committing to eviction.
+            val currentRuntime = activeRuntimes[caseId]
+            if (currentRuntime == null) {
+                return@launch // already evicted by a terminal status change or explicit kill
+            }
+            val currentStatus = caseRepository.findByIds(listOf(caseId)).firstOrNull()?.status
+            if (currentStatus != CaseStatus.IDLE || currentRuntime.subscriptionCount.value > 0) {
+                logger.debug { "Case $caseId: not evicting — status=$currentStatus, subscribers=${currentRuntime.subscriptionCount.value}" }
+                return@launch
+            }
+
+            activeRuntimes.remove(caseId)
+            logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
+        }
+    }
 
     override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> =
         activeRuntimes.values.filter { it.namespaceId == namespaceId }

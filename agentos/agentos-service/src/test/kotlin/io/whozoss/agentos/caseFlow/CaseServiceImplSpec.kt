@@ -182,6 +182,8 @@ class CaseServiceImplSpec :
             defaultAgentName: String? = agentName,
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
+            idleEvictionTimeoutMs: Long = 30_000L,
+            idleEvictionGraceMs: Long = 5_000L,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -205,6 +207,8 @@ class CaseServiceImplSpec :
                 caseEventService,
                 userService,
                 namespaceService,
+                idleEvictionTimeoutMs = idleEvictionTimeoutMs,
+                idleEvictionGraceMs = idleEvictionGraceMs,
             )
         }
 
@@ -1121,6 +1125,109 @@ class CaseServiceImplSpec :
             // The selected agent must be `inspector`, not `inspector https://...`
             persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe inspectorName
             verify(exactly = 1) { allowAllAgentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, inspectorName) }
+        }
+
+        // -------------------------------------------------------------------------
+        // Idle runtime eviction
+        // -------------------------------------------------------------------------
+
+        "idle runtime is evicted after all SSE subscribers disconnect and grace period elapses" {
+            // With idleEvictionTimeoutMs=0 the timeout fires immediately if subscribers > 0,
+            // but since we won't subscribe at all, subscriptionCount is already 0 when
+            // scheduleIdleEviction runs. With idleEvictionGraceMs=50 the eviction happens
+            // quickly enough to observe in a test without long waits.
+            val service = buildService(idleEvictionTimeoutMs = 2_000L, idleEvictionGraceMs = 50L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // Subscribe, let the case reach IDLE, then unsubscribe.
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+            // awaiter job ends, which cancels its coroutine -> subscriptionCount drops to 0.
+
+            // Wait for the grace period + a small margin to let the eviction coroutine run.
+            delay(200)
+
+            // The runtime must have been evicted: findActiveRuntime returns null.
+            service.findActiveRuntime(case.id) shouldBe null
+            // The case itself is still persisted and accessible.
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        "idle runtime is NOT evicted when a new message arrives before grace period elapses" {
+            // idleEvictionGraceMs=500 gives us a window to send a second message.
+            val service = buildService(idleEvictionTimeoutMs = 2_000L, idleEvictionGraceMs = 500L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // First message -> IDLE
+            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("first")),
+            )
+            firstIdle.join()
+            awaitNotRunning(runtime)
+
+            // Send a second message immediately — the runtime transitions IDLE -> RUNNING
+            // before the grace period elapses, which should cancel the pending eviction.
+            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("second")),
+            )
+            secondIdle.join()
+
+            // Wait past the grace period to confirm eviction did NOT happen.
+            delay(700)
+
+            // Runtime must still be alive because a new message arrived before grace elapsed.
+            service.findActiveRuntime(case.id) shouldBe runtime
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        "idle runtime is NOT evicted while SSE subscribers remain connected" {
+            // idleEvictionTimeoutMs=100 — if subscribers were 0 the eviction would fire quickly.
+            // We keep a subscriber alive for the whole duration to verify it is NOT evicted.
+            val service = buildService(idleEvictionTimeoutMs = 100L, idleEvictionGraceMs = 50L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            // Keep a long-lived subscriber open so subscriptionCount stays > 0.
+            val longLivedJob = scope.launch {
+                withTimeout(5_000) {
+                    runtime.events.collect { /* keep alive */ }
+                }
+            }
+
+            // Wait well past idleEvictionTimeoutMs to confirm no eviction happened.
+            delay(300)
+
+            service.findActiveRuntime(case.id) shouldBe runtime
+
+            longLivedJob.cancel()
         }
 
         "@mention followed by a URL with non-breaking space selects the agent and ignores the URL" {
