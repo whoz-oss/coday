@@ -80,6 +80,7 @@ management:
   # Datadog metrics export — disabled by default, opt-in via environment variables.
   # Set DATADOG_API_KEY (required) and DATADOG_METRICS_ENABLED=true to activate.
   # DATADOG_SITE defaults to the US endpoint; override to 'datadoghq.eu' for EU tenants.
+  # prefer statsd if possible
   datadog:
     metrics:
       export:
@@ -98,6 +99,23 @@ management:
     tags:
       application: agentos
       environment: ${SPRING_PROFILES_ACTIVE:local}
+  # statsd configuration
+  # declared here for test purpose, should be in whoz conf directories
+  statsd:
+    metrics:
+      export:
+        enabled: true
+        flavor: datadog
+        host: localhost
+        port: 8127
+# cmd line to run datadog container
+# docker run -d \
+# -e DD_API_KEY=xxxxxx \
+# -e DD_SITE=datadoghq.eu \
+# -e DD_HOSTNAME=thomas.martin \
+# -e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true \
+# -p 8126:8126 -p 8127:8125 \
+# datadog/agent:latest
 
 agentos:
   defaults:

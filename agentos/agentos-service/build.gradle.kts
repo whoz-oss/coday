@@ -120,7 +120,7 @@ dependencies {
 
     // Micrometer Datadog registry — exports tool-call metrics to Datadog.
     // Disabled by default (requires DATADOG_API_KEY + management.datadog.metrics.export.enabled=true).
-    implementation(libs.micrometer.registry.datadog)
+    implementation(libs.micrometer.registry.statsd)
 
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)

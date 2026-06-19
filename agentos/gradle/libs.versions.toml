@@ -81,7 +81,7 @@ spring-cloud-starter-config = { module = "org.springframework.cloud:spring-cloud
 spring-cloud-starter-eureka-client = { module = "org.springframework.cloud:spring-cloud-starter-netflix-eureka-client", version.ref = "springCloudNetflixEureka" }
 
 # Klogger
-klogger = {module="io.github.microutils:kotlin-logging-jvm", version.ref="klogger"}
+klogger = { module = "io.github.microutils:kotlin-logging-jvm", version.ref = "klogger" }
 
 # Logstash Logback Encoder — JSON structured logging
 logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashLogbackEncoder" }
@@ -89,6 +89,7 @@ logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-enc
 # Disabled at runtime unless DATADOG_API_KEY is set and datadog.metrics.export.enabled=true.
 # Version managed by Spring Boot BOM.
 micrometer-registry-datadog = { module = "io.micrometer:micrometer-registry-datadog" }
+micrometer-registry-statsd = { module = "io.micrometer:micrometer-registry-statsd" }
 
 # OkHttp — HTTP client used by plugins (e.g. copilot) and optionally by Feign (whoz profile)
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
