@@ -14,6 +14,9 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import mu.KLogging
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -84,9 +87,20 @@ class CaseRuntime(
     private val maxIterations = 100
     private var iterationCount = 0
 
+    private val _statusFlow = MutableStateFlow(CaseStatus.PENDING)
+
     // -------------------------------------------------------------------------
     // Public state
     // -------------------------------------------------------------------------
+
+    /**
+     * Reactive view of the current [CaseStatus].
+     * Updated synchronously inside [run] before and after each transition,
+     * and by [requestKill] for the terminal path.
+     * Consumers can combine this with [subscriptionCount] to react to the
+     * conjunction of "case is idle" and "no SSE subscribers".
+     */
+    val statusFlow: StateFlow<CaseStatus> = _statusFlow.asStateFlow()
 
     /**
      * Interrupt the current agent turn and return to [CaseStatus.IDLE].
@@ -228,6 +242,7 @@ class CaseRuntime(
         logger.info { "[CaseRuntime $id] run() started" }
         interruptRequested.set(false)
         killRequested.set(false)
+        _statusFlow.value = CaseStatus.RUNNING
         updateStatus(id, CaseStatus.RUNNING)
         iterationCount = 0
 
@@ -244,22 +259,26 @@ class CaseRuntime(
             when {
                 iterationCount >= maxIterations -> {
                     logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
+                    _statusFlow.value = CaseStatus.ERROR
                     updateStatus(id, CaseStatus.ERROR)
                 }
 
                 killRequested.get() -> {
                     // Explicit kill: permanent termination. Service will evict the runtime.
+                    _statusFlow.value = CaseStatus.KILLED
                     updateStatus(id, CaseStatus.KILLED)
                 }
 
                 else -> {
                     // Normal turn-end: agent finished, waiting for next user message.
                     // Non-terminal — runtime stays alive, SSE flow stays open.
+                    _statusFlow.value = CaseStatus.IDLE
                     updateStatus(id, CaseStatus.IDLE)
                 }
             }
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Error during execution" }
+            _statusFlow.value = CaseStatus.ERROR
             updateStatus(id, CaseStatus.ERROR)
         } finally {
             runInFlight.set(false)

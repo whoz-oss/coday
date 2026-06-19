@@ -27,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import mu.KLogging
@@ -45,11 +46,16 @@ class CaseServiceImpl(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     /**
-     * Stabilisation grace period after the last SSE subscriber disconnects.
-     * Prevents evicting a runtime that is briefly between reconnects (e.g. page refresh).
-     * Defaults to 5 s.
+     * Grace period after the last SSE subscriber disconnects from an idle case.
+     * The runtime is evicted only if no subscriber reconnects within this window.
+     *
+     * Aligned with typical LLM prompt-cache TTLs (~5 min): keeping the runtime alive
+     * beyond that offers no cache benefit, and a user who takes more than 5 min to
+     * reply is unlikely to continue the conversation immediately anyway.
+     *
+     * Defaults to 5 min.
      */
-    private val idleEvictionGraceMs: Long = 5_000L,
+    private val idleEvictionGraceMs: Long = 5 * 60 * 1_000L,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -144,35 +150,48 @@ class CaseServiceImpl(
     /**
      * Starts a long-lived eviction watcher for [runtime].
      *
-     * The watcher collects [CaseRuntime.subscriptionCount] — a [kotlinx.coroutines.flow.StateFlow] —
-     * and reacts to every transition to 0. On each such transition it:
-     * 1. Waits [idleEvictionGraceMs] to absorb brief reconnects (e.g. page refresh).
-     * 2. Re-checks that the runtime is still in [activeRuntimes], the case status is
-     *    still [CaseStatus.IDLE], and [subscriptionCount] is still 0.
-     * 3. If all conditions hold, evicts the runtime.
+     * Combines [CaseRuntime.subscriptionCount] and [CaseRuntime.statusFlow] into a
+     * single signal: eviction is only triggered when **both** conditions hold at the
+     * same time — the case is [CaseStatus.IDLE] **and** no SSE subscribers are connected.
      *
-     * The coroutine runs for the lifetime of the runtime. It is automatically cancelled
-     * when [scope] is cancelled (service shutdown).
+     * This avoids the race where a client disconnects while the agent is still running:
+     * `subscriptionCount` would fall to 0 during [CaseStatus.RUNNING], but `combine`
+     * emits `false` for that state and the grace period never starts.
      *
-     * A single watcher per runtime handles all subscription lifecycle events — including
-     * late connections (clients that connect after the run completes) and multiple
-     * connect/disconnect cycles.
+     * On each transition to `(IDLE, 0)`, the watcher:
+     * 1. Waits [idleEvictionGraceMs] to absorb brief reconnects (e.g. page refresh,
+     *    or a user typing a quick follow-up).
+     * 2. Re-checks the combined condition — if a subscriber reconnected or a new
+     *    message arrived (status back to RUNNING) during the grace period, eviction
+     *    is skipped.
+     * 3. If both conditions still hold, evicts the runtime.
+     *
+     * The coroutine runs for the lifetime of the service scope. It is automatically
+     * cancelled when [scope] is cancelled (service shutdown).
      */
     private fun startEvictionWatcher(caseId: UUID, runtime: CaseRuntime) {
         scope.launch {
-            runtime.subscriptionCount
-                .filter { it == 0 }
+            combine(runtime.subscriptionCount, runtime.statusFlow) { count, status ->
+                count == 0 && status == CaseStatus.IDLE
+            }
+                .filter { it }
                 .collect {
-                    // Grace period: absorb brief reconnects before committing to eviction.
+                    // Grace period: absorb brief reconnects and fast follow-up messages.
                     delay(idleEvictionGraceMs)
 
-                    val currentRuntime = activeRuntimes[caseId] ?: return@collect
-                    val currentStatus = caseRepository.findByIds(listOf(caseId)).firstOrNull()?.status
-                    if (currentStatus == CaseStatus.IDLE && currentRuntime.subscriptionCount.value == 0) {
+                    // Re-check: a subscriber may have reconnected or a new message may
+                    // have arrived (status back to RUNNING) during the grace period.
+                    if (activeRuntimes.containsKey(caseId) &&
+                        runtime.subscriptionCount.value == 0 &&
+                        runtime.statusFlow.value == CaseStatus.IDLE
+                    ) {
                         activeRuntimes.remove(caseId)
                         logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
                     } else {
-                        logger.debug { "Case $caseId: eviction skipped — status=$currentStatus, subscribers=${currentRuntime.subscriptionCount.value}" }
+                        logger.debug {
+                            "Case $caseId: eviction skipped — " +
+                                "status=${runtime.statusFlow.value}, subscribers=${runtime.subscriptionCount.value}"
+                        }
                     }
                 }
         }

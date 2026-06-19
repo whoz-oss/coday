@@ -1129,6 +1129,67 @@ class CaseServiceImplSpec :
         // Idle runtime eviction
         // -------------------------------------------------------------------------
 
+        "idle runtime is NOT evicted when client disconnects while agent is still running" {
+            // The eviction watcher combines subscriptionCount and statusFlow.
+            // If subscriptionCount drops to 0 while status is RUNNING, combine emits false
+            // and the grace period never starts — the runtime must survive until the run completes.
+            //
+            // This test uses a slow agent (500ms delay) so there is a clear window where
+            // subscriptionCount == 0 AND status == RUNNING simultaneously.
+            // We verify at 200ms — well inside RUNNING, well before the agent finishes.
+
+            val slowAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            delay(500) // simulate a slow agent run
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+
+            val service = buildService(agent = slowAgent, idleEvictionGraceMs = 50L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // Subscribe just long enough to observe RUNNING, then unsubscribe.
+            // This creates the window: subscriptionCount == 0 while status == RUNNING.
+            val shortLivedJob =
+                scope.launch {
+                    withTimeout(8_000) {
+                        runtime.events
+                            .filterIsInstance<CaseStatusEvent>()
+                            .first { it.status == CaseStatus.RUNNING }
+                    }
+                }
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            shortLivedJob.join() // unsubscribes when RUNNING is seen
+            // subscriptionCount is now 0, status is RUNNING — eviction must NOT fire
+
+            // Verify at 200ms: the agent is still running (500ms delay), no eviction should happen.
+            delay(200)
+            service.findActiveRuntime(case.id) shouldBe runtime
+        }
+
         "idle runtime is evicted after all SSE subscribers disconnect and grace period elapses" {
             val service = buildService(idleEvictionGraceMs = 50L)
             val case = service.create(Case(namespaceId = namespaceId))
