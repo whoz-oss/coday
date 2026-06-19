@@ -86,9 +86,13 @@ management:
         enabled: ${DATADOG_METRICS_ENABLED:false}
         api-key: ${DATADOG_API_KEY:}
         application-key: ${DATADOG_APP_KEY:}
-        uri: https://api.${DATADOG_SITE:datadoghq.com}
+        uri: https://api.${DATADOG_SITE:datadoghq.eu}
         # Push interval — 30s balances freshness against Datadog ingest costs.
         step: 30s
+        # Disable metric metadata push — the /api/v1/metrics endpoint does not
+        # exist on datadoghq.eu and returns 404, logged misleadingly as Unauthorized.
+        # Metric data still flows correctly via /api/v1/series.
+        descriptions: false
   # Common tags applied to all metrics exported by this service.
   metrics:
     tags:
@@ -97,10 +101,10 @@ management:
 
 agentos:
   defaults:
-    # Environment-level fallback agent name. Consulted when a namespace has no
-    # defaultAgentName configured. The named agent must exist in the case's namespace.
-    # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
-    # agent-name: copilot
+  # Environment-level fallback agent name. Consulted when a namespace has no
+  # defaultAgentName configured. The named agent must exist in the case's namespace.
+  # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
+  # agent-name: copilot
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
   security:
