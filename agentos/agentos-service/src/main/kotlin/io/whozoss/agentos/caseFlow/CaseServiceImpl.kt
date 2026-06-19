@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.micrometer.tracing.Tracer
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
@@ -8,6 +9,8 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.tracing.OtelCoroutineContext
+import io.whozoss.agentos.tracing.withSpan
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -42,6 +45,10 @@ class CaseServiceImpl(
     private val caseEventService: CaseEventService,
     private val userService: UserService,
     private val namespaceService: NamespaceService,
+    // Nullable: Spring Boot auto-configures a Tracer only when tracing is enabled.
+    // When management.tracing.enabled=false (the default) no Tracer bean is registered
+    // and the app starts normally without any tracing overhead.
+    private val tracer: Tracer? = null,
 ) : CaseService {
     /**
      * Coroutine scope used to run case execution loops in the background.
@@ -180,7 +187,9 @@ class CaseServiceImpl(
         val runtime = getCaseRuntime(caseId)
         runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
-        scope.launch { runtime.run() }
+        // OtelCoroutineContext captures the current OTel span so the background coroutine
+        // remains a child of the originating HTTP request trace.
+        scope.launch(OtelCoroutineContext()) { runtime.run() }
     }
 
     // ======================================================
@@ -421,25 +430,35 @@ class CaseServiceImpl(
             }
         }
 
-        agent.run(events, shouldContinue)
-            .catch { error ->
-                logger.error(error) { "Error in agent $agentName for case $caseId" }
-                storeEvent(
-                    WarnEvent(
-                        namespaceId = runtime.namespaceId,
-                        caseId = caseId,
-                        message = "Agent $agentName error: ${error.message}",
-                    ),
-                ).also { saved ->
+        withSpan(
+            tracer,
+            "agent.run",
+            mapOf(
+                "agent.name" to agentName,
+                "case.id" to caseId.toString(),
+                "namespace.id" to runtime.namespaceId.toString(),
+            ),
+        ) {
+            agent.run(events, shouldContinue)
+                .catch { error ->
+                    logger.error(error) { "Error in agent $agentName for case $caseId" }
+                    storeEvent(
+                        WarnEvent(
+                            namespaceId = runtime.namespaceId,
+                            caseId = caseId,
+                            message = "Agent $agentName error: ${error.message}",
+                        ),
+                    ).also { saved ->
+                        runtime.emitEvent(saved)
+                    }
+                }.collect { event ->
+                    val saved = storeEvent(event)
+                    if (event.caseId == caseId && event !is TransientCaseEvent) {
+                        runtime.pushEvents(listOf(saved))
+                    }
                     runtime.emitEvent(saved)
                 }
-            }.collect { event ->
-                val saved = storeEvent(event)
-                if (event.caseId == caseId && event !is TransientCaseEvent) {
-                    runtime.pushEvents(listOf(saved))
-                }
-                runtime.emitEvent(saved)
-            }
+        }
         logger.info { "Agent $agentName finished for case $caseId" }
     }
 

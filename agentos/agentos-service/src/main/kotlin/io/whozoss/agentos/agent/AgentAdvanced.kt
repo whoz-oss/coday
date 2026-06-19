@@ -1,7 +1,10 @@
 package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.agent.AgentAdvanced.Companion.REPETITION_WINDOW
 import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
+import io.whozoss.agentos.metrics.ConfirmationOutcome
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -51,6 +54,8 @@ class AgentAdvanced(
     private val maxIterations: Int = 20,
     override val llmProvider: String,
     override val llmModel: String,
+    /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
+    private val toolMetricsService: ToolMetricsService? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -581,9 +586,18 @@ class AgentAdvanced(
         caseId: UUID,
         emitEvent: suspend (CaseEvent) -> Unit,
     ): GateOutcome {
+        val sample = toolMetricsService?.startTimer()
         val response =
             try {
                 val result = tool.executeWithJson(argsJson, toolCtx)
+                val durationMs =
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = parameters.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = result.success,
+                    )
                 ToolResponseEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
@@ -591,12 +605,21 @@ class AgentAdvanced(
                     toolName = parameters.toolName,
                     output = MessageContent.Text(result.output),
                     success = result.success,
+                    durationMs = durationMs,
                     toolMetadata = result.metadata,
                 )
             } catch (e: Exception) {
                 logger.warn(e) {
                     "[AgentAdvanced] implicit-consent tool execution failed for ${tool.name}"
                 }
+                val durationMs =
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = parameters.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = false,
+                    )
                 ToolResponseEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
@@ -604,6 +627,7 @@ class AgentAdvanced(
                     toolName = parameters.toolName,
                     output = MessageContent.Text("Error executing tool: ${e.message}"),
                     success = false,
+                    durationMs = durationMs,
                 )
             }
         emitEvent(response)
@@ -807,14 +831,29 @@ class AgentAdvanced(
         if (confirmed) {
             var failed = false
             var result: ToolExecutionResult? = null
+            val sample = toolMetricsService?.startTimer()
             val output =
                 try {
                     result = tool.executeWithJson(pending.inputJson, toolCtx)
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = pending.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = result.success,
+                    )
                     result.output
                 } catch (e: Exception) {
                     logger.warn(e) {
                         "[AgentAdvanced] tool execution failed during confirmation resolution for ${pending.toolName}"
                     }
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = pending.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = false,
+                    )
                     failed = true
                     "Error during tool execution: ${e.message}"
                 }
@@ -871,16 +910,29 @@ class AgentAdvanced(
         emitEvent(syntheticResponse)
         appendTo += syntheticResponse
 
-        return when {
+        val confirmationOutcome =
+            when {
+                confirmed && !executionFailed -> ConfirmationOutcome.APPLIED
+                !confirmed -> ConfirmationOutcome.REJECTED
+                else -> ConfirmationOutcome.ABORTED
+            }
+        toolMetricsService?.recordConfirmation(
+            toolName = pending.toolName,
+            agentName = name,
+            namespaceId = namespaceId,
+            outcome = confirmationOutcome,
+        )
+
+        return when (confirmationOutcome) {
             // User confirmed AND tool ran successfully → fall through, LLM can comment.
-            confirmed && !executionFailed -> ConfirmationResolution.Applied
+            ConfirmationOutcome.APPLIED -> ConfirmationResolution.Applied
 
             // User explicitly refused → fall through, LLM can produce a natural follow-up.
-            !confirmed -> ConfirmationResolution.Rejected
+            ConfirmationOutcome.REJECTED -> ConfirmationResolution.Rejected
 
             // Confirmed but the tool threw (executionFailed=true) → no useful continuation;
             // the user just got bitten by a real failure, don't push the LLM to retry.
-            else -> ConfirmationResolution.Aborted
+            ConfirmationOutcome.ABORTED -> ConfirmationResolution.Aborted
         }
     }
 
@@ -1265,6 +1317,11 @@ Output requirements:
             val message =
                 "Failed to generate valid JSON parameters for '${tool.name}' after $MAX_PARAMETER_ATTEMPTS attempts."
             emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = message))
+            toolMetricsService?.recordParameterGenerationFailure(
+                toolName = tool.name,
+                agentName = name,
+                namespaceId = namespaceId,
+            )
         }
 
         return result
@@ -1348,8 +1405,14 @@ Output requirements:
         val traces =
             (0 until tool.getIntermediatePhaseCount()).mapWhile(
                 transform = { phaseIndex ->
-                    runEnrichmentPhase(tool, phaseIndex, previousContent, accumulatedEvents, intentionEvent, namespaceId)
-                        .also { trace -> if (trace.success) previousContent = trace.enrichmentContent }
+                    runEnrichmentPhase(
+                        tool,
+                        phaseIndex,
+                        previousContent,
+                        accumulatedEvents,
+                        intentionEvent,
+                        namespaceId,
+                    ).also { trace -> if (trace.success) previousContent = trace.enrichmentContent }
                 },
                 predicate = { phaseIndex, trace ->
                     trace.success.also {
@@ -1456,7 +1519,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
             }
 
             else -> {
-                val startMs = System.currentTimeMillis()
+                val sample = toolMetricsService?.startTimer()
                 try {
                     val filteredEvents = filterEventsByIntegration(toolRequest.toolName, caseEventsProvider())
                     val result: ToolExecutionResult =
@@ -1469,6 +1532,14 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                                 caseEvents = filteredEvents,
                             ),
                         )
+                    val durationMs =
+                        toolMetricsService?.stopTimerAndSendMetrics(
+                            sample = sample,
+                            toolName = toolRequest.toolName,
+                            agentName = name,
+                            namespaceId = namespaceId,
+                            success = result.success,
+                        )
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
@@ -1476,17 +1547,33 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                         toolName = toolRequest.toolName,
                         output = MessageContent.Text(result.output),
                         success = result.success,
-                        durationMs = System.currentTimeMillis() - startMs,
+                        durationMs = durationMs,
                         toolMetadata = result.metadata,
                     )
                 } catch (e: AgentInterrupt) {
                     // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent
                     // before the interrupt propagates to the run() catch block.
+                    // Stop the timer here so the sample is not leaked.
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = toolRequest.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = true,
+                    )
                     throw e
                 } catch (e: Exception) {
                     logger.warn(e) {
                         "[AgentAdvanced] error during tool execution for ${tool.name}"
                     }
+                    val durationMs =
+                        toolMetricsService?.stopTimerAndSendMetrics(
+                            sample = sample,
+                            toolName = toolRequest.toolName,
+                            agentName = name,
+                            namespaceId = namespaceId,
+                            success = false,
+                        )
                     ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
@@ -1494,7 +1581,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                         toolName = toolRequest.toolName,
                         output = MessageContent.Text("Error executing tool: ${e.message}"),
                         success = false,
-                        durationMs = System.currentTimeMillis() - startMs,
+                        durationMs = durationMs,
                     )
                 }
             }

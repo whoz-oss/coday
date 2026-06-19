@@ -118,6 +118,17 @@ dependencies {
     // Logstash Logback Encoder — JSON structured logging (used by logback-spring.xml docker profile)
     runtimeOnly(libs.logstash.logback.encoder)
 
+    // Micrometer Datadog registry — exports tool-call metrics to Datadog.
+    // Disabled by default (requires DATADOG_API_KEY + management.datadog.metrics.export.enabled=true).
+    implementation(libs.micrometer.registry.statsd)
+
+    // Micrometer Tracing — OTel bridge propagates trace context; OTLP exporter sends spans
+    // to any OTLP-compatible backend (Datadog agent, Jaeger, Tempo, …).
+    // Both versions are managed by the Spring Boot BOM (micrometer-tracing 1.5.5, OTel 1.49.0).
+    // Disabled by default via management.tracing.enabled=false in application.yml.
+    implementation(libs.micrometer.tracing.bridge.otel)
+    implementation(libs.opentelemetry.exporter.otlp)
+
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)
 
