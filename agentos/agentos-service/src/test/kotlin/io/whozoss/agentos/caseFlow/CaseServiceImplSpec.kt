@@ -182,7 +182,6 @@ class CaseServiceImplSpec :
             defaultAgentName: String? = agentName,
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
-            idleEvictionTimeoutMs: Long = 30_000L,
             idleEvictionGraceMs: Long = 5_000L,
         ): CaseServiceImpl {
             val namespace =
@@ -207,7 +206,6 @@ class CaseServiceImplSpec :
                 caseEventService,
                 userService,
                 namespaceService,
-                idleEvictionTimeoutMs = idleEvictionTimeoutMs,
                 idleEvictionGraceMs = idleEvictionGraceMs,
             )
         }
@@ -1132,11 +1130,7 @@ class CaseServiceImplSpec :
         // -------------------------------------------------------------------------
 
         "idle runtime is evicted after all SSE subscribers disconnect and grace period elapses" {
-            // With idleEvictionTimeoutMs=0 the timeout fires immediately if subscribers > 0,
-            // but since we won't subscribe at all, subscriptionCount is already 0 when
-            // scheduleIdleEviction runs. With idleEvictionGraceMs=50 the eviction happens
-            // quickly enough to observe in a test without long waits.
-            val service = buildService(idleEvictionTimeoutMs = 2_000L, idleEvictionGraceMs = 50L)
+            val service = buildService(idleEvictionGraceMs = 50L)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
@@ -1163,12 +1157,11 @@ class CaseServiceImplSpec :
 
         "idle runtime is NOT evicted when a new message arrives before grace period elapses" {
             // idleEvictionGraceMs=500 gives us a window to send a second message.
-            // The test verifies that the FIRST eviction coroutine (launched at the first IDLE)
-            // does NOT evict the runtime when a second message arrives within the grace period.
-            //
-            // After the second IDLE a new eviction coroutine fires, but we verify the runtime
-            // is still alive *before* that second grace period elapses (delay < graceMs).
-            val service = buildService(idleEvictionTimeoutMs = 2_000L, idleEvictionGraceMs = 500L)
+            // The eviction watcher fires when subscriptionCount hits 0 after the first IDLE.
+            // A second message arrives within the grace period, making the status RUNNING again.
+            // The guard (currentStatus == IDLE) prevents eviction, and we verify the runtime
+            // is still alive before the second grace period elapses.
+            val service = buildService(idleEvictionGraceMs = 500L)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
@@ -1205,9 +1198,9 @@ class CaseServiceImplSpec :
         }
 
         "idle runtime is NOT evicted while SSE subscribers remain connected" {
-            // idleEvictionTimeoutMs=100 — if subscribers were 0 the eviction would fire quickly.
-            // We keep a subscriber alive for the whole duration to verify it is NOT evicted.
-            val service = buildService(idleEvictionTimeoutMs = 100L, idleEvictionGraceMs = 50L)
+            // The eviction watcher only fires when subscriptionCount == 0.
+            // We keep a subscriber alive so subscriptionCount never reaches 0.
+            val service = buildService(idleEvictionGraceMs = 50L)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
