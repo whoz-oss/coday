@@ -1,3 +1,36 @@
+## 0.183.4 (2026-06-18)
+
+### 🩹 Fixes
+
+- wz-32642 use max character count to filter ToolResponse in context ([#1035](https://github.com/whoz-oss/coday/pull/1035))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
+## 0.183.3 (2026-06-18)
+
+### 🩹 Fixes
+
+- wz-32810 clarify what FindXXX tools do in intention ([3ec1c28f](https://github.com/whoz-oss/coday/commit/3ec1c28f))
+- wz-32810 clarify what FindXXX tools do in intention ([#1034](https://github.com/whoz-oss/coday/pull/1034))
+
+### ❤️ Thank You
+
+- Ivan Sfeir @ivan-sfeir-whoz
+- IvanSfeir @ivan-sfeir-whoz
+
+## 0.183.2 (2026-06-18)
+
+### 🩹 Fixes
+
+- WZ-32794 include link to created object in agent final response ([6a882308](https://github.com/whoz-oss/coday/commit/6a882308))
+- WZ-32794 include link to created object in agent final response ([#1033](https://github.com/whoz-oss/coday/pull/1033))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
 ## 0.183.1 (2026-06-17)
 
 ### 🩹 Fixes
