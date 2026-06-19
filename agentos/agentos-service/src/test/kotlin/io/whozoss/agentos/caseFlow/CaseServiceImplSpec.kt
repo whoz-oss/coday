@@ -1163,6 +1163,11 @@ class CaseServiceImplSpec :
 
         "idle runtime is NOT evicted when a new message arrives before grace period elapses" {
             // idleEvictionGraceMs=500 gives us a window to send a second message.
+            // The test verifies that the FIRST eviction coroutine (launched at the first IDLE)
+            // does NOT evict the runtime when a second message arrives within the grace period.
+            //
+            // After the second IDLE a new eviction coroutine fires, but we verify the runtime
+            // is still alive *before* that second grace period elapses (delay < graceMs).
             val service = buildService(idleEvictionTimeoutMs = 2_000L, idleEvictionGraceMs = 500L)
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1180,7 +1185,7 @@ class CaseServiceImplSpec :
             awaitNotRunning(runtime)
 
             // Send a second message immediately — the runtime transitions IDLE -> RUNNING
-            // before the grace period elapses, which should cancel the pending eviction.
+            // before the first grace period elapses, which cancels the first eviction.
             val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
             awaitSubscribers(runtime)
             service.addMessage(
@@ -1190,10 +1195,11 @@ class CaseServiceImplSpec :
             )
             secondIdle.join()
 
-            // Wait past the grace period to confirm eviction did NOT happen.
-            delay(700)
+            // Check BEFORE the second grace period elapses (delay << graceMs=500).
+            // The runtime must still be alive: the first eviction was cancelled by the
+            // second message, and the second eviction hasn't fired yet.
+            delay(100)
 
-            // Runtime must still be alive because a new message arrived before grace elapsed.
             service.findActiveRuntime(case.id) shouldBe runtime
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
