@@ -61,7 +61,7 @@ import kotlin.io.path.writeText
 internal class TestRemoveTool(
     private val rootDir: java.nio.file.Path,
     override val name: String = "FILES__remove",
-    private val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
+    private val forcedMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
 ) : StandardTool<TestRemoveTool.Input> {
     data class Input(
         val path: String? = null,
@@ -85,7 +85,7 @@ internal class TestRemoveTool(
         return ToolExecutionResult.success("File $path deleted successfully")
     }
 
-    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = confirmationMode
+    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = forcedMode
 
     override fun getConfirmationInstructions(): String = "Be strict: explicit confirmation only after the assistant's question."
 
@@ -1417,7 +1417,7 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
             val tempDir = Files.createTempDirectory("agentadvanced-ac6bis-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
-            val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.INFER)
+            val tool = TestRemoveTool(tempDir, name = "TEST__safe", forcedMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
