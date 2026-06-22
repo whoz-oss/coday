@@ -1,3 +1,15 @@
+## 0.184.0 (2026-06-22)
+
+### 🚀 Features
+
+- **ci:** add hotfix/* branch support to validate and release workflows ([174e325e](https://github.com/whoz-oss/coday/commit/174e325e))
+- **ci:** add hotfix/* branch support to validate and release workflows ([#1043](https://github.com/whoz-oss/coday/pull/1043))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.183.4 (2026-06-18)
 
 ### 🩹 Fixes
