@@ -79,6 +79,13 @@ management:
       show-details: always
 
 agentos:
+  case:
+    # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
+    # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
+    # idle-eviction-grace-ms: 300000
+    # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
+    # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
+    # sse-heartbeat-interval-ms: 30000
   defaults:
     # Environment-level fallback agent name. Consulted when a namespace has no
     # defaultAgentName configured. The named agent must exist in the case's namespace.

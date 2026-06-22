@@ -23,8 +23,8 @@ import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -46,18 +46,10 @@ class CaseServiceImpl(
     private val caseEventService: CaseEventService,
     private val userService: UserService,
     private val namespaceService: NamespaceService,
-    /**
-     * Grace period after the last SSE subscriber disconnects from an idle case.
-     * The runtime is evicted only if no subscriber reconnects within this window.
-     *
-     * Aligned with typical LLM prompt-cache TTLs (~5 min): keeping the runtime alive
-     * beyond that offers no cache benefit, and a user who takes more than 5 min to
-     * reply is unlikely to continue the conversation immediately anyway.
-     *
-     * Defaults to 5 min.
-     */
-    private val idleEvictionGraceMs: Long = 5 * 60 * 1_000L,
+    private val caseConfig: CaseConfigProperties = CaseConfigProperties(),
 ) : CaseService {
+    private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
+
     /**
      * Coroutine scope used to run case execution loops in the background.
      * Each [run] call is launched here so HTTP threads are never blocked.
@@ -102,7 +94,10 @@ class CaseServiceImpl(
         }
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Case> = caseRepository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<Case> = caseRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
@@ -178,33 +173,37 @@ class CaseServiceImpl(
      * The coroutine runs for the lifetime of the service scope. It is automatically
      * cancelled when [scope] is cancelled (service shutdown).
      */
-    private fun startEvictionWatcher(caseId: UUID, runtime: CaseRuntime) {
-        val job = scope.launch {
-            combine(runtime.subscriptionCount, runtime.statusFlow) { count, status ->
-                count == 0 && status == CaseStatus.IDLE
-            }
-                .filter { it }
-                .collect {
-                    // Grace period: absorb brief reconnects and fast follow-up messages.
-                    delay(idleEvictionGraceMs)
+    private fun startEvictionWatcher(
+        caseId: UUID,
+        runtime: CaseRuntime,
+    ) {
+        logger.trace { "Case $caseId eviction watcher started" }
+        val job =
+            scope.launch {
+                combine(runtime.subscriptionCount, runtime.statusFlow) { count, status ->
+                    count == 0 && status == CaseStatus.IDLE
+                }.filter { it }
+                    .collect {
+                        // Grace period: absorb brief reconnects and fast follow-up messages.
+                        delay(idleEvictionGraceMs)
 
-                    // Re-check: a subscriber may have reconnected or a new message may
-                    // have arrived (status back to RUNNING) during the grace period.
-                    if (activeRuntimes.containsKey(caseId) &&
-                        runtime.subscriptionCount.value == 0 &&
-                        runtime.statusFlow.value == CaseStatus.IDLE
-                    ) {
-                        activeRuntimes.remove(caseId)
-                        cancelEvictionWatcher(caseId)
-                        logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
-                    } else {
-                        logger.debug {
-                            "Case $caseId: eviction skipped — " +
-                                "status=${runtime.statusFlow.value}, subscribers=${runtime.subscriptionCount.value}"
+                        // Re-check: a subscriber may have reconnected or a new message may
+                        // have arrived (status back to RUNNING) during the grace period.
+                        if (activeRuntimes.containsKey(caseId) &&
+                            runtime.subscriptionCount.value == 0 &&
+                            runtime.statusFlow.value == CaseStatus.IDLE
+                        ) {
+                            activeRuntimes.remove(caseId)
+                            cancelEvictionWatcher(caseId)
+                            logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
+                        } else {
+                            logger.debug {
+                                "Case $caseId: eviction skipped — " +
+                                    "status=${runtime.statusFlow.value}, subscribers=${runtime.subscriptionCount.value}"
+                            }
                         }
                     }
-                }
-        }
+            }
         watcherJobs[caseId] = job
     }
 
@@ -502,7 +501,8 @@ class CaseServiceImpl(
             }
         }
 
-        agent.run(events, shouldContinue)
+        agent
+            .run(events, shouldContinue)
             .catch { error ->
                 logger.error(error) { "Error in agent $agentName for case $caseId" }
                 storeEvent(

@@ -4,13 +4,17 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
@@ -34,7 +38,9 @@ import java.util.UUID
 class CaseEventSseController(
     private val caseService: CaseService,
     private val caseEventService: CaseEventService,
+    private val caseConfig: CaseConfigProperties = CaseConfigProperties(),
 ) {
+    private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
     /**
      * Stream events for a case via SSE.
      *
@@ -107,27 +113,57 @@ class CaseEventSseController(
                         }
                     }
                     emitter.complete()
+                } catch (_: CancellationException) {
+                    // Normal path: collectorJob was cancelled because the client disconnected
+                    // (onError/onCompletion fired and called scope.cancel()). Not an error.
+                    logger.debug { "SSE collector cancelled for case $caseId (client disconnected)" }
                 } catch (error: Exception) {
                     logger.error("Error in event stream for case $caseId", error)
                     emitter.completeWithError(error)
                 }
             }
 
+        // Heartbeat: periodically send an SSE comment frame so that a client
+        // disconnect is detected even when the case is IDLE and emits no events.
+        // Without this, the collector coroutine above stays suspended on collect()
+        // indefinitely, keeping the SharedFlow subscriber alive and blocking eviction.
+        val heartbeatJob =
+            scope.launch {
+                while (isActive) {
+                    delay(heartbeatIntervalMs)
+                    try {
+                        // SSE comment — ignored by EventSource but forces a socket write.
+                        emitter.send(
+                            SseEmitter
+                                .event()
+                                .comment("keep-alive"),
+                        )
+                    } catch (e: Exception) {
+                        // The socket is gone. collectorJob will be cancelled via onError/onCompletion.
+                        logger.debug { "Heartbeat write failed for case $caseId — client likely disconnected" }
+                        break
+                    }
+                }
+            }
+
         emitter.onCompletion {
             logger.debug { "SSE emitter completed for case $caseId" }
             collectorJob.cancel()
+            heartbeatJob.cancel()
             scope.cancel()
         }
 
         emitter.onTimeout {
             logger.debug { "SSE emitter timed out for case $caseId" }
             collectorJob.cancel()
+            heartbeatJob.cancel()
             scope.cancel()
         }
 
         emitter.onError { throwable ->
-            logger.warn { "SSE emitter error for case $caseId: ${throwable.message}" }
+            logger.debug { "SSE emitter error for case $caseId: ${throwable.message}" }
             collectorJob.cancel()
+            heartbeatJob.cancel()
             scope.cancel()
         }
 

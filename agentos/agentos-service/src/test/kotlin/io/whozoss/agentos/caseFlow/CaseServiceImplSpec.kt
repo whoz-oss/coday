@@ -11,6 +11,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
@@ -206,7 +207,7 @@ class CaseServiceImplSpec :
                 caseEventService,
                 userService,
                 namespaceService,
-                idleEvictionGraceMs = idleEvictionGraceMs,
+                caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
             )
         }
 
