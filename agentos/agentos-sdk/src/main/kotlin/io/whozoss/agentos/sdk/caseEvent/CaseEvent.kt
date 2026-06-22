@@ -17,7 +17,7 @@ import java.util.UUID
 /**
  * Type identifier for case events.
  * Values match the simple class names of each CaseEvent subtype,
- * used as the Jackson discriminant for polymorphic (de)serialization.
+ * used as the type discriminant for polymorphic (de)serialization.
  */
 enum class CaseEventType(
     @JsonValue val value: String,
