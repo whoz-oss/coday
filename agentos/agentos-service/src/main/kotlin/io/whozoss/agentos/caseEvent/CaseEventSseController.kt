@@ -38,7 +38,7 @@ import java.util.UUID
 class CaseEventSseController(
     private val caseService: CaseService,
     private val caseEventService: CaseEventService,
-    private val caseConfig: CaseConfigProperties = CaseConfigProperties(),
+    private val caseConfig: CaseConfigProperties,
 ) {
     private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
     /**
@@ -139,8 +139,11 @@ class CaseEventSseController(
                                 .comment("keep-alive"),
                         )
                     } catch (e: Exception) {
-                        // The socket is gone. collectorJob will be cancelled via onError/onCompletion.
+                        // The socket is gone. Cancel the scope explicitly here rather than
+                        // relying solely on Tomcat's onError callback: if that callback never
+                        // fires, collectorJob would stay subscribed indefinitely.
                         logger.debug { "Heartbeat write failed for case $caseId — client likely disconnected" }
+                        scope.cancel()
                         break
                     }
                 }

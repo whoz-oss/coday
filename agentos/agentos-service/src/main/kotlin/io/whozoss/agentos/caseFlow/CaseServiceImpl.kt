@@ -46,7 +46,7 @@ class CaseServiceImpl(
     private val caseEventService: CaseEventService,
     private val userService: UserService,
     private val namespaceService: NamespaceService,
-    private val caseConfig: CaseConfigProperties = CaseConfigProperties(),
+    private val caseConfig: CaseConfigProperties,
 ) : CaseService {
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
@@ -194,7 +194,10 @@ class CaseServiceImpl(
                             runtime.statusFlow.value == CaseStatus.IDLE
                         ) {
                             activeRuntimes.remove(caseId)
-                            cancelEvictionWatcher(caseId)
+                            // Remove from watcherJobs without cancelling: we are executing
+                            // inside this very coroutine, so cancel() would be a no-op and
+                            // is semantically misleading. The coroutine ends naturally here.
+                            watcherJobs.remove(caseId)
                             logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
                         } else {
                             logger.debug {
@@ -207,11 +210,6 @@ class CaseServiceImpl(
         watcherJobs[caseId] = job
     }
 
-    /** Cancels the eviction watcher for [caseId] and removes it from [watcherJobs]. */
-    private fun cancelEvictionWatcher(caseId: UUID) {
-        watcherJobs.remove(caseId)?.cancel()
-    }
-
     /** Constructs a [CaseRuntime] wired with all service callbacks. */
     private fun buildRuntime(
         case: Case,
@@ -220,7 +218,7 @@ class CaseServiceImpl(
         CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
-            updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
+            updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
             isAgentAuthorized = { agentName, userId ->
@@ -579,7 +577,7 @@ class CaseServiceImpl(
             it.emitEvent(savedStatusEvent)
             if (newStatus.isTerminal()) {
                 activeRuntimes.remove(caseId)
-                cancelEvictionWatcher(caseId)
+                watcherJobs.remove(caseId)?.cancel()
                 logger.info { "Case $caseId reached terminal status $newStatus, evicted" }
             }
         }

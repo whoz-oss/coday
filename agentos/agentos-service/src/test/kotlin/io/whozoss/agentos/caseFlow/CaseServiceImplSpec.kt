@@ -346,6 +346,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -567,6 +568,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -663,6 +665,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -732,6 +735,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -775,6 +779,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -842,6 +847,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -907,6 +913,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userServiceMock,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1010,6 +1017,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1103,6 +1111,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1250,12 +1259,13 @@ class CaseServiceImplSpec :
                 content = listOf(MessageContent.Text("second")),
             )
             secondIdle.join()
+            // awaitNotRunning ensures run() has fully exited and the runtime is in a
+            // stable IDLE state before we assert. No arbitrary delay needed.
+            awaitNotRunning(runtime)
 
-            // Check BEFORE the second grace period elapses (delay << graceMs=500).
+            // Check BEFORE the second grace period elapses.
             // The runtime must still be alive: the first eviction was cancelled by the
             // second message, and the second eviction hasn't fired yet.
-            delay(100)
-
             service.findActiveRuntime(case.id) shouldBe runtime
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
@@ -1343,6 +1353,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1493,6 +1504,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
 
             // Insert the case directly into the repository so no runtime is created in

@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Owns only execution state: the event list, the SSE flow, and the kill flag.
  * All business logic is delegated back to [CaseService] through four callbacks:
  *
- * @param updateStatus called whenever the runtime transitions to a new [CaseStatus].
+ * @param updateStatusCallback called whenever the runtime transitions to a new [CaseStatus].
  * @param storeEvent called for every event produced by this runtime.
  *   The service persists the event and returns the saved copy (with stable id).
  *   The runtime then adds it to its list and emits it on the SSE flow itself —
@@ -50,11 +50,17 @@ import java.util.concurrent.atomic.AtomicBoolean
 class CaseRuntime(
     val id: UUID,
     val namespaceId: UUID,
-    private val updateStatus: (UUID, CaseStatus) -> Unit,
+    private val updateStatusCallback: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
     private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
+    private val runAgent: suspend (
+        agentName: String,
+        events: List<CaseEvent>,
+        eventsProvider: () -> List<CaseEvent>,
+        userId: UUID?,
+        shouldContinue: () -> Boolean,
+    ) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
     initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
@@ -212,7 +218,9 @@ class CaseRuntime(
             }
         }
 
-        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content, sessionContext = sessionContext))
+        storeAndEmitEvent(
+            MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content, sessionContext = sessionContext),
+        )
         selectAgent(content, eventList.getAll()).forEach { storeAndEmitEvent(it) }
     }
 
@@ -244,8 +252,7 @@ class CaseRuntime(
         logger.info { "[CaseRuntime $id] run() started" }
         interruptRequested.set(false)
         killRequested.set(false)
-        _statusFlow.value = CaseStatus.RUNNING
-        updateStatus(id, CaseStatus.RUNNING)
+        updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 
         try {
@@ -261,30 +268,32 @@ class CaseRuntime(
             when {
                 iterationCount >= maxIterations -> {
                     logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
-                    _statusFlow.value = CaseStatus.ERROR
-                    updateStatus(id, CaseStatus.ERROR)
+                    updateStatus(CaseStatus.ERROR)
                 }
 
                 killRequested.get() -> {
-                    // Explicit kill: permanent termination. Service will evict the runtime.
-                    _statusFlow.value = CaseStatus.KILLED
-                    updateStatus(id, CaseStatus.KILLED)
+                    updateStatus(CaseStatus.KILLED)
                 }
 
                 else -> {
                     // Normal turn-end: agent finished, waiting for next user message.
                     // Non-terminal — runtime stays alive, SSE flow stays open.
-                    _statusFlow.value = CaseStatus.IDLE
-                    updateStatus(id, CaseStatus.IDLE)
+                    updateStatus(CaseStatus.IDLE)
                 }
             }
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Error during execution" }
-            _statusFlow.value = CaseStatus.ERROR
-            updateStatus(id, CaseStatus.ERROR)
+            updateStatus(CaseStatus.ERROR)
         } finally {
             runInFlight.set(false)
         }
+    }
+
+    private fun updateStatus(caseStatus: CaseStatus) {
+        // _statusFlow is updated first so reactive watchers (e.g. eviction watcher)
+        // see the new status immediately, before the persistence round-trip completes.
+        _statusFlow.value = caseStatus
+        updateStatusCallback(id, caseStatus)
     }
 
     private suspend fun processNextStep() {
@@ -322,7 +331,12 @@ class CaseRuntime(
                     // Delegate to runAgent which inspects the event history
                     // and skips the duplicate AgentRunningEvent emission.
                     logger.info { "[CaseRuntime $id] Rehydrating from AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events)) { !interruptRequested.get() }
+                    runAgent(
+                        event.agentName,
+                        eventList.getAll(),
+                        { eventList.getAll() },
+                        resolveUserId(events),
+                    ) { !interruptRequested.get() }
                     return
                 }
 
@@ -346,7 +360,12 @@ class CaseRuntime(
                         interruptRequested.set(true)
                         return
                     }
-                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, userId) { !interruptRequested.get() }
+                    runAgent(
+                        event.agentName,
+                        eventList.getAll(),
+                        { eventList.getAll() },
+                        userId,
+                    ) { !interruptRequested.get() }
                     return
                 }
 
