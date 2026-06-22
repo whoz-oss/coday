@@ -3,7 +3,9 @@ name: Validate Coday on pull requests
 on:
   pull_request:
     types: [opened, synchronize]
-    branches: [master]
+    branches:
+      - master
+      - 'hotfix/*'
 
 env:
   NX_MAX_WORKERS: 2

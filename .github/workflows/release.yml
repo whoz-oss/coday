@@ -4,7 +4,18 @@ on:
   push:
     branches:
       - master
+      - 'hotfix/*'
   workflow_dispatch:
+    inputs:
+      specifier:
+        description: 'Force a version bump — bypasses conventional commits. Use to advance master past a hotfix line before cutting a hotfix branch.'
+        required: false
+        type: choice
+        options:
+          - ''
+          - minor
+          - major
+          - patch
 
 concurrency:
   group: release
@@ -65,7 +76,12 @@ jobs:
         env:
           HUSKY: 0
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: npx tsx scripts/release.ts
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.specifier }}" ]; then
+            ARGS="--specifier ${{ inputs.specifier }}"
+          fi
+          npx tsx scripts/release.ts $ARGS
 
       - name: Capture release commit SHA
         id: release_sha
