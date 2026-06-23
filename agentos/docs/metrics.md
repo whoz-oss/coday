@@ -25,9 +25,11 @@ All metrics are tagged with:
 All custom metrics are produced by `ToolMetricsService` and instrument tool execution
 inside `AgentAdvanced`.
 
-### `agentos.tool.calls.total` — Counter
+### `agentos.tool.calls.duration` — Timer
 
-Incremented once per tool execution, whether it succeeds or fails.
+Wall-clock duration of each tool execution, measured with `Timer.Sample`
+(nanosecond precision). Use `agentos.tool.calls.duration.count` in Datadog
+to get the call count — no separate counter metric is needed.
 
 | Tag | Values | Description |
 |---|---|---|
@@ -37,14 +39,7 @@ Incremented once per tool execution, whether it succeeds or fails.
 | `namespace.id` | UUID | Namespace the case belongs to |
 | `status` | `success` / `failure` | Outcome of the tool execution |
 
-### `agentos.tool.calls.duration` — Timer
-
-Wall-clock duration of each tool execution, measured with `Timer.Sample`
-(nanosecond precision). Always emitted alongside `agentos.tool.calls.total`.
-
-Same tags as `agentos.tool.calls.total`.
-
-Datadog exposes this as a distribution: `avg`, `p50`, `p95`, `p99`, `max`.
+Datadog exposes this as a distribution: `avg`, `p50`, `p95`, `p99`, `max`, `count`.
 
 ### `agentos.tool.parameter_generation.failures` — Counter
 

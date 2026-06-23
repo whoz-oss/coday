@@ -4,7 +4,6 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tags
 import io.micrometer.core.instrument.Timer
 import io.whozoss.agentos.metrics.ToolMetricsService.Companion.METRIC_TOOL_CALLS_DURATION
-import io.whozoss.agentos.metrics.ToolMetricsService.Companion.METRIC_TOOL_CALLS_TOTAL
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -19,8 +18,11 @@ import java.util.UUID
  *
  * ## Metrics produced
  *
- * ### `agentos.tool.calls.total` (Counter)
- * Incremented once per tool execution (success or failure).
+ * ### `agentos.tool.calls.duration` (Timer)
+ * Distribution of wall-clock tool execution durations, measured with [Timer.Sample]
+ * (nanosecond precision via [MeterRegistry.config().clock()]).
+ * Use [startTimer] before execution and [stopTimerAndSendMetrics] after to record a sample.
+ * In Datadog, use `agentos.tool.calls.duration.count` for the call count.
  * Tags:
  * - `tool.name`        — fully-qualified tool name, e.g. `FILES__read`
  * - `integration.type` — integration prefix before `__`, e.g. `FILES` (or `unknown`
@@ -28,12 +30,6 @@ import java.util.UUID
  * - `agent.name`       — name of the agent that called the tool
  * - `namespace.id`     — UUID of the namespace the case belongs to
  * - `status`           — `success` or `failure`
- *
- * ### `agentos.tool.calls.duration` (Timer)
- * Distribution of wall-clock tool execution durations, measured with [Timer.Sample]
- * (nanosecond precision via [MeterRegistry.config().clock()]).
- * Same tags as `agentos.tool.calls.total`.
- * Use [startTimer] before execution and [stopTimerAndSendMetrics] after to record a sample.
  *
  * ### `agentos.tool.parameter_generation.failures` (Counter)
  * Incremented when [AgentAdvanced] exhausts all retry attempts and falls back
@@ -60,16 +56,18 @@ class ToolMetricsService(
      *
      * Call this immediately before the tool execution block, then pass the returned
      * sample to [stopTimerAndSendMetrics] in both the success and error branches.
-     *
-     * Returns `null` only when the meter registry is unavailable (defensive — in
-     * practice the registry is always present when this service is instantiated).
      */
     fun startTimer(): Timer.Sample = Timer.start(meterRegistry)
 
     /**
-     * Stops [sample], records the elapsed duration on the [METRIC_TOOL_CALLS_DURATION]
-     * timer, increments the [METRIC_TOOL_CALLS_TOTAL] counter, and returns the elapsed
-     * time in milliseconds (for attaching to [ToolResponseEvent.durationMs]).
+     * Stops [sample] and records the elapsed duration on the [METRIC_TOOL_CALLS_DURATION]
+     * timer. Returns the elapsed time in milliseconds (for attaching to
+     * [ToolResponseEvent.durationMs]).
+     *
+     * Passing `sample = null` is safe — the timer still receives a zero-duration
+     * observation and the method returns `0L`.
+     *
+     * In Datadog, use `agentos.tool.calls.duration.count` to get the call count.
      *
      * @param sample      The [Timer.Sample] returned by [startTimer].
      * @param toolName    Fully-qualified tool name (e.g. `FILES__read`).
@@ -88,11 +86,6 @@ class ToolMetricsService(
         val tags = toolTags(toolName, agentName, namespaceId, if (success) STATUS_SUCCESS else STATUS_FAILURE)
         val timer = meterRegistry.timer(METRIC_TOOL_CALLS_DURATION, tags)
         val elapsedNanos = sample?.stop(timer) ?: 0L
-
-        meterRegistry
-            .counter(METRIC_TOOL_CALLS_TOTAL, tags)
-            .increment()
-
         return elapsedNanos / 1_000_000L
     }
 
@@ -136,7 +129,7 @@ class ToolMetricsService(
         toolName: String,
         agentName: String,
         namespaceId: UUID,
-        outcome: ConfirmationOutcome,
+        outcome: String,
     ) {
         val tags =
             Tags.of(
@@ -147,7 +140,7 @@ class ToolMetricsService(
                 TAG_NAMESPACE_ID,
                 namespaceId.toString(),
                 TAG_OUTCOME,
-                outcome.tagValue,
+                outcome,
             )
 
         meterRegistry
@@ -183,7 +176,6 @@ class ToolMetricsService(
     // -------------------------------------------------------------------------
 
     companion object : KLogging() {
-        const val METRIC_TOOL_CALLS_TOTAL = "agentos.tool.calls.total"
         const val METRIC_TOOL_CALLS_DURATION = "agentos.tool.calls.duration"
         const val METRIC_TOOL_PARAM_FAILURES = "agentos.tool.parameter_generation.failures"
         const val METRIC_TOOL_CONFIRMATION_TOTAL = "agentos.tool.confirmation.total"
@@ -199,20 +191,4 @@ class ToolMetricsService(
         const val STATUS_FAILURE = "failure"
         const val INTEGRATION_TYPE_UNKNOWN = "unknown"
     }
-}
-
-/**
- * Outcome of a tool confirmation flow, used as a Datadog tag value.
- */
-enum class ConfirmationOutcome(
-    val tagValue: String,
-) {
-    /** User confirmed and the tool executed successfully. */
-    APPLIED("applied"),
-
-    /** User declined (or implicit consent was absent). */
-    REJECTED("rejected"),
-
-    /** Tool threw after confirmation, or orphan pending detected. */
-    ABORTED("aborted"),
 }

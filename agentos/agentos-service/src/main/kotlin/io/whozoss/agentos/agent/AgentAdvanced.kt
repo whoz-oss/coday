@@ -3,7 +3,6 @@ package io.whozoss.agentos.agent
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.AgentAdvanced.Companion.REPETITION_WINDOW
 import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
-import io.whozoss.agentos.metrics.ConfirmationOutcome
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -910,29 +909,24 @@ class AgentAdvanced(
         emitEvent(syntheticResponse)
         appendTo += syntheticResponse
 
-        val confirmationOutcome =
-            when {
-                confirmed && !executionFailed -> ConfirmationOutcome.APPLIED
-                !confirmed -> ConfirmationOutcome.REJECTED
-                else -> ConfirmationOutcome.ABORTED
-            }
-        toolMetricsService?.recordConfirmation(
-            toolName = pending.toolName,
-            agentName = name,
-            namespaceId = namespaceId,
-            outcome = confirmationOutcome,
-        )
-
-        return when (confirmationOutcome) {
+        return when {
             // User confirmed AND tool ran successfully → fall through, LLM can comment.
-            ConfirmationOutcome.APPLIED -> ConfirmationResolution.Applied
+            confirmed && !executionFailed -> ConfirmationResolution.Applied
 
             // User explicitly refused → fall through, LLM can produce a natural follow-up.
-            ConfirmationOutcome.REJECTED -> ConfirmationResolution.Rejected
+            !confirmed -> ConfirmationResolution.Rejected
 
             // Confirmed but the tool threw (executionFailed=true) → no useful continuation;
             // the user just got bitten by a real failure, don't push the LLM to retry.
-            ConfirmationOutcome.ABORTED -> ConfirmationResolution.Aborted
+            else -> ConfirmationResolution.Aborted
+        }.also { confirmationResolution ->
+
+            toolMetricsService?.recordConfirmation(
+                toolName = pending.toolName,
+                agentName = name,
+                namespaceId = namespaceId,
+                outcome = confirmationResolution.stringRepresentation,
+            )
         }
     }
 
