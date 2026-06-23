@@ -1,3 +1,13 @@
+## 0.186.0 (2026-06-23)
+
+### 🚀 Features
+
+- wz-32804: datadog custom metrics on tool calls ([#1040](https://github.com/whoz-oss/coday/pull/1040))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.185.0 (2026-06-23)
 
 ### 🚀 Features
