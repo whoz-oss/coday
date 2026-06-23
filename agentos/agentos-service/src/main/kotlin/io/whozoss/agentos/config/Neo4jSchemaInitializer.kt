@@ -15,36 +15,60 @@ import org.springframework.stereotype.Component
 class Neo4jSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {
-
     override fun run(args: ApplicationArguments) {
-        neo4jClient.query(
-            "CREATE CONSTRAINT user_group_name_namespace_unique IF NOT EXISTS " +
-                "FOR (g:ActiveUserGroup) REQUIRE (g.name, g.namespaceId) IS UNIQUE",
-        ).run()
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT user_group_name_namespace_unique IF NOT EXISTS " +
+                    "FOR (g:ActiveUserGroup) REQUIRE (g.name, g.namespaceId) IS UNIQUE",
+            ).run()
         logger.info { "[Neo4jSchemaInitializer] Constraint user_group_name_namespace_unique ensured" }
 
-        neo4jClient.query(
-            "CREATE CONSTRAINT namespace_external_id_unique IF NOT EXISTS " +
-                "FOR (n:ActiveNamespace) REQUIRE n.externalId IS UNIQUE",
-        ).run()
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT namespace_external_id_unique IF NOT EXISTS " +
+                    "FOR (n:ActiveNamespace) REQUIRE n.externalId IS UNIQUE",
+            ).run()
         logger.info { "[Neo4jSchemaInitializer] Constraint namespace_external_id_unique ensured" }
 
-        neo4jClient.query(
-            "CREATE CONSTRAINT user_external_id_unique IF NOT EXISTS " +
-                "FOR (u:ActiveUser) REQUIRE u.externalId IS UNIQUE",
-        ).run()
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT user_external_id_unique IF NOT EXISTS " +
+                    "FOR (u:ActiveUser) REQUIRE u.externalId IS UNIQUE",
+            ).run()
         logger.info { "[Neo4jSchemaInitializer] Constraint user_external_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX namespace_externalId IF NOT EXISTS FOR (n:Namespace) ON (n.externalId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index namespace_externalId created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX user_externalId IF NOT EXISTS FOR (u:User) ON (u.externalId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index user_externalId created" }
+
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT user_id_unique IF NOT EXISTS " +
+                    "FOR (u:User) " +
+                    "REQUIRE u.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index user_id_unique created" }
 
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?
         // which fails if the property is absent. Setting version = 0 makes existing nodes
         // compatible without affecting any application logic.
-        val backfilled = neo4jClient.query(
-            "MATCH (a:AgentConfig) WHERE a.version IS NULL SET a.version = 0 RETURN count(a) AS count",
-        ).fetchAs(Long::class.java)
-            .mappedBy { _, record -> record["count"].asLong() }
-            .one()
-            .orElse(0L)
+        val backfilled =
+            neo4jClient
+                .query(
+                    "MATCH (a:AgentConfig) WHERE a.version IS NULL SET a.version = 0 RETURN count(a) AS count",
+                ).fetchAs(Long::class.java)
+                .mappedBy { _, record -> record["count"].asLong() }
+                .one()
+                .orElse(0L)
         if (backfilled > 0L) {
             logger.info { "[Neo4jSchemaInitializer] Backfilled version=0 on $backfilled AgentConfig node(s)" }
         }
@@ -52,12 +76,14 @@ class Neo4jSchemaInitializer(
         // Backfill enabled=false on AgentConfig nodes created before the enabled field was introduced.
         // Once all nodes have the property set, Cypher queries can use a.enabled directly
         // without COALESCE(a.enabled, false).
-        val backfilledEnabled = neo4jClient.query(
-            "MATCH (a:AgentConfig) WHERE a.enabled IS NULL SET a.enabled = false RETURN count(a) AS count",
-        ).fetchAs(Long::class.java)
-            .mappedBy { _, record -> record["count"].asLong() }
-            .one()
-            .orElse(0L)
+        val backfilledEnabled =
+            neo4jClient
+                .query(
+                    "MATCH (a:AgentConfig) WHERE a.enabled IS NULL SET a.enabled = false RETURN count(a) AS count",
+                ).fetchAs(Long::class.java)
+                .mappedBy { _, record -> record["count"].asLong() }
+                .one()
+                .orElse(0L)
         if (backfilledEnabled > 0L) {
             logger.info { "[Neo4jSchemaInitializer] Backfilled enabled=false on $backfilledEnabled AgentConfig node(s)" }
         }
