@@ -1,5 +1,6 @@
 package io.whozoss.agentos.config
 
+import io.whozoss.agentos.sdk.caseEvent.CaseEventType
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -66,28 +67,22 @@ class Neo4jSchemaInitializer(
                 "integration_config_id_unique" to "IntegrationConfig",
                 "user_group_id_unique" to "UserGroup",
                 "feedback_id_unique" to "Feedback",
-                // CaseEvent base label + every concrete subtype label
-                "case_event_id_unique" to "CaseEvent",
-                "message_event_id_unique" to "MessageEvent",
-                "case_status_event_id_unique" to "CaseStatusEvent",
-                "warn_event_id_unique" to "WarnEvent",
-                "error_event_id_unique" to "ErrorEvent",
-                "agent_selected_event_id_unique" to "AgentSelectedEvent",
-                "agent_finished_event_id_unique" to "AgentFinishedEvent",
-                "agent_running_event_id_unique" to "AgentRunningEvent",
-                "tool_request_event_id_unique" to "ToolRequestEvent",
-                "tool_response_event_id_unique" to "ToolResponseEvent",
-                "thinking_event_id_unique" to "ThinkingEvent",
-                "question_event_id_unique" to "QuestionEvent",
-                "answer_event_id_unique" to "AnswerEvent",
-                "intention_generated_event_id_unique" to "IntentionGeneratedEvent",
-                "tool_selected_event_id_unique" to "ToolSelectedEvent",
-                "text_chunk_event_id_unique" to "TextChunkEvent",
-                "pending_confirmation_event_id_unique" to "PendingConfirmationEvent",
-                "confirmation_resolved_event_id_unique" to "ConfirmationResolvedEvent",
             )
 
-        idConstraints.forEach { (constraintName, label) ->
+        // CaseEvent base label + one entry per subtype derived from the canonical enum.
+        // CaseEventType.value is the exact Neo4j label string, so this stays in sync
+        // automatically whenever a new event subtype is added to the sealed hierarchy.
+        val caseEventIdConstraints =
+            listOf("case_event_id_unique" to "CaseEvent") +
+                CaseEventType.entries.map { type ->
+                    val constraintName = type.value
+                        .replace(Regex("([A-Z])")) { "_${it.value}" }
+                        .trimStart('_')
+                        .lowercase() + "_id_unique"
+                    constraintName to type.value
+                }
+
+        (idConstraints + caseEventIdConstraints).forEach { (constraintName, label) ->
             neo4jClient
                 .query(
                     "CREATE CONSTRAINT $constraintName IF NOT EXISTS " +
