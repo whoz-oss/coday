@@ -1,3 +1,15 @@
+## 0.183.6 (2026-06-23)
+
+### 🩹 Fixes
+
+- report indices eviction datadog user groups ([#1048](https://github.com/whoz-oss/coday/pull/1048))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- Thomas MARTIN @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.183.5 (2026-06-22)
 
 ### 🚀 Features
