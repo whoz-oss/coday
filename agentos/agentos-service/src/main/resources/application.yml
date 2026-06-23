@@ -77,13 +77,52 @@ management:
       # 'always' so that Eureka can read the health status without credentials.
       # The health endpoint itself does not expose sensitive data.
       show-details: always
+  # Datadog metrics export — disabled by default, opt-in via environment variables.
+  # Set DATADOG_API_KEY (required) and DATADOG_METRICS_ENABLED=true to activate.
+  # DATADOG_SITE defaults to the US endpoint; override to 'datadoghq.eu' for EU tenants.
+  # prefer statsd if possible
+  datadog:
+    metrics:
+      export:
+        enabled: ${DATADOG_METRICS_ENABLED:false}
+        api-key: ${DATADOG_API_KEY:}
+        application-key: ${DATADOG_APP_KEY:}
+        uri: https://api.${DATADOG_SITE:datadoghq.eu}
+        # Push interval — 30s balances freshness against Datadog ingest costs.
+        step: 30s
+        # Disable metric metadata push — the /api/v1/metrics endpoint does not
+        # exist on datadoghq.eu and returns 404, logged misleadingly as Unauthorized.
+        # Metric data still flows correctly via /api/v1/series.
+        descriptions: false
+  # Common tags applied to all metrics exported by this service.
+  metrics:
+    tags:
+      application: agentos
+      environment: ${SPRING_PROFILES_ACTIVE:local}
+  # statsd configuration
+  # declared here for test purpose, should be in whoz conf directories
+  statsd:
+    metrics:
+      export:
+        enabled: true
+        flavor: datadog
+        host: localhost
+        port: 8127
+# cmd line to run datadog container
+# docker run -d \
+# -e DD_API_KEY=xxxxxx \
+# -e DD_SITE=datadoghq.eu \
+# -e DD_HOSTNAME=thomas.martin \
+# -e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true \
+# -p 8126:8126 -p 8127:8125 \
+# datadog/agent:latest
 
 agentos:
   defaults:
-    # Environment-level fallback agent name. Consulted when a namespace has no
-    # defaultAgentName configured. The named agent must exist in the case's namespace.
-    # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
-    # agent-name: copilot
+  # Environment-level fallback agent name. Consulted when a namespace has no
+  # defaultAgentName configured. The named agent must exist in the case's namespace.
+  # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
+  # agent-name: copilot
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
   security:
