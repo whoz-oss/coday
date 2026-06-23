@@ -1,3 +1,14 @@
+## 0.187.2 (2026-06-23)
+
+### 🩹 Fixes
+
+- #WZ-31424 Add missing indices ([#1046](https://github.com/whoz-oss/coday/pull/1046))
+
+### ❤️ Thank You
+
+- AlanMenantWhoz @AlanMenantWhoz
+- thomas.martin @thomasmartin-whoz
+
 ## 0.187.1 (2026-06-23)
 
 ### 🩹 Fixes
