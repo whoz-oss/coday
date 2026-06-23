@@ -140,12 +140,16 @@ class RedirectToolPluginSpec : StringSpec({
         tool.eligibleAgents.first().integrations shouldBe emptyList()
     }
 
-    "provideTools returns empty list when resolver returns no agents" {
+    "provideTools returns a RedirectTool with no-agents description when resolver returns no agents" {
         val plugin = RedirectToolPlugin { _, _, _ -> emptyList() }
 
         val tools = plugin.provideTools(config = null, context = context(userId = userId))
 
-        tools.shouldBeEmpty()
+        tools shouldHaveSize 1
+        val tool = tools.first() as RedirectTool
+        tool.eligibleAgents.shouldBeEmpty()
+        tool.description shouldBe
+            "No other agents are currently available for redirection. Do not attempt to delegate — handle the request yourself or inform the user that no other agent can address it."
     }
 
     // -------------------------------------------------------------------------
@@ -163,12 +167,14 @@ class RedirectToolPluginSpec : StringSpec({
         tool.eligibleAgents.map { it.name } shouldBe listOf("AgentB")
     }
 
-    "provideTools returns empty list when calling agent is the only eligible agent" {
+    "provideTools returns a RedirectTool with no-agents description when calling agent is the only eligible agent" {
         val agents = listOf(agentConfig("AgentA", "Does A"))
         val plugin = RedirectToolPlugin { _, _, _ -> agents }
 
         val tools = plugin.provideTools(config = null, context = context(agentName = "AgentA"))
-        tools.shouldBeEmpty()
+        tools shouldHaveSize 1
+        val tool = tools.first() as RedirectTool
+        tool.eligibleAgents.shouldBeEmpty()
     }
 
     "provideTools does not exclude anything when context has no agentName" {

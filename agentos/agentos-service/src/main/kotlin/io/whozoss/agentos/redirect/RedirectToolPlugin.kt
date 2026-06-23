@@ -91,10 +91,9 @@ class RedirectToolPlugin(
 
         if (eligibleAgents.isEmpty()) {
             logger.warn { "[RedirectToolPlugin] No eligible agents found for namespace $namespaceId with patterns $patterns" }
-            return emptyList()
+        } else {
+            logger.info { "[RedirectToolPlugin] Resolved ${eligibleAgents.size} eligible agent(s) for namespace $namespaceId" }
         }
-
-        logger.info { "[RedirectToolPlugin] Resolved ${eligibleAgents.size} eligible agent(s) for namespace $namespaceId" }
         return listOf(RedirectTool(configName = configName, eligibleAgents = eligibleAgents))
     }
 
