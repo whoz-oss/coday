@@ -1,3 +1,13 @@
+## 0.187.0 (2026-06-23)
+
+### 🚀 Features
+
+- #WZ-32858 evict idle CaseRuntime when no SSE subscribers ([#1039](https://github.com/whoz-oss/coday/pull/1039))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.186.0 (2026-06-23)
 
 ### 🚀 Features
