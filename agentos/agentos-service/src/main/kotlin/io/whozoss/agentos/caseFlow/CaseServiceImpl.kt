@@ -26,9 +26,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import mu.KLogging
@@ -182,11 +182,11 @@ class CaseServiceImpl(
             scope.launch {
                 combine(runtime.subscriptionCount, runtime.statusFlow) { count, status ->
                     count == 0 && status == CaseStatus.IDLE
-                }.filter { it }
+                }
+                    // Grace period: absorb brief reconnects and fast follow-up messages.
+                    .debounce(idleEvictionGraceMs)
+                    .filter { it }
                     .collect {
-                        // Grace period: absorb brief reconnects and fast follow-up messages.
-                        delay(idleEvictionGraceMs)
-
                         // Re-check: a subscriber may have reconnected or a new message may
                         // have arrived (status back to RUNNING) during the grace period.
                         if (activeRuntimes.containsKey(caseId) &&
