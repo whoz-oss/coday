@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -25,13 +26,13 @@ import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
-import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
@@ -71,6 +72,8 @@ class AgentSimple(
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     override val llmProvider: String,
     override val llmModel: String,
+    /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
+    private val toolMetricsService: ToolMetricsService? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -479,7 +482,7 @@ class AgentSimple(
                     )
 
                 val executionResult: ToolExecutionResult
-                // TODO: time measurement inside the try to add info to the ToolResponseEvent
+                val sample = toolMetricsService?.startTimer()
                 val toolDuration =
                     measureTime {
                         executionResult =
@@ -488,6 +491,13 @@ class AgentSimple(
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.
+                                toolMetricsService?.stopTimerAndSendMetrics(
+                                    sample,
+                                    tool.name,
+                                    name,
+                                    namespaceId,
+                                    success = true,
+                                )
                                 val message =
                                     when (e) {
                                         is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
@@ -502,9 +512,15 @@ class AgentSimple(
                                         success = true,
                                     ),
                                 )
-
                                 throw e
                             } catch (e: Exception) {
+                                toolMetricsService?.stopTimerAndSendMetrics(
+                                    sample,
+                                    tool.name,
+                                    name,
+                                    namespaceId,
+                                    success = false,
+                                )
                                 sendEvent(
                                     ToolResponseEvent(
                                         namespaceId = namespaceId,
@@ -519,6 +535,14 @@ class AgentSimple(
                             }
                     }
                 logger.info { "tool '${tool.name}' executed in $toolDuration" }
+                // Success path: stop the timer here (exception paths stop it before re-throwing).
+                toolMetricsService?.stopTimerAndSendMetrics(
+                    sample,
+                    tool.name,
+                    name,
+                    namespaceId,
+                    success = executionResult.success,
+                )
 
                 // Reset the turn mark so the next measurement starts from when
                 // we hand the tool result back to the LLM.

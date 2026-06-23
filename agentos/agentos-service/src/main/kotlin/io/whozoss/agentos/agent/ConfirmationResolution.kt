@@ -20,11 +20,25 @@ package io.whozoss.agentos.agent
  *   the user to do next — close the turn cleanly.
  */
 internal sealed interface ConfirmationResolution {
-    data object Unresolved : ConfirmationResolution
+    val stringRepresentation: String
 
-    data object Applied : ConfirmationResolution
+    data object Unresolved : ConfirmationResolution {
+        override val stringRepresentation: String
+            get() = "Unresolved"
+    }
 
-    data object Rejected : ConfirmationResolution
+    data object Applied : ConfirmationResolution {
+        override val stringRepresentation: String
+            get() = "Applied"
+    }
 
-    data object Aborted : ConfirmationResolution
+    data object Rejected : ConfirmationResolution {
+        override val stringRepresentation: String
+            get() = "Rejected"
+    }
+
+    data object Aborted : ConfirmationResolution {
+        override val stringRepresentation: String
+            get() = "Aborted"
+    }
 }

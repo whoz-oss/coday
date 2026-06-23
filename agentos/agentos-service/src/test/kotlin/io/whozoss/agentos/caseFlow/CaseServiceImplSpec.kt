@@ -11,6 +11,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
@@ -182,6 +183,7 @@ class CaseServiceImplSpec :
             defaultAgentName: String? = agentName,
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
+            idleEvictionGraceMs: Long = 5_000L,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -205,6 +207,7 @@ class CaseServiceImplSpec :
                 caseEventService,
                 userService,
                 namespaceService,
+                caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
             )
         }
 
@@ -343,6 +346,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -564,6 +568,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -660,6 +665,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -729,6 +735,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -772,6 +779,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -839,6 +847,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -904,6 +913,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userServiceMock,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1007,6 +1017,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1100,6 +1111,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1121,6 +1133,173 @@ class CaseServiceImplSpec :
             // The selected agent must be `inspector`, not `inspector https://...`
             persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe inspectorName
             verify(exactly = 1) { allowAllAgentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, inspectorName) }
+        }
+
+        // -------------------------------------------------------------------------
+        // Idle runtime eviction
+        // -------------------------------------------------------------------------
+
+        "idle runtime is NOT evicted when client disconnects while agent is still running" {
+            // The eviction watcher combines subscriptionCount and statusFlow.
+            // If subscriptionCount drops to 0 while status is RUNNING, combine emits false
+            // and the grace period never starts — the runtime must survive until the run completes.
+            //
+            // This test uses a slow agent (200ms delay) so subscriptionCount == 0 and
+            // status == RUNNING overlap. The assertion is made immediately after the
+            // subscriber disconnects — no timing margin needed.
+
+            val slowAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            delay(200) // simulate a slow agent run
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+
+            val service = buildService(agent = slowAgent, idleEvictionGraceMs = 50L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // Subscribe just long enough to observe RUNNING, then unsubscribe.
+            // This creates the window: subscriptionCount == 0 while status == RUNNING.
+            val shortLivedJob =
+                scope.launch {
+                    withTimeout(8_000) {
+                        runtime.events
+                            .filterIsInstance<CaseStatusEvent>()
+                            .first { it.status == CaseStatus.RUNNING }
+                    }
+                }
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            shortLivedJob.join() // unsubscribes when RUNNING is seen
+            // subscriptionCount is now 0, status is RUNNING — eviction must NOT fire.
+            // Assert immediately: statusFlow is RUNNING by construction at this point
+            // (shortLivedJob only completed after seeing the RUNNING CaseStatusEvent,
+            // and _statusFlow is updated before emitEvent so it is guaranteed RUNNING here).
+            service.findActiveRuntime(case.id) shouldBe runtime
+            runtime.statusFlow.value shouldBe CaseStatus.RUNNING
+        }
+
+        "idle runtime is evicted after all SSE subscribers disconnect and grace period elapses" {
+            val service = buildService(idleEvictionGraceMs = 50L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // Subscribe, let the case reach IDLE, then unsubscribe.
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+            // awaiter job ends, which cancels its coroutine -> subscriptionCount drops to 0.
+
+            // Wait for the grace period + a small margin to let the eviction coroutine run.
+            delay(200)
+
+            // The runtime must have been evicted: findActiveRuntime returns null.
+            service.findActiveRuntime(case.id) shouldBe null
+            // The case itself is still persisted and accessible.
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        "idle runtime is NOT evicted when a new message arrives before grace period elapses" {
+            // idleEvictionGraceMs=500 gives us a window to send a second message.
+            // The eviction watcher fires when subscriptionCount hits 0 after the first IDLE.
+            // A second message arrives within the grace period, making the status RUNNING again.
+            // The guard (currentStatus == IDLE) prevents eviction, and we verify the runtime
+            // is still alive before the second grace period elapses.
+            val service = buildService(idleEvictionGraceMs = 500L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // First message -> IDLE
+            val firstIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("first")),
+            )
+            firstIdle.join()
+            awaitNotRunning(runtime)
+
+            // Send a second message immediately — the runtime transitions IDLE -> RUNNING
+            // before the first grace period elapses, which cancels the first eviction.
+            val secondIdle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("second")),
+            )
+            secondIdle.join()
+            // awaitNotRunning ensures run() has fully exited and the runtime is in a
+            // stable IDLE state before we assert. No arbitrary delay needed.
+            awaitNotRunning(runtime)
+
+            // Check BEFORE the second grace period elapses.
+            // The runtime must still be alive: the first eviction was cancelled by the
+            // second message, and the second eviction hasn't fired yet.
+            service.findActiveRuntime(case.id) shouldBe runtime
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        "idle runtime is NOT evicted while SSE subscribers remain connected" {
+            // The eviction watcher only fires when subscriptionCount == 0.
+            // We keep a subscriber alive so subscriptionCount never reaches 0.
+            val service = buildService(idleEvictionGraceMs = 50L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            // Keep a long-lived subscriber open so subscriptionCount stays > 0.
+            val longLivedJob = scope.launch {
+                withTimeout(5_000) {
+                    runtime.events.collect { /* keep alive */ }
+                }
+            }
+
+            // Wait well past idleEvictionTimeoutMs to confirm no eviction happened.
+            delay(300)
+
+            service.findActiveRuntime(case.id) shouldBe runtime
+
+            longLivedJob.cancel()
         }
 
         "@mention followed by a URL with non-breaking space selects the agent and ignores the URL" {
@@ -1174,6 +1353,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1324,6 +1504,7 @@ class CaseServiceImplSpec :
                     caseEventService,
                     userService,
                     namespaceService,
+                    caseConfig = CaseConfigProperties(),
                 )
 
             // Insert the case directly into the repository so no runtime is created in
