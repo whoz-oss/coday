@@ -38,7 +38,10 @@ class UserGroupServiceImpl(
             throw ConflictException("A user group with name '${entity.name}' already exists in this namespace", e)
         }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<UserGroup> = userGroupRepository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<UserGroup> = userGroupRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<UserGroup> = userGroupRepository.findByParent(parentId)
 
@@ -48,8 +51,7 @@ class UserGroupServiceImpl(
     @Transactional
     override fun deleteByParent(parentId: UUID): Int = userGroupRepository.deleteByParent(parentId)
 
-    override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> =
-        userGroupRepository.findByNamespaceId(namespaceId)
+    override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> = userGroupRepository.findByNamespaceId(namespaceId)
 
     override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? = userGroupRepository.findByIdWithDetails(id)
 
@@ -109,7 +111,7 @@ class UserGroupServiceImpl(
         if (request.userExternalIdsToAdd.isNotEmpty()) {
             val existingIds = userService.findByExternalIds(request.userExternalIdsToAdd).map { it.externalId }.toSet()
             val missingIds = request.userExternalIdsToAdd - existingIds
-            missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
+            userService.createByExternalIds(missingIds)
             userGroupRepository.addUsers(userGroupId, request.userExternalIdsToAdd)
         }
 
@@ -127,16 +129,24 @@ class UserGroupServiceImpl(
         namespaceId: UUID?,
     ): Map<String, List<UserGroupSummary>> {
         val allGroups = userGroupRepository.findGroupsByUserExternalIds(externalIds, namespaceId)
-        val visibleGroupIds = if (user.isAdmin) {
-            allGroups.values.flatten().map { it.id.toString() }.toSet()
-        } else {
-            permissionService.filterVisibleIds(
-                userId = user.id.toString(),
-                entityType = EntityType.USER_GROUP,
-                ids = allGroups.values.flatten().map { it.id.toString() }.toSet(),
-                action = Action.READ,
-            )
-        }
+        val visibleGroupIds =
+            if (user.isAdmin) {
+                allGroups.values
+                    .flatten()
+                    .map { it.id.toString() }
+                    .toSet()
+            } else {
+                permissionService.filterVisibleIds(
+                    userId = user.id.toString(),
+                    entityType = EntityType.USER_GROUP,
+                    ids =
+                        allGroups.values
+                            .flatten()
+                            .map { it.id.toString() }
+                            .toSet(),
+                    action = Action.READ,
+                )
+            }
         return allGroups
             .mapValues { (_, groups) -> groups.filter { it.id.toString() in visibleGroupIds } }
             .filterValues { it.isNotEmpty() }
