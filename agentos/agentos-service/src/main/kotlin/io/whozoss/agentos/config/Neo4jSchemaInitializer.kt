@@ -49,13 +49,52 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index user_externalId created" }
 
-        neo4jClient
-            .query(
-                "CREATE CONSTRAINT user_id_unique IF NOT EXISTS " +
-                    "FOR (u:User) " +
-                    "REQUIRE u.id IS UNIQUE",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Index user_id_unique created" }
+        // ── Per-node id uniqueness constraints ──────────────────────────────
+        // Every node label that carries an `id` property gets a UNIQUE
+        // constraint so Neo4j enforces identity at the storage level and
+        // can resolve MATCH (n {id: $x}) with an O(log n) index seek.
+
+        val idConstraints =
+            listOf(
+                // Root / namespace-scoped entities
+                "namespace_id_unique" to "Namespace",
+                "user_id_unique" to "User",
+                "case_id_unique" to "Case",
+                "agent_config_id_unique" to "AgentConfig",
+                "ai_provider_id_unique" to "AiProvider",
+                "ai_model_id_unique" to "AiModel",
+                "integration_config_id_unique" to "IntegrationConfig",
+                "user_group_id_unique" to "UserGroup",
+                "feedback_id_unique" to "Feedback",
+                // CaseEvent base label + every concrete subtype label
+                "case_event_id_unique" to "CaseEvent",
+                "message_event_id_unique" to "MessageEvent",
+                "case_status_event_id_unique" to "CaseStatusEvent",
+                "warn_event_id_unique" to "WarnEvent",
+                "error_event_id_unique" to "ErrorEvent",
+                "agent_selected_event_id_unique" to "AgentSelectedEvent",
+                "agent_finished_event_id_unique" to "AgentFinishedEvent",
+                "agent_running_event_id_unique" to "AgentRunningEvent",
+                "tool_request_event_id_unique" to "ToolRequestEvent",
+                "tool_response_event_id_unique" to "ToolResponseEvent",
+                "thinking_event_id_unique" to "ThinkingEvent",
+                "question_event_id_unique" to "QuestionEvent",
+                "answer_event_id_unique" to "AnswerEvent",
+                "intention_generated_event_id_unique" to "IntentionGeneratedEvent",
+                "tool_selected_event_id_unique" to "ToolSelectedEvent",
+                "text_chunk_event_id_unique" to "TextChunkEvent",
+                "pending_confirmation_event_id_unique" to "PendingConfirmationEvent",
+                "confirmation_resolved_event_id_unique" to "ConfirmationResolvedEvent",
+            )
+
+        idConstraints.forEach { (constraintName, label) ->
+            neo4jClient
+                .query(
+                    "CREATE CONSTRAINT $constraintName IF NOT EXISTS " +
+                        "FOR (n:$label) REQUIRE n.id IS UNIQUE",
+                ).run()
+            logger.info { "[Neo4jSchemaInitializer] Constraint $constraintName ensured" }
+        }
 
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?
