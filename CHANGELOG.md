@@ -1,3 +1,15 @@
+## 0.187.1 (2026-06-23)
+
+### 🩹 Fixes
+
+- #WZ-31424 Improve performances on user group update ([3e1d99ed](https://github.com/whoz-oss/coday/commit/3e1d99ed))
+- #WZ-31424 Improve performances on user group update ([#1047](https://github.com/whoz-oss/coday/pull/1047))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
 ## 0.187.0 (2026-06-23)
 
 ### 🚀 Features
