@@ -1,3 +1,13 @@
+## 0.185.0 (2026-06-23)
+
+### 🚀 Features
+
+- #32839 #32841 improve redirect tool description for no-agent and relevance cases ([#1038](https://github.com/whoz-oss/coday/pull/1038), [#32839](https://github.com/whoz-oss/coday/issues/32839), [#32841](https://github.com/whoz-oss/coday/issues/32841))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.184.0 (2026-06-22)
 
 ### 🚀 Features
