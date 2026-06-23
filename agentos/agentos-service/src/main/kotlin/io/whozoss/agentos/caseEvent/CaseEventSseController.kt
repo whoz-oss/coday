@@ -82,54 +82,22 @@ class CaseEventSseController(
 
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-        fun sendEvent(event: CaseEvent) =
-            emitter.send(
-                SseEmitter
-                    .event()
-                    .id(event.id.toString())
-                    .name(event.type.value)
-                    .data(event),
-            )
-
-        scope.launch {
-            try {
-                if (includePreviousEvents == true) {
-                    // Replay persisted history first so clients connecting mid-run
-                    // or reconnecting after a disconnect receive the full sequence.
-                    caseEventService.findByParent(caseId).forEach { sendEvent(it) }
-                }
-
-                // If the case is still active, subscribe to the live flow.
-                // findActiveRuntime never rehydrates — safe for observation only.
-                // If the case is completed, the history replay above is sufficient
-                // and the emitter completes at the end of the try block.
-                val activeCase = caseService.findActiveRuntime(caseId)
-                activeCase?.events?.collect { event ->
-                    try {
-                        sendEvent(event)
-                        logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
-                    } catch (e: Exception) {
-                        logger.debug { "Failed to send event to SSE for case $caseId: ${e.message}" }
-                        throw e
-                    }
-                }
-                emitter.complete()
-            } catch (e: CancellationException) {
-                // Normal path: collectorJob was cancelled because the client disconnected
-                // (onError/onCompletion fired and called scope.cancel()). Not an error.
-                logger.debug { "SSE collector cancelled for case $caseId (client disconnected)" }
-                throw e // re-throw so cancellation propagates correctly through the coroutine hierarchy
-            } catch (error: Exception) {
-                logger.error("Error in event stream for case $caseId", error)
-                emitter.completeWithError(error)
-            }
-        }
+        startCaseJob(
+            scope = scope,
+            includePreviousEvents = includePreviousEvents,
+            caseId = caseId,
+            emitter = emitter,
+        )
 
         // Heartbeat: periodically send an SSE comment frame so that a client
         // disconnect is detected even when the case is IDLE and emits no events.
         // Without this, the collector coroutine above stays suspended on collect()
         // indefinitely, keeping the SharedFlow subscriber alive and blocking eviction.
-        startHeartbeatJob(scope, emitter, caseId)
+        startHeartbeatJob(
+            scope = scope,
+            emitter = emitter,
+            caseId = caseId,
+        )
 
         emitter.onCompletion {
             logger.debug { "SSE emitter completed for case $caseId" }
@@ -149,6 +117,58 @@ class CaseEventSseController(
         logger.info { "SSE connection established for case: $caseId" }
         return emitter
     }
+
+    private fun startCaseJob(
+        scope: CoroutineScope,
+        includePreviousEvents: Boolean?,
+        caseId: UUID,
+        emitter: SseEmitter,
+    ) {
+        scope.launch {
+            try {
+                if (includePreviousEvents == true) {
+                    // Replay persisted history first so clients connecting mid-run
+                    // or reconnecting after a disconnect receive the full sequence.
+                    caseEventService.findByParent(caseId).forEach { sendEvent(it, emitter) }
+                }
+
+                // If the case is still active, subscribe to the live flow.
+                // findActiveRuntime never rehydrates — safe for observation only.
+                // If the case is completed, the history replay above is sufficient
+                // and the emitter completes at the end of the try block.
+                val activeCase = caseService.findActiveRuntime(caseId)
+                activeCase?.events?.collect { event ->
+                    try {
+                        sendEvent(event, emitter)
+                        logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
+                    } catch (e: Exception) {
+                        logger.debug { "Failed to send event to SSE for case $caseId: ${e.message}" }
+                        throw e
+                    }
+                }
+                emitter.complete()
+            } catch (e: CancellationException) {
+                // Normal path: collectorJob was cancelled because the client disconnected
+                // (onError/onCompletion fired and called scope.cancel()). Not an error.
+                logger.debug { "SSE collector cancelled for case $caseId (client disconnected)" }
+                throw e // re-throw so cancellation propagates correctly through the coroutine hierarchy
+            } catch (error: Exception) {
+                logger.error("Error in event stream for case $caseId", error)
+                emitter.completeWithError(error)
+            }
+        }
+    }
+
+    private fun sendEvent(
+        event: CaseEvent,
+        emitter: SseEmitter,
+    ) = emitter.send(
+        SseEmitter
+            .event()
+            .id(event.id.toString())
+            .name(event.type.value)
+            .data(event),
+    )
 
     private fun startHeartbeatJob(
         scope: CoroutineScope,
