@@ -297,6 +297,7 @@ class AgentServiceImpl(
                 caseEventsProvider = context.caseEventsProvider,
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
+                toolMetricsService = toolMetricsService,
             )
         }
     }
