@@ -28,6 +28,7 @@ class NamespaceSchemaInitializer(
     override fun run(args: ApplicationArguments) {
         backfillRemoved()
         ensureExternalIdUniqueConstraint()
+        ensureExternalIdIndex()
     }
 
     private fun backfillRemoved() {
@@ -49,6 +50,13 @@ class NamespaceSchemaInitializer(
                 "FOR (n:ActiveNamespace) REQUIRE n.externalId IS UNIQUE",
         ).run()
         logger.info { "[NamespaceSchema] Constraint namespace_external_id_unique ensured" }
+    }
+
+    private fun ensureExternalIdIndex() {
+        neo4jClient.query(
+            "CREATE INDEX namespace_externalId IF NOT EXISTS FOR (n:Namespace) ON (n.externalId)",
+        ).run()
+        logger.info { "[NamespaceSchema] Index namespace_externalId ensured" }
     }
 
     companion object : KLogging()

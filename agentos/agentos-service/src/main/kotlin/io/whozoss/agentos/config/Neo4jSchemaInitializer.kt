@@ -9,57 +9,39 @@ import org.springframework.core.annotation.Order
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.stereotype.Component
 
+/**
+ * Cross-entity Neo4j schema initialiser.
+ *
+ * Responsible for per-node `id` uniqueness constraints for every entity label and
+ * CaseEvent subtype — concerns that span all entity types and have no natural home
+ * in any single per-entity initialiser.
+ *
+ * Entity-specific backfills and constraints live in their own initialiser classes
+ * (e.g. [io.whozoss.agentos.namespace.NamespaceSchemaInitializer],
+ * [io.whozoss.agentos.user.UserSchemaInitializer],
+ * [io.whozoss.agentos.agentConfig.AgentConfigSchemaInitializer],
+ * [io.whozoss.agentos.userGroup.UserGroupSchemaInitializer]).
+ */
 @Component
 @Order(1)
 @ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
+    "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
+        "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
 )
 class Neo4jSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
-        neo4jClient
-            .query(
-                "CREATE CONSTRAINT user_group_name_namespace_unique IF NOT EXISTS " +
-                    "FOR (g:ActiveUserGroup) REQUIRE (g.name, g.namespaceId) IS UNIQUE",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Constraint user_group_name_namespace_unique ensured" }
+        ensureIdConstraints()
+    }
 
-        neo4jClient
-            .query(
-                "CREATE CONSTRAINT namespace_external_id_unique IF NOT EXISTS " +
-                    "FOR (n:ActiveNamespace) REQUIRE n.externalId IS UNIQUE",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Constraint namespace_external_id_unique ensured" }
-
-        neo4jClient
-            .query(
-                "CREATE CONSTRAINT user_external_id_unique IF NOT EXISTS " +
-                    "FOR (u:ActiveUser) REQUIRE u.externalId IS UNIQUE",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Constraint user_external_id_unique ensured" }
-
-        neo4jClient
-            .query(
-                "CREATE INDEX namespace_externalId IF NOT EXISTS FOR (n:Namespace) ON (n.externalId)",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Index namespace_externalId created" }
-
-        neo4jClient
-            .query(
-                "CREATE INDEX user_externalId IF NOT EXISTS FOR (u:User) ON (u.externalId)",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Index user_externalId created" }
-
+    private fun ensureIdConstraints() {
         // ── Per-node id uniqueness constraints ──────────────────────────────
         // Every node label that carries an `id` property gets a UNIQUE
         // constraint so Neo4j enforces identity at the storage level and
         // can resolve MATCH (n {id: $x}) with an O(log n) index seek.
-
         val idConstraints =
             listOf(
-                // Root / namespace-scoped entities
                 "namespace_id_unique" to "Namespace",
                 "user_id_unique" to "User",
                 "case_id_unique" to "Case",
@@ -77,10 +59,11 @@ class Neo4jSchemaInitializer(
         val caseEventIdConstraints =
             listOf("case_event_id_unique" to "CaseEvent") +
                 CaseEventType.entries.map { type ->
-                    val constraintName = type.value
-                        .replace(Regex("([A-Z])")) { "_${it.value}" }
-                        .trimStart('_')
-                        .lowercase() + "_id_unique"
+                    val constraintName =
+                        type.value
+                            .replace(Regex("([A-Z])")) { "_${it.value}" }
+                            .trimStart('_')
+                            .lowercase() + "_id_unique"
                     constraintName to type.value
                 }
 
@@ -91,37 +74,6 @@ class Neo4jSchemaInitializer(
                         "FOR (n:$label) REQUIRE n.id IS UNIQUE",
                 ).run()
             logger.info { "[Neo4jSchemaInitializer] Constraint $constraintName ensured" }
-        }
-
-        // Backfill @Version on AgentConfig nodes created before the version field was introduced.
-        // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?
-        // which fails if the property is absent. Setting version = 0 makes existing nodes
-        // compatible without affecting any application logic.
-        val backfilled =
-            neo4jClient
-                .query(
-                    "MATCH (a:AgentConfig) WHERE a.version IS NULL SET a.version = 0 RETURN count(a) AS count",
-                ).fetchAs(Long::class.java)
-                .mappedBy { _, record -> record["count"].asLong() }
-                .one()
-                .orElse(0L)
-        if (backfilled > 0L) {
-            logger.info { "[Neo4jSchemaInitializer] Backfilled version=0 on $backfilled AgentConfig node(s)" }
-        }
-
-        // Backfill enabled=false on AgentConfig nodes created before the enabled field was introduced.
-        // Once all nodes have the property set, Cypher queries can use a.enabled directly
-        // without COALESCE(a.enabled, false).
-        val backfilledEnabled =
-            neo4jClient
-                .query(
-                    "MATCH (a:AgentConfig) WHERE a.enabled IS NULL SET a.enabled = false RETURN count(a) AS count",
-                ).fetchAs(Long::class.java)
-                .mappedBy { _, record -> record["count"].asLong() }
-                .one()
-                .orElse(0L)
-        if (backfilledEnabled > 0L) {
-            logger.info { "[Neo4jSchemaInitializer] Backfilled enabled=false on $backfilledEnabled AgentConfig node(s)" }
         }
     }
 
