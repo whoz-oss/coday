@@ -3031,6 +3031,300 @@ class AgentAdvancedSpec :
             agent.detectToolRepetition(events) shouldBe null
         }
 
+        // -------------------------------------------------------------------------
+        // getAdditionalContext integration
+        // -------------------------------------------------------------------------
+
+        "getAdditionalContext content is injected into parameter generation prompt" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            var additionalContextCalled = false
+
+            val additionalContextTool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__withAdditionalContext"
+                    override val description = "Tool that provides additional context"
+                    override val inputSchema = """{"type":"object","properties":{"value":{"type":"string"}}}"""
+                    override val version = "1.0.0"
+                    override val paramType = null
+
+                    override suspend fun getAdditionalContext(context: ToolContext): String? {
+                        additionalContextCalled = true
+                        return "Custom fields: field1 [REQUIRED], field2 [OPTIONAL]"
+                    }
+
+                    override suspend fun getIntermediatePhaseCount(): Int = 0
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("done")
+                }
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("OK.")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"test"}"""
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the tool.",
+                        toolName = "TEST__withAdditionalContext",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(additionalContextTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // getAdditionalContext was called during parameter generation
+            additionalContextCalled shouldBe true
+
+            // Tool was executed successfully
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            toolResponses shouldHaveSize 1
+            toolResponses[0].success shouldBe true
+
+            // ToolRequestEvent carries the LLM-generated params
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].args shouldContain "value"
+
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "getAdditionalContext combined with enrichment content in parameter prompt" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            var additionalContextCalled = false
+            var enrichCalled = false
+
+            val combinedContextTool =
+                object : StandardTool<Map<String, Any>> {
+                    override val name = "TEST__combinedContext"
+                    override val description = "Tool with both additional context and enrichment"
+                    override val inputSchema = """{"type":"object","properties":{"final":{"type":"string"}}}"""
+                    override val version = "1.0.0"
+                    override val paramType = null
+
+                    override suspend fun getAdditionalContext(context: ToolContext): String? {
+                        additionalContextCalled = true
+                        return "Additional: workspace info"
+                    }
+
+                    override suspend fun getIntermediatePhaseCount(): Int = 1
+
+                    override suspend fun getIntermediatePhaseDescriptor(
+                        phaseIndex: Int,
+                        previousContent: String?,
+                    ) = IntermediatePhaseDescriptor(
+                        inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}""",
+                        prompt = "Identify the entity.",
+                    )
+
+                    override suspend fun enrich(
+                        phaseIndex: Int,
+                        phaseParametersJson: String,
+                        context: ToolContext,
+                    ): EnrichmentResult {
+                        enrichCalled = true
+                        return EnrichmentResult(success = true, content = "Enriched: entity details")
+                    }
+
+                    override suspend fun execute(
+                        input: Map<String, Any>?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("done")
+                }
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("OK.")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany
+                listOf(
+                    """{"id":"123"}""",
+                    """{"final":"ok"}""",
+                )
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Use the combined context tool.",
+                        toolName = "TEST__combinedContext",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(combinedContextTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // Both getAdditionalContext and enrich were called
+            additionalContextCalled shouldBe true
+            enrichCalled shouldBe true
+
+            // ToolRequestEvent carries the LLM-generated params from the second call
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].args shouldContain "final"
+
+            // Enrichment phase trace is recorded
+            val phases = toolRequests[0].enrichmentPhases
+            phases shouldNotBe null
+            phases!! shouldHaveSize 1
+            phases[0].success shouldBe true
+            phases[0].enrichmentContent shouldBe "Enriched: entity details"
+
+            // Tool executed successfully
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            toolResponses shouldHaveSize 1
+            toolResponses[0].success shouldBe true
+
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "getAdditionalContext returning null does not affect parameter prompt" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "TEST__nullContext"
+            every { mockTool.description } returns "Tool with null additional context"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
+            every { mockTool.paramType } returns String::class.java
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
+            coEvery { mockTool.getIntermediatePhaseCount() } returns 0
+            coEvery { mockTool.getAdditionalContext(any()) } returns null
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("OK.")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"test"}"""
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Call the null-context tool.",
+                        toolName = "TEST__nullContext",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Done.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(mockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            // getAdditionalContext was called
+            coVerify(exactly = 1) { mockTool.getAdditionalContext(any()) }
+
+            // Tool executed normally
+            val toolResponses = events.filterIsInstance<ToolResponseEvent>()
+            toolResponses shouldHaveSize 1
+            toolResponses[0].success shouldBe true
+
+            // No enrichment phases (intermediatePhaseCount=0)
+            val toolRequests = events.filterIsInstance<ToolRequestEvent>()
+            toolRequests shouldHaveSize 1
+            toolRequests[0].enrichmentPhases shouldBe null
+
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
         "detectToolRepetition returns null when window contains a synthetic ToolResponseEvent" {
             val agent = makeParserAgent()
             val namespaceId = UUID.randomUUID()

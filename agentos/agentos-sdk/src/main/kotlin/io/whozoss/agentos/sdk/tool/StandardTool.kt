@@ -133,6 +133,29 @@ interface StandardTool<T> {
     // ─── Parameter preparation for advanced execution ───────────────────────────────────────
 
     /**
+     * Returns optional additional context for LLM parameter generation.
+     *
+     * Called by AgentAdvanced before generating tool parameters. The returned string
+     * is prefixed to any enrichment phase content in the parameter generation prompt,
+     * providing the LLM with backend-fetched context that it needs to generate correct
+     * parameters. This content is dynamic but does not require an LLM round-trip to
+     * produce — it comes from backend services directly.
+     *
+     * This is orthogonal to enrichment phases: enrichment phases are chained
+     * sequentially where each phase builds on the previous one's output, and only
+     * the last phase's content is injected into the final prompt. Additional context
+     * is a separate channel whose content is concatenated as a prefix before any
+     * enrichment content.
+     *
+     * The default returns null (no additional context). Override in tools that need
+     * to inject backend-fetched context into parameter generation.
+     *
+     * @param context standard tool execution context (namespaceId, userId, caseEvents)
+     * @return additional context string to prefix to the parameter generation prompt, or null
+     */
+    suspend fun getAdditionalContext(context: ToolContext): String? = null
+
+    /**
      * Number of intermediate enrichment phases for multi-step parameter preparation.
      * 0 (default) = single-phase generation, identical to current behavior.
      * AgentSimple ignores this. AgentAdvanced orchestrates the phases

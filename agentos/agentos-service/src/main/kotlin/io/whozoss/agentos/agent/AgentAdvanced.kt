@@ -1231,6 +1231,14 @@ class AgentAdvanced(
             context.tools.firstOrNull { it.name == intentionEvent.toolName }
                 ?: throw ToolNotFoundException(intentionEvent.toolName)
 
+        val toolCtx = buildToolContext(tool.name, namespaceId)
+        val additionalContext = try {
+            tool.getAdditionalContext(toolCtx)
+        } catch (e: Exception) {
+            logger.warn(e) { "[$name] getAdditionalContext failed for '${tool.name}', proceeding without additional context" }
+            null
+        }
+
         // Enrichment loop for multi-phase parameter preparation
         val enrichmentResult =
             if (tool.getIntermediatePhaseCount() > 0) {
@@ -1239,8 +1247,11 @@ class AgentAdvanced(
                 null
             }
 
-        val enrichmentBlock =
-            enrichmentResult?.content?.let {
+        val contextBlock =
+            listOfNotNull(
+                additionalContext,
+                enrichmentResult?.content,
+            ).joinToString("\n\n").takeIf { it.isNotBlank() }?.let {
                 "\n\nContext from preparation phases:\n$it"
             } ?: ""
 
@@ -1255,7 +1266,7 @@ Input JSON Schema:
 ${tool.inputSchema}
 ```
 
-Intention: ${intentionEvent.intention}$enrichmentBlock
+Intention: ${intentionEvent.intention}$contextBlock
 
 Output requirements:
 - Wrap the JSON object in <parameter> tags: <parameter>{ ... }</parameter>
