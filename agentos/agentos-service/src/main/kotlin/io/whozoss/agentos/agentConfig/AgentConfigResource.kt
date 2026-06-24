@@ -44,4 +44,9 @@ data class AgentConfigResource(
     val updatedOn: Instant = Instant.now(),
     /** Whether this agent is published. Null on input is treated as false (unpublished). */
     val enabled: Boolean? = null,
+    /**
+     * Allowlist of agent names this agent is permitted to delegate to.
+     * When null or empty, no delegation capability is provided.
+     */
+    val subAgents: List<String>? = null,
 )

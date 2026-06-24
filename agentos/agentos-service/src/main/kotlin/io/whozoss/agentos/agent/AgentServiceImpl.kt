@@ -5,7 +5,10 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.delegation.DelegationTool
+import io.whozoss.agentos.delegation.SubCaseLauncher
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -47,6 +50,8 @@ class AgentServiceImpl(
     private val objectMapper: ObjectMapper,
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
+    private val caseEventService: CaseEventService,
+    private val subCaseLauncher: SubCaseLauncher,
 ) : AgentService {
     override suspend fun findAgentByName(
         namePart: String,
@@ -142,7 +147,7 @@ class AgentServiceImpl(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = config.name,
             )
-        val tools =
+        val baseTools =
             if (context.userId != null) {
                 toolResolverService.resolveToolsForRun(
                     agentIntegrations = config.integrations,
@@ -154,6 +159,7 @@ class AgentServiceImpl(
                     context = toolContext,
                 )
             }
+        val tools = addDelegationToolIfConfigured(baseTools, config, context)
         return ResolvedAgentDefinition(
             agentConfigId = config.metadata.id,
             name = config.name,
@@ -170,6 +176,33 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             userId = context.userId,
         )
+    }
+
+    /**
+     * Appends a [DelegationTool] to [baseTools] when [config.subAgents] is non-empty
+     * and the execution context has a live case ([context.caseId] is non-null).
+     *
+     * No tool is added when [config.subAgents] is null/empty (agent has no delegation
+     * allowlist) or when there is no case context (e.g. definition-resolution endpoint).
+     */
+    private fun addDelegationToolIfConfigured(
+        baseTools: Collection<StandardTool<*>>,
+        config: AgentConfig,
+        context: AgentExecutionContext,
+    ): Collection<StandardTool<*>> {
+        val subAgents = config.subAgents?.filter { it.isNotBlank() }
+        if (subAgents.isNullOrEmpty() || context.caseId == null) return baseTools
+
+        logger.info { "Adding DelegationTool for agent '${config.name}' with subAgents=$subAgents" }
+        val delegationTool =
+            DelegationTool(
+                subCaseLauncher = subCaseLauncher,
+                parentCaseId = context.caseId,
+                namespaceId = context.namespaceId,
+                allowedAgents = subAgents,
+                loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            )
+        return baseTools + delegationTool
     }
 
     /**

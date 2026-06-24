@@ -63,6 +63,7 @@ class AgentConfigController(
             updatedBy = entity.metadata.modifiedBy,
             updatedOn = entity.metadata.modified,
             enabled = entity.enabled,
+            subAgents = entity.subAgents,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -77,6 +78,7 @@ class AgentConfigController(
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
             enabled = resource.enabled ?: false,
+            subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
         )
 
     /**
@@ -99,6 +101,7 @@ class AgentConfigController(
             integrations = resource.integrations,
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
+            subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
         )
 
     @GetMapping("/{id}")

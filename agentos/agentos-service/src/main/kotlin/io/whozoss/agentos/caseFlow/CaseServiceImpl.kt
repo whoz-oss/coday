@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.delegation.SubCaseLauncher
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -47,7 +48,7 @@ class CaseServiceImpl(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
-) : CaseService {
+) : CaseService, SubCaseLauncher {
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     /**
@@ -600,12 +601,50 @@ class CaseServiceImpl(
         runtime.requestInterrupt()
     }
 
+    override fun killSubCase(caseId: UUID) = killCase(caseId)
+
     override fun killCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
         // Signal the runtime loop to exit cleanly if it is currently running,
         // then let handleStatusChange evict it via the isTerminal() path.
         activeRuntimes[caseId]?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)
+    }
+
+    override fun startSubCase(
+        parentCaseId: UUID,
+        namespaceId: UUID,
+        agentName: String,
+        task: String,
+        userId: UUID,
+    ): CaseRuntime {
+        val user =
+            userService.findById(userId)
+                ?: throw ResourceNotFoundException("User not found: $userId")
+        val displayName =
+            listOfNotNull(user.firstname, user.lastname)
+                .joinToString(" ")
+                .ifBlank { userId.toString() }
+        val actor = io.whozoss.agentos.sdk.actor.Actor(
+            id = userId.toString(),
+            displayName = displayName,
+            role = io.whozoss.agentos.sdk.actor.ActorRole.USER,
+        )
+        // Use @mention syntax so the normal selectAgent resolution picks up the
+        // requested agent without any special-casing in the runtime.
+        val mentionedTask = "@$agentName $task"
+        val subCase = create(
+            Case(
+                namespaceId = namespaceId,
+                title = "Sub-case: $task".take(120),
+                parentCaseId = parentCaseId,
+            ),
+        )
+        val runtime = getCaseRuntime(subCase.id)
+        runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
+        scope.launch { runtime.run() }
+        logger.info { "Sub-case ${subCase.id} started under parent $parentCaseId, agent=$agentName" }
+        return runtime
     }
 
     // ======================================================

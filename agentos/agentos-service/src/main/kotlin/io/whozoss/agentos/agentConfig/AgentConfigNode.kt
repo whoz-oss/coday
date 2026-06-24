@@ -41,6 +41,7 @@ data class AgentConfigNode(
     val externalMetadataJson: String? = null,
     val advancedExecution: Boolean = false,
     val enabled: Boolean,
+    val subAgentsJson: String? = null,
     // EntityMetadata fields
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -72,12 +73,14 @@ data class AgentConfigNode(
             advancedExecution = advancedExecution,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
             enabled = enabled,
+            subAgents = subAgentsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
         )
 
     companion object {
         private val MAPPER = jacksonObjectMapper()
         private val INTEGRATIONS_TYPE = object : TypeReference<Map<String, List<String>?>>() {}
         private val EXTERNAL_METADATA_TYPE = object : TypeReference<Map<String, Any?>>() {}
+        private val STRING_LIST_TYPE = object : TypeReference<List<String>>() {}
 
         fun fromDomain(config: AgentConfig): AgentConfigNode =
             AgentConfigNode(
@@ -90,6 +93,7 @@ data class AgentConfigNode(
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
                 externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
                 advancedExecution = config.advancedExecution,
+                subAgentsJson = config.subAgents?.let { MAPPER.writeValueAsString(it) },
                 version = config.metadata.version,
                 enabled = config.enabled,
                 created = config.metadata.created,

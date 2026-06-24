@@ -72,4 +72,15 @@ data class AgentConfig(
      * at startup by [io.whozoss.agentos.config.Neo4jSchemaInitializer].
      */
     val enabled: Boolean = false,
+    /**
+     * Allowlist of agent names this agent is permitted to delegate to.
+     *
+     * When null or empty, no delegation tool is provided to the agent.
+     * When non-empty, a [io.whozoss.agentos.delegation.DelegationTool] is instantiated
+     * and added to the agent's tool set at build time, restricted to exactly the
+     * listed agent names.
+     *
+     * Names are matched against [AgentConfig.name] within the same namespace.
+     */
+    val subAgents: List<String>? = null,
 ) : Entity

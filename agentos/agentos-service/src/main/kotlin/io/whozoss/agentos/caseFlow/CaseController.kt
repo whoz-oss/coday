@@ -59,6 +59,7 @@ class CaseController(
             namespaceId = entity.namespaceId,
             status = entity.status,
             title = entity.title,
+            parentCaseId = entity.parentCaseId,
             created = entity.metadata.created,
             removed = entity.metadata.removed,
         )
