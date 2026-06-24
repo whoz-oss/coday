@@ -1,3 +1,13 @@
+## 0.189.0 (2026-06-24)
+
+### 🚀 Features
+
+- wz-32484 unify confirmationMode into single getConfirmationMode() entry point ([#1031](https://github.com/whoz-oss/coday/pull/1031))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.188.0 (2026-06-24)
 
 ### 🚀 Features
