@@ -1,3 +1,13 @@
+## 0.188.0 (2026-06-24)
+
+### 🚀 Features
+
+- WZ-31851 prepare permission platform level ([#1036](https://github.com/whoz-oss/coday/pull/1036))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.187.2 (2026-06-23)
 
 ### 🩹 Fixes
