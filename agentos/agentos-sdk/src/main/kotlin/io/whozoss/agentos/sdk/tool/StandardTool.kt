@@ -53,18 +53,17 @@ interface StandardTool<T> {
 
     // ─── User-confirmation opt-in (WZ-31596) ───────────────────────────────────────────────
     //
-    // A tool opts in to the confirmation flow by setting [confirmationMode] to a value
-    // other than [ConfirmationMode.NONE]. The orchestrator then routes via the
+    // A tool opts in to the confirmation flow by overriding [getConfirmationMode] to return
+    // a value other than [ConfirmationMode.NONE]. The orchestrator then routes via the
     // [PendingConfirmationEvent] persistence cycle and calls [executeWithJson]
     // (post-confirmation) or [onRejected] (post-refusal).
     //
-    // When [confirmationMode] is [ConfirmationMode.NONE] (the default), the tool runs
+    // When [getConfirmationMode] returns [ConfirmationMode.NONE] (the default), the tool runs
     // through its standard [execute] path — same as a tool that never opted in.
 
     /**
-     * Static fallback for the confirmation mode. Read directly only by tools that
-     * don't need dynamic resolution. The orchestrator reads via [getConfirmationMode]
-     * which defaults to this value.
+     * Resolution of the confirmation mode. The orchestrator calls this with the proposed args
+     * and current case events before deciding whether to gate the tool call.
      *
      * - [ConfirmationMode.NONE]: no confirmation required — tool executes directly (default).
      * - [ConfirmationMode.INFER]: confirmation required, but the orchestrator may skip
@@ -72,18 +71,16 @@ interface StandardTool<T> {
      *   (via [ConfirmationManager.shouldConfirm]).
      * - [ConfirmationMode.EVERY_TIME]: confirmation required on every call; implicit consent
      *   is never trusted. Use this for irreversible side-effects (e.g. file deletion).
-     */
-    val confirmationMode: ConfirmationMode get() = ConfirmationMode.NONE
-
-    /**
-     * Dynamic resolution of the confirmation mode. The orchestrator calls this with the
-     * proposed args and current case events before deciding whether to gate the tool call.
-     * Override to compute the mode from business logic — e.g. inspect prior tool calls in
-     * [ToolContext.caseEvents] to bypass confirmation when an in-session create makes a
-     * follow-up update implicit.
      *
-     * Default delegates to the static [confirmationMode] for backward compatibility:
-     * existing plugins that only override [confirmationMode] keep working without change.
+     * Override to return a constant for a fixed mode:
+     * ```kotlin
+     * override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) =
+     *     ConfirmationMode.EVERY_TIME
+     * ```
+     *
+     * Or override with logic to compute the mode dynamically — e.g. inspect prior tool calls
+     * in [ToolContext.caseEvents] to bypass confirmation when an in-session create makes a
+     * follow-up update implicit.
      *
      * ⚠️ HOT PATH — called on **every** tool call by the orchestrator, including those that
      * resolve to [ConfirmationMode.NONE]. Overrides MUST be:
@@ -102,7 +99,7 @@ interface StandardTool<T> {
     suspend fun getConfirmationMode(
         argsJson: String? = null,
         context: ToolContext? = null,
-    ): ConfirmationMode = confirmationMode
+    ): ConfirmationMode = ConfirmationMode.NONE
 
     /**
      * Tool-specific guidance injected as a labelled `Tool-specific confirmation guidance:`

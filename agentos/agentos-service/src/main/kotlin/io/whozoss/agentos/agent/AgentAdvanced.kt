@@ -370,7 +370,7 @@ class AgentAdvanced(
 
     /**
      * Executes the tool for the given [intention], handling the confirmation gate when the
-     * tool's [confirmationMode] is not [ConfirmationMode.NONE].
+     * tool's [getConfirmationMode] is not [ConfirmationMode.NONE].
      *
      * @return [GateOutcome.AwaitingConfirmation] if a [PendingConfirmationEvent] was emitted
      *   and the agent must exit the loop; [GateOutcome.ContinueLoop] if the tool was executed
