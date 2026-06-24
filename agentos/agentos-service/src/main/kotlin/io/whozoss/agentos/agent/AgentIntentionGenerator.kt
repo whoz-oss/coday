@@ -68,7 +68,7 @@ Before generating the output, analyze the situation using the following logic:
 **4. Check Data Prerequisites:**
 *   Does the intended tool require specific IDs or context ?
 *   Have these entities been referenced previously?
-    *   **NO:** The next action is `FindXXX` to fetch the data.
+    *   **NO:** The next action is `FindXXX` to reference the entity (`FindXXX` establishes a reference to an entity by identifying the corresponding id).
     *   **YES:** You are ready to call the execution tool.
 
 **Non-discrimination safeguard:**

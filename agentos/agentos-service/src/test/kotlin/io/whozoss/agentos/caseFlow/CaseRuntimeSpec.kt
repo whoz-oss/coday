@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.flow
 import java.util.UUID
@@ -122,6 +123,8 @@ class CaseRuntimeSpec : StringSpec() {
      * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and
      *   feeds each produced event back through pushEvents so the loop can detect
      *   [AgentFinishedEvent] and stop.
+     * - [updateStatus] defaults to a no-op: status transitions are observable via
+     *   [CaseRuntime.statusFlow] without needing a callback.
      */
     fun buildRuntime(
         agentName: String = "default-agent",
@@ -146,7 +149,7 @@ class CaseRuntimeSpec : StringSpec() {
             CaseRuntime(
                 id = runtimeId,
                 namespaceId = namespaceId,
-                updateStatus = { _, _ -> },
+                updateStatusCallback = { _, _ -> },
                 storeEvent = { event ->
                     savedEvents.add(event)
                     event
@@ -172,6 +175,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.run()
 
             runAgent.callCount shouldBe 1
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
 
         "selectAgent is called exactly once per user message" {
@@ -199,9 +203,8 @@ class CaseRuntimeSpec : StringSpec() {
             agentEvents shouldHaveAtLeastSize 2
             agentEvents[0].shouldBeInstanceOf<AgentSelectedEvent>()
             agentEvents[1].shouldBeInstanceOf<AgentFinishedEvent>()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
-
-
 
         // -------------------------------------------------------------------------
         // selectAgent returning a WarnEvent + AgentSelectedEvent
@@ -218,7 +221,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
                         event
@@ -285,7 +288,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         if (event is AgentSelectedEvent) callOrder.add("AgentSelectedEvent saved")
                         event
@@ -325,7 +328,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatusCallback = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
@@ -360,7 +363,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatusCallback = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
@@ -394,7 +397,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatusCallback = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
@@ -427,6 +430,56 @@ class CaseRuntimeSpec : StringSpec() {
         // Redirect: AgentFinishedEvent followed by AgentSelectedEvent
         // -------------------------------------------------------------------------
 
+        "statusFlow reflects RUNNING during run() and IDLE after normal completion" {
+            val (runtime) = buildRuntime()
+
+            runtime.statusFlow.value shouldBe CaseStatus.PENDING
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "statusFlow reflects ERROR when max iterations are exceeded" {
+            // An agent that never emits AgentFinishedEvent forces the loop to hit maxIterations.
+            val loopingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = UUID.randomUUID())
+                    every { name } returns "looping"
+                    every { run(any<List<CaseEvent>>(), any()) } returns flow { /* never finishes */ }
+                }
+            val (runtime) = buildRuntime(agentName = "looping", agent = loopingAgent)
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.ERROR
+        }
+
+        "statusFlow reflects KILLED after requestKill during run" {
+            // requestKill() must be called while run() is executing — run() resets
+            // the kill flag at startup, so calling it before run() has no effect.
+            val runtimeId = UUID.randomUUID()
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, _ ->
+                        // Signal kill from inside runAgent — before pushing AgentFinishedEvent.
+                        runtime.requestKill()
+                    },
+                )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.KILLED
+        }
+
         "runAgent is called twice when agent A redirects to agent B" {
             // Regression: processNextStep scanned events newest-first and stopped at
             // AgentFinishedEvent before seeing the AgentSelectedEvent that followed it.
@@ -444,54 +497,79 @@ class CaseRuntimeSpec : StringSpec() {
 
             // Agent A emits: ToolRequestEvent, ToolResponseEvent, AgentFinishedEvent(A), AgentSelectedEvent(B)
             // — the redirect order produced by AgentSimple after the fix.
-            val agentAMock = mockk<Agent>(name = "mock-$agentA") {
-                every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentA.toByteArray()))
-                every { name } returns agentA
-                every { run(any<List<CaseEvent>>(), any()) } answers {
-                    val caseId = firstArg<List<CaseEvent>>().first().caseId
-                    flow {
-                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
-                            agentId = UUID.nameUUIDFromBytes(agentA.toByteArray()), agentName = agentA))
-                        emit(AgentSelectedEvent(namespaceId = namespaceId, caseId = caseId,
-                            agentId = agentBId, agentName = agentB))
+            val agentAMock =
+                mockk<Agent>(name = "mock-$agentA") {
+                    every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentA.toByteArray()))
+                    every { name } returns agentA
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = UUID.nameUUIDFromBytes(agentA.toByteArray()),
+                                    agentName = agentA,
+                                ),
+                            )
+                            emit(
+                                AgentSelectedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentBId,
+                                    agentName = agentB,
+                                ),
+                            )
+                        }
                     }
                 }
-            }
 
             // Agent B finishes normally.
-            val agentBMock = mockk<Agent>(name = "mock-$agentB") {
-                every { metadata } returns EntityMetadata(id = agentBId)
-                every { name } returns agentB
-                every { run(any<List<CaseEvent>>(), any()) } answers {
-                    val caseId = firstArg<List<CaseEvent>>().first().caseId
-                    flow {
-                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
-                            agentId = agentBId, agentName = agentB))
+            val agentBMock =
+                mockk<Agent>(name = "mock-$agentB") {
+                    every { metadata } returns EntityMetadata(id = agentBId)
+                    every { name } returns agentB
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentBId,
+                                    agentName = agentB,
+                                ),
+                            )
+                        }
                     }
                 }
-            }
 
             val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentA)) }
 
-            val runAgent = RecordingRunAgent { name, events ->
-                runOrder += name
-                val agent = if (name == agentA) agentAMock else agentBMock
-                agent.run(events).collect { event ->
-                    savedEvents.add(event)
-                    runtime.emitEvent(event)
-                    runtime.pushEvents(listOf(event))
+            val runAgent =
+                RecordingRunAgent { name, events ->
+                    runOrder += name
+                    val agent = if (name == agentA) agentAMock else agentBMock
+                    agent.run(events).collect { event ->
+                        savedEvents.add(event)
+                        runtime.emitEvent(event)
+                        runtime.pushEvents(listOf(event))
+                    }
                 }
-            }
 
-            runtime = CaseRuntime(
-                id = runtimeId,
-                namespaceId = namespaceId,
-                updateStatus = { _, _ -> },
-                storeEvent = { event -> savedEvents.add(event); event },
-                selectAgent = selectAgent.asCallback,
-                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { event ->
+                        savedEvents.add(event)
+                        event
+                    },
+                    selectAgent = selectAgent.asCallback,
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = runAgent.asCallback,
-            )
+                )
 
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
@@ -519,39 +597,57 @@ class CaseRuntimeSpec : StringSpec() {
 
             lateinit var runtime: CaseRuntime
 
-            val agentAMock = mockk<Agent>(name = "mock-$agentA") {
-                every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentA.toByteArray()))
-                every { name } returns agentA
-                every { run(any<List<CaseEvent>>(), any()) } answers {
-                    val caseId = firstArg<List<CaseEvent>>().first().caseId
-                    flow {
-                        emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
-                            agentId = UUID.nameUUIDFromBytes(agentA.toByteArray()), agentName = agentA))
-                        emit(AgentSelectedEvent(namespaceId = namespaceId, caseId = caseId,
-                            agentId = UUID.nameUUIDFromBytes(agentB.toByteArray()), agentName = agentB))
+            val agentAMock =
+                mockk<Agent>(name = "mock-$agentA") {
+                    every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentA.toByteArray()))
+                    every { name } returns agentA
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = UUID.nameUUIDFromBytes(agentA.toByteArray()),
+                                    agentName = agentA,
+                                ),
+                            )
+                            emit(
+                                AgentSelectedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = UUID.nameUUIDFromBytes(agentB.toByteArray()),
+                                    agentName = agentB,
+                                ),
+                            )
+                        }
                     }
                 }
-            }
 
             val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentA)) }
-            val runAgent = RecordingRunAgent { name, events ->
-                runOrder += name
-                agentAMock.run(events).collect { event ->
-                    savedEvents.add(event)
-                    runtime.emitEvent(event)
-                    runtime.pushEvents(listOf(event))
+            val runAgent =
+                RecordingRunAgent { name, events ->
+                    runOrder += name
+                    agentAMock.run(events).collect { event ->
+                        savedEvents.add(event)
+                        runtime.emitEvent(event)
+                        runtime.pushEvents(listOf(event))
+                    }
                 }
-            }
 
-            runtime = CaseRuntime(
-                id = runtimeId,
-                namespaceId = namespaceId,
-                updateStatus = { _, _ -> },
-                storeEvent = { event -> savedEvents.add(event); event },
-                selectAgent = selectAgent.asCallback,
-                isAgentAuthorized = { name, _ -> name == agentA }, // agentB not authorized
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { event ->
+                        savedEvents.add(event)
+                        event
+                    },
+                    selectAgent = selectAgent.asCallback,
+                    isAgentAuthorized = { name, _ -> name == agentA }, // agentB not authorized
                     runAgent = runAgent.asCallback,
-            )
+                )
 
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
@@ -601,7 +697,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = caseId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
                         event
