@@ -66,4 +66,5 @@ interface AgentService {
         namespaceId: UUID,
         userId: UUID? = null,
     ): String?
+
 }

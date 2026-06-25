@@ -43,13 +43,15 @@ springCloudNetflixEureka = "4.3.1"
 # 8.1 is the last version compatible with Jackson 2.x (Spring Boot 3.x);
 # 9.0+ requires Jackson 3.x.
 logstashLogbackEncoder = "8.1"
+# Micrometer Datadog registry — version intentionally omitted; managed by
+# the Spring Boot BOM to stay aligned with the rest of the Micrometer stack.
 # OkHttp — version aligned with Spring Cloud BOM constraint (spring-cloud-dependencies 2025.0.1)
 # and the transitive version pulled by com.google.genai:google-genai (Spring AI Gemini).
 okhttp = "4.12.0"
 
 # AgentOS modules versions
-agentosSdk = "0.180.2"
-agentosService = "0.180.2"
+agentosSdk = "0.189.1"
+agentosService = "0.189.1"
 
 [libraries]
 # Kotlin
@@ -79,10 +81,15 @@ spring-cloud-starter-config = { module = "org.springframework.cloud:spring-cloud
 spring-cloud-starter-eureka-client = { module = "org.springframework.cloud:spring-cloud-starter-netflix-eureka-client", version.ref = "springCloudNetflixEureka" }
 
 # Klogger
-klogger = {module="io.github.microutils:kotlin-logging-jvm", version.ref="klogger"}
+klogger = { module = "io.github.microutils:kotlin-logging-jvm", version.ref = "klogger" }
 
 # Logstash Logback Encoder — JSON structured logging
 logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashLogbackEncoder" }
+# Micrometer Datadog registry — exports Micrometer metrics to the Datadog API.
+# Disabled at runtime unless DATADOG_API_KEY is set and datadog.metrics.export.enabled=true.
+# Version managed by Spring Boot BOM.
+micrometer-registry-datadog = { module = "io.micrometer:micrometer-registry-datadog" }
+micrometer-registry-statsd = { module = "io.micrometer:micrometer-registry-statsd" }
 
 # OkHttp — HTTP client used by plugins (e.g. copilot) and optionally by Feign (whoz profile)
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }

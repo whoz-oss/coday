@@ -9,6 +9,7 @@ import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
@@ -22,9 +23,13 @@ import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
@@ -41,7 +46,10 @@ class CaseServiceImpl(
     private val caseEventService: CaseEventService,
     private val userService: UserService,
     private val namespaceService: NamespaceService,
+    private val caseConfig: CaseConfigProperties,
 ) : CaseService {
+    private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
+
     /**
      * Coroutine scope used to run case execution loops in the background.
      * Each [run] call is launched here so HTTP threads are never blocked.
@@ -49,6 +57,12 @@ class CaseServiceImpl(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
+
+    /**
+     * Eviction watcher [Job] per active runtime, keyed by case id.
+     * Cancelled whenever the runtime leaves [activeRuntimes] (terminal status or eviction).
+     */
+    private val watcherJobs = ConcurrentHashMap<UUID, Job>()
 
     // ======================================================
     // EntityService
@@ -61,6 +75,7 @@ class CaseServiceImpl(
         val saved = caseRepository.save(entity)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
+        // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
         return saved
     }
 
@@ -79,7 +94,10 @@ class CaseServiceImpl(
         }
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Case> = caseRepository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<Case> = caseRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
@@ -130,6 +148,66 @@ class CaseServiceImpl(
         val pastEvents = caseEventService.findByParent(caseId)
         logger.info { "Rehydrating case $caseId with ${pastEvents.size} past events" }
         return buildRuntime(case, pastEvents)
+        // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
+    }
+
+    /**
+     * Starts a long-lived eviction watcher for [runtime].
+     *
+     * Combines [CaseRuntime.subscriptionCount] and [CaseRuntime.statusFlow] into a
+     * single signal: eviction is only triggered when **both** conditions hold at the
+     * same time — the case is [CaseStatus.IDLE] **and** no SSE subscribers are connected.
+     *
+     * This avoids the race where a client disconnects while the agent is still running:
+     * `subscriptionCount` would fall to 0 during [CaseStatus.RUNNING], but `combine`
+     * emits `false` for that state and the grace period never starts.
+     *
+     * On each transition to `(IDLE, 0)`, the watcher:
+     * 1. Waits [idleEvictionGraceMs] to absorb brief reconnects (e.g. page refresh,
+     *    or a user typing a quick follow-up).
+     * 2. Re-checks the combined condition — if a subscriber reconnected or a new
+     *    message arrived (status back to RUNNING) during the grace period, eviction
+     *    is skipped.
+     * 3. If both conditions still hold, evicts the runtime.
+     *
+     * The coroutine runs for the lifetime of the service scope. It is automatically
+     * cancelled when [scope] is cancelled (service shutdown).
+     */
+    private fun startEvictionWatcher(
+        caseId: UUID,
+        runtime: CaseRuntime,
+    ) {
+        logger.trace { "Case $caseId eviction watcher started" }
+        val job =
+            scope.launch {
+                combine(runtime.subscriptionCount, runtime.statusFlow) { count, status ->
+                    count == 0 && status == CaseStatus.IDLE
+                }
+                    // Grace period: absorb brief reconnects and fast follow-up messages.
+                    .debounce(idleEvictionGraceMs)
+                    .filter { it }
+                    .collect {
+                        // Re-check: a subscriber may have reconnected or a new message may
+                        // have arrived (status back to RUNNING) during the grace period.
+                        if (activeRuntimes.containsKey(caseId) &&
+                            runtime.subscriptionCount.value == 0 &&
+                            runtime.statusFlow.value == CaseStatus.IDLE
+                        ) {
+                            activeRuntimes.remove(caseId)
+                            // Remove from watcherJobs without cancelling: we are executing
+                            // inside this very coroutine, so cancel() would be a no-op and
+                            // is semantically misleading. The coroutine ends naturally here.
+                            watcherJobs.remove(caseId)
+                            logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
+                        } else {
+                            logger.debug {
+                                "Case $caseId: eviction skipped — " +
+                                    "status=${runtime.statusFlow.value}, subscribers=${runtime.subscriptionCount.value}"
+                            }
+                        }
+                    }
+            }
+        watcherJobs[caseId] = job
     }
 
     /** Constructs a [CaseRuntime] wired with all service callbacks. */
@@ -140,7 +218,7 @@ class CaseServiceImpl(
         CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
-            updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
+            updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
             isAgentAuthorized = { agentName, userId ->
@@ -163,7 +241,8 @@ class CaseServiceImpl(
                 )
             },
             inputEvents = inputEvents,
-        )
+            initialStatus = case.status,
+        ).also { startEvictionWatcher(case.id, it) }
 
     // ======================================================
     // Message handling (called by controller)
@@ -402,8 +481,25 @@ class CaseServiceImpl(
                 userId = userId,
                 caseEventsProvider = eventsProvider,
             )
-        agentService
-            .findAgentByName(agentName, context)
+        val agent = agentService.findAgentByName(agentName, context)
+
+        if (shouldEmitRunningEvent(events)) {
+            val runningEvent =
+                AgentRunningEvent(
+                    namespaceId = runtime.namespaceId,
+                    caseId = caseId,
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    llmProvider = agent.llmProvider,
+                    llmModel = agent.llmModel,
+                )
+            storeEvent(runningEvent).also { saved ->
+                runtime.pushEvents(listOf(saved))
+                runtime.emitEvent(saved)
+            }
+        }
+
+        agent
             .run(events, shouldContinue)
             .catch { error ->
                 logger.error(error) { "Error in agent $agentName for case $caseId" }
@@ -481,6 +577,7 @@ class CaseServiceImpl(
             it.emitEvent(savedStatusEvent)
             if (newStatus.isTerminal()) {
                 activeRuntimes.remove(caseId)
+                watcherJobs.remove(caseId)?.cancel()
                 logger.info { "Case $caseId reached terminal status $newStatus, evicted" }
             }
         }
@@ -528,6 +625,31 @@ class CaseServiceImpl(
         activeRuntimes.clear()
         scope.cancel()
         logger.info { "CaseService shutdown complete" }
+    }
+
+    /**
+     * Determines whether a new [AgentRunningEvent] should be emitted by inspecting
+     * the event history.
+     *
+     * Returns `true` when the most recent [AgentSelectedEvent] is newer than the most
+     * recent [AgentRunningEvent] (or when no [AgentRunningEvent] exists yet) — this is
+     * the normal fresh-run path.
+     *
+     * Returns `false` when [AgentRunningEvent] is already the most recent of the two —
+     * the case is rehydrating from a crash and emitting a duplicate would cause
+     * [CaseRuntime.processNextStep] to re-trigger execution indefinitely.
+     *
+     * This comparison is safe because agent execution is strictly sequential within a
+     * case: [CaseRuntime.run] is guarded by an [AtomicBoolean] that prevents concurrent
+     * invocations, and [runAgent] suspends in [Flow.collect] until the agent's flow
+     * terminates. No two agents can overlap, so the relative positions of
+     * [AgentSelectedEvent] and [AgentRunningEvent] in the event list are always
+     * well-ordered.
+     */
+    private fun shouldEmitRunningEvent(events: List<CaseEvent>): Boolean {
+        val lastSelectedIndex = events.indexOfLast { it is AgentSelectedEvent }
+        val lastRunningIndex = events.indexOfLast { it is AgentRunningEvent }
+        return lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
     }
 
     companion object : KLogging() {

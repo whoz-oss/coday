@@ -5,24 +5,17 @@ import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
-import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import kotlinx.coroutines.flow.FlowCollector
 import mu.KLogger
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
 
 /**
- * Emits a [WarnEvent] and [AgentFinishedEvent] when the LLM provider rejects a request
+ * Emits an [ErrorEvent] and [AgentFinishedEvent] when the LLM provider rejects a request
  * with a non-transient error (4xx). Retrying with the same payload would produce the
  * same result, so the run is terminated immediately rather than looping.
- *
- * @param agent The agent whose turn is ending.
- * @param e The non-transient provider exception.
- * @param namespaceId Namespace of the current case.
- * @param caseId Current case identifier.
- * @param logger Logger of the calling agent.
  */
-suspend fun FlowCollector<CaseEvent>.emitProviderErrorEvents(
+suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
     agent: Agent,
     e: NonTransientAiException,
     namespaceId: UUID,
@@ -43,25 +36,20 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorEvents(
             caseId = caseId,
             agentId = agent.id,
             agentName = agent.name,
+            llmProvider = agent.llmProvider,
+            llmModel = agent.llmModel,
         ),
     )
 }
 
 /**
- * Emits the orchestration events for a structured agent interruption.
+ * Emits [AgentFinishedEvent] to close the current agent's turn, then emits
+ * the interrupt-specific follow-up events.
  *
- * Always emits [AgentFinishedEvent] to close the current agent's turn, then emits
- * the interrupt-specific follow-up event(s) — e.g. [AgentSelectedEvent] for a
- * [AgentInterrupt.Redirect]. The [when] is exhaustive over the sealed hierarchy:
- * adding a new [AgentInterrupt] subtype without handling it here is a compile error.
- *
- * @param agent The agent whose turn is ending.
- * @param e The interrupt signal thrown by a tool.
- * @param namespaceId Namespace of the current case.
- * @param caseId Current case identifier.
- * @param logger Logger of the calling agent, used to trace the redirect.
+ * The [when] is exhaustive over the [AgentInterrupt] sealed hierarchy: adding a new
+ * subtype without handling it here is a compile error.
  */
-suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
+suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
     agent: Agent,
     e: AgentInterrupt,
     namespaceId: UUID,
@@ -74,6 +62,8 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
             caseId = caseId,
             agentId = agent.id,
             agentName = agent.name,
+            llmProvider = agent.llmProvider,
+            llmModel = agent.llmModel,
         ),
     )
     when (e) {

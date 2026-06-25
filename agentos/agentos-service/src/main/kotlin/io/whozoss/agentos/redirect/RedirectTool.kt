@@ -66,26 +66,32 @@ class RedirectTool(
 
     override val name: String = configName?.let { "${it}__redirect" } ?: "redirect"
 
-    override val description: String = buildString {
-        appendLine("Route the current request to another agent. Use this when the request is better handled by a specialised agent.")
-        appendLine("Available agents:")
-        eligibleAgents.forEach { agent ->
-            val desc = agent.description?.takeIf { it.isNotBlank() }
-            when (desc) {
-                null -> appendLine("  - ${agent.name}")
-                else -> appendLine("  - ${agent.name}: $desc")
-            }
-            if (agent.integrations.isNotEmpty()) {
-                appendLine("    Integrations:")
-                agent.integrations.forEach { integration ->
-                    when (val tools = integration.allowedTools) {
-                        null -> appendLine("      - ${integration.name}")
-                        else -> appendLine("      - ${integration.name}: ${tools.joinToString(", ")}")
+    override val description: String = when {
+        eligibleAgents.isEmpty() ->
+            "No other agents are currently available for redirection. Do not attempt to delegate — handle the request yourself or inform the user that no other agent can address it."
+        else -> buildString {
+            appendLine("Route the current request to another agent.")
+            appendLine("Only use this tool if at least one of the available agents below is clearly relevant to the user's request.")
+            appendLine("If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.")
+            appendLine("Available agents:")
+            eligibleAgents.forEach { agent ->
+                val desc = agent.description?.takeIf { it.isNotBlank() }
+                when (desc) {
+                    null -> appendLine("  - ${agent.name}")
+                    else -> appendLine("  - ${agent.name}: $desc")
+                }
+                if (agent.integrations.isNotEmpty()) {
+                    appendLine("    Integrations:")
+                    agent.integrations.forEach { integration ->
+                        when (val tools = integration.allowedTools) {
+                            null -> appendLine("      - ${integration.name}")
+                            else -> appendLine("      - ${integration.name}: ${tools.joinToString(", ")}")
+                        }
                     }
                 }
             }
-        }
-    }.trimEnd()
+        }.trimEnd()
+    }
 
     override val inputSchema: String = buildString {
         val names = eligibleAgents.joinToString(", ") { "\"${it.name}\"" }

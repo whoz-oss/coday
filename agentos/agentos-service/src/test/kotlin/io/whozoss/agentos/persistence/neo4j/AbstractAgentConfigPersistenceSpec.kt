@@ -25,7 +25,7 @@ import java.util.UUID
  * Persistence contract tests for [AgentConfigRepository] Cypher queries.
  *
  * Covers:
- * - [AgentConfigRepository.findByParent] with `enabledOnly` filter (enabled/disabled,
+ * - [AgentConfigRepository.findByParent] with `withDisabled` filter (enabled/disabled,
  *   backward compatibility with null enabled, soft-delete, namespace scoping)
  * - [AgentConfigRepository.findAvailableByNamespaceIdAndUserId] (user group membership,
  *   namespace membership, union/deduplication, agent name filtering)
@@ -39,6 +39,10 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
     @Autowired lateinit var userRepo: UserRepository
     @Autowired lateinit var driver: Driver
 
+    // ---------------------------------------------------------------------------
+    // Entity builders
+    // ---------------------------------------------------------------------------
+
     private fun namespace(externalId: String = "ext-${UUID.randomUUID()}") =
         Namespace(metadata = EntityMetadata(), name = "ns-$externalId", externalId = externalId)
 
@@ -50,6 +54,10 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
     private fun userGroup(namespaceId: UUID, name: String = "group-${UUID.randomUUID()}") =
         UserGroup(metadata = EntityMetadata(), namespaceId = namespaceId, name = name)
+
+    // ---------------------------------------------------------------------------
+    // Graph helpers
+    // ---------------------------------------------------------------------------
 
     private fun grantMember(userExternalId: String, namespaceId: String) =
         driver.session().use { session ->
@@ -66,6 +74,61 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
                 mapOf("userId" to userExternalId, "nsId" to namespaceId),
             )
         }
+
+    private fun removeEnabledProperty(agentId: UUID) =
+        driver.session().use { session ->
+            session.run(
+                "MATCH (a:AgentConfig {id: \$id}) REMOVE a.enabled",
+                mapOf("id" to agentId.toString()),
+            )
+        }
+
+    // ---------------------------------------------------------------------------
+    // Setup helpers
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Saves a namespace, one or more agents, a user group, and a user — wiring the user
+     * into the group and deploying the agents onto it.
+     *
+     * @param agentNames Names of the agents to create
+     * @param enabled Whether the agents should be enabled (default: true)
+     * @param userEmail Email / externalId of the user (default: alice@example.com)
+     */
+    private fun setupGroupAccess(
+        agentNames: List<String>,
+        enabled: Boolean = true,
+        userEmail: String = "alice@example.com",
+    ): Triple<Namespace, List<AgentConfig>, User> {
+        val ns = namespaceRepo.save(namespace())
+        val agents = agentNames.map { agentConfigRepo.save(agentConfig(ns.id, it).copy(enabled = enabled)) }
+        val group = userGroupRepo.save(userGroup(ns.id))
+        val savedUser = userRepo.save(user(userEmail))
+        userGroupRepo.addAgents(group.id, agents.map { it.id })
+        userGroupRepo.addUsers(group.id, listOf(userEmail))
+        return Triple(ns, agents, savedUser)
+    }
+
+    /**
+     * Saves a namespace, one or more agents, and a user — deploying the agents directly
+     * onto the namespace and granting the user a MEMBER relation.
+     *
+     * @param agentNames Names of the agents to create
+     * @param enabled Whether the agents should be enabled (default: true)
+     * @param userEmail Email / externalId of the user (default: alice@example.com)
+     */
+    private fun setupNamespaceAccess(
+        agentNames: List<String>,
+        enabled: Boolean = true,
+        userEmail: String = "alice@example.com",
+    ): Triple<Namespace, List<AgentConfig>, User> {
+        val ns = namespaceRepo.save(namespace())
+        val agents = agentNames.map { agentConfigRepo.save(agentConfig(ns.id, it).copy(enabled = enabled)) }
+        val savedUser = userRepo.save(user(userEmail))
+        namespaceRepo.deployAgents(ns.id, agents.map { it.id })
+        grantMember(userEmail, ns.id.toString())
+        return Triple(ns, agents, savedUser)
+    }
 
     init {
         beforeEach {
@@ -87,7 +150,6 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val ns = namespaceRepo.save(namespace())
             val alice = userRepo.save(user("alice@example.com"))
             agentConfigRepo.save(agentConfig(ns.id, "agent-a"))
-            // no DEPLOYED_TO, no group, no namespace relation
 
             agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
         }
@@ -97,12 +159,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "returns agents deployed on user group the user is a member of" {
-            val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "group-agent"))
-            val group = userGroupRepo.save(userGroup(ns.id))
-            val alice = userRepo.save(user("alice@example.com"))
-            userGroupRepo.addAgents(group.id, listOf(agent.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            val (ns, _, alice) = setupGroupAccess(listOf("group-agent"))
 
             val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null)
 
@@ -124,14 +181,8 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
         "does not return agents from a group belonging to a different namespace" {
             val ns = namespaceRepo.save(namespace())
-            val otherNs = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(otherNs.id, "other-ns-group-agent"))
-            val group = userGroupRepo.save(userGroup(otherNs.id))
-            val alice = userRepo.save(user("alice@example.com"))
-            userGroupRepo.addAgents(group.id, listOf(agent.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
-
-            // alice is in a group with an agent, but that group belongs to otherNs, not ns
+            val (_, agents, alice) = setupGroupAccess(listOf("other-ns-group-agent"))
+            // alice's group and agent belong to a different namespace — query uses ns
             agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
         }
 
@@ -140,11 +191,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "returns agents deployed on a namespace the user has MEMBER relation on" {
-            val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent"))
-            val alice = userRepo.save(user("alice@example.com"))
-            namespaceRepo.deployAgents(ns.id, listOf(agent.id))
-            grantMember("alice@example.com", ns.id.toString())
+            val (ns, _, alice) = setupNamespaceAccess(listOf("ns-agent"))
 
             val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null)
 
@@ -154,7 +201,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
         "returns agents deployed on a namespace the user has ADMIN relation on" {
             val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "admin-ns-agent"))
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "admin-ns-agent").copy(enabled = true))
             val alice = userRepo.save(user("alice@example.com"))
             namespaceRepo.deployAgents(ns.id, listOf(agent.id))
             grantAdmin("alice@example.com", ns.id.toString())
@@ -169,20 +216,14 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val ns = namespaceRepo.save(namespace())
             agentConfigRepo.save(agentConfig(ns.id, "unreachable-agent"))
             val alice = userRepo.save(user("alice@example.com"))
-            // alice has no MEMBER/ADMIN on ns
 
             agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
         }
 
         "does not return agents deployed on a different namespace" {
             val ns = namespaceRepo.save(namespace())
-            val otherNs = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(otherNs.id, "other-ns-agent"))
-            val alice = userRepo.save(user("alice@example.com"))
-            namespaceRepo.deployAgents(otherNs.id, listOf(agent.id))
-            grantMember("alice@example.com", otherNs.id.toString())
-
-            // querying ns, not otherNs
+            val (otherNs, agents, alice) = setupNamespaceAccess(listOf("other-ns-agent"))
+            // alice has access in otherNs, but we query ns
             agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
         }
 
@@ -192,7 +233,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
         "deduplicates agent deployed on two groups the user is a member of" {
             val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "shared-agent"))
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "shared-agent").copy(enabled = true))
             val group1 = userGroupRepo.save(userGroup(ns.id))
             val group2 = userGroupRepo.save(userGroup(ns.id))
             val alice = userRepo.save(user("alice@example.com"))
@@ -209,7 +250,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
         "deduplicates agents reachable via both group and namespace paths" {
             val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "shared-agent"))
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "shared-agent").copy(enabled = true))
             val group = userGroupRepo.save(userGroup(ns.id))
             val alice = userRepo.save(user("alice@example.com"))
             userGroupRepo.addAgents(group.id, listOf(agent.id))
@@ -225,8 +266,8 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
         "returns union of agents from group and namespace deployments" {
             val ns = namespaceRepo.save(namespace())
-            val groupAgent = agentConfigRepo.save(agentConfig(ns.id, "group-agent"))
-            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent"))
+            val groupAgent = agentConfigRepo.save(agentConfig(ns.id, "group-agent").copy(enabled = true))
+            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
             val group = userGroupRepo.save(userGroup(ns.id))
             val alice = userRepo.save(user("alice@example.com"))
             userGroupRepo.addAgents(group.id, listOf(groupAgent.id))
@@ -244,55 +285,43 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "does not return soft-deleted agents" {
-            val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "deleted-agent"))
-            val group = userGroupRepo.save(userGroup(ns.id))
-            val alice = userRepo.save(user("alice@example.com"))
-            userGroupRepo.addAgents(group.id, listOf(agent.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
-            agentConfigRepo.delete(agent.id)
+            val (ns, agents, alice) = setupGroupAccess(listOf("deleted-agent"))
+            agentConfigRepo.delete(agents.first().id)
 
             agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
-        // findByParent with enabledOnly filter
+        // findByParent with withDisabled filter
         // -------------------------------------------------------------------------
 
-        "findByParent with enabledOnly=false returns all active configs regardless of enabled status" {
+        "findByParent with withDisabled=true returns all active configs regardless of enabled status" {
             val ns = namespaceRepo.save(namespace())
             val enabled = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(enabled = true))
             val disabled = agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(enabled = false))
 
-            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = false)
+            val result = agentConfigRepo.findByParent(ns.id, withDisabled = true)
 
             result.map { it.id } shouldContainExactlyInAnyOrder listOf(enabled.id, disabled.id)
         }
 
-        "findByParent with enabledOnly=true returns only enabled configs" {
+        "findByParent with withDisabled=false returns only enabled configs" {
             val ns = namespaceRepo.save(namespace())
             val enabled = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(enabled = true))
             agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(enabled = false))
 
-            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
+            val result = agentConfigRepo.findByParent(ns.id, withDisabled = false)
 
             result shouldHaveSize 1
             result.first().id shouldBe enabled.id
         }
 
-        "findByParent with enabledOnly=true treats null enabled as disabled" {
+        "findByParent with withDisabled=false treats null enabled as disabled" {
             val ns = namespaceRepo.save(namespace())
             val saved = agentConfigRepo.save(agentConfig(ns.id, "legacy-agent"))
-            driver.session().use { session ->
-                session.run(
-                    "MATCH (a:AgentConfig {id: \$id}) REMOVE a.enabled",
-                    mapOf("id" to saved.id.toString()),
-                )
-            }
+            removeEnabledProperty(saved.id)
 
-            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
-
-            result.shouldBeEmpty()
+            agentConfigRepo.findByParent(ns.id, withDisabled = false).shouldBeEmpty()
         }
 
         "findByParent excludes soft-deleted configs" {
@@ -301,20 +330,18 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val toDelete = agentConfigRepo.save(agentConfig(ns.id, "deleted-agent"))
             agentConfigRepo.delete(toDelete.id)
 
-            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = false)
+            val result = agentConfigRepo.findByParent(ns.id, withDisabled = true)
 
             result shouldHaveSize 1
             result.first().id shouldBe active.id
         }
 
-        "findByParent with enabledOnly=true excludes soft-deleted enabled configs" {
+        "findByParent with withDisabled=false excludes soft-deleted enabled configs" {
             val ns = namespaceRepo.save(namespace())
             val agent = agentConfigRepo.save(agentConfig(ns.id, "enabled-then-deleted").copy(enabled = true))
             agentConfigRepo.delete(agent.id)
 
-            val result = agentConfigRepo.findByParent(ns.id, enabledOnly = true)
-
-            result.shouldBeEmpty()
+            agentConfigRepo.findByParent(ns.id, withDisabled = false).shouldBeEmpty()
         }
 
         "findByParent returns configs scoped to the given namespace only" {
@@ -323,7 +350,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val agentInNs1 = agentConfigRepo.save(agentConfig(ns1.id, "ns1-agent"))
             agentConfigRepo.save(agentConfig(ns2.id, "ns2-agent"))
 
-            val result = agentConfigRepo.findByParent(ns1.id, enabledOnly = false)
+            val result = agentConfigRepo.findByParent(ns1.id, withDisabled = true)
 
             result shouldHaveSize 1
             result.first().id shouldBe agentInNs1.id
@@ -334,44 +361,33 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "findAvailableByNamespaceIdAndUserId with null agentName returns all accessible agents via group path" {
-            val ns = namespaceRepo.save(namespace())
-            val user = userRepo.save(user("alice@example.com"))
-            val agentA = agentConfigRepo.save(agentConfig(ns.id, "agent-a"))
-            val agentB = agentConfigRepo.save(agentConfig(ns.id, "agent-b"))
-            val group = userGroupRepo.save(userGroup(ns.id))
-            userGroupRepo.addAgents(group.id, listOf(agentA.id, agentB.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            val (ns, _, alice) = setupGroupAccess(listOf("agent-a", "agent-b"))
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, null)
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null)
 
             result.map { it.name } shouldContainExactlyInAnyOrder listOf("agent-a", "agent-b")
         }
 
         "findAvailableByNamespaceIdAndUserId with null agentName returns all accessible agents via namespace path" {
-            val ns = namespaceRepo.save(namespace())
-            val user = userRepo.save(user("alice@example.com"))
-            val agentA = agentConfigRepo.save(agentConfig(ns.id, "agent-a"))
-            val agentB = agentConfigRepo.save(agentConfig(ns.id, "agent-b"))
-            namespaceRepo.deployAgents(ns.id, listOf(agentA.id, agentB.id))
-            grantMember("alice@example.com", ns.id.toString())
+            val (ns, _, alice) = setupNamespaceAccess(listOf("agent-a", "agent-b"))
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, null)
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null)
 
             result.map { it.name } shouldContainExactlyInAnyOrder listOf("agent-a", "agent-b")
         }
 
         "findAvailableByNamespaceIdAndUserId with null agentName returns union of group and namespace paths" {
             val ns = namespaceRepo.save(namespace())
-            val user = userRepo.save(user("alice@example.com"))
-            val groupAgent = agentConfigRepo.save(agentConfig(ns.id, "group-agent"))
-            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent"))
+            val groupAgent = agentConfigRepo.save(agentConfig(ns.id, "group-agent").copy(enabled = true))
+            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
             val group = userGroupRepo.save(userGroup(ns.id))
+            val alice = userRepo.save(user("alice@example.com"))
             userGroupRepo.addAgents(group.id, listOf(groupAgent.id))
             userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
             namespaceRepo.deployAgents(ns.id, listOf(nsAgent.id))
             grantMember("alice@example.com", ns.id.toString())
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, null)
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null)
 
             result.map { it.name } shouldContainExactlyInAnyOrder listOf("group-agent", "ns-agent")
         }
@@ -381,63 +397,134 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "findAvailableByNamespaceIdAndUserId with agentName returns only the matching agent" {
-            val ns = namespaceRepo.save(namespace())
-            val user = userRepo.save(user("alice@example.com"))
-            val agentA = agentConfigRepo.save(agentConfig(ns.id, "my-agent"))
-            val agentB = agentConfigRepo.save(agentConfig(ns.id, "other-agent"))
-            val group = userGroupRepo.save(userGroup(ns.id))
-            userGroupRepo.addAgents(group.id, listOf(agentA.id, agentB.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            val (ns, _, alice) = setupGroupAccess(listOf("my-agent", "other-agent"))
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "my-agent")
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "my-agent")
 
             result shouldHaveSize 1
             result.first().name shouldBe "my-agent"
         }
 
         "findAvailableByNamespaceIdAndUserId with agentName is case-insensitive" {
-            val ns = namespaceRepo.save(namespace())
-            val user = userRepo.save(user("alice@example.com"))
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "My-Agent"))
-            val group = userGroupRepo.save(userGroup(ns.id))
-            userGroupRepo.addAgents(group.id, listOf(agent.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            val (ns, _, alice) = setupGroupAccess(listOf("My-Agent"))
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "MY-AGENT")
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "MY-AGENT")
 
             result shouldHaveSize 1
             result.first().name shouldBe "My-Agent"
         }
 
         "findAvailableByNamespaceIdAndUserId with nonexistent agentName returns empty list" {
-            val ns = namespaceRepo.save(namespace())
-            val user = userRepo.save(user("alice@example.com"))
-            val agent = agentConfigRepo.save(agentConfig(ns.id, "real-agent"))
-            val group = userGroupRepo.save(userGroup(ns.id))
-            userGroupRepo.addAgents(group.id, listOf(agent.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            val (ns, _, alice) = setupGroupAccess(listOf("real-agent"), enabled = false)
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "nonexistent")
-
-            result.shouldBeEmpty()
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "nonexistent").shouldBeEmpty()
         }
 
         "findAvailableByNamespaceIdAndUserId with agentName matches across both group and namespace paths" {
             val ns = namespaceRepo.save(namespace())
-            val user = userRepo.save(user("alice@example.com"))
-            val targetAgent = agentConfigRepo.save(agentConfig(ns.id, "target-agent"))
-            val otherAgent = agentConfigRepo.save(agentConfig(ns.id, "other-agent"))
-            // target-agent reachable via group; other-agent reachable via namespace
+            val targetAgent = agentConfigRepo.save(agentConfig(ns.id, "target-agent").copy(enabled = true))
+            val otherAgent = agentConfigRepo.save(agentConfig(ns.id, "other-agent").copy(enabled = true))
             val group = userGroupRepo.save(userGroup(ns.id))
+            val alice = userRepo.save(user("alice@example.com"))
             userGroupRepo.addAgents(group.id, listOf(targetAgent.id))
             userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
             namespaceRepo.deployAgents(ns.id, listOf(otherAgent.id))
             grantMember("alice@example.com", ns.id.toString())
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, user.id, "target-agent")
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "target-agent")
 
             result shouldHaveSize 1
             result.first().name shouldBe "target-agent"
+        }
+
+        // -------------------------------------------------------------------------
+        // Path 3: super-admin (user.isAdmin = true)
+        // -------------------------------------------------------------------------
+
+        "super-admin sees all enabled agents in the namespace without any deployment" {
+            val ns = namespaceRepo.save(namespace())
+            val agent1 = agentConfigRepo.save(agentConfig(ns.id, "admin-visible-1").copy(enabled = true))
+            val agent2 = agentConfigRepo.save(agentConfig(ns.id, "admin-visible-2").copy(enabled = true))
+            val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
+            // no deployment, no group, no namespace membership
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, admin.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("admin-visible-1", "admin-visible-2")
+        }
+
+        "super-admin does not see disabled agents" {
+            val ns = namespaceRepo.save(namespace())
+            agentConfigRepo.save(agentConfig(ns.id, "disabled-for-admin").copy(enabled = false))
+            val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
+
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, admin.id, null).shouldBeEmpty()
+        }
+
+        "super-admin does not see agents from a different namespace" {
+            val ns = namespaceRepo.save(namespace())
+            val otherNs = namespaceRepo.save(namespace())
+            agentConfigRepo.save(agentConfig(otherNs.id, "other-ns-agent").copy(enabled = true))
+            val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
+
+            // query against ns — admin has no agents there
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, admin.id, null).shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
+        // findAvailableByNamespaceIdAndUserId — enabled filtering
+        // -------------------------------------------------------------------------
+
+        "findAvailableByNamespaceIdAndUserId excludes disabled agents via group path" {
+            val (ns, _, alice) = setupGroupAccess(listOf("disabled-group-agent"), enabled = false)
+
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
+        }
+
+        "findAvailableByNamespaceIdAndUserId excludes disabled agents via namespace path" {
+            val (ns, _, alice) = setupNamespaceAccess(listOf("disabled-ns-agent"), enabled = false)
+
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
+        }
+
+        "findAvailableByNamespaceIdAndUserId treats null enabled as disabled" {
+            val (ns, agents, alice) = setupGroupAccess(listOf("legacy-agent"))
+            removeEnabledProperty(agents.first().id)
+
+            agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null).shouldBeEmpty()
+        }
+
+        "findAvailableByNamespaceIdAndUserId returns only enabled agents from mixed set" {
+            val ns = namespaceRepo.save(namespace())
+            val enabled = agentConfigRepo.save(agentConfig(ns.id, "enabled-agent").copy(enabled = true))
+            val disabled = agentConfigRepo.save(agentConfig(ns.id, "disabled-agent").copy(enabled = false))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            val alice = userRepo.save(user("alice@example.com"))
+            userGroupRepo.addAgents(group.id, listOf(enabled.id, disabled.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null)
+
+            result shouldHaveSize 1
+            result.first().name shouldBe "enabled-agent"
+        }
+
+        "findAvailableByNamespaceIdAndUserId filters by enabled across both group and namespace paths" {
+            val ns = namespaceRepo.save(namespace())
+            val enabledGroupAgent = agentConfigRepo.save(agentConfig(ns.id, "enabled-group").copy(enabled = true))
+            val disabledGroupAgent = agentConfigRepo.save(agentConfig(ns.id, "disabled-group").copy(enabled = false))
+            val enabledNsAgent = agentConfigRepo.save(agentConfig(ns.id, "enabled-ns").copy(enabled = true))
+            val disabledNsAgent = agentConfigRepo.save(agentConfig(ns.id, "disabled-ns").copy(enabled = false))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            val alice = userRepo.save(user("alice@example.com"))
+            userGroupRepo.addAgents(group.id, listOf(enabledGroupAgent.id, disabledGroupAgent.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+            namespaceRepo.deployAgents(ns.id, listOf(enabledNsAgent.id, disabledNsAgent.id))
+            grantMember("alice@example.com", ns.id.toString())
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("enabled-group", "enabled-ns")
         }
 
         // -------------------------------------------------------------------------

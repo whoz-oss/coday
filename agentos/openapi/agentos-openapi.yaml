@@ -1852,12 +1852,12 @@ paths:
         schema:
           type: string
           format: uuid
-      - name: enabledOnly
+      - name: withDisabled
         in: query
         required: false
         schema:
           type: boolean
-          default: false
+          default: true
       responses:
         "200":
           description: OK
@@ -2384,6 +2384,10 @@ components:
             format: uuid
           agentName:
             type: string
+          llmModel:
+            type: string
+          llmProvider:
+            type: string
       required:
       - agentId
       - agentName
@@ -2402,6 +2406,10 @@ components:
             type: string
             format: uuid
           agentName:
+            type: string
+          llmModel:
+            type: string
+          llmProvider:
             type: string
       required:
       - agentId
