@@ -54,14 +54,14 @@ open class Neo4jAgentConfigRepository(
                 true
             } ?: false
 
-    override fun findAvailableByNamespaceIdAndUserId(
-        namespaceId: UUID,
+    override fun findDeployedByNamespaceIdAndUserIdAndName(
+        namespaceId: UUID?,
         userId: UUID?,
         agentName: String?,
         withDisabled: Boolean,
     ): List<AgentConfig> =
         neo4jRepository
-            .findAvailableByNamespaceIdAndUserId(
+            .findDeployedByNamespaceIdAndUserId(
                 namespaceId = namespaceId.toString(),
                 userId = userId?.toString(),
                 agentName = agentName,

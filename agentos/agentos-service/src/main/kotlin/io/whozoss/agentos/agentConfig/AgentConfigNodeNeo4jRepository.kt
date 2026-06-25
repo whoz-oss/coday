@@ -73,39 +73,39 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      * - (admin path) all active agents in the namespace when the user has isAdmin = true
      * - agents deployed on a [io.whozoss.agentos.userGroup.UserGroup] the user is a member of (within the namespace)
      * - agents deployed directly on the namespace, for a user holding MEMBER or ADMIN
+     * - platform agents (namespaceId IS NULL) are always included regardless of deployment
      *
      * Only enabled (published) agents are returned — disabled agents are never surfaced at runtime.
      *
+     * When [namespaceId] is null, only platform-level agents are returned (no namespace scoping).
      * When [agentName] is non-null, the result is filtered to configs whose name
      * starts with [agentName] (case-insensitive prefix match). When null, all accessible configs are returned.
      */
     @Query(
         $$"""
-            MATCH (ns:Namespace {id: $namespaceId})
-            WHERE NOT COALESCE(ns.removed, false)
             MATCH (a:AgentConfig)
-            WHERE (a.namespaceId IS NULL OR ($namespaceId IS NOT NULL AND a.namespaceId = $namespaceId)
+            WHERE (a.namespaceId IS NULL OR a.namespaceId = $namespaceId)
               AND ($withDisabled OR a.enabled)
               AND NOT COALESCE(a.removed, false)
               AND ($agentName IS NULL OR toLower(a.name) STARTS WITH toLower($agentName))
               AND (
                 $userId IS NULL OR (
-                    EXISTS { 
-                        MATCH (u:User {id: $userId, isAdmin: true }) 
-                        WHERE NOT COALESCE(u.removed, false) 
+                    EXISTS {
+                        MATCH (u:User {id: $userId, isAdmin: true})
+                        WHERE NOT COALESCE(u.removed, false)
                     }
                     OR $namespaceId IS NULL
-                    OR EXISTS { 
-                        MATCH (u:User {id: $userId})-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId}) 
-                        MATCH (a)-[:DEPLOYED_TO]->(g) 
-                        WHERE NOT COALESCE(g.removed, false) 
-                            AND NOT COALESCE(u.removed, false) 
+                    OR EXISTS {
+                        MATCH (u:User {id: $userId})-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+                        MATCH (a)-[:DEPLOYED_TO]->(g)
+                        WHERE NOT COALESCE(g.removed, false)
+                            AND NOT COALESCE(u.removed, false)
                             AND NOT COALESCE(ns.removed, false)
                     }
-                    OR EXISTS { 
-                        MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns:Namespace {id: $namespaceId}) 
-                        MATCH (a)-[:DEPLOYED_TO]->(ns) 
-                        WHERE NOT COALESCE(u.removed, false) 
+                    OR EXISTS {
+                        MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns:Namespace {id: $namespaceId})
+                        MATCH (a)-[:DEPLOYED_TO]->(ns)
+                        WHERE NOT COALESCE(u.removed, false)
                             AND NOT COALESCE(ns.removed, false)
                     }
                 )
@@ -113,7 +113,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             RETURN DISTINCT a ORDER BY a.name ASC
             """,
     )
-    fun findAvailableByNamespaceIdAndUserId(
+    fun findDeployedByNamespaceIdAndUserId(
         namespaceId: String?,
         userId: String?,
         agentName: String?,

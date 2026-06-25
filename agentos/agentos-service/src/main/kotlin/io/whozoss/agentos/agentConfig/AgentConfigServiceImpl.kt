@@ -46,15 +46,23 @@ class AgentConfigServiceImpl(
                     logger.warn { "[AgentConfigService] User not found for externalId: $userExternalId" }
                     throw ResourceNotFoundException("User not found for externalId: $userExternalId")
                 }
-        return agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = user.id, agentName = null)
+        return findDeployedByNamespaceIdAndUserIdAndName(
+            namespaceId = namespaceId,
+            userId = user.id,
+            agentName = null,
+        )
     }
 
-    override fun findAvailableByNamespaceIdAndUserId(
-        namespaceId: UUID,
+    override fun findDeployedByNamespaceIdAndUserIdAndName(
+        namespaceId: UUID?,
         userId: UUID?,
         agentName: String?,
     ): List<AgentConfig> =
-        agentConfigRepository.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
+        agentConfigRepository.findDeployedByNamespaceIdAndUserIdAndName(
+            namespaceId = namespaceId,
+            userId = userId,
+            agentName = agentName,
+        )
 
     override fun findByNamespace(
         namespaceId: UUID?,

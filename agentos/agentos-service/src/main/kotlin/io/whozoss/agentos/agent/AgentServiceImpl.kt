@@ -58,7 +58,7 @@ class AgentServiceImpl(
                 val namePartLowercase = namePart.lowercase()
                 val agentConfigs =
                     agentConfigService
-                        .findAvailableByNamespaceIdAndUserId(
+                        .findDeployedByNamespaceIdAndUserIdAndName(
                             namespaceId = context.namespaceId,
                             userId = context.userId,
                             agentName = null,
@@ -109,12 +109,12 @@ class AgentServiceImpl(
 
     override fun resolveAgentName(
         namePart: String,
-        namespaceId: UUID,
+        namespaceId: UUID?,
         userId: UUID?,
     ): String? =
         if (userId != null) {
             agentConfigService
-                .findAvailableByNamespaceIdAndUserId(
+                .findDeployedByNamespaceIdAndUserIdAndName(
                     namespaceId = namespaceId,
                     userId = userId,
                     agentName = namePart,

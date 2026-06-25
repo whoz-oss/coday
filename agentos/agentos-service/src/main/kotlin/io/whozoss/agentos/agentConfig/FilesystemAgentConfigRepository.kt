@@ -14,7 +14,7 @@ import java.util.UUID
 
 /**
  * Decorator over a delegate [AgentConfigRepository] that augments [findByParent]
- * and [findAvailableByNamespaceIdAndUserId] with [AgentConfig] entries loaded from
+ * and [findDeployedByNamespaceIdAndUserIdAndName] with [AgentConfig] entries loaded from
  * YAML files on the filesystem.
  *
  * All write operations ([save], [delete], [deleteByParent]) are forwarded to the
@@ -37,21 +37,21 @@ class FilesystemAgentConfigRepository(
             ttl = ttl,
         )
 
-    override fun findAvailableByNamespaceIdAndUserId(
-        namespaceId: UUID,
+    override fun findDeployedByNamespaceIdAndUserIdAndName(
+        namespaceId: UUID?,
         userId: UUID?,
         agentName: String?,
         withDisabled: Boolean,
     ): List<AgentConfig> {
         val fromDelegate =
-            delegate.findAvailableByNamespaceIdAndUserId(
+            delegate.findDeployedByNamespaceIdAndUserIdAndName(
                 namespaceId = namespaceId,
                 userId = userId,
                 agentName = agentName,
                 withDisabled = withDisabled,
             )
 
-        val fromFilesystem = retrieveFilesystemAgentConfigs(namespaceId)
+        val fromFilesystem = namespaceId?.let { retrieveFilesystemAgentConfigs(namespaceId) } ?: emptyList()
 
         // Filesystem agents are implicitly deployed on the namespace — include them
         // in the available set, applying the same merge rules as findByParent:
