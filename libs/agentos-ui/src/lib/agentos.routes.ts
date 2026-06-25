@@ -162,6 +162,39 @@ export const AGENTOS_ROUTES: Route[] = [
             canActivate: [agentosReadyGuard],
             loadComponent: () => import('./components/user-list/user-list.component').then((m) => m.UserListComponent),
           },
+          // --- Admin: Platform Agent Configs ---
+          {
+            path: 'admin/agent-configs/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-form/agent-config-form.component').then(
+                (m) => m.AgentConfigFormComponent
+              ),
+          },
+          {
+            path: 'admin/agent-configs/:agentConfigId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-form/agent-config-form.component').then(
+                (m) => m.AgentConfigFormComponent
+              ),
+          },
+          {
+            path: 'admin/agent-configs/:agentConfigId/inspect',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-inspect/agent-config-inspect.component').then(
+                (m) => m.AgentConfigInspectComponent
+              ),
+          },
+          {
+            path: 'admin/agent-configs',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-agent-configs/platform-agent-configs.component').then(
+                (m) => m.PlatformAgentConfigsComponent
+              ),
+          },
           // --- User profile ---
           {
             path: 'me',

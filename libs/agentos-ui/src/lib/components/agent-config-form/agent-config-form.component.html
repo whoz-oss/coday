@@ -8,6 +8,9 @@
     @if (isEditMode()) {
       <a class="agent-config-form__sibling-link" [routerLink]="inspectRoute()">View resolved definition &rarr;</a>
     }
+    @if (isPlatformMode) {
+      <span class="agent-config-form__platform-badge">Platform level</span>
+    }
   </header>
 
   @if (isLoading()) {
@@ -61,8 +64,8 @@
         ></textarea>
       </div>
 
-      <!-- Integrations section: only shown when the namespace has integration configs -->
-      @if (integrationRows().length > 0) {
+      <!-- Integrations section: not available for platform-level configs -->
+      @if (!isPlatformMode && integrationRows().length > 0) {
         <fieldset class="agent-config-form__integrations">
           <legend class="agent-config-form__label">Integrations</legend>
           <p class="agent-config-form__integrations-hint">

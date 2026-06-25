@@ -5,6 +5,16 @@
   </button>
   <nav class="header__nav">
     <agentos-backend-status />
+    @if (isAdmin()) {
+      <button
+        class="header__platform-agents-btn"
+        type="button"
+        title="Platform agent configs"
+        (click)="navigateToPlatformAgents()"
+      >
+        Platform agents
+      </button>
+    }
     <button class="header__admin-btn" type="button" title="Admin" (click)="navigateToAdmin()">
       <span class="header__admin-icon">&#9881;&#65039;</span>
     </button>

@@ -56,7 +56,14 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly agentConfigController = inject(AgentConfigControllerService)
   private readonly integrationConfigController = inject(IntegrationConfigControllerService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  /**
+   * namespaceId from the route, or undefined when operating in platform mode
+   * (route is /admin/agent-configs/... and has no :namespaceId segment).
+   */
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+
+  /** True when editing/creating a platform-level config (namespaceId IS NULL). */
+  protected readonly isPlatformMode = !this.namespaceId
 
   protected readonly form = new FormGroup({
     name: new FormControl<string>('', {
@@ -96,7 +103,10 @@ export class AgentConfigFormComponent implements OnInit {
   /** Route to the inspect view — only valid in edit mode (agentConfigId is present). */
   protected inspectRoute(): string[] {
     const agentConfigId = this.route.snapshot.paramMap.get('agentConfigId') ?? ''
-    return ['/agentos', this.namespaceId, 'agent-configs', agentConfigId, 'inspect']
+    if (this.isPlatformMode) {
+      return ['/agentos', 'admin', 'agent-configs', agentConfigId, 'inspect']
+    }
+    return ['/agentos', this.namespaceId!, 'agent-configs', agentConfigId, 'inspect']
   }
 
   /** Integration rows built from the namespace's IntegrationConfig list. */
@@ -121,6 +131,30 @@ export class AgentConfigFormComponent implements OnInit {
    */
   private loadConfigAndIntegrations(agentConfigId: string): void {
     this.isLoading.set(true)
+
+    // In platform mode there is no namespace, so integrations are not available.
+    if (this.isPlatformMode) {
+      this.agentConfigController
+        .getByIdAgentConfig(agentConfigId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (config) => {
+            this.existingConfig = config
+            this.nameControl.setValue(config.name)
+            this.descriptionControl.setValue(config.description ?? null)
+            this.modelNameControl.setValue(config.modelName ?? null)
+            this.instructionsControl.setValue(config.instructions ?? null)
+            this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+            this.isLoading.set(false)
+          },
+          error: () => {
+            this.isLoading.set(false)
+            this.navigateBack()
+          },
+        })
+      return
+    }
+
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
       integrations: this.integrationConfigController.listIntegrationConfig(this.namespaceId),
@@ -146,6 +180,9 @@ export class AgentConfigFormComponent implements OnInit {
 
   /** In create mode: only load the namespace integrations (undefined = no existing filter). */
   private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
+    // Platform-level configs have no namespace — integrations are not available.
+    if (this.isPlatformMode) return
+
     this.integrationConfigController
       .listIntegrationConfig(this.namespaceId)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -227,14 +264,15 @@ export class AgentConfigFormComponent implements OnInit {
     // createdOn / updatedOn are server-set audit fields — omitted on create, preserved from
     // existingConfig on update via the spread. Cast is intentional: the backend accepts the
     // payload without these fields in create mode.
+    // In platform mode, namespaceId is intentionally undefined (platform-level config).
     const payload = {
       ...(this.existingConfig ?? {}),
-      namespaceId: this.namespaceId,
+      ...(this.isPlatformMode ? {} : { namespaceId: this.namespaceId }),
       name: this.nameControl.value.trim(),
       description: this.descriptionControl.value?.trim() || undefined,
       modelName: this.modelNameControl.value?.trim() || undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
-      integrations: this.buildIntegrationsPayload(),
+      integrations: this.isPlatformMode ? undefined : this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
     } as AgentConfig
 
@@ -253,6 +291,10 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
+    if (this.isPlatformMode) {
+      this.router.navigate(['/agentos', 'admin', 'agent-configs'])
+    } else {
+      this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
+    }
   }
 }

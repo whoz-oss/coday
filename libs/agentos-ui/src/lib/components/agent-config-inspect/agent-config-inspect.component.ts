@@ -30,8 +30,11 @@ export class AgentConfigInspectComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
   protected readonly agentConfigId = this.route.snapshot.params['agentConfigId'] as string
+
+  /** True when viewing a platform-level config (no namespaceId in route). */
+  protected readonly isPlatformMode = !this.namespaceId
 
   protected readonly isLoading = signal(true)
   protected readonly hasError = signal(false)
@@ -100,10 +103,17 @@ export class AgentConfigInspectComponent implements OnInit {
 
   /** Route to the edit form for this agent config. */
   protected editRoute(): string[] {
-    return ['/agentos', this.namespaceId, 'agent-configs', this.agentConfigId, 'edit']
+    if (this.isPlatformMode) {
+      return ['/agentos', 'admin', 'agent-configs', this.agentConfigId, 'edit']
+    }
+    return ['/agentos', this.namespaceId!, 'agent-configs', this.agentConfigId, 'edit']
   }
 
   protected back(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
+    if (this.isPlatformMode) {
+      this.router.navigate(['/agentos', 'admin', 'agent-configs'])
+    } else {
+      this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
+    }
   }
 }
