@@ -89,10 +89,12 @@ class AgentConfigController(
     /**
      * Merge an update resource onto an existing persisted entity.
      *
-     * Two fields are intentionally excluded (mass-assignment guards):
+     * One field is intentionally excluded (mass-assignment guard):
      * - [AgentConfig.namespaceId]: clients cannot relocate an AgentConfig across namespaces via PUT
-     * - [AgentConfig.enabled]: enabled state is managed exclusively via the
-     *   [enable] and [disable] endpoints
+     *
+     * [AgentConfig.enabled] is intentionally included so that PUT can toggle the published
+     * state in a single call. The dedicated [enable] and [disable] endpoints remain available
+     * as convenience shortcuts.
      */
     private fun toDomainForUpdate(
         resource: AgentConfigResource,
@@ -106,6 +108,7 @@ class AgentConfigController(
             integrations = resource.integrations,
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
+            enabled = resource.enabled ?: existing.enabled,
         )
 
     @GetMapping("/{id}")

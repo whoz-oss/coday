@@ -502,6 +502,38 @@ class AgentConfigControllerUnitSpec : StringSpec({
         verify(exactly = 1) { service.update(any()) }
     }
 
+    "update applies enabled=true from payload" {
+        val c = config().copy(enabled = false)
+        val payload = resource(id = c.id).copy(enabled = true)
+        every { userService.getCurrentUser() } returns superAdmin
+        every { service.findById(c.id) } returns c
+        every { service.update(any()) } answers {
+            val saved = firstArg<AgentConfig>()
+            saved.enabled shouldBe true
+            saved
+        }
+
+        controller.update(c.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update preserves existing enabled when payload omits it (null)" {
+        val c = config().copy(enabled = true)
+        val payload = resource(id = c.id).copy(enabled = null)
+        every { userService.getCurrentUser() } returns superAdmin
+        every { service.findById(c.id) } returns c
+        every { service.update(any()) } answers {
+            val saved = firstArg<AgentConfig>()
+            saved.enabled shouldBe true
+            saved
+        }
+
+        controller.update(c.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
     "update throws 404 when the AgentConfig does not exist" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null

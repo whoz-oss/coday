@@ -186,9 +186,13 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                 AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "agent-b"),
             )
 
+            // The response includes namespace agents UNION platform agents — assert on presence
+            // of the two namespace-scoped agents rather than total count, since platform agents
+            // created by other tests in this spec also appear in the result.
             mockMvc.perform(get("/api/agent-configs/by-parentId/$listNamespaceId"))
                 .andExpect(status().isOk)
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+                .andExpect(jsonPath("$[?(@.name == 'agent-a')]", org.hamcrest.Matchers.hasSize<Any>(1)))
+                .andExpect(jsonPath("$[?(@.name == 'agent-b')]", org.hamcrest.Matchers.hasSize<Any>(1)))
         }
 
         // -------------------------------------------------------------------------
