@@ -36,10 +36,12 @@ import java.util.UUID
  * The `update` override preserves [AgentConfig.namespaceId] from the persisted entity
  * (mass-assignment guard); permission is checked declaratively before the body runs.
  *
- * **Platform agents** (namespaceId = null): creation, update, and deletion require super-admin
- * (`user.isAdmin`). The check is enforced imperatively in [create], [update], and [delete]
- * bodies via [authorizeWriteForPlatformOrNamespace], because SpEL `@PreAuthorize` cannot
- * express “null means super-admin only” in a single annotation.
+ * **Platform agents** (namespaceId = null): the `@PreAuthorize` annotations on [create],
+ * [update], and [delete] delegate to [PermissionServiceImpl.hasPermission] with a null
+ * entityId. [PermissionServiceImpl] enforces the rule: READ is open to any authenticated
+ * user; WRITE/DELETE with a null entityId return `false` for non-super-admins. Super-admins
+ * bypass all checks via the `user.isAdmin` flag and are therefore the only callers who can
+ * create, update, or delete platform-level agents.
  */
 @RestController
 @RequestMapping(

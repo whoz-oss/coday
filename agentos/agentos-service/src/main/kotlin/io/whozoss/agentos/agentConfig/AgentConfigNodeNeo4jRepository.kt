@@ -29,20 +29,6 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     ): List<AgentConfigNode>
 
     /**
-     * Find platform-level agent configs (namespaceId IS NULL), ordered by name.
-     */
-    @Query(
-        $$"""
-            MATCH (a:AgentConfig)
-            WHERE a.namespaceId IS NULL
-              AND NOT COALESCE(a.removed, false)
-              AND ($withDisabled OR a.enabled)
-            RETURN a ORDER BY a.name ASC
-            """,
-    )
-    fun findPlatformAgents(withDisabled: Boolean = false): List<AgentConfigNode>
-
-    /**
      * Returns the union of [AgentConfigNode]s accessible to [userId] in [namespaceId]:
      * - (admin path) all active agents in the namespace when the user has isAdmin = true
      * - agents deployed on a [io.whozoss.agentos.userGroup.UserGroup] the user is a member of (within the namespace)
@@ -63,25 +49,30 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
               AND NOT COALESCE(a.removed, false)
               AND ($agentName IS NULL OR toLower(a.name) STARTS WITH toLower($agentName))
               AND (
-                $userId IS NULL OR (
-                    EXISTS {
-                        MATCH (u:User {id: $userId, isAdmin: true})
-                        WHERE NOT COALESCE(u.removed, false)
-                    }
-                    OR $namespaceId IS NULL
-                    OR EXISTS {
-                        MATCH (u:User {id: $userId})-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
-                        MATCH (a)-[:DEPLOYED_TO]->(g)
-                        WHERE NOT COALESCE(g.removed, false)
-                            AND NOT COALESCE(u.removed, false)
-                            AND NOT COALESCE(ns.removed, false)
-                    }
-                    OR EXISTS {
-                        MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns:Namespace {id: $namespaceId})
-                        MATCH (a)-[:DEPLOYED_TO]->(ns)
-                        WHERE NOT COALESCE(u.removed, false)
-                            AND NOT COALESCE(ns.removed, false)
-                    }
+                $userId IS NULL 
+                OR EXISTS {
+                    MATCH (u:User {id: $userId, isAdmin: true})
+                    WHERE NOT COALESCE(u.removed, false)
+                }
+                OR a.namespaceId IS NULL
+                OR (
+                    $namespaceId IS NOT NULL
+                    AND a.namespaceId = $namespaceId
+                    AND (
+                        EXISTS {
+                            MATCH (u:User {id: $userId})-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+                            WHERE NOT COALESCE(u.removed, false)
+                                AND NOT COALESCE(ns.removed, false)
+                                AND NOT COALESCE(g.removed, false)
+                            MATCH (a)-[:DEPLOYED_TO]->(g)
+                        }
+                        OR EXISTS {
+                            MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns:Namespace {id: $namespaceId})
+                            WHERE NOT COALESCE(u.removed, false)
+                                AND NOT COALESCE(ns.removed, false)
+                            MATCH (a)-[:DEPLOYED_TO]->(ns)
+                        }
+                    )
                 )
               )
             RETURN DISTINCT a ORDER BY a.name ASC
@@ -93,4 +84,18 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
         agentName: String?,
         withDisabled: Boolean = false,
     ): List<AgentConfigNode>
+
+    /**
+     * Find platform-level agent configs (namespaceId IS NULL), ordered by name.
+     */
+    @Query(
+        $$"""
+            MATCH (a:AgentConfig)
+            WHERE a.namespaceId IS NULL
+              AND NOT COALESCE(a.removed, false)
+              AND ($withDisabled OR a.enabled)
+            RETURN a ORDER BY a.name ASC
+            """,
+    )
+    fun findPlatformAgents(withDisabled: Boolean = false): List<AgentConfigNode>
 }

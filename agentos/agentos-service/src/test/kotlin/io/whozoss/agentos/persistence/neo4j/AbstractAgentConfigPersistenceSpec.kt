@@ -586,6 +586,18 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             result.map { it.name } shouldContainExactlyInAnyOrder listOf("platform-agent", "ns-agent")
         }
 
+        "platform agents are visible alongside namespace agents when userId is set and namespaceId matches" {
+            // Covers the OR $namespaceId IS NULL branch inside the userId IS NOT NULL condition:
+            // platform agents (namespaceId IS NULL) must always appear, regardless of whether
+            // the user has an explicit deployment or membership in the queried namespace.
+            val (ns, _, alice) = setupGroupAccess(listOf("ns-agent"))
+            val platformAgent = agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
+
+            val result = agentConfigNodeNeo4jRepo.findDeployedByNamespaceIdAndUserId(ns.id.toString(), alice.id.toString(), null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("ns-agent", "platform-agent")
+        }
+
         // -------------------------------------------------------------------------
         // Spring Data Auditing — @CreatedBy / @LastModifiedBy / @CreatedDate / @LastModifiedDate
         // -------------------------------------------------------------------------
