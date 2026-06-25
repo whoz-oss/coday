@@ -3,10 +3,10 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
-import io.whozoss.agentos.delegation.SubCaseLauncher
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
+import io.whozoss.agentos.delegation.SubCaseLauncher
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -48,7 +48,8 @@ class CaseServiceImpl(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
-) : CaseService, SubCaseLauncher {
+) : CaseService,
+    SubCaseLauncher {
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     /**
@@ -482,7 +483,7 @@ class CaseServiceImpl(
                 userId = userId,
                 caseEventsProvider = eventsProvider,
             )
-        val agent = agentService.findAgentByName(agentName, context)
+        val agent = agentService.findAgentByName(agentName, context, this)
 
         if (shouldEmitRunningEvent(events)) {
             val runningEvent =
@@ -625,21 +626,23 @@ class CaseServiceImpl(
             listOfNotNull(user.firstname, user.lastname)
                 .joinToString(" ")
                 .ifBlank { userId.toString() }
-        val actor = io.whozoss.agentos.sdk.actor.Actor(
-            id = userId.toString(),
-            displayName = displayName,
-            role = io.whozoss.agentos.sdk.actor.ActorRole.USER,
-        )
+        val actor =
+            io.whozoss.agentos.sdk.actor.Actor(
+                id = userId.toString(),
+                displayName = displayName,
+                role = io.whozoss.agentos.sdk.actor.ActorRole.USER,
+            )
         // Use @mention syntax so the normal selectAgent resolution picks up the
         // requested agent without any special-casing in the runtime.
         val mentionedTask = "@$agentName $task"
-        val subCase = create(
-            Case(
-                namespaceId = namespaceId,
-                title = "Sub-case: $task".take(120),
-                parentCaseId = parentCaseId,
-            ),
-        )
+        val subCase =
+            create(
+                Case(
+                    namespaceId = namespaceId,
+                    title = "Sub-case: $task".take(120),
+                    parentCaseId = parentCaseId,
+                ),
+            )
         val runtime = getCaseRuntime(subCase.id)
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
         scope.launch { runtime.run() }

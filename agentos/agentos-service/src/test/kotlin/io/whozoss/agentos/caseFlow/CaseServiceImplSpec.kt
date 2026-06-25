@@ -195,7 +195,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns agent
+                    coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -334,7 +334,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
+                    coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -556,7 +556,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns chunkingAgent
+                    coEvery { findAgentByName(agentName, any(), any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -653,7 +653,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
+                    coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -723,7 +723,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(namespaceDefaultName, namespaceId, any()) } returns namespaceDefaultName
-                    coEvery { findAgentByName(namespaceDefaultName, any()) } returns namespaceAgent
+                    coEvery { findAgentByName(namespaceDefaultName, any(), any()) } returns namespaceAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -901,7 +901,7 @@ class CaseServiceImplSpec :
                         }
                     }
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                    coEvery { findAgentByName(any(), any()) } returns finishingAgent()
+                    coEvery { findAgentByName(any(), any(), any()) } returns finishingAgent()
                 }
             val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -1003,7 +1003,7 @@ class CaseServiceImplSpec :
                     // @selected-agent resolves to selectedAgentName
                     every { resolveAgentName(selectedAgentName, any(), any()) } returns selectedAgentName
                     // no other mention resolution needed
-                    coEvery { findAgentByName(selectedAgentName, any()) } returns selectedAgent
+                    coEvery { findAgentByName(selectedAgentName, any(), any()) } returns selectedAgent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -1099,7 +1099,7 @@ class CaseServiceImplSpec :
                 mockk<AgentService> {
                     // Only `inspector` resolves — the full string with URL must NOT be passed here
                     coEvery { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
-                    coEvery { findAgentByName(inspectorName, any()) } returns inspectorAgent
+                    coEvery { findAgentByName(inspectorName, any(), any()) } returns inspectorAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -1341,7 +1341,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     coEvery { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
-                    coEvery { findAgentByName(inspectorName, any()) } returns inspectorAgent
+                    coEvery { findAgentByName(inspectorName, any(), any()) } returns inspectorAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -1492,7 +1492,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns countingAgent
+                    coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =

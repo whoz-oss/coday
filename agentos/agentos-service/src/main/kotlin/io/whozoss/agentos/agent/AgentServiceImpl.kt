@@ -10,8 +10,8 @@ import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseLauncher
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.metrics.ToolMetricsService
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -51,11 +51,11 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
-    private val subCaseLauncher: SubCaseLauncher,
 ) : AgentService {
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
+        subCaseLauncher: SubCaseLauncher?,
     ): Agent {
         val agentConfig =
             agentConfigService.findByName(context.namespaceId, namePart)
@@ -63,7 +63,7 @@ class AgentServiceImpl(
                     "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
                 )
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
-        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
+        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser, subCaseLauncher)
         return instantiateAgent(definition, context, resolvedUser)
     }
 
@@ -119,6 +119,7 @@ class AgentServiceImpl(
         config: AgentConfig,
         context: AgentExecutionContext,
         resolvedUser: User?,
+        subCaseLauncher: SubCaseLauncher? = null,
     ): ResolvedAgentDefinition {
         val baseModel =
             config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
@@ -159,7 +160,7 @@ class AgentServiceImpl(
                     context = toolContext,
                 )
             }
-        val tools = addDelegationToolIfConfigured(baseTools, config, context)
+        val tools = baseTools + buildDelegationTools(config, context, subCaseLauncher)
         return ResolvedAgentDefinition(
             agentConfigId = config.metadata.id,
             name = config.name,
@@ -176,33 +177,6 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             userId = context.userId,
         )
-    }
-
-    /**
-     * Appends a [DelegationTool] to [baseTools] when [config.subAgents] is non-empty
-     * and the execution context has a live case ([context.caseId] is non-null).
-     *
-     * No tool is added when [config.subAgents] is null/empty (agent has no delegation
-     * allowlist) or when there is no case context (e.g. definition-resolution endpoint).
-     */
-    private fun addDelegationToolIfConfigured(
-        baseTools: Collection<StandardTool<*>>,
-        config: AgentConfig,
-        context: AgentExecutionContext,
-    ): Collection<StandardTool<*>> {
-        val subAgents = config.subAgents?.filter { it.isNotBlank() }
-        if (subAgents.isNullOrEmpty() || context.caseId == null) return baseTools
-
-        logger.info { "Adding DelegationTool for agent '${config.name}' with subAgents=$subAgents" }
-        val delegationTool =
-            DelegationTool(
-                subCaseLauncher = subCaseLauncher,
-                parentCaseId = context.caseId,
-                namespaceId = context.namespaceId,
-                allowedAgents = subAgents,
-                loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
-            )
-        return baseTools + delegationTool
     }
 
     /**
@@ -456,6 +430,60 @@ class AgentServiceImpl(
 
         return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock)
             .joinToString("\n")
+    }
+
+    /**
+     * Resolves the [DelegationTool] for [config] if delegation is configured.
+     *
+     * Resolution steps:
+     * 1. Skip entirely when [subCaseLauncher] is null (no delegation support in this call
+     *    path) or [config.subAgents] is null/empty.
+     * 2. Fetch the agents accessible to the current user in the namespace.
+     * 3. Filter them by matching each accessible agent name against the [config.subAgents]
+     *    patterns (substring, case-insensitive). This lets patterns like `"copilot"` match
+     *    `"copilot-fr"` and `"copilot-en"` without requiring exact names in the config.
+     * 4. Build a [DelegationTool] only when the resolved allowlist is non-empty and a
+     *    [context.caseId] is available (no delegation outside a live case).
+     */
+    private fun buildDelegationTools(
+        config: AgentConfig,
+        context: AgentExecutionContext,
+        subCaseLauncher: SubCaseLauncher?,
+    ): List<DelegationTool> {
+        val patterns = config.subAgents?.filter { it.isNotBlank() }
+        if (subCaseLauncher == null || patterns.isNullOrEmpty() || context.caseId == null) return emptyList()
+
+        val accessibleNames =
+            if (context.userId != null) {
+                agentConfigService
+                    .findAvailableByNamespaceIdAndUserId(context.namespaceId, context.userId)
+                    .map { it.name }
+            } else {
+                agentConfigService
+                    .findByNamespace(context.namespaceId, withDisabled = false)
+                    .map { it.name }
+            }
+
+        val allowedAgents =
+            accessibleNames.filter { name ->
+                patterns.any { pattern -> name.contains(pattern, ignoreCase = true) }
+            }
+
+        if (allowedAgents.isEmpty()) {
+            logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
+            return emptyList()
+        }
+
+        logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
+        return listOf(
+            DelegationTool(
+                subCaseLauncher = subCaseLauncher,
+                parentCaseId = context.caseId,
+                namespaceId = context.namespaceId,
+                allowedAgents = allowedAgents,
+                loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            ),
+        )
     }
 
     companion object : KLogging()
