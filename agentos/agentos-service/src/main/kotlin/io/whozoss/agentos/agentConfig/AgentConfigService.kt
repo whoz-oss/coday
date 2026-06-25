@@ -27,7 +27,10 @@ interface AgentConfigService : EntityService<AgentConfig, UUID?> {
      *
      * See [AgentConfigRepository.findAvailableByUserExternalId] for the full semantics.
      */
-    fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig>
+    fun findAvailableByUserExternalId(
+        namespaceId: UUID,
+        userExternalId: String,
+    ): List<AgentConfig>
 
     /**
      * Returns [AgentConfig]s accessible to [userId] in [namespaceId].
@@ -35,7 +38,11 @@ interface AgentConfigService : EntityService<AgentConfig, UUID?> {
      * [agentName] case-insensitively. The comparison is pushed to Neo4j via
      * `toLower()` — no Kotlin-side filtering needed.
      */
-    fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String? = null): List<AgentConfig>
+    fun findAvailableByNamespaceIdAndUserId(
+        namespaceId: UUID,
+        userId: UUID?,
+        agentName: String? = null,
+    ): List<AgentConfig>
 
     /**
      * Returns all agent configs in [namespaceId], optionally filtered to published
@@ -46,7 +53,10 @@ interface AgentConfigService : EntityService<AgentConfig, UUID?> {
      * @param namespaceId The namespace to list agents for, or null for platform-level agents
      * @param withDisabled When `true` (the default), all configs are returned; when `false`, only published agents are returned
      */
-    fun findByNamespace(namespaceId: UUID?, withDisabled: Boolean = true): List<AgentConfig>
+    fun findByNamespace(
+        namespaceId: UUID?,
+        withDisabled: Boolean = true,
+    ): List<AgentConfig>
 
     /**
      * Enables an agent config, making it active.

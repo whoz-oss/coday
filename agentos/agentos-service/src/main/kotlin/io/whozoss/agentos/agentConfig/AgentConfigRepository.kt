@@ -18,8 +18,9 @@ interface AgentConfigRepository : EntityRepository<AgentConfig, UUID?> {
      */
     fun findAvailableByNamespaceIdAndUserId(
         namespaceId: UUID,
-        userId: UUID,
+        userId: UUID?,
         agentName: String?,
+        withDisabled: Boolean = false,
     ): List<AgentConfig>
 
     /**

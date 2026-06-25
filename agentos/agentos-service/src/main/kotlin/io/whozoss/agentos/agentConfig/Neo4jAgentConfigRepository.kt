@@ -56,12 +56,17 @@ open class Neo4jAgentConfigRepository(
 
     override fun findAvailableByNamespaceIdAndUserId(
         namespaceId: UUID,
-        userId: UUID,
+        userId: UUID?,
         agentName: String?,
+        withDisabled: Boolean,
     ): List<AgentConfig> =
         neo4jRepository
-            .findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId.toString(), userId = userId.toString(), agentName = agentName)
-            .map { it.toDomain() }
+            .findAvailableByNamespaceIdAndUserId(
+                namespaceId = namespaceId.toString(),
+                userId = userId?.toString(),
+                agentName = agentName,
+                withDisabled = withDisabled,
+            ).map { it.toDomain() }
 
     @Transactional
     open override fun deleteByParent(parentId: UUID?): Int {

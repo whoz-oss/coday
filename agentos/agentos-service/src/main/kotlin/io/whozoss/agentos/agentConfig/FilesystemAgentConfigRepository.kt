@@ -39,10 +39,17 @@ class FilesystemAgentConfigRepository(
 
     override fun findAvailableByNamespaceIdAndUserId(
         namespaceId: UUID,
-        userId: UUID,
+        userId: UUID?,
         agentName: String?,
+        withDisabled: Boolean,
     ): List<AgentConfig> {
-        val fromDelegate = delegate.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
+        val fromDelegate =
+            delegate.findAvailableByNamespaceIdAndUserId(
+                namespaceId = namespaceId,
+                userId = userId,
+                agentName = agentName,
+                withDisabled = withDisabled,
+            )
 
         val fromFilesystem = retrieveFilesystemAgentConfigs(namespaceId)
 

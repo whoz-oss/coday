@@ -81,26 +81,39 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      */
     @Query(
         $$"""
-            MATCH (u:User {id: $userId})
             MATCH (ns:Namespace {id: $namespaceId})
-            WHERE NOT COALESCE(u.removed, false)
-              AND NOT COALESCE(ns.removed, false)
+            WHERE NOT COALESCE(ns.removed, false)
             MATCH (a:AgentConfig)
-            WHERE a.namespaceId = $namespaceId
-              AND a.enabled
+            WHERE (a.namespaceId = $namespaceId OR a.namespaceId IS NULL)
+              AND ($withDisabled OR a.enabled)
               AND NOT COALESCE(a.removed, false)
               AND ($agentName IS NULL OR toLower(a.name) = toLower($agentName))
               AND (
-                u.isAdmin = true
-                OR EXISTS { MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns) MATCH (a)-[:DEPLOYED_TO]->(g) WHERE NOT COALESCE(g.removed, false) }
-                OR EXISTS { MATCH (u)-[:MEMBER|ADMIN]->(ns) MATCH (a)-[:DEPLOYED_TO]->(ns) }
+                $userId IS NULL OR (
+                    EXISTS { 
+                        MATCH (u:User {id: $userId, isAdmin: true }) 
+                        WHERE NOT COALESCE(u.removed, false) 
+                    }
+                    OR EXISTS { 
+                        MATCH (u:User {id: $userId})-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns) 
+                        MATCH (a)-[:DEPLOYED_TO]->(g) 
+                        WHERE NOT COALESCE(g.removed, false) 
+                            AND NOT COALESCE(u.removed, false) 
+                    }
+                    OR EXISTS { 
+                        MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns) 
+                        MATCH (a)-[:DEPLOYED_TO]->(ns) 
+                        WHERE NOT COALESCE(u.removed, false) 
+                    }
+                )
               )
             RETURN DISTINCT a ORDER BY a.name ASC
             """,
     )
     fun findAvailableByNamespaceIdAndUserId(
         namespaceId: String,
-        userId: String,
+        userId: String?,
         agentName: String?,
+        withDisabled: Boolean = false,
     ): List<AgentConfigNode>
 }

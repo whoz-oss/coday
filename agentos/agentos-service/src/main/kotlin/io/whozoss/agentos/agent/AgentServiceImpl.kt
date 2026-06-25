@@ -7,8 +7,8 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.metrics.ToolMetricsService
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -52,13 +52,30 @@ class AgentServiceImpl(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
-        val agentConfig =
-            agentConfigService.findByName(context.namespaceId, namePart)
-                ?: throw IllegalArgumentException(
-                    "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
-                )
-        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
-        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
+        require(context.userId != null) { "Null userId, cannot resolve agent" }
+        require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
+        val namePartLowercase = namePart.lowercase()
+        val agentConfigs =
+            agentConfigService
+                .findAvailableByNamespaceIdAndUserId(
+                    namespaceId = context.namespaceId,
+                    userId = context.userId,
+                    agentName = null,
+                ).filter { it.name.lowercase().contains(namePartLowercase) }
+
+        if (agentConfigs.isEmpty()) {
+            throw IllegalArgumentException(
+                "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+            )
+        }
+
+        if (agentConfigs.size > 1) {
+            throw IllegalArgumentException(
+                "No unique AgentConfig found for name '$namePart', found ${agentConfigs.size} in namespace ${context.namespaceId}.",
+            )
+        }
+        val resolvedUser = context.userId.let { runCatching { userService.findById(it) }.getOrNull() }
+        val definition = resolveAgentDefinition(agentConfigs.first(), context, resolvedUser)
         return instantiateAgent(definition, context, resolvedUser)
     }
 
