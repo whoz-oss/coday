@@ -48,6 +48,21 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
 ) : AgentService {
+    /**
+     * Resolves an agent by name for a given [context].
+     *
+     * **Matching semantics differ by path:**
+     * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
+     *   client-side with `.contains()` (case-insensitive substring). This is intentional for
+     *   interactive use cases where a partial name typed by a user should resolve loosely.
+     * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
+     *   a case-insensitive exact match, then falls back to platform agents.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match.
+     *
+     * The three paths serve different call sites with different precision requirements.
+     * If exact-match semantics are needed on the userId path, pass the full name and the
+     * single-result check below will still enforce uniqueness.
+     */
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,

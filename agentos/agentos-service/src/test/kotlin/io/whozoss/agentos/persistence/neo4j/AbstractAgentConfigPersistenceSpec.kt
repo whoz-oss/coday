@@ -587,7 +587,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         }
 
         "platform agents are visible alongside namespace agents when userId is set and namespaceId matches" {
-            // Covers the OR $namespaceId IS NULL branch inside the userId IS NOT NULL condition:
+            // Covers the OR a.namespaceId IS NULL branch inside the userId IS NOT NULL condition:
             // platform agents (namespaceId IS NULL) must always appear, regardless of whether
             // the user has an explicit deployment or membership in the queried namespace.
             val (ns, _, alice) = setupGroupAccess(listOf("ns-agent"))
@@ -596,6 +596,21 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             val result = agentConfigNodeNeo4jRepo.findDeployedByNamespaceIdAndUserId(ns.id.toString(), alice.id.toString(), null)
 
             result.map { it.name } shouldContainExactlyInAnyOrder listOf("ns-agent", "platform-agent")
+        }
+
+        "platform agents are visible to a user with no deployment in the namespace" {
+            // Regression guard: a user with no group membership and no namespace deployment
+            // must still receive platform agents. This test would catch the regression if
+            // OR a.namespaceId IS NULL were removed — the previous test would not, because
+            // alice already has access via her group.
+            val ns = namespaceRepo.save(namespace())
+            val alice = userRepo.save(user("alice@example.com"))
+            agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
+            // no group, no namespace deployment, no namespace membership for alice
+
+            val result = agentConfigRepo.findDeployedByNamespaceIdAndUserIdAndName(ns.id, alice.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("platform-agent")
         }
 
         // -------------------------------------------------------------------------
