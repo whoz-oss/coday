@@ -146,7 +146,14 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAgentConfigsComponent
               ),
           },
-          // --- Admin ---
+          // --- Admin hub ---
+          {
+            path: 'admin',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/admin-home/admin-home.component').then((m) => m.AdminHomeComponent),
+          },
+          // --- Admin: Users ---
           {
             path: 'admin/users/new',
             canActivate: [agentosReadyGuard],

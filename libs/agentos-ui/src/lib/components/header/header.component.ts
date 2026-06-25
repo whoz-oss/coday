@@ -37,11 +37,7 @@ export class HeaderComponent implements OnInit {
   protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)
 
   protected navigateToAdmin(): void {
-    this.router.navigate(['/agentos/admin/users'])
-  }
-
-  protected navigateToPlatformAgents(): void {
-    this.router.navigate(['/agentos/admin/agent-configs'])
+    this.router.navigate(['/agentos/admin'])
   }
 
   ngOnInit(): void {

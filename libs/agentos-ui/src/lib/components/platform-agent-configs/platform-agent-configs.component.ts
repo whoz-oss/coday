@@ -59,7 +59,7 @@ export class PlatformAgentConfigsComponent {
   }
 
   protected goBack(): void {
-    this.router.navigate(['/agentos', 'namespaces'])
+    this.router.navigate(['/agentos', 'admin'])
   }
 
   protected openCreateForm(): void {
