@@ -33,7 +33,7 @@ export class PlatformAgentConfigsComponent {
 
   /** Raw platform configs, kept for delete lookups. */
   private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.agentConfigController.listPlatformAgentsAgentConfig())
+    switchMap(() => this.agentConfigController.listPlatformAgentsAgentConfig(true))
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
