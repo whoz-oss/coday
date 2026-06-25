@@ -108,6 +108,16 @@
         </p>
       </div>
 
+      @if (isEditMode()) {
+        <div class="agent-config-form__field">
+          <label class="agent-config-form__toggle-label">
+            <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="enabledControl" />
+            <span class="agent-config-form__toggle-text">Enabled</span>
+          </label>
+          <p class="agent-config-form__toggle-hint">Disabled agents are excluded from namespace resolution.</p>
+        </div>
+      }
+
       <div class="agent-config-form__actions">
         <button
           class="agent-config-form__btn agent-config-form__btn--primary"

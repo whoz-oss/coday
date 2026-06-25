@@ -74,6 +74,7 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
     advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
+    enabled: new FormControl<boolean>(true, { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -94,6 +95,10 @@ export class AgentConfigFormComponent implements OnInit {
 
   protected get advancedExecutionControl() {
     return this.form.controls.advancedExecution
+  }
+
+  protected get enabledControl() {
+    return this.form.controls.enabled
   }
 
   protected readonly isEditMode = signal(false)
@@ -145,6 +150,7 @@ export class AgentConfigFormComponent implements OnInit {
             this.modelNameControl.setValue(config.modelName ?? null)
             this.instructionsControl.setValue(config.instructions ?? null)
             this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+            this.enabledControl.setValue(config.enabled ?? true)
             this.isLoading.set(false)
           },
           error: () => {
@@ -168,6 +174,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+          this.enabledControl.setValue(config.enabled ?? true)
           this.integrationRows.set(this.buildIntegrationRows(integrations, config.integrations ?? undefined))
           this.isLoading.set(false)
         },
@@ -274,6 +281,8 @@ export class AgentConfigFormComponent implements OnInit {
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.isPlatformMode ? undefined : this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
+      // enabled is only included in edit mode — on create the backend sets its own default.
+      ...(this.isEditMode() ? { enabled: this.enabledControl.value } : {}),
     } as AgentConfig
 
     const call$ = this.isEditMode()
