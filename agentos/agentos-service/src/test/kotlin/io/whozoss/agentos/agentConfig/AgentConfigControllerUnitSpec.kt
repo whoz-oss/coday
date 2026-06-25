@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
 import io.kotest.assertions.throwables.shouldThrow
+import org.springframework.web.server.ResponseStatusException
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.clearAllMocks
@@ -66,7 +67,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     fun config(
         id: UUID = UUID.randomUUID(),
-        nsId: UUID = namespaceId,
+        nsId: UUID? = namespaceId,
         name: String = "my-agent",
         description: String? = "An agent",
         instructions: String? = "Be helpful.",
@@ -391,6 +392,10 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // listByParent (inherited)
     // -------------------------------------------------------------------------
 
+    "listByParent with null parentId throws 400" {
+        shouldThrow<ResponseStatusException> { controller.listByParent(null) }
+    }
+
     "listByParent returns configs for the given namespaceId" {
         val c1 = config(name = "alpha")
         val c2 = config(name = "beta")
@@ -410,6 +415,38 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
         result shouldBe listOf(controller.toResource(c1))
         verify(exactly = 1) { service.findByNamespace(namespaceId, withDisabled = false) }
+    }
+
+    // -------------------------------------------------------------------------
+    // listPlatformAgents
+    // -------------------------------------------------------------------------
+
+    "listPlatformAgents default (withDisabled=false) returns only enabled platform configs" {
+        val p1 = config(nsId = null, name = "published-platform").copy(enabled = true)
+        every { service.findByNamespace(null, withDisabled = false) } returns listOf(p1)
+
+        // Default: withDisabled = false
+        val result = controller.listPlatformAgents(withDisabled = false)
+
+        result shouldBe listOf(controller.toResource(p1))
+        verify(exactly = 1) { service.findByNamespace(null, withDisabled = false) }
+    }
+
+    "listPlatformAgents with withDisabled=true returns all platform configs including disabled" {
+        val p1 = config(nsId = null, name = "platform-agent-a")
+        val p2 = config(nsId = null, name = "platform-agent-b")
+        every { service.findByNamespace(null, withDisabled = true) } returns listOf(p1, p2)
+
+        val result = controller.listPlatformAgents(withDisabled = true)
+
+        result shouldBe listOf(controller.toResource(p1), controller.toResource(p2))
+        verify(exactly = 1) { service.findByNamespace(null, withDisabled = true) }
+    }
+
+    "listPlatformAgents returns empty list when no platform agents exist" {
+        every { service.findByNamespace(null, withDisabled = false) } returns emptyList()
+
+        controller.listPlatformAgents(withDisabled = false) shouldBe emptyList()
     }
 
     // -------------------------------------------------------------------------
@@ -536,8 +573,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     "delete succeeds when entity exists" {
         val c = config()
-        every { userService.getCurrentUser() } returns superAdmin
-        every { service.findById(c.id) } returns c
+        // EntityController.delete calls service.delete(id) directly — no prior findById.
         every { service.delete(c.id) } returns true
 
         controller.delete(c.id)
@@ -547,7 +583,9 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     "delete throws 404 when entity is not found" {
         val id = UUID.randomUUID()
-        every { service.findById(id) } returns null
+        // EntityController.delete calls service.delete(id) directly (no prior findById).
+        // When the entity does not exist, the service returns false and the controller throws 404.
+        every { service.delete(id) } returns false
 
         shouldThrow<ResourceNotFoundException> { controller.delete(id) }
     }

@@ -143,6 +143,37 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // GET /api/agent-configs/platform
+        // -------------------------------------------------------------------------
+
+        "GET /api/agent-configs/platform returns only enabled platform agents by default" {
+            agentConfigService.create(
+                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, name = "enabled-platform", enabled = true),
+            )
+            agentConfigService.create(
+                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, name = "disabled-platform", enabled = false),
+            )
+
+            mockMvc.perform(get("/api/agent-configs/platform"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(1)))
+                .andExpect(jsonPath("$[0].name").value("enabled-platform"))
+        }
+
+        "GET /api/agent-configs/platform?withDisabled=true returns disabled platform agents" {
+            // The DB is shared across tests in this spec — do not assert on total count.
+            // Instead verify that a disabled agent created here is present in the response.
+            val disabledName = "platform-disabled-${UUID.randomUUID()}"
+            agentConfigService.create(
+                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, name = disabledName, enabled = false),
+            )
+
+            mockMvc.perform(get("/api/agent-configs/platform").param("withDisabled", "true"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$disabledName')]", org.hamcrest.Matchers.hasSize<Any>(1)))
+        }
+
+        // -------------------------------------------------------------------------
         // GET /api/agent-configs/by-parentId/{namespaceId}
         // -------------------------------------------------------------------------
 

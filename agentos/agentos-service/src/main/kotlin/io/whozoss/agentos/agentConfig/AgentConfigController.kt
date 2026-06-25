@@ -127,12 +127,18 @@ class AgentConfigController(
      * the inherited [EntityController.listByParent] `@GetMapping`.
      *
      * Delegates to [listByNamespace] with `withDisabled = true`.
+     *
+     * [parentId] must be a valid namespace UUID. Null is rejected with 400 —
+     * platform agents are listed via [listPlatformAgents] instead.
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(
         @PathVariable parentId: UUID?,
-    ): List<AgentConfigResource> = listByNamespace(parentId, withDisabled = true)
+    ): List<AgentConfigResource> {
+        if (parentId == null) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "parentId must not be null — use GET /api/agent-configs/platform for platform-level agents")
+        return listByNamespace(parentId, withDisabled = true)
+    }
 
     /**
      * GET /api/agent-configs/by-parentId/{parentId}?withDisabled=...
@@ -142,13 +148,33 @@ class AgentConfigController(
      * When `false`, only published (enabled) agents are returned (end-user contexts like Copilot).
      * Spring's `DefaultConversionService` handles `Boolean` binding — invalid values
      * (neither `"true"` nor `"false"`) produce a 400.
+     *
+     * [parentId] is always a namespace UUID — platform agents are listed via [listPlatformAgents].
      */
     @GetMapping("/by-parentId/{parentId}", params = ["withDisabled"])
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     fun listByNamespace(
-        @PathVariable parentId: UUID?,
+        @PathVariable parentId: UUID,
         @RequestParam(required = false, defaultValue = "true") withDisabled: Boolean,
     ): List<AgentConfigResource> = agentConfigService.findByNamespace(parentId, withDisabled = withDisabled).map { toResource(it) }
+
+    /**
+     * GET /api/agent-configs/platform
+     *
+     * Lists platform-level agent configs (namespaceId = null), with optional [withDisabled]
+     * filtering (defaults to `false` so only published/enabled agents are returned to
+     * regular callers).
+     *
+     * Readable by any authenticated user — consistent with `GET /{id}` which is open to
+     * all authenticated users for platform agents (entityId = null → READ open).
+     * Only super-admins should pass `withDisabled=true` to see disabled platform agents;
+     * the endpoint does not enforce this distinction because the information is not sensitive.
+     */
+    @GetMapping("/platform")
+    @PreAuthorize("isAuthenticated()")
+    fun listPlatformAgents(
+        @RequestParam(required = false, defaultValue = "false") withDisabled: Boolean,
+    ): List<AgentConfigResource> = agentConfigService.findByNamespace(null, withDisabled = withDisabled).map { toResource(it) }
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")

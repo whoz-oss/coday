@@ -45,10 +45,10 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      * Find all non-removed platform-level agent configs (namespaceId IS NULL), ordered by name.
      */
     @Query(
-        $$"""
+        $"""
             MATCH (a:AgentConfig)
             WHERE a.namespaceId IS NULL
-              AND NOT a.removed
+              AND NOT COALESCE(a.removed, false)
             RETURN a ORDER BY a.name ASC
             """,
     )
@@ -58,10 +58,10 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      * Find non-removed, enabled platform-level agent configs (namespaceId IS NULL), ordered by name.
      */
     @Query(
-        $$"""
+        $"""
             MATCH (a:AgentConfig)
             WHERE a.namespaceId IS NULL
-              AND NOT a.removed
+              AND NOT COALESCE(a.removed, false)
               AND a.enabled
             RETURN a ORDER BY a.name ASC
             """,
