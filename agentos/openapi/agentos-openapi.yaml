@@ -1842,6 +1842,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentDefinition"
+  /api/agent-configs/platform:
+    get:
+      tags:
+      - agent-config-controller
+      operationId: listPlatformAgentsAgentConfig
+      parameters:
+      - name: withDisabled
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
   /api/agent-configs/by-parentId/{parentId}:
     get:
       tags:
