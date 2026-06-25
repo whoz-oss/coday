@@ -27,8 +27,8 @@ class AgentConfigServiceImplUnitSpec :
                 AgentConfigRepository,
                 EntityRepository<AgentConfig, UUID?> by inMemory {
                 // findAvailableByNamespaceIdAndUserId is a Neo4j-only query; not exercised in unit tests.
-                override fun findAvailableByNamespaceIdAndUserId(
-                    namespaceId: UUID,
+                override fun findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId: UUID?,
                     userId: UUID?,
                     agentName: String?,
                     withDisabled: Boolean,
