@@ -35,6 +35,7 @@ enum class EntityType(
     FEEDBACK("Feedback"),
     INTEGRATION_CONFIG("IntegrationConfig"),
     NAMESPACE("Namespace"),
+    CASE_DEFINITION("CaseDefinition"),
     USER("User"),
     USER_GROUP("UserGroup"),
     ;
