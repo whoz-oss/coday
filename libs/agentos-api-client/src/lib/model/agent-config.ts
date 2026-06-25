@@ -10,7 +10,7 @@
 
 export interface AgentConfig {
   id?: string
-  namespaceId: string
+  namespaceId?: string
   name: string
   description?: string
   instructions?: string
@@ -19,7 +19,8 @@ export interface AgentConfig {
   advancedExecution?: boolean
   externalMetadata?: { [key: string]: any }
   createdBy?: string
-  createdOn?: string
+  createdOn: string
   updatedBy?: string
-  updatedOn?: string
+  updatedOn: string
+  enabled?: boolean
 }

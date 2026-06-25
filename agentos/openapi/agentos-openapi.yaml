@@ -1829,6 +1829,12 @@ paths:
         schema:
           type: boolean
           default: false
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -2089,7 +2095,6 @@ components:
       required:
       - createdOn
       - name
-      - namespaceId
       - updatedOn
     GroupsByExternalIdsRequest:
       type: object

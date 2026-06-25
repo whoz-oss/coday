@@ -224,7 +224,10 @@ export class AgentConfigFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
-    const payload: AgentConfig = {
+    // createdOn / updatedOn are server-set audit fields — omitted on create, preserved from
+    // existingConfig on update via the spread. Cast is intentional: the backend accepts the
+    // payload without these fields in create mode.
+    const payload = {
       ...(this.existingConfig ?? {}),
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
@@ -233,7 +236,7 @@ export class AgentConfigFormComponent implements OnInit {
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
-    }
+    } as AgentConfig
 
     const call$ = this.isEditMode()
       ? this.agentConfigController.updateAgentConfig(this.existingConfig!.id ?? '', payload)
