@@ -82,10 +82,8 @@ open class Neo4jAgentConfigRepository(
         withDisabled: Boolean = false,
     ): List<AgentConfigNode> =
         when {
-            namespaceId == null && withDisabled -> neo4jRepository.findPlatformAgents()
-            namespaceId == null && !withDisabled -> neo4jRepository.findEnabledPlatformAgents()
-            namespaceId != null && withDisabled -> neo4jRepository.findActiveByNamespaceId(namespaceId.toString())
-            else -> neo4jRepository.findEnabledByNamespaceId(namespaceId!!.toString())
+            namespaceId == null -> neo4jRepository.findPlatformAgents(withDisabled)
+            else -> neo4jRepository.findByNamespaceId(namespaceId.toString(), withDisabled)
         }
 
     companion object : KLogging()

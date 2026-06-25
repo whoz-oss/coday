@@ -19,54 +19,28 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             MATCH (a:AgentConfig)
             WHERE a.namespaceId = $namespaceId
               AND NOT (COALESCE(a.removed, false))
+              AND ($withDisabled OR a.enabled)
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String): List<AgentConfigNode>
+    fun findByNamespaceId(
+        namespaceId: String,
+        withDisabled: Boolean,
+    ): List<AgentConfigNode>
 
     /**
-     * Find non-removed, enabled agent configs belonging to a namespace, ordered by name.
-     *
-     * Platform agents (namespaceId IS NULL) are intentionally excluded — use
-     * [findEnabledPlatformAgents] to retrieve them.
+     * Find platform-level agent configs (namespaceId IS NULL), ordered by name.
      */
     @Query(
         $$"""
             MATCH (a:AgentConfig)
-            WHERE a.namespaceId = $namespaceId
-              AND NOT COALESCE(a.removed, false)
-              AND a.enabled
-            RETURN a ORDER BY a.name ASC
-            """,
-    )
-    fun findEnabledByNamespaceId(namespaceId: String): List<AgentConfigNode>
-
-    /**
-     * Find all non-removed platform-level agent configs (namespaceId IS NULL), ordered by name.
-     */
-    @Query(
-        $"""
-            MATCH (a:AgentConfig)
             WHERE a.namespaceId IS NULL
               AND NOT COALESCE(a.removed, false)
+              AND ($withDisabled OR a.enabled)
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findPlatformAgents(): List<AgentConfigNode>
-
-    /**
-     * Find non-removed, enabled platform-level agent configs (namespaceId IS NULL), ordered by name.
-     */
-    @Query(
-        $"""
-            MATCH (a:AgentConfig)
-            WHERE a.namespaceId IS NULL
-              AND NOT COALESCE(a.removed, false)
-              AND a.enabled
-            RETURN a ORDER BY a.name ASC
-            """,
-    )
-    fun findEnabledPlatformAgents(): List<AgentConfigNode>
+    fun findPlatformAgents(withDisabled: Boolean = false): List<AgentConfigNode>
 
     /**
      * Returns the union of [AgentConfigNode]s accessible to [userId] in [namespaceId]:
