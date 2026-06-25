@@ -1,3 +1,13 @@
+## 0.189.1 (2026-06-25)
+
+### 🩹 Fixes
+
+- #1057 improve ripgrep error logging and Windows PATH support ([#1058](https://github.com/whoz-oss/coday/pull/1058), [#1057](https://github.com/whoz-oss/coday/issues/1057))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.189.0 (2026-06-24)
 
 ### 🚀 Features
