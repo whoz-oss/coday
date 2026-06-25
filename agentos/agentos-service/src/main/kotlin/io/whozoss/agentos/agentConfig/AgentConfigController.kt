@@ -136,7 +136,12 @@ class AgentConfigController(
     override fun listByParent(
         @PathVariable parentId: UUID?,
     ): List<AgentConfigResource> {
-        if (parentId == null) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "parentId must not be null — use GET /api/agent-configs/platform for platform-level agents")
+        if (parentId == null) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "parentId must not be null — use GET /api/agent-configs/platform for platform-level agents",
+            )
+        }
         return listByNamespace(parentId, withDisabled = true)
     }
 
