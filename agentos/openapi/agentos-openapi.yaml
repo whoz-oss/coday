@@ -1961,6 +1961,9 @@ components:
           - ERROR
         title:
           type: string
+        parentCaseId:
+          type: string
+          format: uuid
         created:
           type: string
           format: date-time
@@ -2086,6 +2089,10 @@ components:
           format: date-time
         enabled:
           type: boolean
+        subAgents:
+          type: array
+          items:
+            type: string
       required:
       - createdOn
       - name

@@ -161,6 +161,13 @@
     font-size: 0.875rem;
   }
 
+  &__field-hint {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+    line-height: 1.4;
+  }
+
   &__toggle-label {
     display: flex;
     align-items: center;

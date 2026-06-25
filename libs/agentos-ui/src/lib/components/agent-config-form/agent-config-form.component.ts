@@ -67,6 +67,7 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
     advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
+    subAgents: new FormControl<string>('', { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -87,6 +88,10 @@ export class AgentConfigFormComponent implements OnInit {
 
   protected get advancedExecutionControl() {
     return this.form.controls.advancedExecution
+  }
+
+  protected get subAgentsControl() {
+    return this.form.controls.subAgents
   }
 
   protected readonly isEditMode = signal(false)
@@ -134,6 +139,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+          this.subAgentsControl.setValue((config.subAgents ?? []).join(', '))
           this.integrationRows.set(this.buildIntegrationRows(integrations, config.integrations ?? undefined))
           this.isLoading.set(false)
         },
@@ -193,6 +199,19 @@ export class AgentConfigFormComponent implements OnInit {
    * Disabled rows → excluded from the map.
    * If no rows are enabled → undefined (no filter, agent sees all namespace tools).
    */
+  /**
+   * Convert the subAgents text input into an array of agent names.
+   * Empty input → undefined (no delegation capability).
+   */
+  protected buildSubAgentsPayload(): AgentConfig['subAgents'] {
+    const raw = this.subAgentsControl.value.trim()
+    if (!raw) return undefined
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+  }
+
   protected buildIntegrationsPayload(): AgentConfig['integrations'] {
     const rows = this.integrationRows()
     const enabledRows = rows.filter((r) => r.enabled())
@@ -224,7 +243,10 @@ export class AgentConfigFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
+    const now = new Date().toISOString()
     const payload: AgentConfig = {
+      createdOn: now,
+      updatedOn: now,
       ...(this.existingConfig ?? {}),
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
@@ -233,6 +255,7 @@ export class AgentConfigFormComponent implements OnInit {
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
+      subAgents: this.buildSubAgentsPayload(),
     }
 
     const call$ = this.isEditMode()

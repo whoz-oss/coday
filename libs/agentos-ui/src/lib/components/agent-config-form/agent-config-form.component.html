@@ -105,6 +105,21 @@
         </p>
       </div>
 
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="agent-config-sub-agents">Sub-agents</label>
+        <input
+          id="agent-config-sub-agents"
+          class="agent-config-form__input"
+          type="text"
+          placeholder="Agent names, comma-separated (e.g. Researcher, Summarizer)"
+          [formControl]="subAgentsControl"
+          autocomplete="off"
+        />
+        <p class="agent-config-form__field-hint">
+          Agents this agent is allowed to delegate to. Leave empty to disable delegation.
+        </p>
+      </div>
+
       <div class="agent-config-form__actions">
         <button
           class="agent-config-form__btn agent-config-form__btn--primary"

@@ -38,14 +38,14 @@ export class NamespaceAgentConfigsComponent {
 
   /** Raw configs, kept for delete lookups. */
   private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.agentConfigController.listByParentAgentConfig(this.namespaceId))
+    switchMap(() => this.agentConfigController.listByNamespaceAgentConfig(this.namespaceId))
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly configItems$ = this.configs$.pipe(
     map((configs) =>
       configs.map(
-        (c): EntityListItem => ({
+        (c: AgentConfig): EntityListItem => ({
           id: c.id ?? '',
           name: c.name,
           description: c.description,
@@ -59,7 +59,7 @@ export class NamespaceAgentConfigsComponent {
 
   constructor() {
     this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs) => {
-      this.configsById = new Map(configs.map((c) => [c.id ?? '', c]))
+      this.configsById = new Map(configs.map((c: AgentConfig) => [c.id ?? '', c]))
     })
   }
 
