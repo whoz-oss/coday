@@ -54,21 +54,27 @@ class DelegationTool(
     )
 
     override val name = "DELEGATE__delegate"
-    override val description =
-        "Delegate a task to a specialized sub-agent and wait for the result. " +
-            "The sub-agent runs autonomously — interactive questions are not supported. " +
-            "Available agents: ${allowedAgents.joinToString(", ")}."
+    override val description: String = when {
+        allowedAgents.isEmpty() ->
+            "No sub-agents are currently available for delegation. Do not attempt to delegate — handle the request yourself or inform the user that no sub-agent can address it."
+        else ->
+            "Delegate a task to a specialized sub-agent and wait for the result. " +
+                "The sub-agent runs autonomously — interactive questions are not supported. " +
+                "Available agents: ${allowedAgents.joinToString(", ")}."
+    }
     override val version = "1.0.0"
     override val paramType: Class<Args> = Args::class.java
 
-    override val inputSchema =
-        """
+    override val inputSchema: String = buildString {
+        val names = allowedAgents.joinToString(", ") { "\"$it\"" }
+        append("""
         {
           "type": "object",
           "properties": {
             "agentName": {
               "type": "string",
-              "description": "Name of the sub-agent to delegate to. Must be one of: ${allowedAgents.joinToString(", ")}."
+              "description": "Name of the sub-agent to delegate to.",
+              "enum": [$names]
             },
             "task": {
               "type": "string",
@@ -77,7 +83,8 @@ class DelegationTool(
           },
           "required": ["agentName", "task"]
         }
-        """.trimIndent()
+        """.trimIndent())
+    }
 
     override suspend fun execute(
         input: Args?,
