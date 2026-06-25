@@ -393,10 +393,18 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // findAvailableByNamespaceIdAndUserId — agentName filter (exact, case-insensitive)
+        // findAvailableByNamespaceIdAndUserId — agentName filter (prefix, case-insensitive)
         // -------------------------------------------------------------------------
 
-        "findAvailableByNamespaceIdAndUserId with agentName returns only the matching agent" {
+        "findAvailableByNamespaceIdAndUserId with agentName prefix returns matching agents" {
+            val (ns, _, alice) = setupGroupAccess(listOf("my-agent", "my-other-agent", "unrelated-agent"))
+
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "my-")
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("my-agent", "my-other-agent")
+        }
+
+        "findAvailableByNamespaceIdAndUserId with full name still matches (prefix = exact)" {
             val (ns, _, alice) = setupGroupAccess(listOf("my-agent", "other-agent"))
 
             val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "my-agent")
@@ -405,22 +413,21 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             result.first().name shouldBe "my-agent"
         }
 
-        "findAvailableByNamespaceIdAndUserId with agentName is case-insensitive" {
-            val (ns, _, alice) = setupGroupAccess(listOf("My-Agent"))
+        "findAvailableByNamespaceIdAndUserId with agentName prefix is case-insensitive" {
+            val (ns, _, alice) = setupGroupAccess(listOf("My-Agent", "My-Other"))
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "MY-AGENT")
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "MY-")
 
-            result shouldHaveSize 1
-            result.first().name shouldBe "My-Agent"
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("My-Agent", "My-Other")
         }
 
-        "findAvailableByNamespaceIdAndUserId with nonexistent agentName returns empty list" {
+        "findAvailableByNamespaceIdAndUserId with nonexistent prefix returns empty list" {
             val (ns, _, alice) = setupGroupAccess(listOf("real-agent"), enabled = false)
 
             agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "nonexistent").shouldBeEmpty()
         }
 
-        "findAvailableByNamespaceIdAndUserId with agentName matches across both group and namespace paths" {
+        "findAvailableByNamespaceIdAndUserId with agentName prefix matches across both group and namespace paths" {
             val ns = namespaceRepo.save(namespace())
             val targetAgent = agentConfigRepo.save(agentConfig(ns.id, "target-agent").copy(enabled = true))
             val otherAgent = agentConfigRepo.save(agentConfig(ns.id, "other-agent").copy(enabled = true))
@@ -431,7 +438,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             namespaceRepo.deployAgents(ns.id, listOf(otherAgent.id))
             grantMember("alice@example.com", ns.id.toString())
 
-            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "target-agent")
+            val result = agentConfigRepo.findAvailableByNamespaceIdAndUserId(ns.id, alice.id, "target")
 
             result shouldHaveSize 1
             result.first().name shouldBe "target-agent"

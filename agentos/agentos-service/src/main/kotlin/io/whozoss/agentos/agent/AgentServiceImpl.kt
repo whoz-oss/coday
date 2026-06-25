@@ -52,30 +52,39 @@ class AgentServiceImpl(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
-        require(context.userId != null) { "Null userId, cannot resolve agent" }
         require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
-        val namePartLowercase = namePart.lowercase()
-        val agentConfigs =
-            agentConfigService
-                .findAvailableByNamespaceIdAndUserId(
-                    namespaceId = context.namespaceId,
-                    userId = context.userId,
-                    agentName = null,
-                ).filter { it.name.lowercase().contains(namePartLowercase) }
+        val agentConfig =
+            if (context.userId != null) {
+                val namePartLowercase = namePart.lowercase()
+                val agentConfigs =
+                    agentConfigService
+                        .findAvailableByNamespaceIdAndUserId(
+                            namespaceId = context.namespaceId,
+                            userId = context.userId,
+                            agentName = null,
+                        ).filter { it.name.lowercase().contains(namePartLowercase) }
+                when {
+                    agentConfigs.isEmpty() -> {
+                        null
+                    }
 
-        if (agentConfigs.isEmpty()) {
-            throw IllegalArgumentException(
+                    agentConfigs.size > 1 -> {
+                        throw IllegalArgumentException(
+                            "No unique AgentConfig found for name '$namePart', found ${agentConfigs.size} in namespace ${context.namespaceId}.",
+                        )
+                    }
+
+                    else -> {
+                        agentConfigs.first()
+                    }
+                }
+            } else {
+                agentConfigService.findByName(context.namespaceId, namePart)
+            } ?: throw IllegalArgumentException(
                 "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
             )
-        }
-
-        if (agentConfigs.size > 1) {
-            throw IllegalArgumentException(
-                "No unique AgentConfig found for name '$namePart', found ${agentConfigs.size} in namespace ${context.namespaceId}.",
-            )
-        }
-        val resolvedUser = context.userId.let { runCatching { userService.findById(it) }.getOrNull() }
-        val definition = resolveAgentDefinition(agentConfigs.first(), context, resolvedUser)
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
         return instantiateAgent(definition, context, resolvedUser)
     }
 

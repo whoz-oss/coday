@@ -60,7 +60,7 @@ class FilesystemAgentConfigRepository(
         val filesystemAdditions =
             fromFilesystem
                 .filter { it.name.lowercase() !in delegateNames }
-                .filter { agentName == null || it.name.equals(agentName, ignoreCase = true) }
+                .filter { agentName == null || it.name.startsWith(agentName, ignoreCase = true) }
                 .map { it.copy(namespaceId = namespaceId) }
                 .sortedBy { it.name }
 

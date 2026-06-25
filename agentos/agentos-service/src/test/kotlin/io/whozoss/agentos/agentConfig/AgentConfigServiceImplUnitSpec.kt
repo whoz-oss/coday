@@ -34,17 +34,12 @@ class AgentConfigServiceImplUnitSpec :
                     withDisabled: Boolean,
                 ): List<AgentConfig> = throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
 
-                // Mirrors findForScope: namespace agents first, then platform agents (namespaceId=null).
                 // ConcurrentHashMap does not support null keys, so platform agents (namespaceId=null)
                 // are retrieved by scanning all stored entities rather than calling findByParent(null).
                 private fun platformAgents(): List<AgentConfig> = inMemory.findAll().filter { it.namespaceId == null }
 
                 override fun findByParent(parentId: UUID?): List<AgentConfig> =
-                    if (parentId == null) {
-                        platformAgents()
-                    } else {
-                        inMemory.findByParent(parentId) + platformAgents()
-                    }
+                    if (parentId == null) platformAgents() else inMemory.findByParent(parentId)
 
                 override fun findByParent(
                     parentId: UUID?,

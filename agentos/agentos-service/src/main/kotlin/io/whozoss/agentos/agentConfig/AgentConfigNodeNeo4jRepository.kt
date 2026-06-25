@@ -77,33 +77,36 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      * Only enabled (published) agents are returned — disabled agents are never surfaced at runtime.
      *
      * When [agentName] is non-null, the result is filtered to configs whose name
-     * matches case-insensitively. When null, all accessible configs are returned.
+     * starts with [agentName] (case-insensitive prefix match). When null, all accessible configs are returned.
      */
     @Query(
         $$"""
             MATCH (ns:Namespace {id: $namespaceId})
             WHERE NOT COALESCE(ns.removed, false)
             MATCH (a:AgentConfig)
-            WHERE (a.namespaceId = $namespaceId OR a.namespaceId IS NULL)
+            WHERE (a.namespaceId IS NULL OR ($namespaceId IS NOT NULL AND a.namespaceId = $namespaceId)
               AND ($withDisabled OR a.enabled)
               AND NOT COALESCE(a.removed, false)
-              AND ($agentName IS NULL OR toLower(a.name) = toLower($agentName))
+              AND ($agentName IS NULL OR toLower(a.name) STARTS WITH toLower($agentName))
               AND (
                 $userId IS NULL OR (
                     EXISTS { 
                         MATCH (u:User {id: $userId, isAdmin: true }) 
                         WHERE NOT COALESCE(u.removed, false) 
                     }
+                    OR $namespaceId IS NULL
                     OR EXISTS { 
-                        MATCH (u:User {id: $userId})-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns) 
+                        MATCH (u:User {id: $userId})-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId}) 
                         MATCH (a)-[:DEPLOYED_TO]->(g) 
                         WHERE NOT COALESCE(g.removed, false) 
                             AND NOT COALESCE(u.removed, false) 
+                            AND NOT COALESCE(ns.removed, false)
                     }
                     OR EXISTS { 
-                        MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns) 
+                        MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns:Namespace {id: $namespaceId}) 
                         MATCH (a)-[:DEPLOYED_TO]->(ns) 
                         WHERE NOT COALESCE(u.removed, false) 
+                            AND NOT COALESCE(ns.removed, false)
                     }
                 )
               )
@@ -111,7 +114,7 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             """,
     )
     fun findAvailableByNamespaceIdAndUserId(
-        namespaceId: String,
+        namespaceId: String?,
         userId: String?,
         agentName: String?,
         withDisabled: Boolean = false,

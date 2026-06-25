@@ -33,9 +33,8 @@ class AgentConfigServiceImpl(
         namespaceId: UUID?,
         name: String,
     ): AgentConfig? =
-        agentConfigRepository
-            .findByParent(namespaceId)
-            .firstOrNull { it.name.equals(name, ignoreCase = true) }
+        agentConfigRepository.findByParent(namespaceId).firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?: agentConfigRepository.findByParent(null).firstOrNull { it.name.equals(name, ignoreCase = true) }
 
     override fun findAvailableByUserExternalId(
         namespaceId: UUID,

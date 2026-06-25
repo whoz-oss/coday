@@ -12,9 +12,9 @@ import java.util.UUID
 interface AgentConfigRepository : EntityRepository<AgentConfig, UUID?> {
     /**
      * Returns [AgentConfig]s accessible to [userId] in [namespaceId].
-     * When [agentName] is non-null, further filters to configs whose name matches
-     * [agentName] case-insensitively. The comparison is pushed to Neo4j via
-     * `toLower()` — no Kotlin-side filtering needed.
+     * When [agentName] is non-null, further filters to configs whose name starts with
+     * [agentName] (case-insensitive prefix match). The comparison is pushed to Neo4j via
+     * `toLower()` / `STARTS WITH` — no Kotlin-side filtering needed.
      */
     fun findAvailableByNamespaceIdAndUserId(
         namespaceId: UUID,
