@@ -9,6 +9,8 @@ servers:
 tags:
 - name: sse
   description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
+- name: case-definitions
+  description: Declarative case definition management
 paths:
   /api/users/{id}:
     get:
@@ -314,6 +316,84 @@ paths:
       - name: id
         in: path
         required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/case-definitions/{id}:
+    get:
+      tags:
+      - case-definitions
+      summary: Get a case definition by id
+      operationId: getByIdCaseDefinition
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseDefinition"
+    put:
+      tags:
+      - case-definitions
+      summary: Update a case definition
+      operationId: updateCaseDefinition
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseDefinition"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseDefinition"
+    delete:
+      tags:
+      - case-definitions
+      summary: Delete a case definition
+      operationId: deleteCaseDefinition
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: namespaceId
+        in: query
+        required: false
         schema:
           type: string
           format: uuid
@@ -1152,6 +1232,53 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/case-definitions:
+    get:
+      tags:
+      - case-definitions
+      summary: List case definitions for a namespace
+      operationId: listCaseDefinition
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseDefinition"
+    post:
+      tags:
+      - case-definitions
+      summary: Create a case definition
+      operationId: createCaseDefinition
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseDefinition"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseDefinition"
   /api/ai-providers:
     get:
       tags:
@@ -1372,6 +1499,32 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AgentConfig"
+  /api/case-definitions/{id}/toggle:
+    patch:
+      tags:
+      - case-definitions
+      summary: Toggle a case definition enabled/disabled
+      operationId: toggleCaseDefinition
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseDefinition"
   /api/users/me:
     get:
       tags:
@@ -1970,6 +2123,69 @@ components:
       - namespaceId
       - removed
       - status
+    CaseDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        userGroupId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        agentId:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+          minLength: 1
+        schedule:
+          $ref: "#/components/schemas/TaskSchedule"
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        isValidCombination:
+          type: boolean
+      required:
+      - agentId
+      - enabled
+      - isValidCombination
+      - name
+      - namespaceId
+      - prompt
+      - schedule
+    TaskSchedule:
+      type: object
+      properties:
+        frequency:
+          type: string
+          enum:
+          - DAILY
+          - WEEKLY
+        timeUtc:
+          type: string
+          minLength: 1
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+        dayOfWeek:
+          type: string
+      required:
+      - frequency
+      - timeUtc
     AiProvider:
       type: object
       properties:
