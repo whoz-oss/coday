@@ -495,5 +495,271 @@ class IntegrationConfigServiceImplSpec : StringSpec() {
                 )
             }
         }
+
+        // -------------------------------------------------------------------------
+        // findEffective — 4-tier parameter-level merge
+        // -------------------------------------------------------------------------
+
+        "findEffective returns empty list when no configs exist for context" {
+            val service = newService()
+            service.findEffective(UUID.randomUUID(), UUID.randomUUID()).shouldBeEmpty()
+        }
+
+        "findEffective returns single platform layer as-is when it is the only layer" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            val platform = service.create(
+                config(
+                    namespaceId = null,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiUrl": "https://platform.example.com"}""",
+                ),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 1
+            effective.first().id shouldBe platform.id
+            effective.first().parameters!!.get("apiUrl").asText() shouldBe "https://platform.example.com"
+        }
+
+        "findEffective merges platform and NS-shared layers, NS-shared params win" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // Platform: base apiUrl + sharedKey
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiUrl": "https://platform.example.com", "sharedKey": "from-platform"}""",
+                ),
+            )
+            // NS-shared: overrides apiUrl, leaves sharedKey inherited from platform
+            service.create(
+                config(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiUrl": "https://ns.example.com"}""",
+                ),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 1
+            val params = effective.first().parameters!!
+            params.get("apiUrl").asText() shouldBe "https://ns.example.com"
+            params.get("sharedKey").asText() shouldBe "from-platform"
+        }
+
+        "findEffective merges platform and user-global layers, user-global params win" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiUrl": "https://platform.example.com", "token": "platform-token"}""",
+                ),
+            )
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = userId,
+                    name = "JIRA",
+                    parametersJson = """{"token": "user-token"}""",
+                ),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 1
+            val params = effective.first().parameters!!
+            params.get("apiUrl").asText() shouldBe "https://platform.example.com"
+            params.get("token").asText() shouldBe "user-token"
+        }
+
+        "findEffective merges all four layers, highest-precedence layer wins per key" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // Platform: base defaults
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiUrl": "https://platform.example.com", "platformOnly": "p"}""",
+                ),
+            )
+            // NS-shared: overrides apiUrl
+            service.create(
+                config(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiUrl": "https://ns.example.com", "nsOnly": "ns"}""",
+                ),
+            )
+            // User-global: overrides token
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = userId,
+                    name = "JIRA",
+                    parametersJson = """{"token": "user-global-token", "userOnly": "ug"}""",
+                ),
+            )
+            // User × namespace: overrides apiUrl to its final value
+            service.create(
+                config(
+                    namespaceId = nsId,
+                    userId = userId,
+                    name = "JIRA",
+                    parametersJson = """{"apiUrl": "https://user-ns.example.com"}""",
+                ),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 1
+            val params = effective.first().parameters!!
+            // user×ns wins for apiUrl
+            params.get("apiUrl").asText() shouldBe "https://user-ns.example.com"
+            // user-global wins for token
+            params.get("token").asText() shouldBe "user-global-token"
+            // keys present only in lower layers are still inherited
+            params.get("platformOnly").asText() shouldBe "p"
+            params.get("nsOnly").asText() shouldBe "ns"
+            params.get("userOnly").asText() shouldBe "ug"
+        }
+
+        "findEffective: explicit null in override inherits from base (no credential blanking)" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiKey": "secret"}""",
+                ),
+            )
+            // NS-shared sends explicit null for apiKey — must NOT blank the platform value
+            service.create(
+                config(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"apiKey": null, "otherKey": "value"}""",
+                ),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 1
+            val params = effective.first().parameters!!
+            params.get("apiKey").asText() shouldBe "secret"
+            params.get("otherKey").asText() shouldBe "value"
+        }
+
+        "findEffective: array in override replaces wholesale (no concat)" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"projects": ["PROJ-A", "PROJ-B"]}""",
+                ),
+            )
+            service.create(
+                config(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"projects": ["PROJ-C"]}""",
+                ),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 1
+            val projects = effective.first().parameters!!.get("projects")
+            projects.size() shouldBe 1
+            projects[0].asText() shouldBe "PROJ-C"
+        }
+
+        "findEffective result identity comes from the platform layer (lowest precedence)" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            val platform = service.create(
+                config(namespaceId = null, userId = null, name = "JIRA"),
+            )
+            service.create(
+                config(namespaceId = nsId, userId = userId, name = "JIRA"),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 1
+            // id, namespaceId, userId come from the platform (lowest) layer
+            effective.first().id shouldBe platform.id
+            effective.first().namespaceId shouldBe null
+            effective.first().userId shouldBe null
+        }
+
+        "findEffective keeps configs with different names independent" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(
+                config(
+                    namespaceId = null,
+                    userId = null,
+                    name = "JIRA",
+                    parametersJson = """{"url": "jira"}""",
+                ),
+            )
+            service.create(
+                config(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "SLACK",
+                    parametersJson = """{"url": "slack"}""",
+                ),
+            )
+
+            val effective = service.findEffective(nsId, userId)
+
+            effective shouldHaveSize 2
+            val byName = effective.associateBy { it.name }
+            byName["JIRA"]!!.parameters!!.get("url").asText() shouldBe "jira"
+            byName["SLACK"]!!.parameters!!.get("url").asText() shouldBe "slack"
+        }
+
+        "findEffective ignores configs from other namespaces or users" {
+            val service = newService()
+            val nsA = UUID.randomUUID()
+            val nsB = UUID.randomUUID()
+            val alice = UUID.randomUUID()
+            val bob = UUID.randomUUID()
+            // NS-B shared — must NOT appear for nsA/alice context
+            service.create(config(namespaceId = nsB, userId = null, name = "JIRA"))
+            // Bob's user-global — must NOT appear for alice context
+            service.create(config(namespaceId = null, userId = bob, name = "JIRA"))
+
+            service.findEffective(nsA, alice).shouldBeEmpty()
+        }
     }
 }
