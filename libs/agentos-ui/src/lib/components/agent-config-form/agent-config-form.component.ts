@@ -224,7 +224,12 @@ export class AgentConfigFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
-    const payload: AgentConfig = {
+    // createdOn and updatedOn are server-managed timestamps — the backend sets them on
+    // create and preserves them on update. We spread existingConfig to carry them through
+    // in edit mode; in create mode they are absent and the backend fills them in.
+    // The generated type marks them as required because the backend always returns them,
+    // but the create request payload does not need to supply them.
+    const payload = {
       ...(this.existingConfig ?? {}),
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
@@ -233,7 +238,7 @@ export class AgentConfigFormComponent implements OnInit {
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
-    }
+    } as AgentConfig
 
     const call$ = this.isEditMode()
       ? this.agentConfigController.updateAgentConfig(this.existingConfig!.id ?? '', payload)

@@ -38,7 +38,7 @@ export class NamespaceAgentConfigsComponent {
 
   /** Raw configs, kept for delete lookups. */
   private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.agentConfigController.listByParentAgentConfig(this.namespaceId))
+    switchMap(() => this.agentConfigController.listByNamespaceAgentConfig(this.namespaceId))
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
