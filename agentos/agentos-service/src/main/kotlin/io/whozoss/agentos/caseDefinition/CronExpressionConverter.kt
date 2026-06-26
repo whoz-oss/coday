@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
@@ -32,21 +32,6 @@ object CronExpressionConverter {
     /** Accepted day-of-week abbreviations (uppercase). */
     val VALID_DAYS: Set<String> = setOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 
-    // -------------------------------------------------------------------------
-    // API → cron
-    // -------------------------------------------------------------------------
-
-    /**
-     * Builds a 5-field cron string from the API schedule fields.
-     *
-     * @param frequency  [ScheduleFrequency.DAILY] or [ScheduleFrequency.WEEKLY]
-     * @param dayOfWeek  Required when [frequency] is [ScheduleFrequency.WEEKLY];
-     *                   must be one of [VALID_DAYS] (case-insensitive). Ignored for DAILY.
-     * @param timeUtc    UTC time in `HH:mm` format.
-     * @throws ResponseStatusException 400 if [frequency] is WEEKLY and [dayOfWeek] is
-     *         null or not a recognised abbreviation.
-     * @throws ResponseStatusException 400 if [timeUtc] is not a valid `HH:mm` string.
-     */
     fun toCron(frequency: ScheduleFrequency, dayOfWeek: String?, timeUtc: String): String {
         val (hour, minute) = parseTime(timeUtc)
         return when (frequency) {
@@ -58,16 +43,6 @@ object CronExpressionConverter {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // cron → API
-    // -------------------------------------------------------------------------
-
-    /**
-     * Parses a 5-field cron string back into the API schedule fields.
-     *
-     * @return [CronSchedule] with [frequency], [dayOfWeek] (null for DAILY), and [timeUtc].
-     * @throws IllegalArgumentException if the cron string does not match a supported pattern.
-     */
     fun fromCron(cron: String): CronSchedule {
         val parts = cron.trim().split("\\s+".toRegex())
         require(parts.size == 5) { "Expected 5-field cron, got: '$cron'" }
@@ -75,11 +50,7 @@ object CronExpressionConverter {
         require(dom == "*" && month == "*") { "Unsupported cron pattern (dom/month must be *): '$cron'" }
         val timeUtc = "%02d:%02d".format(hour.toInt(), minute.toInt())
         return when {
-            dow == "*" -> CronSchedule(
-                frequency = ScheduleFrequency.DAILY,
-                dayOfWeek = null,
-                timeUtc = timeUtc,
-            )
+            dow == "*" -> CronSchedule(frequency = ScheduleFrequency.DAILY, dayOfWeek = null, timeUtc = timeUtc)
             dow.uppercase() in VALID_DAYS -> CronSchedule(
                 frequency = ScheduleFrequency.WEEKLY,
                 dayOfWeek = dow.uppercase(),
@@ -88,10 +59,6 @@ object CronExpressionConverter {
             else -> throw IllegalArgumentException("Unrecognised day-of-week in cron: '$dow'")
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
 
     private fun parseTime(timeUtc: String): Pair<Int, Int> {
         val parts = timeUtc.split(":")

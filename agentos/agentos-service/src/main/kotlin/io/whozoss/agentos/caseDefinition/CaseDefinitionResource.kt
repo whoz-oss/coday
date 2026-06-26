@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
@@ -23,24 +23,13 @@ import java.util.UUID
  * [namespaceId] is always required. [userGroupId] and [userId] are optional refinements.
  * They are mutually exclusive — setting both produces a 400 via [isValidCombination].
  *
- * | namespaceId | userGroupId | userId | Valid |
- * |-------------|-------------|--------|-------|
- * | set         | null        | null   | ✓     |
- * | set         | set         | null   | ✓     |
- * | set         | null        | set    | ✓     |
- * | set         | set         | set    | ✗ 400 |
+ * ### Schedule fields (flat)
  *
- * ### Schedule fields
- *
- * - [frequency]: required — [ScheduleFrequency.DAILY] or [ScheduleFrequency.WEEKLY].
- * - [timeUtc]: required, `HH:mm` UTC format (e.g. `"09:00"`).
- * - [dayOfWeek]: required when [frequency] is [ScheduleFrequency.WEEKLY].
- *   One of `MON TUE WED THU FRI SAT SUN`. Ignored for DAILY.
- *
- * Bean Validation rules:
- * - [name] must not be blank
- * - [namespaceId], [agentId], [prompt], [frequency], [timeUtc] must not be null
- * - [description] and [dayOfWeek] are optional
+ * [frequency], [timeUtc], and [dayOfWeek] are flat on this DTO (no nested object).
+ * - [frequency]: required.
+ * - [timeUtc]: required, `HH:mm` format.
+ * - [dayOfWeek]: required when [frequency] is [ScheduleFrequency.WEEKLY]. One of
+ *   `MON TUE WED THU FRI SAT SUN`.
  */
 @Schema(name = "CaseDefinition")
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -71,10 +60,6 @@ data class CaseDefinitionResource(
     val createdAt: Instant? = null,
     val updatedAt: Instant? = null,
 ) {
-    /**
-     * Validates that [userGroupId] and [userId] are not both set.
-     * Called by Bean Validation via `@AssertTrue`.
-     */
     @AssertTrue(message = "userGroupId and userId cannot both be set")
     fun isValidCombination(): Boolean = userGroupId == null || userId == null
 }

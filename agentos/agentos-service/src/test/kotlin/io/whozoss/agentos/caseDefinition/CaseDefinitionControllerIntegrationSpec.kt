@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
@@ -21,21 +21,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
-/**
- * MVC-layer integration tests for [CaseDefinitionController].
- *
- * Payload shape: flat fields `frequency`, `timeUtc`, `dayOfWeek` at root level
- * (no nested `schedule` object). Mirrors exactly what the frontend sends.
- *
- * Verifies:
- * - Bean Validation fires through the dispatcher (400 on invalid payloads)
- * - HTTP status codes (201 / 200 / 204 / 400 / 404)
- * - `namespaceId` absent → 400
- * - `namespaceId` in body mismatch with query param → 400
- * - `userGroupId + userId` both set → 400
- * - WEEKLY without dayOfWeek → 400
- * - Targeting and schedule fields appear flat in the response body
- */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
@@ -49,7 +34,6 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
     private val namespaceId = UUID.randomUUID()
     private val agentId = UUID.randomUUID()
 
-    /** Minimal valid DAILY payload — flat fields, no nested schedule object. */
     private val dailyPayload
         get() = """
             {
@@ -91,10 +75,6 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
     )
 
     init {
-        // -------------------------------------------------------------------------
-        // POST — namespace-only, flat payload
-        // -------------------------------------------------------------------------
-
         "POST DAILY namespace-only returns 201 with flat schedule fields" {
             mockMvc.perform(postDef())
                 .andExpect(status().isCreated)
@@ -105,10 +85,6 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.timeUtc").value("08:00"))
                 .andExpect(jsonPath("$.dayOfWeek").doesNotExist())
         }
-
-        // -------------------------------------------------------------------------
-        // POST — WEEKLY
-        // -------------------------------------------------------------------------
 
         "POST WEEKLY returns 201 with dayOfWeek" {
             mockMvc.perform(
@@ -132,10 +108,6 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.dayOfWeek").value("MON"))
         }
 
-        // -------------------------------------------------------------------------
-        // POST — group-scoped
-        // -------------------------------------------------------------------------
-
         "POST with userGroupId returns 201 with userGroupId in response" {
             val groupId = UUID.randomUUID()
             mockMvc.perform(
@@ -157,10 +129,6 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.userGroupId").value(groupId.toString()))
                 .andExpect(jsonPath("$.userId").doesNotExist())
         }
-
-        // -------------------------------------------------------------------------
-        // POST — user-scoped
-        // -------------------------------------------------------------------------
 
         "POST with userId returns 201 with userId in response" {
             val uid = UUID.randomUUID()
@@ -184,10 +152,6 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.userGroupId").doesNotExist())
         }
 
-        // -------------------------------------------------------------------------
-        // POST — invalid combinations
-        // -------------------------------------------------------------------------
-
         "POST with userGroupId + userId returns 400" {
             mockMvc.perform(
                 postDef(
@@ -208,12 +172,11 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
         }
 
         "POST with namespaceId mismatch returns 400" {
-            val otherNs = UUID.randomUUID()
             mockMvc.perform(
                 postDef(
                     body = """
                         {
-                            "namespaceId": "$otherNs",
+                            "namespaceId": "${UUID.randomUUID()}",
                             "name": "mismatch",
                             "agentId": "$agentId",
                             "prompt": "Hello",
@@ -224,10 +187,6 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 ),
             ).andExpect(status().isBadRequest)
         }
-
-        // -------------------------------------------------------------------------
-        // POST — Bean Validation
-        // -------------------------------------------------------------------------
 
         "POST without namespaceId query param returns 400" {
             mockMvc.perform(
@@ -304,44 +263,24 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
-        // -------------------------------------------------------------------------
-        // GET — list
-        // -------------------------------------------------------------------------
-
         "GET list returns definitions for the namespace" {
             val listNsId = UUID.randomUUID()
             createDef(nsId = listNsId, name = "def-a")
             createDef(nsId = listNsId, name = "def-b")
-
-            mockMvc.perform(
-                get("/api/case-definitions").param("namespaceId", listNsId.toString()),
-            )
+            mockMvc.perform(get("/api/case-definitions").param("namespaceId", listNsId.toString()))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", Matchers.hasSize<Any>(2)))
         }
 
         "GET list without namespaceId returns 400" {
-            mockMvc.perform(get("/api/case-definitions"))
-                .andExpect(status().isBadRequest)
+            mockMvc.perform(get("/api/case-definitions")).andExpect(status().isBadRequest)
         }
-
-        // -------------------------------------------------------------------------
-        // GET — by id
-        // -------------------------------------------------------------------------
 
         "GET by id returns 200 with flat schedule fields" {
             val getNsId = UUID.randomUUID()
             val groupId = UUID.randomUUID()
-            val created = createDef(
-                nsId = getNsId,
-                name = "fetch-me",
-                userGroupId = groupId,
-                cronExpression = "0 10 * * MON",
-            )
-
-            mockMvc.perform(
-                get("/api/case-definitions/${created.id}").param("namespaceId", getNsId.toString()),
-            )
+            val created = createDef(nsId = getNsId, name = "fetch-me", userGroupId = groupId, cronExpression = "0 10 * * MON")
+            mockMvc.perform(get("/api/case-definitions/${created.id}").param("namespaceId", getNsId.toString()))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.id").value(created.id.toString()))
                 .andExpect(jsonPath("$.namespaceId").value(getNsId.toString()))
@@ -358,18 +297,12 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
         }
 
         "GET by id without namespaceId returns 400" {
-            mockMvc.perform(get("/api/case-definitions/${UUID.randomUUID()}"))
-                .andExpect(status().isBadRequest)
+            mockMvc.perform(get("/api/case-definitions/${UUID.randomUUID()}")).andExpect(status().isBadRequest)
         }
-
-        // -------------------------------------------------------------------------
-        // PUT — update
-        // -------------------------------------------------------------------------
 
         "PUT with valid payload returns 200" {
             val putNsId = UUID.randomUUID()
             val created = createDef(nsId = putNsId, name = "original")
-
             mockMvc.perform(
                 put("/api/case-definitions/${created.id}")
                     .param("namespaceId", putNsId.toString())
@@ -412,14 +345,9 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
-        // -------------------------------------------------------------------------
-        // PATCH toggle
-        // -------------------------------------------------------------------------
-
         "PATCH toggle flips enabled state" {
             val toggleNsId = UUID.randomUUID()
             val created = createDef(nsId = toggleNsId, enabled = true)
-
             mockMvc.perform(
                 patch("/api/case-definitions/${created.id}/toggle")
                     .param("namespaceId", toggleNsId.toString()),
@@ -428,31 +356,23 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.enabled").value(false))
         }
 
-        // -------------------------------------------------------------------------
-        // DELETE
-        // -------------------------------------------------------------------------
-
         "DELETE returns 204 when definition exists" {
             val delNsId = UUID.randomUUID()
             val created = createDef(nsId = delNsId)
-
             mockMvc.perform(
-                delete("/api/case-definitions/${created.id}")
-                    .param("namespaceId", delNsId.toString()),
+                delete("/api/case-definitions/${created.id}").param("namespaceId", delNsId.toString()),
             ).andExpect(status().isNoContent)
         }
 
         "DELETE returns 404 when definition does not exist" {
             mockMvc.perform(
-                delete("/api/case-definitions/${UUID.randomUUID()}")
-                    .param("namespaceId", namespaceId.toString()),
+                delete("/api/case-definitions/${UUID.randomUUID()}").param("namespaceId", namespaceId.toString()),
             ).andExpect(status().isNotFound)
         }
 
         "DELETE without namespaceId returns 400" {
-            mockMvc.perform(
-                delete("/api/case-definitions/${UUID.randomUUID()}"),
-            ).andExpect(status().isBadRequest)
+            mockMvc.perform(delete("/api/case-definitions/${UUID.randomUUID()}"))
+                .andExpect(status().isBadRequest)
         }
     }
 }

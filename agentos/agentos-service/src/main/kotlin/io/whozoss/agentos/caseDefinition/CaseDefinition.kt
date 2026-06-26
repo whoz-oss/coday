@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.whozoss.agentos.sdk.entity.Entity

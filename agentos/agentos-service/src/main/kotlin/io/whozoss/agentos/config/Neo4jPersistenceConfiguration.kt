@@ -35,9 +35,9 @@ import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
-import io.whozoss.agentos.scheduledTask.CaseDefinitionNodeNeo4jRepository
-import io.whozoss.agentos.scheduledTask.CaseDefinitionRepository
-import io.whozoss.agentos.scheduledTask.Neo4jCaseDefinitionRepository
+import io.whozoss.agentos.caseDefinition.CaseDefinitionNodeNeo4jRepository
+import io.whozoss.agentos.caseDefinition.CaseDefinitionRepository
+import io.whozoss.agentos.caseDefinition.Neo4jCaseDefinitionRepository
 import io.whozoss.agentos.userGroup.Neo4jUserGroupRepository
 import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
@@ -84,7 +84,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.feedback",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
-        "io.whozoss.agentos.scheduledTask",
+        "io.whozoss.agentos.caseDefinition",
         "io.whozoss.agentos.userGroup",
     ],
 )

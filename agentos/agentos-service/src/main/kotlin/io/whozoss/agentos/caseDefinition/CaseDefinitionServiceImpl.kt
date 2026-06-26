@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import mu.KLogging

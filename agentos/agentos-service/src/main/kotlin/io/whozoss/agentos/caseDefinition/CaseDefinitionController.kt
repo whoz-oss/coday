@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -28,11 +28,6 @@ import java.util.UUID
  *
  * All endpoints live under `/api/case-definitions` with `namespaceId` as a query parameter.
  *
- * ### Query param vs. namespaceId in body
- *
- * `?namespaceId=` serves routing and authorization. The controller validates that the
- * `namespaceId` field in the request body matches the query param (on create/update).
- *
  * **Step 1 — purely declarative CRUD.** No scheduler, no @Scheduled, no trigger logic.
  */
 @RestController
@@ -44,10 +39,6 @@ import java.util.UUID
 class CaseDefinitionController(
     private val caseDefinitionService: CaseDefinitionService,
 ) {
-    // -------------------------------------------------------------------------
-    // Mapping helpers
-    // -------------------------------------------------------------------------
-
     private fun toResource(def: CaseDefinition): CaseDefinitionResource {
         val cronSchedule = CronExpressionConverter.fromCron(def.cronExpression)
         return CaseDefinitionResource(
@@ -87,16 +78,11 @@ class CaseDefinitionController(
         )
 
     private fun requireNamespaceId(namespaceId: UUID?): UUID =
-        namespaceId
-            ?: throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "namespaceId query parameter is required",
-            )
+        namespaceId ?: throw ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "namespaceId query parameter is required",
+        )
 
-    /**
-     * Validates that `namespaceId` in the body matches the `?namespaceId=` query param.
-     * Throws 400 on mismatch.
-     */
     private fun requireNamespaceMatch(resource: CaseDefinitionResource, namespaceId: UUID) {
         if (resource.namespaceId != namespaceId)
             throw ResponseStatusException(
@@ -106,20 +92,11 @@ class CaseDefinitionController(
             )
     }
 
-    /**
-     * Verifies that the persisted definition belongs to the requested namespace.
-     * Throws 404 (not 403) to avoid leaking information about cross-namespace definitions.
-     */
     private fun requireDefinitionInNamespace(def: CaseDefinition, namespaceId: UUID) {
         if (def.namespaceId != namespaceId)
             throw ResourceNotFoundException("CaseDefinition not found: ${def.id}")
     }
 
-    // -------------------------------------------------------------------------
-    // Endpoints
-    // -------------------------------------------------------------------------
-
-    /** GET /api/case-definitions?namespaceId= */
     @GetMapping
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     @Operation(summary = "List case definitions for a namespace")
@@ -128,7 +105,6 @@ class CaseDefinitionController(
         return caseDefinitionService.findByParent(nsId).map { toResource(it) }
     }
 
-    /** GET /api/case-definitions/{id}?namespaceId= */
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     @Operation(summary = "Get a case definition by id")
@@ -143,7 +119,6 @@ class CaseDefinitionController(
         return toResource(def)
     }
 
-    /** POST /api/case-definitions?namespaceId= */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
@@ -158,7 +133,6 @@ class CaseDefinitionController(
         return toResource(caseDefinitionService.create(toDomain(nsId, resource)))
     }
 
-    /** PUT /api/case-definitions/{id}?namespaceId= */
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     @Operation(summary = "Update a case definition")
@@ -187,7 +161,6 @@ class CaseDefinitionController(
         return toResource(caseDefinitionService.update(updated))
     }
 
-    /** PATCH /api/case-definitions/{id}/toggle?namespaceId= */
     @PatchMapping("/{id}/toggle")
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     @Operation(summary = "Toggle a case definition enabled/disabled")
@@ -202,7 +175,6 @@ class CaseDefinitionController(
         return toResource(caseDefinitionService.setEnabled(id, !existing.enabled))
     }
 
-    /** DELETE /api/case-definitions/{id}?namespaceId= */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")

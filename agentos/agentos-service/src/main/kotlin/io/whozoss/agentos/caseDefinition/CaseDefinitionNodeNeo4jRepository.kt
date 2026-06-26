@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
@@ -11,9 +11,6 @@ interface CaseDefinitionNodeNeo4jRepository : Neo4jRepository<CaseDefinitionNode
     /**
      * Returns all non-removed case definitions whose [CaseDefinitionNode.namespaceId]
      * matches the given namespace, ordered by name ascending.
-     *
-     * Covers namespace-only, group-scoped, and user-scoped definitions alike —
-     * all three always carry the same [namespaceId].
      */
     @Query(
         $$"""

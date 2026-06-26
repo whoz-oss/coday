@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -10,11 +10,6 @@ import org.springframework.web.server.ResponseStatusException
  *
  * Covers the bidirectional conversion between `(frequency, dayOfWeek, timeUtc)` and
  * the 5-field cron string, as well as validation of invalid inputs.
- *
- * Note on timeUtc format: the strict `HH:mm` two-digit format (e.g. "09:00" not "9:00")
- * is enforced upstream by `@Pattern` on the DTO before the converter is ever called.
- * The converter only rejects inputs that cannot be parsed at all (no colon, non-numeric,
- * or out-of-range values).
  */
 class CronExpressionConverterUnitSpec : StringSpec({
 
@@ -35,7 +30,6 @@ class CronExpressionConverterUnitSpec : StringSpec({
     }
 
     "toCron DAILY ignores dayOfWeek when provided" {
-        // dayOfWeek is irrelevant for DAILY -- no error, value ignored
         CronExpressionConverter.toCron(ScheduleFrequency.DAILY, "MON", "08:00") shouldBe "0 8 * * *"
     }
 

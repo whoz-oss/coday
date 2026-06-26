@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledTask
+package io.whozoss.agentos.caseDefinition
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -49,21 +49,9 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         enabled = enabled,
     )
 
-    // -------------------------------------------------------------------------
-    // CaseDefinition init validation
-    // -------------------------------------------------------------------------
-
-    "CaseDefinition with namespaceId only is valid" {
-        def() // no exception
-    }
-
-    "CaseDefinition with namespaceId + userGroupId is valid" {
-        def(userGroupId = UUID.randomUUID()) // no exception
-    }
-
-    "CaseDefinition with namespaceId + userId is valid" {
-        def(userId = UUID.randomUUID()) // no exception
-    }
+    "CaseDefinition with namespaceId only is valid" { def() }
+    "CaseDefinition with namespaceId + userGroupId is valid" { def(userGroupId = UUID.randomUUID()) }
+    "CaseDefinition with namespaceId + userId is valid" { def(userId = UUID.randomUUID()) }
 
     "CaseDefinition with userGroupId + userId throws IllegalArgumentException" {
         shouldThrow<IllegalArgumentException> {
@@ -71,26 +59,15 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         }
     }
 
-    // -------------------------------------------------------------------------
-    // create
-    // -------------------------------------------------------------------------
-
     "create persists and returns the definition" {
         val repo = repository()
         val svc = service(repo)
-        val d = def("daily-standup", cronExpression = "0 9 * * *")
-
-        val saved = svc.create(d)
-
+        val saved = svc.create(def("daily-standup", cronExpression = "0 9 * * *"))
         saved.name shouldBe "daily-standup"
         saved.namespaceId shouldBe namespaceId
         saved.cronExpression shouldBe "0 9 * * *"
         saved.enabled.shouldBeTrue()
     }
-
-    // -------------------------------------------------------------------------
-    // findByParent
-    // -------------------------------------------------------------------------
 
     "findByParent returns definitions scoped to the given namespace" {
         val repo = repository()
@@ -98,9 +75,7 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         val otherNs = UUID.randomUUID()
         repo.save(def("in-ns"))
         repo.save(def("other-ns", nsId = otherNs))
-
         val result = svc.findByParent(namespaceId)
-
         result shouldHaveSize 1
         result.first().name shouldBe "in-ns"
     }
@@ -115,34 +90,22 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         repo.save(def("zeta"))
         repo.save(def("alpha"))
         repo.save(def("mu"))
-
         svc.findByParent(namespaceId).map { it.name } shouldBe listOf("alpha", "mu", "zeta")
     }
-
-    // -------------------------------------------------------------------------
-    // update
-    // -------------------------------------------------------------------------
 
     "update persists changes" {
         val repo = repository()
         val svc = service(repo)
         val saved = repo.save(def("original"))
-
         val updated = svc.update(saved.copy(name = "renamed", enabled = false))
-
         updated.name shouldBe "renamed"
         updated.enabled.shouldBeFalse()
     }
-
-    // -------------------------------------------------------------------------
-    // delete
-    // -------------------------------------------------------------------------
 
     "delete returns true and soft-deletes" {
         val repo = repository()
         val svc = service(repo)
         val saved = repo.save(def())
-
         svc.delete(saved.id).shouldBeTrue()
         svc.findByParent(namespaceId) shouldBe emptyList()
     }
@@ -151,16 +114,11 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         service().delete(UUID.randomUUID()).shouldBeFalse()
     }
 
-    // -------------------------------------------------------------------------
-    // deleteByParent
-    // -------------------------------------------------------------------------
-
     "deleteByParent soft-deletes all definitions in the namespace" {
         val repo = repository()
         val svc = service(repo)
         repo.save(def("d1"))
         repo.save(def("d2"))
-
         svc.deleteByParent(namespaceId) shouldBe 2
         svc.findByParent(namespaceId) shouldBe emptyList()
     }
@@ -171,15 +129,9 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         val otherNs = UUID.randomUUID()
         repo.save(def("in-ns"))
         repo.save(def("other", nsId = otherNs))
-
         svc.deleteByParent(namespaceId)
-
         svc.findByParent(otherNs) shouldHaveSize 1
     }
-
-    // -------------------------------------------------------------------------
-    // setEnabled
-    // -------------------------------------------------------------------------
 
     "setEnabled(false) disables an enabled definition" {
         val repo = repository()
@@ -197,10 +149,6 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         shouldThrow<ResourceNotFoundException> { service().setEnabled(UUID.randomUUID(), true) }
     }
 
-    // -------------------------------------------------------------------------
-    // findById
-    // -------------------------------------------------------------------------
-
     "findById returns the definition when it exists" {
         val repo = repository()
         val svc = service(repo)
@@ -211,10 +159,6 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
     "findById returns null when definition does not exist" {
         service().findById(UUID.randomUUID()) shouldBe null
     }
-
-    // -------------------------------------------------------------------------
-    // Targeting fields round-trip
-    // -------------------------------------------------------------------------
 
     "namespaceId round-trips through service" {
         val repo = repository()
@@ -236,10 +180,6 @@ class CaseDefinitionServiceImplUnitSpec : StringSpec({
         val uid = UUID.randomUUID()
         svc.create(def(userId = uid)).userId shouldBe uid
     }
-
-    // -------------------------------------------------------------------------
-    // description / cron round-trips
-    // -------------------------------------------------------------------------
 
     "description round-trips" {
         val repo = repository()
