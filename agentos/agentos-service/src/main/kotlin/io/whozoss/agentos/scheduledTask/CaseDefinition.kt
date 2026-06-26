@@ -18,10 +18,9 @@ import java.util.UUID
  * | [CaseDefinition] | Stable configuration: who, what, when. Changes rarely.                 |
  * | `CaseInstance`   | Volatile execution record: status, logs, errors, linked cases.          |
  *
- * Each time the scheduler fires a [CaseDefinition], it will produce a `CaseInstance` that
- * tracks that specific execution: whether it succeeded, which `Case` was created, any
- * error messages, and the timestamp of the run. Multiple `CaseInstance` records can exist
- * for the same [CaseDefinition] over its lifetime.
+ * `CaseInstance` represents an execution: it carries status, logs, errors, and links
+ * to the cases created. The relationship and cardinality between [CaseDefinition] and
+ * `CaseInstance` will be defined in step 2.
  *
  * This separation keeps [CaseDefinition] lean and auditable — its history reflects
  * intentional configuration changes, not the noise of individual executions.
