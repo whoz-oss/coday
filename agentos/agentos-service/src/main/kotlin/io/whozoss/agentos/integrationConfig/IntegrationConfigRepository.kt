@@ -28,6 +28,11 @@ interface IntegrationConfigRepository : EntityRepository<IntegrationConfig, UUID
     fun findByUserId(userId: UUID): List<IntegrationConfig>
 
     /**
+     * Find all non-removed platform-level configs (`namespaceId IS NULL AND userId IS NULL`).
+     */
+    fun findPlatform(): List<IntegrationConfig>
+
+    /**
      * Find a single config matching the (namespaceId, userId, name) triple.
      * NULL values are matched literally — `findByTriple(ns, null, name)` returns
      * configs where `userId IS NULL`, never user-scoped configs that happen to share `ns`.
@@ -40,4 +45,19 @@ interface IntegrationConfigRepository : EntityRepository<IntegrationConfig, UUID
         userId: UUID?,
         name: String,
     ): IntegrationConfig?
+
+    fun findAllForNamespaceIdAndUserId(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig>
+
+    /**
+     * Find all non-removed namespace-shared configs (userId IS NULL, namespaceId IS NOT NULL)
+     * that match the given [name], across all namespaces.
+     *
+     * Used by [IntegrationConfigServiceImpl.assertConsistentIntegrationTypeAcrossLayers] when
+     * creating or updating a platform-level config, to detect cross-namespace type conflicts
+     * without enumerating all namespaces first.
+     */
+    fun findNsSharedByName(name: String): List<IntegrationConfig>
 }

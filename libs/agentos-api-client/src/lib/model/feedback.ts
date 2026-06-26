@@ -8,19 +8,16 @@
  * Do not edit the class manually.
  */
 
-export interface AgentConfig {
-  id?: string
+export interface Feedback {
+  id: string
   namespaceId: string
-  name: string
-  description?: string
-  instructions?: string
-  modelName?: string
-  integrations?: { [key: string]: Array<string> }
-  advancedExecution?: boolean
-  externalMetadata?: { [key: string]: any }
+  caseId: string
+  caseEventId: string
+  positive: boolean
+  type?: string
+  comment?: string
   createdBy?: string
   createdOn: string
   updatedBy?: string
   updatedOn: string
-  enabled?: boolean
 }
