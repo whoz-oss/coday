@@ -2,7 +2,6 @@ package io.whozoss.agentos.scheduledTask
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
-import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
@@ -31,10 +30,17 @@ import java.util.UUID
  * | set         | null        | set    | ✓     |
  * | set         | set         | set    | ✗ 400 |
  *
+ * ### Schedule fields
+ *
+ * - [frequency]: required — [ScheduleFrequency.DAILY] or [ScheduleFrequency.WEEKLY].
+ * - [timeUtc]: required, `HH:mm` UTC format (e.g. `"09:00"`).
+ * - [dayOfWeek]: required when [frequency] is [ScheduleFrequency.WEEKLY].
+ *   One of `MON TUE WED THU FRI SAT SUN`. Ignored for DAILY.
+ *
  * Bean Validation rules:
  * - [name] must not be blank
- * - [namespaceId], [agentId], [prompt], [schedule] must not be null
- * - [description] is optional
+ * - [namespaceId], [agentId], [prompt], [frequency], [timeUtc] must not be null
+ * - [description] and [dayOfWeek] are optional
  */
 @Schema(name = "CaseDefinition")
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -51,9 +57,16 @@ data class CaseDefinitionResource(
     val agentId: UUID,
     @field:NotBlank(message = "prompt must not be blank")
     val prompt: String,
-    @field:NotNull(message = "schedule must not be null")
-    @field:Valid
-    val schedule: TaskScheduleResource,
+    @field:NotNull(message = "frequency must not be null")
+    val frequency: ScheduleFrequency,
+    @field:NotBlank(message = "timeUtc must not be blank")
+    @field:Pattern(
+        regexp = "^([01]\\d|2[0-3]):[0-5]\\d$",
+        message = "timeUtc must be in HH:mm format (e.g. \"09:00\")",
+    )
+    val timeUtc: String,
+    /** Required when [frequency] is [ScheduleFrequency.WEEKLY]. One of `MON TUE WED THU FRI SAT SUN`. */
+    val dayOfWeek: String? = null,
     val enabled: Boolean = true,
     val createdAt: Instant? = null,
     val updatedAt: Instant? = null,
@@ -65,29 +78,6 @@ data class CaseDefinitionResource(
     @AssertTrue(message = "userGroupId and userId cannot both be set")
     fun isValidCombination(): Boolean = userGroupId == null || userId == null
 }
-
-/**
- * HTTP DTO for the schedule part of a [CaseDefinition].
- *
- * The cron expression is an internal persistence detail and is **never** included here.
- * [CronExpressionConverter] handles the bidirectional conversion in the controller.
- *
- * - [frequency]: [ScheduleFrequency.DAILY] or [ScheduleFrequency.WEEKLY].
- * - [timeUtc]: UTC time in `HH:mm` format.
- * - [dayOfWeek]: Required for WEEKLY. One of `MON TUE WED THU FRI SAT SUN`.
- */
-@Schema(name = "TaskSchedule")
-data class TaskScheduleResource(
-    @field:NotNull(message = "schedule.frequency must not be null")
-    val frequency: ScheduleFrequency,
-    @field:NotBlank(message = "schedule.timeUtc must not be blank")
-    @field:Pattern(
-        regexp = "^([01]\\d|2[0-3]):[0-5]\\d$",
-        message = "schedule.timeUtc must be in HH:mm format (e.g. \"09:00\")",
-    )
-    val timeUtc: String,
-    val dayOfWeek: String? = null,
-)
 
 /** Recurrence frequency. Only [DAILY] and [WEEKLY] are supported in step 1. */
 enum class ScheduleFrequency {

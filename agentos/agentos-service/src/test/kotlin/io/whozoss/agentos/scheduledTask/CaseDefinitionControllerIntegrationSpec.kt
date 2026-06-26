@@ -24,6 +24,9 @@ import java.util.UUID
 /**
  * MVC-layer integration tests for [CaseDefinitionController].
  *
+ * Payload shape: flat fields `frequency`, `timeUtc`, `dayOfWeek` at root level
+ * (no nested `schedule` object). Mirrors exactly what the frontend sends.
+ *
  * Verifies:
  * - Bean Validation fires through the dispatcher (400 on invalid payloads)
  * - HTTP status codes (201 / 200 / 204 / 400 / 404)
@@ -31,7 +34,7 @@ import java.util.UUID
  * - `namespaceId` in body mismatch with query param → 400
  * - `userGroupId + userId` both set → 400
  * - WEEKLY without dayOfWeek → 400
- * - Targeting fields appear in the response body
+ * - Targeting and schedule fields appear flat in the response body
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -46,6 +49,7 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
     private val namespaceId = UUID.randomUUID()
     private val agentId = UUID.randomUUID()
 
+    /** Minimal valid DAILY payload — flat fields, no nested schedule object. */
     private val dailyPayload
         get() = """
             {
@@ -53,7 +57,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 "name": "daily-standup",
                 "agentId": "$agentId",
                 "prompt": "Good morning!",
-                "schedule": { "frequency": "DAILY", "timeUtc": "08:00" },
+                "frequency": "DAILY",
+                "timeUtc": "08:00",
                 "enabled": true
             }
         """.trimIndent()
@@ -87,17 +92,44 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
 
     init {
         // -------------------------------------------------------------------------
-        // POST — namespace-only
+        // POST — namespace-only, flat payload
         // -------------------------------------------------------------------------
 
-        "POST DAILY namespace-only returns 201 with targeting fields" {
+        "POST DAILY namespace-only returns 201 with flat schedule fields" {
             mockMvc.perform(postDef())
                 .andExpect(status().isCreated)
                 .andExpect(jsonPath("$.namespaceId").value(namespaceId.toString()))
                 .andExpect(jsonPath("$.userGroupId").doesNotExist())
                 .andExpect(jsonPath("$.userId").doesNotExist())
-                .andExpect(jsonPath("$.schedule.frequency").value("DAILY"))
-                .andExpect(jsonPath("$.schedule.timeUtc").value("08:00"))
+                .andExpect(jsonPath("$.frequency").value("DAILY"))
+                .andExpect(jsonPath("$.timeUtc").value("08:00"))
+                .andExpect(jsonPath("$.dayOfWeek").doesNotExist())
+        }
+
+        // -------------------------------------------------------------------------
+        // POST — WEEKLY
+        // -------------------------------------------------------------------------
+
+        "POST WEEKLY returns 201 with dayOfWeek" {
+            mockMvc.perform(
+                postDef(
+                    body = """
+                        {
+                            "namespaceId": "$namespaceId",
+                            "name": "weekly-review",
+                            "agentId": "$agentId",
+                            "prompt": "Weekly review",
+                            "frequency": "WEEKLY",
+                            "timeUtc": "10:00",
+                            "dayOfWeek": "MON"
+                        }
+                    """.trimIndent(),
+                ),
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.frequency").value("WEEKLY"))
+                .andExpect(jsonPath("$.timeUtc").value("10:00"))
+                .andExpect(jsonPath("$.dayOfWeek").value("MON"))
         }
 
         // -------------------------------------------------------------------------
@@ -115,7 +147,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "group-def",
                             "agentId": "$agentId",
                             "prompt": "Hello group",
-                            "schedule": { "frequency": "DAILY", "timeUtc": "09:00" }
+                            "frequency": "DAILY",
+                            "timeUtc": "09:00"
                         }
                     """.trimIndent(),
                 ),
@@ -140,7 +173,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "user-def",
                             "agentId": "$agentId",
                             "prompt": "Hello user",
-                            "schedule": { "frequency": "DAILY", "timeUtc": "09:00" }
+                            "frequency": "DAILY",
+                            "timeUtc": "09:00"
                         }
                     """.trimIndent(),
                 ),
@@ -165,7 +199,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "bad",
                             "agentId": "$agentId",
                             "prompt": "Hello",
-                            "schedule": { "frequency": "DAILY", "timeUtc": "09:00" }
+                            "frequency": "DAILY",
+                            "timeUtc": "09:00"
                         }
                     """.trimIndent(),
                 ),
@@ -182,7 +217,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "mismatch",
                             "agentId": "$agentId",
                             "prompt": "Hello",
-                            "schedule": { "frequency": "DAILY", "timeUtc": "09:00" }
+                            "frequency": "DAILY",
+                            "timeUtc": "09:00"
                         }
                     """.trimIndent(),
                 ),
@@ -210,7 +246,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "",
                             "agentId": "$agentId",
                             "prompt": "Hello",
-                            "schedule": { "frequency": "DAILY", "timeUtc": "08:00" }
+                            "frequency": "DAILY",
+                            "timeUtc": "08:00"
                         }
                     """.trimIndent(),
                 ),
@@ -226,14 +263,15 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "my-def",
                             "agentId": "$agentId",
                             "prompt": "",
-                            "schedule": { "frequency": "DAILY", "timeUtc": "08:00" }
+                            "frequency": "DAILY",
+                            "timeUtc": "08:00"
                         }
                     """.trimIndent(),
                 ),
             ).andExpect(status().isBadRequest)
         }
 
-        "POST with missing schedule returns 400" {
+        "POST with missing frequency returns 400" {
             mockMvc.perform(
                 postDef(
                     body = """
@@ -241,7 +279,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "namespaceId": "$namespaceId",
                             "name": "my-def",
                             "agentId": "$agentId",
-                            "prompt": "Hello"
+                            "prompt": "Hello",
+                            "timeUtc": "08:00"
                         }
                     """.trimIndent(),
                 ),
@@ -257,7 +296,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "weekly-no-day",
                             "agentId": "$agentId",
                             "prompt": "Hello",
-                            "schedule": { "frequency": "WEEKLY", "timeUtc": "09:00" }
+                            "frequency": "WEEKLY",
+                            "timeUtc": "09:00"
                         }
                     """.trimIndent(),
                 ),
@@ -289,7 +329,7 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
         // GET — by id
         // -------------------------------------------------------------------------
 
-        "GET by id returns 200 with targeting fields" {
+        "GET by id returns 200 with flat schedule fields" {
             val getNsId = UUID.randomUUID()
             val groupId = UUID.randomUUID()
             val created = createDef(
@@ -306,8 +346,9 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.id").value(created.id.toString()))
                 .andExpect(jsonPath("$.namespaceId").value(getNsId.toString()))
                 .andExpect(jsonPath("$.userGroupId").value(groupId.toString()))
-                .andExpect(jsonPath("$.schedule.frequency").value("WEEKLY"))
-                .andExpect(jsonPath("$.schedule.timeUtc").value("10:00"))
+                .andExpect(jsonPath("$.frequency").value("WEEKLY"))
+                .andExpect(jsonPath("$.timeUtc").value("10:00"))
+                .andExpect(jsonPath("$.dayOfWeek").value("MON"))
         }
 
         "GET by id returns 404 when definition does not exist" {
@@ -339,14 +380,17 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "updated",
                             "agentId": "$agentId",
                             "prompt": "Updated",
-                            "schedule": { "frequency": "WEEKLY", "timeUtc": "10:00", "dayOfWeek": "WED" },
+                            "frequency": "WEEKLY",
+                            "timeUtc": "10:00",
+                            "dayOfWeek": "WED",
                             "enabled": false
                         }
                     """.trimIndent()),
             )
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.name").value("updated"))
-                .andExpect(jsonPath("$.schedule.dayOfWeek").value("WED"))
+                .andExpect(jsonPath("$.frequency").value("WEEKLY"))
+                .andExpect(jsonPath("$.dayOfWeek").value("WED"))
                 .andExpect(jsonPath("$.enabled").value(false))
         }
 
@@ -361,7 +405,8 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
                             "name": "",
                             "agentId": "$agentId",
                             "prompt": "Hi",
-                            "schedule": { "frequency": "DAILY", "timeUtc": "08:00" }
+                            "frequency": "DAILY",
+                            "timeUtc": "08:00"
                         }
                     """.trimIndent()),
             ).andExpect(status().isBadRequest)

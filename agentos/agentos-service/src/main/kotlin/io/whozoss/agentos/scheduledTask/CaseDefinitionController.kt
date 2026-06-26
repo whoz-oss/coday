@@ -59,11 +59,9 @@ class CaseDefinitionController(
             description = def.description,
             agentId = def.agentId,
             prompt = def.prompt,
-            schedule = TaskScheduleResource(
-                frequency = cronSchedule.frequency,
-                timeUtc = cronSchedule.timeUtc,
-                dayOfWeek = cronSchedule.dayOfWeek,
-            ),
+            frequency = cronSchedule.frequency,
+            timeUtc = cronSchedule.timeUtc,
+            dayOfWeek = cronSchedule.dayOfWeek,
             enabled = def.enabled,
             createdAt = def.metadata.created,
             updatedAt = def.metadata.modified,
@@ -81,9 +79,9 @@ class CaseDefinitionController(
             agentId = resource.agentId,
             prompt = resource.prompt,
             cronExpression = CronExpressionConverter.toCron(
-                frequency = resource.schedule.frequency,
-                dayOfWeek = resource.schedule.dayOfWeek,
-                timeUtc = resource.schedule.timeUtc,
+                frequency = resource.frequency,
+                dayOfWeek = resource.dayOfWeek,
+                timeUtc = resource.timeUtc,
             ),
             enabled = resource.enabled,
         )
@@ -180,9 +178,9 @@ class CaseDefinitionController(
             agentId = resource.agentId,
             prompt = resource.prompt,
             cronExpression = CronExpressionConverter.toCron(
-                frequency = resource.schedule.frequency,
-                dayOfWeek = resource.schedule.dayOfWeek,
-                timeUtc = resource.schedule.timeUtc,
+                frequency = resource.frequency,
+                dayOfWeek = resource.dayOfWeek,
+                timeUtc = resource.timeUtc,
             ),
             enabled = resource.enabled,
         )

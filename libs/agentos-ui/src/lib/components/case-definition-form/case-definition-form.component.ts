@@ -116,7 +116,7 @@ export class CaseDefinitionFormComponent implements OnInit {
     this.frequencyControl.valueChanges.pipe(startWith(this.frequencyControl.value))
   )
 
-  /** Kept for the update payload (preserves server-side fields). */
+  /** Kept in edit mode to retrieve the id for the PUT path param. */
   private existingDefinition: CaseDefinition | null = null
 
   ngOnInit(): void {
@@ -187,8 +187,8 @@ export class CaseDefinitionFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
+    // Build an explicit payload — id is in the URL path param, not needed in the body.
     const payload: CaseDefinition = {
-      ...(this.existingDefinition ?? {}),
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
       description: this.descriptionControl.value?.trim() || undefined,

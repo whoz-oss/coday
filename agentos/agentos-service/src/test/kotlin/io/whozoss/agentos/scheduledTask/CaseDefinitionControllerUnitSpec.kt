@@ -69,7 +69,9 @@ class CaseDefinitionControllerUnitSpec : StringSpec({
         description = description,
         agentId = agentId,
         prompt = "Do the thing.",
-        schedule = TaskScheduleResource(frequency = frequency, timeUtc = timeUtc, dayOfWeek = dayOfWeek),
+        frequency = frequency,
+        timeUtc = timeUtc,
+        dayOfWeek = dayOfWeek,
         enabled = enabled,
     )
 
@@ -329,9 +331,9 @@ class CaseDefinitionControllerUnitSpec : StringSpec({
 
         val result = controller.list(namespaceId).first()
 
-        result.schedule.frequency shouldBe ScheduleFrequency.DAILY
-        result.schedule.timeUtc shouldBe "09:00"
-        result.schedule.dayOfWeek shouldBe null
+        result.frequency shouldBe ScheduleFrequency.DAILY
+        result.timeUtc shouldBe "09:00"
+        result.dayOfWeek shouldBe null
     }
 
     "toResource maps WEEKLY cron" {
@@ -340,9 +342,9 @@ class CaseDefinitionControllerUnitSpec : StringSpec({
 
         val result = controller.list(namespaceId).first()
 
-        result.schedule.frequency shouldBe ScheduleFrequency.WEEKLY
-        result.schedule.timeUtc shouldBe "14:30"
-        result.schedule.dayOfWeek shouldBe "FRI"
+        result.frequency shouldBe ScheduleFrequency.WEEKLY
+        result.timeUtc shouldBe "14:30"
+        result.dayOfWeek shouldBe "FRI"
     }
 
     // -------------------------------------------------------------------------

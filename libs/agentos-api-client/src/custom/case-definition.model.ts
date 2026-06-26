@@ -23,6 +23,10 @@ export interface CaseDefinition {
   /** Day of week for WEEKLY frequency (e.g. 'MON', 'TUE', …, 'SUN'). Required when frequency is WEEKLY. */
   dayOfWeek?: string
   enabled: boolean
-  createdAt?: string
-  updatedAt?: string
+  /**
+   * Read-only server timestamps — present in GET responses, never sent in POST/PUT payloads.
+   * Declared readonly to prevent accidental inclusion in request bodies.
+   */
+  readonly createdAt?: string
+  readonly updatedAt?: string
 }

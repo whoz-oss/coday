@@ -2149,8 +2149,17 @@ components:
         prompt:
           type: string
           minLength: 1
-        schedule:
-          $ref: "#/components/schemas/TaskSchedule"
+        frequency:
+          type: string
+          enum:
+          - DAILY
+          - WEEKLY
+        timeUtc:
+          type: string
+          minLength: 1
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+        dayOfWeek:
+          type: string
         enabled:
           type: boolean
         createdAt:
@@ -2164,27 +2173,11 @@ components:
       required:
       - agentId
       - enabled
+      - frequency
       - isValidCombination
       - name
       - namespaceId
       - prompt
-      - schedule
-    TaskSchedule:
-      type: object
-      properties:
-        frequency:
-          type: string
-          enum:
-          - DAILY
-          - WEEKLY
-        timeUtc:
-          type: string
-          minLength: 1
-          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
-        dayOfWeek:
-          type: string
-      required:
-      - frequency
       - timeUtc
     AiProvider:
       type: object
