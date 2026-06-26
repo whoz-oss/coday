@@ -1,3 +1,13 @@
+## 0.190.0 (2026-06-26)
+
+### 🚀 Features
+
+- #31851 add platform-level scope to IntegrationConfig ([#1006](https://github.com/whoz-oss/coday/pull/1006), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.189.1 (2026-06-25)
 
 ### 🩹 Fixes
