@@ -549,34 +549,34 @@ export class AgentConfigControllerService extends BaseService {
 
   /**
    * @param parentId Parent entity ID
-   * @param enabledOnly
+   * @param withDisabled
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public listByNamespaceAgentConfig(
     parentId: string,
-    enabledOnly?: boolean,
+    withDisabled?: boolean,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<AgentConfig>>
   public listByNamespaceAgentConfig(
     parentId: string,
-    enabledOnly?: boolean,
+    withDisabled?: boolean,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<AgentConfig>>>
   public listByNamespaceAgentConfig(
     parentId: string,
-    enabledOnly?: boolean,
+    withDisabled?: boolean,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<AgentConfig>>>
   public listByNamespaceAgentConfig(
     parentId: string,
-    enabledOnly?: boolean,
+    withDisabled?: boolean,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -586,7 +586,7 @@ export class AgentConfigControllerService extends BaseService {
     }
 
     let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
-    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>enabledOnly, 'enabledOnly')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>withDisabled, 'withDisabled')
 
     let localVarHeaders = this.defaultHeaders
 

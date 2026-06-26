@@ -909,7 +909,7 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | none                                           |
+        | (no params)                      | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
