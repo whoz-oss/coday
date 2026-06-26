@@ -140,10 +140,10 @@ class AiModelController(
     ): List<AiModelResource> = aiModelService.findByNamespaceId(namespaceId).map { toResource(it) }
 
     /**
-     * GET /platform-level — list all platform-level model configs (namespaceId IS NULL).
+     * GET /platform — list all platform-level model configs (namespaceId IS NULL).
      * Readable by any authenticated user; the models are owned by platform-level AiProviders.
      */
-    @GetMapping("/platform-level")
+    @GetMapping("/platform")
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("isAuthenticated()")
     fun listPlatformLevel(): List<AiModelResource> = aiModelService.findPlatformLevel().map { toResource(it) }

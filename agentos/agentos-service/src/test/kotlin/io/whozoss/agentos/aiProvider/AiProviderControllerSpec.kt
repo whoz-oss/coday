@@ -173,10 +173,9 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "create with neither namespaceId nor userId is platform scope: non-admin gets AccessDeniedException" {
-        // Platform scope (both null) requires super-admin. Alice is not admin, so
-        // permissionService.hasPermission returns false (default mock) → 403.
+        // Platform scope (both null) → hasPermission(NAMESPACE, entityId=null, WRITE) → false for non-admin.
         every {
-            permissionService.hasPermission(aliceId.toString(), EntityType.AI_PROVIDER, null, Action.WRITE)
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, null, Action.WRITE)
         } returns false
 
         withAuth(aliceId) {
@@ -188,8 +187,9 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     "create with neither namespaceId nor userId is platform scope: super-admin succeeds" {
+        // Platform scope (both null) → hasPermission(NAMESPACE, entityId=null, WRITE) → true for super-admin.
         every {
-            permissionService.hasPermission(aliceId.toString(), EntityType.AI_PROVIDER, null, Action.WRITE)
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, null, Action.WRITE)
         } returns true
         val captured = slot<AiProvider>()
         every { service.create(capture(captured)) } answers { firstArg() }

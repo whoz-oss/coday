@@ -273,44 +273,34 @@ class AiProviderController(
         // Phase 2 — scope determination
         val resolvedNs: UUID? = resource.namespaceId
         val resolvedUser: UUID? = if (resource.userId != null) me else null
-        val isPlatformScope = resolvedNs == null && resolvedUser == null
 
-        // Phase 3 — per-scope authorization, run BEFORE the existence check so
-        // unauthorised callers always get 403 regardless of namespace existence.
-        // - Platform scope (both null): super-admin only, checked via hasPermission(entityId=null, WRITE)
-        //   which PermissionServiceImpl resolves to denied for non-admins.
-        // - user-global: isAuthenticated() (class-level) suffices.
-        // - NS-touching scopes: check READ or WRITE on the namespace.
-        if (isPlatformScope) {
+        // Phase 3 — per-scope authorization, run BEFORE the existence check.
+        //
+        // Scope matrix:
+        //   (ns=null,  user=null)  → platform : WRITE on namespace entityId=null → super-admin only
+        //   (ns=uuid,  user=null)  → NS-shared : WRITE on the namespace
+        //   (ns=uuid,  user=me)   → user×ns  : READ on the namespace
+        //   (ns=null,  user=me)   → user-global : isAuthenticated() suffices, no namespace check
+        //
+        // All namespace-touching cases (including platform) go through a single hasPermission call
+        // on EntityType.NAMESPACE with entityId = resolvedNs (null for platform).
+        // PermissionServiceImpl handles entityId=null as: READ open, WRITE/DELETE super-admin only.
+        if (resolvedUser == null || resolvedNs != null) {
+            // Namespace-touching scope (platform, NS-shared, or user×ns)
+            val action = if (resolvedUser != null) Action.READ else Action.WRITE
             val granted = permissionService.hasPermission(
                 userId = me.toString(),
-                entityType = EntityType.AI_PROVIDER,
-                entityId = null,
-                action = Action.WRITE,
+                entityType = EntityType.NAMESPACE,
+                entityId = resolvedNs?.toString(),
+                action = action,
             )
             if (!granted) {
-                throw AccessDeniedException("Platform-level AiProvider creation requires super-admin privileges")
-            }
-        } else {
-            val authzAction: Action? = when {
-                resolvedNs != null && resolvedUser != null -> Action.READ      // user × ns : READ on the NS suffices
-                resolvedNs != null && resolvedUser == null -> Action.WRITE     // NS-shared : ADMIN required
-                else -> null                                                   // user-global : isAuthenticated() suffices
-            }
-            if (authzAction != null && resolvedNs != null) {
-                val granted = permissionService.hasPermission(
-                    userId = me.toString(),
-                    entityType = EntityType.NAMESPACE,
-                    entityId = resolvedNs.toString(),
-                    action = authzAction,
+                throw AccessDeniedException(
+                    "Cannot create AiProvider: insufficient permission on namespace $resolvedNs (${action.name} required)",
                 )
-                if (!granted) {
-                    throw AccessDeniedException(
-                        "Cannot create AiProvider in namespace $resolvedNs (${authzAction.name} required)",
-                    )
-                }
             }
         }
+        // user-global (resolvedNs=null, resolvedUser=me): isAuthenticated() at class level suffices.
 
         // Phase 3.5 — namespace existence check (deferred after Phase 3 to avoid leaking
         // namespace existence to non-members). Still required because the super-admin bypass
