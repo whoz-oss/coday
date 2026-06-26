@@ -210,7 +210,7 @@ class IntegrationConfigController(
             "Scope is inferred from the query params :\n\n" +
                 "| query                            | mode             | required permission                            |\n" +
                 "|----------------------------------|------------------|------------------------------------------------|\n" +
-                "| (no params)                      | platform         | none                                           |\n" +
+                "| (no params)                      | platform         | Super Admin only                               |\n" +
                 "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
                 "| `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |\n" +
                 "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
@@ -229,8 +229,9 @@ class IntegrationConfigController(
         val currentUser = userService.getCurrentUser()
         validateUserParam(userId)
 
-        // Platform scope: no namespaceId and no userId — list is open to all authenticated users
+        // Platform scope: no namespaceId and no userId — Super Admin only
         if (namespaceId == null && userId == null) {
+            requireAdminForPlatform(null, null)
             return integrationConfigService.findPlatform().map { toResource(it) }
         }
 
@@ -357,15 +358,18 @@ class IntegrationConfigController(
 
     /**
      * Throws [AccessDeniedException] when the scope is platform (`namespaceId == null && userId == null`)
-     * and the current user is not a Super Admin. Called before any mutating operation (create, update,
-     * delete) on a platform-scoped entity.
+     * and the current user is not a Super Admin. Called on list, create, update, and delete
+     * operations on platform-scoped entities.
+     *
+     * Short-circuits immediately when the scope is not platform — no user lookup occurs.
      */
     private fun requireAdminForPlatform(
         namespaceId: UUID?,
         userId: UUID?,
     ) {
-        if (namespaceId == null && userId == null && !userService.getCurrentUser().isAdmin) {
-            throw AccessDeniedException("Mutating platform-level IntegrationConfig requires Super Admin")
+        if (namespaceId != null || userId != null) return
+        if (!userService.getCurrentUser().isAdmin) {
+            throw AccessDeniedException("Platform-level IntegrationConfig requires Super Admin")
         }
     }
 

@@ -34,20 +34,19 @@ class ToolResolverService(
         val integrationNames = agentIntegrations?.keys?.toList() ?: emptyList()
         val integrationConfigs = allIntegrationConfigs.filter { it.name in integrationNames }
         val allTools =
-            integrationConfigs
-                .mapNotNull { config ->
-                    toolRegistryService
-                        .findPlugin(config.integrationType)
-                        .also { if (it == null) logger.warn { "[ToolResolver] No plugin found for type ${config.integrationType}" } }
-                        ?.let { plugin ->
-                            extractTools(
-                                allowedNames = agentIntegrations?.get(config.name),
-                                config = config,
-                                plugin = plugin,
-                                context = context,
-                            )
-                        }
-                }.flatten()
+            integrationConfigs.flatMap { config ->
+                val plugin = toolRegistryService.findPlugin(config.integrationType)
+                if (plugin == null) {
+                    logger.warn { "[ToolResolver] No plugin found for type ${config.integrationType}" }
+                    return@flatMap emptyList()
+                }
+                extractTools(
+                    allowedNames = agentIntegrations?.get(config.name),
+                    config = config,
+                    plugin = plugin,
+                    context = context,
+                )
+            }
 
         // De-duplicate tools by name, dropping second and more tools with same name
         return allTools
@@ -65,7 +64,7 @@ class ToolResolverService(
         config: IntegrationConfig,
         plugin: ToolPlugin,
         context: ToolContext,
-    ): List<StandardTool<*>>? {
+    ): List<StandardTool<*>> {
         val tools =
             try {
                 plugin.provideTools(

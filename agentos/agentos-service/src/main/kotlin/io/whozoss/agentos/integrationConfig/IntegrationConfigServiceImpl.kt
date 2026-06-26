@@ -95,17 +95,19 @@ class IntegrationConfigServiceImpl(
                 if (configs.size == 1) {
                     configs.first()
                 } else {
-                    val sorted = configs.sortedWith(LAYER_COMPARATOR)
-                    sorted.drop(1).fold(
-                        initial = sorted.first(),
-                    ) { base, override ->
-                        if (LAYER_COMPARATOR.compare(base, override) == 0) {
-                            logger.warn {
-                                "[IntegrationConfigService] Inconsistency detected as same level between configs ${base.id} and ${override.id}"
-                            }
+                    // This is intentionally not a parameter-level merge — it returns the raw
+                    // config from the winning (highest-priority) layer for each name.
+                    // The winning layer is the one with the highest LAYER_COMPARATOR rank.
+                    // Ties are unexpected (each (namespaceId, userId, name) triple is unique
+                    // by DB constraint) but logged as a warning.
+                    val winner = configs.maxWithOrNull(LAYER_COMPARATOR)
+                    val sameRankCount = configs.count { LAYER_COMPARATOR.compare(it, winner!!) == 0 }
+                    if (sameRankCount > 1) {
+                        logger.warn {
+                            "[IntegrationConfigService] Inconsistency: $sameRankCount configs at the same layer rank for name '${configs.first().name}'"
                         }
-                        mergeStrategy.merge(base, override)
                     }
+                    winner
                 }
             }
 

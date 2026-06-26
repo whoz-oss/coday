@@ -97,27 +97,14 @@ class ConfigMergeService<T : Entity>(
         namespaceId: UUID,
         userId: UUID,
         name: String,
-    ): T {
-        val platform = lookup.findByTriple(null, null, name)
-        val nsShared = lookup.findByTriple(namespaceId, null, name)
-        val userGlobal = lookup.findByTriple(null, userId, name)
-        val userNamespace = lookup.findByTriple(namespaceId, userId, name)
-
-        val afterNsShared = foldLayer(platform, nsShared)
-        val afterUserGlobal = foldLayer(afterNsShared, userGlobal)
-        val afterUserNamespace = foldLayer(afterUserGlobal, userNamespace)
-
-        return afterUserNamespace
+    ): T =
+        listOf(
+            null to null,           // platform
+            namespaceId to null,    // namespace-shared
+            null to userId,         // user-global
+            namespaceId to userId,  // user × namespace
+        )
+            .mapNotNull { (ns, user) -> lookup.findByTriple(ns, user, name) }
+            .reduceOrNull { base, layer -> mergeStrategy.merge(base, layer) }
             ?: throw ConfigNotFoundException(namespaceId, userId, name)
-    }
-
-    private fun foldLayer(
-        accumulator: T?,
-        higher: T?,
-    ): T? =
-        when {
-            higher == null -> accumulator
-            accumulator == null -> higher
-            else -> mergeStrategy.merge(accumulator, higher)
-        }
 }
