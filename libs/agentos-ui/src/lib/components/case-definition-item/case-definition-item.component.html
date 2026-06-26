@@ -17,7 +17,7 @@
     <span class="case-definition-item__agent">Agent: {{ definition.agentId }}</span>
   </div>
 
-  <div class="case-definition-item__actions">
+  <div class="case-definition-item__actions" [class.case-definition-item__actions--confirming]="pendingDelete()">
     @if (pendingDelete()) {
       <span class="case-definition-item__confirm-label">Delete?</span>
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />

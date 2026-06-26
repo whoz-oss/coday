@@ -64,6 +64,11 @@
     opacity: 1;
   }
 
+  // Keep confirmation buttons visible even after the hover state is lost on click.
+  &:has(&__confirm-label) &__actions {
+    opacity: 1;
+  }
+
   &__confirm-label {
     font-size: 0.8rem;
     font-weight: 500;
