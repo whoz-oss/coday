@@ -74,7 +74,7 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
     advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
-    enabled: new FormControl<boolean>(true, { nonNullable: true }),
+    enabled: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -281,8 +281,7 @@ export class AgentConfigFormComponent implements OnInit {
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.isPlatformMode ? undefined : this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
-      // enabled is only included in edit mode — on create the backend sets its own default.
-      ...(this.isEditMode() ? { enabled: this.enabledControl.value } : {}),
+      enabled: this.enabledControl.value,
     } as AgentConfig
 
     const call$ = this.isEditMode()
