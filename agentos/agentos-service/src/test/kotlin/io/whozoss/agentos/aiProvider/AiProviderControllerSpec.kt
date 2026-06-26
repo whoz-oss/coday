@@ -172,12 +172,34 @@ class AiProviderControllerSpec : StringSpec({
         verify(exactly = 0) { service.create(any()) }
     }
 
-    "create rejects payload with neither namespaceId nor userId with 400" {
+    "create with neither namespaceId nor userId is platform scope: non-admin gets AccessDeniedException" {
+        // Platform scope (both null) requires super-admin. Alice is not admin, so
+        // permissionService.hasPermission returns false (default mock) → 403.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.AI_PROVIDER, null, Action.WRITE)
+        } returns false
+
         withAuth(aliceId) {
-            shouldThrow<BadRequestException> {
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
                 controller.create(resource(id = null, nsId = null, uId = null))
             }
         }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create with neither namespaceId nor userId is platform scope: super-admin succeeds" {
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.AI_PROVIDER, null, Action.WRITE)
+        } returns true
+        val captured = slot<AiProvider>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        withAuth(aliceId) {
+            controller.create(resource(id = null, nsId = null, uId = null, name = "platform-provider"))
+        }
+
+        captured.captured.namespaceId shouldBe null
+        captured.captured.userId shouldBe null
     }
 
     // -------------------------------------------------------------------------

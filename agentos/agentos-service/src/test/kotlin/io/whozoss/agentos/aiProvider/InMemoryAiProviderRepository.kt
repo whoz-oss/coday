@@ -31,5 +31,8 @@ class InMemoryAiProviderRepository : AiProviderRepository {
             it.namespaceId == namespaceId && it.userId == userId && it.name == name
         }
 
+    override fun findPlatformLevel(): List<AiProvider> =
+        delegate.findAll().filter { it.namespaceId == null && it.userId == null }
+
     companion object { private const val ALL_KEY = "all" }
 }

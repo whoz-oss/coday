@@ -38,11 +38,13 @@ class AiProviderServiceImplSpec : StringSpec() {
         // Scope invariant
         // -------------------------------------------------------------------------
 
-        "create throws 400 when both namespaceId and userId are null" {
+        "create succeeds with both namespaceId and userId null (platform scope)" {
             val service = newService()
-            shouldThrow<ResponseStatusException> {
-                service.create(config(namespaceId = null, userId = null))
-            }.statusCode.value() shouldBe 400
+            // Platform-level entities have namespaceId=null AND userId=null.
+            // The controller enforces the super-admin permission check; the service
+            // itself allows all scope combinations.
+            val saved = service.create(config(namespaceId = null, userId = null))
+            saved.shouldNotBeNull()
         }
 
         "create succeeds with namespaceId only" {
