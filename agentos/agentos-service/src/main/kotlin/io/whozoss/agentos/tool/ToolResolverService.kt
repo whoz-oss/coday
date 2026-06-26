@@ -20,7 +20,7 @@ class ToolResolverService(
      * context is passed verbatim to each plugin, giving them access to the full runtime
      * identity (namespace, user, external id, agent name, case events).
      *
-     * @param agentIntegrations Optional integration filter from [AgentConfig.integrations].
+     * @param agentIntegrations Optional integration filter from AgentConfig.integrations.
      *   When null, the agent has no integration bindings and no tools are resolved.
      *   This is intentional: an agent with no declared integrations runs tool-free.
      * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
@@ -34,19 +34,20 @@ class ToolResolverService(
         val integrationNames = agentIntegrations?.keys?.toList() ?: emptyList()
         val integrationConfigs = allIntegrationConfigs.filter { it.name in integrationNames }
         val allTools =
-            integrationConfigs.flatMap { config ->
-                val plugin = toolRegistryService.findPlugin(config.integrationType)
-                if (plugin == null) {
-                    logger.warn { "[ToolResolver] No plugin found for type ${config.integrationType}" }
-                    return@flatMap emptyList()
-                }
-                extractTools(
-                    allowedNames = agentIntegrations?.get(config.name),
-                    config = config,
-                    plugin = plugin,
-                    context = context,
-                )
-            }
+            integrationConfigs
+                .mapNotNull { config ->
+                    toolRegistryService
+                        .findPlugin(config.integrationType)
+                        .also { if (it == null) logger.warn { "[ToolResolver] No plugin found for type ${config.integrationType}" } }
+                        ?.let { plugin ->
+                            extractTools(
+                                allowedNames = agentIntegrations?.get(config.name),
+                                config = config,
+                                plugin = plugin,
+                                context = context,
+                            )
+                        }
+                }.flatten()
 
         // De-duplicate tools by name, dropping second and more tools with same name
         return allTools
@@ -64,7 +65,7 @@ class ToolResolverService(
         config: IntegrationConfig,
         plugin: ToolPlugin,
         context: ToolContext,
-    ): List<StandardTool<*>> {
+    ): List<StandardTool<*>>? {
         val tools =
             try {
                 plugin.provideTools(
