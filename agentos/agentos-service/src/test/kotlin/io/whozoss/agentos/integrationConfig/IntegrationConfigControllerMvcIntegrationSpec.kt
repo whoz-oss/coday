@@ -312,22 +312,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "LIST without params returns 403 for non-admin (platform scope is Super Admin only)" {
-            // alice.isAdmin = false — platform listing is restricted to Super Admins
-            mockMvc.perform(get("/api/integration-configs"))
-                .andExpect(status().isForbidden)
-        }
-
-        "LIST without params returns 200 for admin (platform scope)" {
-            val adminId = UUID.randomUUID()
-            val admin = User(
-                metadata = EntityMetadata(id = adminId),
-                externalId = "admin@example.com",
-                email = "admin@example.com",
-                isAdmin = true,
-            )
-            every { userService.getCurrentUser() } returns admin
-
+        "LIST without params returns platform configs for any authenticated user" {
             mockMvc.perform(get("/api/integration-configs"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)

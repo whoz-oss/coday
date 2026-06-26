@@ -210,7 +210,7 @@ class IntegrationConfigController(
             "Scope is inferred from the query params :\n\n" +
                 "| query                            | mode             | required permission                            |\n" +
                 "|----------------------------------|------------------|------------------------------------------------|\n" +
-                "| (no params)                      | platform         | Super Admin only                               |\n" +
+                "| (no params)                      | platform         | authenticated                                  |\n" +
                 "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
                 "| `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |\n" +
                 "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
@@ -229,9 +229,8 @@ class IntegrationConfigController(
         val currentUser = userService.getCurrentUser()
         validateUserParam(userId)
 
-        // Platform scope: no namespaceId and no userId — Super Admin only
+        // Platform scope: no namespaceId and no userId — readable by any authenticated user
         if (namespaceId == null && userId == null) {
-            requireAdminForPlatform(null, null)
             return integrationConfigService.findPlatform().map { toResource(it) }
         }
 
