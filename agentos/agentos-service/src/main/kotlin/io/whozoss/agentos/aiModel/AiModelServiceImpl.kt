@@ -76,6 +76,8 @@ class AiModelServiceImpl(
 
     override fun findByNamespaceId(namespaceId: UUID): List<AiModel> = repository.findByNamespaceId(namespaceId)
 
+    override fun findPlatformLevel(): List<AiModel> = repository.findPlatformLevel()
+
     override fun findByAiProviderAndApiName(
         aiProviderId: UUID,
         apiName: String,

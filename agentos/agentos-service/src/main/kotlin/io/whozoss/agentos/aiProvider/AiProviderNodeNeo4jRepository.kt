@@ -14,9 +14,9 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
      * namespace-scope listings (FR22, AR8).
      */
     @Query(
-        $$"""
+        """
             MATCH (c:AiProvider)
-            WHERE c.namespaceId = $namespaceId AND c.userId IS NULL AND (c.removed IS NULL OR c.removed = false)
+            WHERE c.namespaceId = ${'$'}namespaceId AND c.userId IS NULL AND (c.removed IS NULL OR c.removed = false)
             RETURN c ORDER BY c.name ASC
             """,
     )
@@ -28,13 +28,25 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
      * (legal across user-global and user × namespace modes).
      */
     @Query(
-        $$"""
+        """
             MATCH (c:AiProvider)
-            WHERE c.userId = $userId AND (c.removed IS NULL OR c.removed = false)
+            WHERE c.userId = ${'$'}userId AND (c.removed IS NULL OR c.removed = false)
             RETURN c ORDER BY c.name ASC, c.id ASC
             """,
     )
     fun findActiveByUserId(userId: String): List<AiProviderNode>
+
+    /**
+     * Find all non-removed platform-level configs (namespaceId IS NULL AND userId IS NULL).
+     */
+    @Query(
+        """
+            MATCH (c:AiProvider)
+            WHERE c.namespaceId IS NULL AND c.userId IS NULL AND (c.removed IS NULL OR c.removed = false)
+            RETURN c ORDER BY c.name ASC
+            """,
+    )
+    fun findActivePlatformLevel(): List<AiProviderNode>
 
     /**
      * Find a single non-removed config matched by its [AiProviderNode.tripleKey] discriminator.
@@ -44,8 +56,8 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
      * on the NULL-arms because Neo4j 5.x indexes do not seek on `IS NULL`).
      */
     @Query(
-        $$"""
-            MATCH (c:AiProvider {tripleKey: $tripleKey})
+        """
+            MATCH (c:AiProvider {tripleKey: ${'$'}tripleKey})
             WHERE (c.removed IS NULL OR c.removed = false)
             RETURN c LIMIT 1
             """,

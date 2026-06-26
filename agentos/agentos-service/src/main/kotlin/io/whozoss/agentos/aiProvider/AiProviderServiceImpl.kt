@@ -61,6 +61,8 @@ class AiProviderServiceImpl(
 
     override fun findByUserId(userId: UUID): List<AiProvider> = repository.findByUserId(userId)
 
+    override fun findPlatformLevel(): List<AiProvider> = repository.findPlatformLevel()
+
     override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,
@@ -74,6 +76,9 @@ class AiProviderServiceImpl(
         userRequested: Boolean,
         canReadNamespace: (UUID) -> Boolean,
     ): List<AiProvider> = when {
+        // Platform level: namespaceId=none without userId — open to all authenticated users
+        namespaceIsNone && !userRequested -> findPlatformLevel()
+
         // NS-shared layer of a specific namespace (no userId param) : check READ permission
         namespaceId != null && !userRequested -> {
             if (!canReadNamespace(namespaceId)) emptyList()
@@ -94,13 +99,14 @@ class AiProviderServiceImpl(
         else -> findByUserId(callerId)
     }
 
+    /**
+     * Platform-level entities (namespaceId=null AND userId=null) are allowed — they represent
+     * environment-wide defaults managed by super-admins. The controller enforces the
+     * super-admin permission check before reaching the service layer.
+     */
     private fun requireScope(entity: AiProvider) {
-        if (entity.namespaceId == null && entity.userId == null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "AiProvider must be scoped to at least a namespace or a user",
-            )
-        }
+        // All scopes are valid: namespace-shared, user-global, user×namespace, and platform (both null).
+        // No validation needed here; the controller enforces per-scope authorization.
     }
 
     /**

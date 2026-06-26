@@ -28,12 +28,19 @@ interface AiProviderService : EntityService<AiProvider, UUID>, ConfigLookup<AiPr
     fun findByUserId(userId: UUID): List<AiProvider>
 
     /**
+     * Find all non-removed platform-level [AiProvider] (namespaceId IS NULL AND userId IS NULL).
+     * Readable by any authenticated user; writable only by super-admins.
+     */
+    fun findPlatformLevel(): List<AiProvider>
+
+    /**
      * Scope-aware filtered listing used by [io.whozoss.agentos.aiProvider.AiProviderController.list].
      *
      * Dispatches the query based on the resolved namespace/user filter combination:
      * - Specific namespace + no user request -> namespace-shared (guarded by [canReadNamespace])
      * - User requested -> user-scoped rows, optionally filtered by namespace
      * - No filters -> caller's own overlays
+     * - Platform level (namespaceId=none, no userId) -> platform-level rows (open to all authenticated)
      *
      * @param namespaceId resolved namespace UUID (null when absent or `none` sentinel)
      * @param namespaceIsNone true when the raw query parameter was the `none` sentinel

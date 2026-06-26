@@ -59,6 +59,11 @@ open class Neo4jAiProviderRepository(
             .findActiveByTripleKey(AiProviderNode.computeTripleKey(namespaceId, userId, name))
             ?.toDomain()
 
+    override fun findPlatformLevel(): List<AiProvider> =
+        neo4jRepository
+            .findActivePlatformLevel()
+            .map { it.toDomain() }
+
     @Transactional
     open override fun delete(id: UUID): Boolean =
         neo4jRepository

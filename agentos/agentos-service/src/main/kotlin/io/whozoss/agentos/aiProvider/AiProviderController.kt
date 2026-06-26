@@ -43,7 +43,7 @@ import java.util.UUID
  *  1. Mass-assignment guard : `body.userId`, when non-null, must equal
  *     `auth.principal.userId`. Otherwise → 400.
  *  2. Scope determination :
- *     - both null → 400 ("must provide namespaceId, userId, or both") ;
+ *     - `(null, null)` → platform-level (super-admin only) ;
  *     - `(ns, null)` → NS-shared ;
  *     - `(null, user)` → user-global ;
  *     - `(ns, user)` → user × namespace.
@@ -218,6 +218,7 @@ class AiProviderController(
             "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
             "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
             "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
+            "| `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |\n" +
             "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
             "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
             "listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the " +
@@ -250,7 +251,7 @@ class AiProviderController(
         description = "Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :\n\n" +
             "| body.namespaceId | body.userId        | scope         | required permission                  |\n" +
             "|------------------|--------------------|---------------|--------------------------------------|\n" +
-            "| null             | null               | —             | 400 Bad Request                      |\n" +
+            "| null             | null               | platform      | super-admin only                     |\n" +
             "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
             "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
             "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
@@ -272,39 +273,48 @@ class AiProviderController(
         // Phase 2 — scope determination
         val resolvedNs: UUID? = resource.namespaceId
         val resolvedUser: UUID? = if (resource.userId != null) me else null
-        if (resolvedNs == null && resolvedUser == null) {
-            throw BadRequestException("must provide namespaceId, userId, or both")
-        }
+        val isPlatformScope = resolvedNs == null && resolvedUser == null
 
         // Phase 3 — per-scope authorization, run BEFORE the existence check so
-        // unauthorised callers always get 403 regardless of namespace existence
-        // (closes the 404-vs-403 existence-oracle on POST). user-global needs
-        // nothing beyond the class-level isAuthenticated() ; NS-touching scopes
-        // need a permission check on the namespace.
-        val authzAction: Action? = when {
-            resolvedNs != null && resolvedUser != null -> Action.READ      // user × ns : READ on the NS suffices
-            resolvedNs != null && resolvedUser == null -> Action.WRITE     // NS-shared : ADMIN required
-            else -> null                                                   // user-global : isAuthenticated() suffices
-        }
-        if (authzAction != null && resolvedNs != null) {
+        // unauthorised callers always get 403 regardless of namespace existence.
+        // - Platform scope (both null): super-admin only, checked via hasPermission(entityId=null, WRITE)
+        //   which PermissionServiceImpl resolves to denied for non-admins.
+        // - user-global: isAuthenticated() (class-level) suffices.
+        // - NS-touching scopes: check READ or WRITE on the namespace.
+        if (isPlatformScope) {
             val granted = permissionService.hasPermission(
                 userId = me.toString(),
-                entityType = EntityType.NAMESPACE,
-                entityId = resolvedNs.toString(),
-                action = authzAction,
+                entityType = EntityType.AI_PROVIDER,
+                entityId = null,
+                action = Action.WRITE,
             )
             if (!granted) {
-                throw AccessDeniedException(
-                    "Cannot create AiProvider in namespace $resolvedNs (${authzAction.name} required)",
+                throw AccessDeniedException("Platform-level AiProvider creation requires super-admin privileges")
+            }
+        } else {
+            val authzAction: Action? = when {
+                resolvedNs != null && resolvedUser != null -> Action.READ      // user × ns : READ on the NS suffices
+                resolvedNs != null && resolvedUser == null -> Action.WRITE     // NS-shared : ADMIN required
+                else -> null                                                   // user-global : isAuthenticated() suffices
+            }
+            if (authzAction != null && resolvedNs != null) {
+                val granted = permissionService.hasPermission(
+                    userId = me.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = resolvedNs.toString(),
+                    action = authzAction,
                 )
+                if (!granted) {
+                    throw AccessDeniedException(
+                        "Cannot create AiProvider in namespace $resolvedNs (${authzAction.name} required)",
+                    )
+                }
             }
         }
 
-        // Phase 3.5 — namespace existence check (was Phase 2.5 ; deferred so non-
-        // members hit 403 in Phase 3 before the existence oracle fires). Still
-        // required because the super-admin bypass in PermissionService.hasPermission
-        // returns true even for dangling namespaceIds — without this, a super-admin
-        // POST'ing with an unknown namespaceId would create a dangling FK row.
+        // Phase 3.5 — namespace existence check (deferred after Phase 3 to avoid leaking
+        // namespace existence to non-members). Still required because the super-admin bypass
+        // in PermissionService.hasPermission returns true even for dangling namespaceIds.
         if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
             throw ResourceNotFoundException("Namespace not found: $resolvedNs")
         }
@@ -319,6 +329,7 @@ class AiProviderController(
             apiType = resource.apiType!!,
             baseUrl = resource.baseUrl,
             apiKey = resource.apiKey,
+            headers = resource.headers ?: emptyMap(),
         )
         return toResource(aiProviderService.create(target))
     }

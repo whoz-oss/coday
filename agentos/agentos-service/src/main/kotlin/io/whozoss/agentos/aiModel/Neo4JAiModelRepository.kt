@@ -73,6 +73,11 @@ open class Neo4JAiModelRepository(
                 true
             } ?: false
 
+    override fun findPlatformLevel(): List<AiModel> =
+        neo4jRepository
+            .findActivePlatformLevel()
+            .map { it.toDomain() }
+
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByAiProviderId(parentId.toString())

@@ -4,6 +4,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -30,33 +31,63 @@ class AiModelGuard(
 ) {
     /**
      * Returns true if the current user has WRITE on the namespace of the parent AiProvider
-     * referenced by [resource.aiProviderId]. Returns false (→ 403) for missing or user-scoped
-     * providers — a strict fail-closed posture aligned with  .
+     * referenced by [resource.aiProviderId].
+     *
+     * - Provider missing: fail-closed (false).
+     * - Platform-level provider (namespaceId=null, userId=null): super-admin only, checked
+     *   via [PermissionService.hasPermission] with entityId=null which PermissionServiceImpl
+     *   resolves to denied for non-admins.
+     * - User-scoped provider (namespaceId=null, userId!=null): fail-closed (false) — user-scoped
+     *   providers are deprecated by issue #809 and never have AiModels managed via this guard.
      */
     fun canCreate(resource: AiModelResource): Boolean {
         val providerId = resource.aiProviderId ?: return false
         val provider = aiProviderService.findById(providerId) ?: return false
-        val nsId = provider.namespaceId ?: return false
-        return permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.WRITE)
+        return canWriteProvider(provider)
     }
 
     /**
      * Returns true when the caller may invoke `listByParent(providerId)`.
      *
-     * Fail-closed posture:
-     * - Provider missing: returns false (→ 403). Avoids exposing the difference between
-     *   "not found" and "no permission" via two distinct response codes.
-     * - Provider user-scoped (legacy, no namespaceId): returns false (→ 403). The
-     *   controller body would otherwise call `findByAiProviderId` with no owner filter
-     *   and leak the AiModels of another user's provider to any authenticated caller.
-     *   The user-scoped path is deprecated by issue #809.
-     * - Provider namespace-scoped: requires namespace READ on the parent namespace,
-     *   evaluated by [PermissionService].
+     * - Provider missing: fail-closed (false).
+     * - Platform-level provider: any authenticated user may read (checked via
+     *   [PermissionService.hasPermission] with entityId=null which grants READ to all authenticated).
+     * - User-scoped provider (legacy, no namespaceId): fail-closed (false).
+     * - Namespace-scoped provider: requires namespace READ.
      */
     fun canListByProvider(providerId: UUID): Boolean {
         val provider = aiProviderService.findById(providerId) ?: return false
-        val nsId = provider.namespaceId ?: return false
-        return permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.READ)
+        return canReadProvider(provider)
+    }
+
+    private fun canWriteProvider(provider: AiProvider): Boolean {
+        val nsId = provider.namespaceId
+        val userId = provider.userId
+        return when {
+            // Platform-level provider: super-admin only
+            nsId == null && userId == null ->
+                permissionService.hasPermission(currentUserId(), EntityType.AI_PROVIDER, null, Action.WRITE)
+            // Namespace-scoped provider
+            nsId != null ->
+                permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.WRITE)
+            // User-scoped provider (deprecated, fail-closed)
+            else -> false
+        }
+    }
+
+    private fun canReadProvider(provider: AiProvider): Boolean {
+        val nsId = provider.namespaceId
+        val userId = provider.userId
+        return when {
+            // Platform-level provider: any authenticated user may read
+            nsId == null && userId == null ->
+                permissionService.hasPermission(currentUserId(), EntityType.AI_PROVIDER, null, Action.READ)
+            // Namespace-scoped provider
+            nsId != null ->
+                permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.READ)
+            // User-scoped provider (deprecated, fail-closed)
+            else -> false
+        }
     }
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()

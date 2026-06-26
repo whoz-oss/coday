@@ -38,4 +38,9 @@ interface AiModelRepository : EntityRepository<AiModel, UUID> {
         aiProviderId: UUID,
         alias: String,
     ): AiModel?
+
+    /**
+     * Find all non-removed platform-level model configs (namespaceId IS NULL AND userId IS NULL).
+     */
+    fun findPlatformLevel(): List<AiModel>
 }
