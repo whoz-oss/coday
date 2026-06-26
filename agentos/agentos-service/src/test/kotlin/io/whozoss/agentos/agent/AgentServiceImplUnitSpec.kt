@@ -19,6 +19,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
@@ -27,7 +28,6 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolPlugin
-import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
@@ -143,7 +143,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context)
 
@@ -162,7 +162,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "advanced-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("advanced-agent", context) as AgentAdvanced
 
@@ -182,7 +182,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -198,12 +198,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "opus") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             agentService.findAgentByName("my-agent", context)
 
             verify(exactly = 1) { aiModelService.findAiModel(namespaceId, "opus") }
-            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider) }
+            verify(exactly = 1) { chatClientProvider.getChatClient(model, provider, any()) }
         }
 
         "findAgentByName falls back to namespace default model when AgentConfig has no modelName" {
@@ -215,7 +215,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId) } returns defaultModel
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(defaultModel, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(defaultModel, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context)
 
@@ -232,7 +232,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context)
 
@@ -260,7 +260,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -284,7 +284,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -319,7 +319,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -374,7 +374,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = localService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -403,7 +403,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -434,7 +434,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -466,7 +466,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             // Must not throw — agent instantiation succeeds even when a plugin fails
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
@@ -508,7 +508,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -543,7 +543,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -558,7 +558,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             agentService.findAgentByName("my-agent", context)
 
@@ -591,7 +591,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
             every { userService.findById(userId) } returns user
 
             val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
@@ -627,7 +627,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
             every { userService.findById(userId) } returns user
 
             val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
@@ -650,7 +650,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -679,7 +679,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
             every { userService.findById(userId) } returns user
 
             val agent = agentService.findAgentByName("my-agent", contextWithUser) as AgentSimple
@@ -704,7 +704,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             agentService.findAgentByName("my-agent", context)
 
@@ -727,7 +727,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClient
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
 
             agentService.findAgentByName("my-agent", context)
 
