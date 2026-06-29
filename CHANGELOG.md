@@ -1,3 +1,13 @@
+## 0.183.8 (2026-06-29)
+
+### 🚀 Features
+
+- **agentos:** add support of X-Session-Id to allow easily LLM stickiness on case ([#1061](https://github.com/whoz-oss/coday/pull/1061))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.183.7 (2026-06-29)
 
 ### 🚀 Features
