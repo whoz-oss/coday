@@ -64,8 +64,8 @@
         ></textarea>
       </div>
 
-      <!-- Integrations section: not available for platform-level configs -->
-      @if (!isPlatformMode && integrationRows().length > 0) {
+      <!-- Integrations section: shows platform-level configs in platform mode, namespace + platform configs otherwise -->
+      @if (integrationRows().length > 0) {
         <fieldset class="agent-config-form__integrations">
           <legend class="agent-config-form__label">Integrations</legend>
           <p class="agent-config-form__integrations-hint">

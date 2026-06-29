@@ -127,35 +127,14 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * In edit mode: load the agent config, the namespace integrations, and the platform
-   * integrations in parallel, then hydrate both the main form and the integration rows.
+   * In edit mode: load the agent config, the integrations, and hydrate both the main
+   * form and the integration rows.
+   *
+   * In platform mode: only platform integration configs are available (no namespace).
+   * In namespace mode: platform + namespace integrations are merged.
    */
   private loadConfigAndIntegrations(agentConfigId: string): void {
     this.isLoading.set(true)
-
-    // In platform mode there is no namespace, so integrations are not available.
-    if (this.isPlatformMode) {
-      this.agentConfigController
-        .getByIdAgentConfig(agentConfigId)
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe({
-          next: (config) => {
-            this.existingConfig = config
-            this.nameControl.setValue(config.name)
-            this.descriptionControl.setValue(config.description ?? null)
-            this.modelNameControl.setValue(config.modelName ?? null)
-            this.instructionsControl.setValue(config.instructions ?? null)
-            this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
-            this.enabledControl.setValue(config.enabled ?? true)
-            this.isLoading.set(false)
-          },
-          error: () => {
-            this.isLoading.set(false)
-            this.navigateBack()
-          },
-        })
-      return
-    }
 
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
@@ -173,6 +152,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+          this.enabledControl.setValue(config.enabled ?? true)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
           this.isLoading.set(false)
@@ -289,7 +269,7 @@ export class AgentConfigFormComponent implements OnInit {
       description: this.descriptionControl.value?.trim() || undefined,
       modelName: this.modelNameControl.value?.trim() || undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
-      integrations: this.isPlatformMode ? undefined : this.buildIntegrationsPayload(),
+      integrations: this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
       enabled: this.enabledControl.value,
     } as AgentConfig
