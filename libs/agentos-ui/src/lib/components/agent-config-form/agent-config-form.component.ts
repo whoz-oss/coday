@@ -247,10 +247,7 @@ export class AgentConfigFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
-    const now = new Date().toISOString()
     const payload: AgentConfig = {
-      createdOn: now,
-      updatedOn: now,
       ...(this.existingConfig ?? {}),
       // `createdOn` / `updatedOn` are server-managed timestamps — omit them in the FE
       // payload; the backend ignores them on create and preserves them on update.
