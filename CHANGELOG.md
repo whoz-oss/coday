@@ -1,3 +1,13 @@
+## 0.190.1 (2026-06-29)
+
+### 🩹 Fixes
+
+- suppress Neo4j ClientNotification warnings in logs ([#1065](https://github.com/whoz-oss/coday/pull/1065))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.190.0 (2026-06-26)
 
 ### 🚀 Features
