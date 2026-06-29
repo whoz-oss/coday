@@ -66,26 +66,23 @@ class DelegationTool(
     override val version = "1.0.0"
     override val paramType: Class<Args> = Args::class.java
 
-    override val inputSchema: String = buildString {
-        val names = allowedAgents.joinToString(", ") { "\"$it\"" }
-        append("""
-        {
-          "type": "object",
-          "properties": {
-            "agentName": {
-              "type": "string",
-              "description": "Name of the sub-agent to delegate to.",
-              "enum": [$names]
-            },
-            "task": {
-              "type": "string",
-              "description": "Full, self-contained task description for the sub-agent."
+    override val inputSchema: String = objectMapper
+        .createObjectNode().apply {
+            put("type", "object")
+            putObject("properties").apply {
+                putObject("agentName").apply {
+                    put("type", "string")
+                    put("description", "Name of the sub-agent to delegate to.")
+                    putArray("enum").also { arr -> allowedAgents.forEach(arr::add) }
+                }
+                putObject("task").apply {
+                    put("type", "string")
+                    put("description", "Full, self-contained task description for the sub-agent.")
+                }
             }
-          },
-          "required": ["agentName", "task"]
+            putArray("required").add("agentName").add("task")
         }
-        """.trimIndent())
-    }
+        .let { objectMapper.writeValueAsString(it) }
 
     override suspend fun execute(
         input: Args?,
@@ -146,7 +143,7 @@ class DelegationTool(
                 }
 
                 else -> {
-                    val result = extractLastAgentMessage(subCaseId)
+                    val result = withTimeout(EVENT_LOAD_TIMEOUT_MS) { extractLastAgentMessage(subCaseId) }
                     logger.info { "[DelegationTool] Sub-case $subCaseId finished, result length=${result.length}" }
                     ToolExecutionResult(
                         output = objectMapper.writeValueAsString(mapOf("subCaseId" to subCaseId.toString(), "result" to result)),
@@ -184,5 +181,8 @@ class DelegationTool(
 
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
+
+        /** Max time allowed to load sub-case events after the sub-case has completed. */
+        private const val EVENT_LOAD_TIMEOUT_MS = 10_000L
     }
 }
