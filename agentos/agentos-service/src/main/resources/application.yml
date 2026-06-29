@@ -167,11 +167,16 @@ logging:
     io.whozoss.agentos.service: DEBUG
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
-    # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning)
-    # for optional node properties that are absent on some nodes. These are harmless
-    # — SDN queries all declared fields regardless of whether every node has them —
-    # but they flood the logs. Suppress at WARN, keep ERROR visible.
+    # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning,
+    # UnknownRelationshipTypeWarning) for optional node properties or relationship types
+    # that are absent on some nodes. These are harmless — SDN queries all declared fields
+    # regardless of whether every node has them, and BELONGS_TO edges are absent until the
+    # first entity of each type is written — but they flood the logs on a fresh database.
+    # SDN routes these notifications through org.springframework.data.neo4j.cypher.*
+    # (ResultSummaries.logNotifications guards on cypherLog.isWarnEnabled). Setting the
+    # parent logger to ERROR suppresses all notification categories at once.
     org.neo4j.driver: ERROR
+    org.springframework.data.neo4j.cypher: ERROR
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
