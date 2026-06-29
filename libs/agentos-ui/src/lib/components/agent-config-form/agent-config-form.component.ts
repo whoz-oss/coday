@@ -6,6 +6,11 @@ import { AgentConfig, AgentConfigControllerService, IntegrationConfig } from '@w
 import { forkJoin } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 
+/** Represents one sub-agent glob pattern entry in the list. */
+interface SubAgentRow {
+  control: FormControl<string>
+}
+
 /**
  * Tracks the per-integration state within the form:
  * - `enabled`: signal-based toggle so OnPush change detection reacts immediately
@@ -63,7 +68,6 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
     advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
-    subAgents: new FormControl<string>('', { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -86,9 +90,13 @@ export class AgentConfigFormComponent implements OnInit {
     return this.form.controls.advancedExecution
   }
 
-  protected get subAgentsControl() {
-    return this.form.controls.subAgents
-  }
+  // ── Sub-agents list ───────────────────────────────────────────────────────
+
+  /** Current list of sub-agent glob patterns, each backed by a live FormControl. */
+  protected readonly subAgentRows = signal<SubAgentRow[]>([])
+
+  /** Input control for the "add new pattern" field at the bottom of the list. */
+  protected readonly newSubAgentControl = new FormControl<string>('', { nonNullable: true })
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
@@ -138,7 +146,9 @@ export class AgentConfigFormComponent implements OnInit {
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
-          this.subAgentsControl.setValue((config.subAgents ?? []).join(', '))
+          this.subAgentRows.set(
+            (config.subAgents ?? []).map((p) => ({ control: new FormControl<string>(p, { nonNullable: true }) }))
+          )
           this.isLoading.set(false)
         },
         error: () => {
@@ -195,6 +205,30 @@ export class AgentConfigFormComponent implements OnInit {
     row.enabled.update((v) => !v)
   }
 
+  /** Add the current newSubAgentControl value as a new row, then reset the input. */
+  protected addSubAgent(): void {
+    const pattern = this.newSubAgentControl.value.trim()
+    if (!pattern) return
+    this.subAgentRows.update((rows) => [...rows, { control: new FormControl<string>(pattern, { nonNullable: true }) }])
+    this.newSubAgentControl.reset('')
+  }
+
+  /** Remove a row from the list. */
+  protected removeSubAgent(row: SubAgentRow): void {
+    this.subAgentRows.update((rows) => rows.filter((r) => r !== row))
+  }
+
+  /**
+   * Convert the sub-agent rows into the AgentConfig.subAgents payload.
+   * Empty list → undefined (no delegation capability).
+   */
+  protected buildSubAgentsPayload(): AgentConfig['subAgents'] {
+    const patterns = this.subAgentRows()
+      .map((r) => r.control.value.trim())
+      .filter((p) => p.length > 0)
+    return patterns.length > 0 ? patterns : undefined
+  }
+
   /**
    * Convert the integration rows into the AgentConfig.integrations payload.
    *
@@ -203,18 +237,6 @@ export class AgentConfigFormComponent implements OnInit {
    * Disabled rows → excluded from the map.
    * If no rows are enabled → undefined (no filter, agent sees all namespace tools).
    */
-  /**
-   * Convert the subAgents text input into an array of agent names.
-   * Empty input → undefined (no delegation capability).
-   */
-  protected buildSubAgentsPayload(): AgentConfig['subAgents'] {
-    const raw = this.subAgentsControl.value.trim()
-    if (!raw) return undefined
-    return raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-  }
 
   protected buildIntegrationsPayload(): AgentConfig['integrations'] {
     const rows = this.integrationRows()
