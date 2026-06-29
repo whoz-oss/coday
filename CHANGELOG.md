@@ -1,3 +1,13 @@
+## 0.183.7 (2026-06-29)
+
+### 🚀 Features
+
+- **agentos:** add AGENTOS_EXTERNAL_USERID to server.ts ([#1059](https://github.com/whoz-oss/coday/pull/1059))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.183.6 (2026-06-23)
 
 ### 🩹 Fixes
