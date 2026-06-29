@@ -45,8 +45,9 @@ class DelegationTool(
     private val parentCaseId: UUID,
     private val namespaceId: UUID,
     private val allowedAgents: List<String>,
-    private val loadCaseEvents: (UUID) -> List<CaseEvent>,
+    private val loadCaseEvents: suspend (UUID) -> List<CaseEvent>,
     private val timeoutMs: Long = 5 * 60 * 1_000L,
+    private val eventLoadTimeoutMs: Long = EVENT_LOAD_TIMEOUT_MS,
 ) : StandardTool<DelegationTool.Args> {
 
     data class Args(
@@ -143,7 +144,7 @@ class DelegationTool(
                 }
 
                 else -> {
-                    val result = withTimeout(EVENT_LOAD_TIMEOUT_MS) { extractLastAgentMessage(subCaseId) }
+                    val result = withTimeout(eventLoadTimeoutMs) { extractLastAgentMessage(subCaseId) }
                     logger.info { "[DelegationTool] Sub-case $subCaseId finished, result length=${result.length}" }
                     ToolExecutionResult(
                         output = objectMapper.writeValueAsString(mapOf("subCaseId" to subCaseId.toString(), "result" to result)),
@@ -169,7 +170,7 @@ class DelegationTool(
      * Reads the last [MessageEvent] emitted by an agent in the sub-case event history.
      * Falls back to a generic message if no agent message is found.
      */
-    private fun extractLastAgentMessage(subCaseId: UUID): String =
+    private suspend fun extractLastAgentMessage(subCaseId: UUID): String =
         loadCaseEvents(subCaseId)
             .filterIsInstance<MessageEvent>()
             .lastOrNull { it.actor.role == ActorRole.AGENT }

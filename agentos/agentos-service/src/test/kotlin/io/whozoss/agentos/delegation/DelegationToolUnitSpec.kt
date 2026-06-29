@@ -13,6 +13,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.UUID
 
@@ -45,13 +46,16 @@ class DelegationToolUnitSpec : StringSpec({
         launcher: SubCaseLauncher,
         events: List<io.whozoss.agentos.sdk.caseEvent.CaseEvent> = emptyList(),
         timeoutMs: Long = 2_000,
+        loadCaseEvents: suspend (UUID) -> List<io.whozoss.agentos.sdk.caseEvent.CaseEvent> = { events },
+        eventLoadTimeoutMs: Long = 2_000,
     ) = DelegationTool(
         subCaseLauncher = launcher,
         parentCaseId = parentCaseId,
         namespaceId = namespaceId,
         allowedAgents = allowedAgents,
-        loadCaseEvents = { events },
+        loadCaseEvents = loadCaseEvents,
         timeoutMs = timeoutMs,
+        eventLoadTimeoutMs = eventLoadTimeoutMs,
     )
 
     fun idleRuntime(): CaseRuntime {
@@ -200,6 +204,23 @@ class DelegationToolUnitSpec : StringSpec({
     // -------------------------------------------------------------------------
     // Timeout
     // -------------------------------------------------------------------------
+
+    "returns failure when event loading exceeds eventLoadTimeoutMs" {
+        val launcher = mockk<SubCaseLauncher>()
+        val runtime = idleRuntime()
+        val tool = makeTool(
+            launcher = launcher,
+            loadCaseEvents = { delay(Long.MAX_VALUE); emptyList() },
+            eventLoadTimeoutMs = 200,
+        )
+
+        every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+
+        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+
+        result.success shouldBe false
+        result.metadata["subCaseId"] shouldBe subCaseId.toString()
+    }
 
     "returns failure and kills sub-case when timeout is reached" {
         val launcher = mockk<SubCaseLauncher>()
