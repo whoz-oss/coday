@@ -7,8 +7,8 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.metrics.ToolMetricsService
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -258,7 +258,7 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
 
         return if (advancedExecution) {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
