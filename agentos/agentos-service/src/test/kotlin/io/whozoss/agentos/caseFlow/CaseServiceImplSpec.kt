@@ -11,7 +11,6 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
-import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
@@ -1270,6 +1269,43 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
 
+        // -------------------------------------------------------------------------
+        // Kill propagation to sub-cases
+        // -------------------------------------------------------------------------
+
+        "killing a parent case also kills its active sub-cases" {
+            // Verifies that killCase propagates depth-first to sub-cases created by
+            // delegation. The parent is killed; both sub-cases must reach KILLED status
+            // even though only the parent was explicitly killed.
+
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Create two sub-cases linked to the parent via parentCaseId
+            val subCase1 = service.create(Case(namespaceId = namespaceId, parentCaseId = parentCase.id))
+            val subCase2 = service.create(Case(namespaceId = namespaceId, parentCaseId = parentCase.id))
+
+            service.killCase(parentCase.id)
+
+            service.getById(parentCase.id).status shouldBe CaseStatus.KILLED
+            service.getById(subCase1.id).status shouldBe CaseStatus.KILLED
+            service.getById(subCase2.id).status shouldBe CaseStatus.KILLED
+        }
+
+        "killing a parent case kills nested sub-sub-cases recursively" {
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            val subCase = service.create(Case(namespaceId = namespaceId, parentCaseId = parentCase.id))
+            val subSubCase = service.create(Case(namespaceId = namespaceId, parentCaseId = subCase.id))
+
+            service.killCase(parentCase.id)
+
+            service.getById(parentCase.id).status shouldBe CaseStatus.KILLED
+            service.getById(subCase.id).status shouldBe CaseStatus.KILLED
+            service.getById(subSubCase.id).status shouldBe CaseStatus.KILLED
+        }
+
         "idle runtime is NOT evicted while SSE subscribers remain connected" {
             // The eviction watcher only fires when subscriptionCount == 0.
             // We keep a subscriber alive so subscriptionCount never reaches 0.
@@ -1288,11 +1324,12 @@ class CaseServiceImplSpec :
             awaiter.join()
 
             // Keep a long-lived subscriber open so subscriptionCount stays > 0.
-            val longLivedJob = scope.launch {
-                withTimeout(5_000) {
-                    runtime.events.collect { /* keep alive */ }
+            val longLivedJob =
+                scope.launch {
+                    withTimeout(5_000) {
+                        runtime.events.collect { /* keep alive */ }
+                    }
                 }
-            }
 
             // Wait well past idleEvictionTimeoutMs to confirm no eviction happened.
             delay(300)
@@ -1515,26 +1552,29 @@ class CaseServiceImplSpec :
             caseRepository.save(case)
 
             // Pre-populate events as if the case crashed after AgentRunningEvent
-            val existingMessage = MessageEvent(
-                namespaceId = namespaceId,
-                caseId = case.id,
-                actor = userActor,
-                content = listOf(MessageContent.Text("hello")),
-            )
-            val existingSelected = AgentSelectedEvent(
-                namespaceId = namespaceId,
-                caseId = case.id,
-                agentId = agentId,
-                agentName = agentName,
-            )
-            val existingRunning = AgentRunningEvent(
-                namespaceId = namespaceId,
-                caseId = case.id,
-                agentId = agentId,
-                agentName = agentName,
-                llmProvider = "test-provider",
-                llmModel = "test-model",
-            )
+            val existingMessage =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = case.id,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text("hello")),
+                )
+            val existingSelected =
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = case.id,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            val existingRunning =
+                AgentRunningEvent(
+                    namespaceId = namespaceId,
+                    caseId = case.id,
+                    agentId = agentId,
+                    agentName = agentName,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
             caseEventService.create(existingMessage)
             caseEventService.create(existingSelected)
             caseEventService.create(existingRunning)

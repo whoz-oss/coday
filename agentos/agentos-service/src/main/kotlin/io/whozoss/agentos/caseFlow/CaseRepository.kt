@@ -42,4 +42,13 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      * Implementations must exclude soft-deleted cases.
      */
     fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+
+    /**
+     * Find all active (non-removed) sub-cases whose [Case.parentCaseId] matches [parentCaseId].
+     *
+     * Used by [io.whozoss.agentos.caseFlow.CaseService.killCase] to propagate kill signals
+     * to sub-cases created by delegation. Does not filter by status — a sub-case may be
+     * IDLE, RUNNING, or PENDING and still needs to be killed when its parent is killed.
+     */
+    fun findActiveByParentCaseId(parentCaseId: UUID): List<Case>
 }

@@ -82,4 +82,18 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
             """,
     )
     fun findConcerningUserInNamespace(userId: String, namespaceId: String): List<CaseNode>
+
+    /**
+     * Find all active sub-cases whose parentCaseId matches, with their namespace edge.
+     *
+     * The BELONGS_TO edge is always present (written by [Neo4jCaseRepository.save]),
+     * so MATCH (not OPTIONAL MATCH) is safe here.
+     */
+    @Query(
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+            WHERE c.parentCaseId = $parentCaseId AND (c.removed IS NULL OR c.removed = false)
+            RETURN c, r, ns ORDER BY c.created ASC
+            """,
+    )
+    fun findActiveByParentCaseId(parentCaseId: String): List<CaseNode>
 }

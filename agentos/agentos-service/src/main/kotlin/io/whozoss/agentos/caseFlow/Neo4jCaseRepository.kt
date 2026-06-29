@@ -68,6 +68,11 @@ open class Neo4jCaseRepository(
                 true
             } ?: false
 
+    override fun findActiveByParentCaseId(parentCaseId: UUID): List<Case> =
+        caseNodeNeo4jRepository
+            .findActiveByParentCaseId(parentCaseId.toString())
+            .map { it.toDomain() }
+
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = caseNodeNeo4jRepository.findActiveByNamespaceId(parentId.toString())

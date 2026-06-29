@@ -606,6 +606,13 @@ class CaseServiceImpl(
 
     override fun killCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
+        // Propagate kill to all direct sub-cases first (depth-first recursion).
+        // Each recursive call will in turn kill its own sub-cases, so arbitrarily
+        // deep delegation chains are handled without any extra tracking.
+        caseRepository.findActiveByParentCaseId(caseId).forEach { subCase ->
+            logger.info { "Killing sub-case ${subCase.id} (parent: $caseId)" }
+            killCase(subCase.id)
+        }
         // Signal the runtime loop to exit cleanly if it is currently running,
         // then let handleStatusChange evict it via the isTerminal() path.
         activeRuntimes[caseId]?.requestKill()
