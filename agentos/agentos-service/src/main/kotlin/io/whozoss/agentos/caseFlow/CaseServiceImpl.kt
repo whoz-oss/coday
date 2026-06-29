@@ -10,6 +10,7 @@ import io.whozoss.agentos.delegation.SubCaseLauncher
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -634,10 +635,10 @@ class CaseServiceImpl(
                 .joinToString(" ")
                 .ifBlank { userId.toString() }
         val actor =
-            io.whozoss.agentos.sdk.actor.Actor(
+            Actor(
                 id = userId.toString(),
                 displayName = displayName,
-                role = io.whozoss.agentos.sdk.actor.ActorRole.USER,
+                role = ActorRole.USER,
             )
         // Use @mention syntax so the normal selectAgent resolution picks up the
         // requested agent without any special-casing in the runtime.
@@ -650,7 +651,7 @@ class CaseServiceImpl(
                     parentCaseId = parentCaseId,
                 ),
             )
-        val runtime = getCaseRuntime(subCase.id)
+        val runtime = activeRuntimes[subCase.id]!!
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
         scope.launch { runtime.run() }
         logger.info { "Sub-case ${subCase.id} started under parent $parentCaseId, agent=$agentName" }

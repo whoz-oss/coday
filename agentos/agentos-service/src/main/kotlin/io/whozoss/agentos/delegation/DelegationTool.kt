@@ -149,7 +149,7 @@ class DelegationTool(
                     val result = extractLastAgentMessage(subCaseId)
                     logger.info { "[DelegationTool] Sub-case $subCaseId finished, result length=${result.length}" }
                     ToolExecutionResult(
-                        output = objectMapper.writeValueAsString(mapOf("result" to result)),
+                        output = objectMapper.writeValueAsString(mapOf("subCaseId" to subCaseId.toString(), "result" to result)),
                         success = true,
                         metadata = mapOf("subCaseId" to subCaseId.toString()),
                     )
