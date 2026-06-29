@@ -74,6 +74,31 @@ export const AGENTOS_ROUTES: Route[] = [
             canActivate: [agentosReadyGuard],
             loadComponent: () => import('./components/user-list/user-list.component').then((m) => m.UserListComponent),
           },
+          // --- Admin: Platform Integration Configs ---
+          {
+            path: 'admin/integration-configs/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: 'admin/integration-configs/:integrationId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: 'admin/integration-configs',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-integration-configs/platform-integration-configs.component').then(
+                (m) => m.PlatformIntegrationConfigsComponent
+              ),
+          },
           // --- Admin: Platform Agent Configs ---
           {
             path: 'admin/agent-configs/new',
