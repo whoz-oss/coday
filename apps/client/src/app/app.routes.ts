@@ -1,6 +1,7 @@
 import { Route } from '@angular/router'
 import { projectStateGuard } from './core/guards/project-state.guard'
 import { threadStateGuard } from './core/guards/thread-state.guard'
+import { ThemeService } from './core/services/theme.service'
 
 export const appRoutes: Route[] = [
   {
@@ -65,7 +66,19 @@ export const appRoutes: Route[] = [
   },
   {
     path: 'agentos',
-    loadChildren: () => import('@whoz-oss/agentos-ui').then((m) => m.AGENTOS_ROUTES),
+    // Bind agentos-ui's THEME_PORT to the client ThemeService so a single service owns
+    // document[data-theme] across the legacy client and the AgentOS UI. Resolved via the dynamic
+    // import (agentos-ui is lazy — static imports of it are forbidden and would bloat the eager bundle).
+    loadChildren: async () => {
+      const { AGENTOS_ROUTES, THEME_PORT } = await import('@whoz-oss/agentos-ui')
+      return [
+        {
+          path: '',
+          providers: [{ provide: THEME_PORT, useExisting: ThemeService }],
+          children: AGENTOS_ROUTES,
+        },
+      ]
+    },
   },
   { path: '**', redirectTo: '' },
 ]
