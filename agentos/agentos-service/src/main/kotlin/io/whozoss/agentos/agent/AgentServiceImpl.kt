@@ -9,6 +9,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseLauncher
+import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
@@ -18,7 +19,6 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
@@ -116,17 +116,17 @@ class AgentServiceImpl(
      * Throws [IllegalArgumentException] if no model can be resolved.
      */
     private suspend fun resolveAgentDefinition(
-        config: AgentConfig,
+        agentConfig: AgentConfig,
         context: AgentExecutionContext,
         resolvedUser: User?,
         subCaseLauncher: SubCaseLauncher? = null,
     ): ResolvedAgentDefinition {
         val baseModel =
-            config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
+            agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
                 ?: findDefaultModelConfig(context.namespaceId)
                 ?: throw IllegalArgumentException(
-                    "AgentConfig '${config.name}' could not resolve an AiModel " +
-                        "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
+                    "AgentConfig '${agentConfig.name}' could not resolve an AiModel " +
+                        "(modelName=${agentConfig.modelName}, namespace=${context.namespaceId}).",
                 )
         val (modelConfig, providerConfig) =
             applyOverlaysToModel(
@@ -134,36 +134,36 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
             )
+        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
         val namespaceSystemPrompt =
-            buildNamespaceSystemPrompt(namespaceId = context.namespaceId, context = context, resolvedUser = resolvedUser)
-        val instructions =
-            buildInstructions(
-                baseInstructions = config.instructions,
-                agentIntegrations = config.integrations,
+            buildNamespaceSystemPrompt(
+                namespaceId = context.namespaceId,
                 context = context,
                 resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+            )
+        val instructions =
+            buildInstructions(
+                baseInstructions = agentConfig.instructions,
+                agentIntegrations = agentConfig.integrations,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
             )
         val toolContext =
             context.toToolContext(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
-                agentName = config.name,
+                agentName = agentConfig.name,
             )
         val baseTools =
-            if (context.userId != null) {
-                toolResolverService.resolveToolsForRun(
-                    agentIntegrations = config.integrations,
-                    context = toolContext,
-                )
-            } else {
-                toolResolverService.resolveToolsForNamespace(
-                    agentIntegrations = config.integrations,
-                    context = toolContext,
-                )
-            }
-        val tools = baseTools + buildDelegationTools(config, context, subCaseLauncher)
+            toolResolverService.resolveToolsForRun(
+                agentIntegrations = agentConfig.integrations,
+                context = toolContext,
+            )
+        val tools = baseTools + buildDelegationTools(effectiveIntegrationConfigs, context, subCaseLauncher)
+
         return ResolvedAgentDefinition(
-            agentConfigId = config.metadata.id,
-            name = config.name,
+            agentConfigId = agentConfig.metadata.id,
+            name = agentConfig.name,
             systemPrompt = namespaceSystemPrompt.takeUnless { it.isBlank() },
             instructions = instructions.takeUnless { it.isBlank() },
             resolvedModelApiName = modelConfig.apiModelName,
@@ -173,7 +173,7 @@ class AgentServiceImpl(
             resolvedModel = modelConfig,
             resolvedProvider = providerConfig,
             tools = tools,
-            advancedExecution = config.advancedExecution,
+            advancedExecution = agentConfig.advancedExecution,
             namespaceId = context.namespaceId,
             userId = context.userId,
         )
@@ -322,19 +322,13 @@ class AgentServiceImpl(
         namespaceId: UUID,
         context: AgentExecutionContext,
         resolvedUser: User?,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
     ): String {
         val namespace = namespaceService.findById(namespaceId)
-        val toolContext =
-            ToolContext(
-                namespaceId = namespaceId,
-                userId = resolvedUser?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEvents = emptyList(),
-            )
+        val toolContext = context.toToolContext(resolvedUser?.externalId, null)
         val integrationDescriptions =
             coroutineScope {
-                integrationConfigService
-                    .findByParent(namespaceId)
+                effectiveIntegrationConfigs
                     .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
                     .map { (config, plugin) ->
                         async {
@@ -375,8 +369,8 @@ class AgentServiceImpl(
     private fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
-        context: AgentExecutionContext,
         resolvedUser: User?,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
     ): String {
         val integrationsBlock =
             when {
@@ -386,8 +380,7 @@ class AgentServiceImpl(
 
                 else -> {
                     val listed =
-                        integrationConfigService
-                            .findByParent(context.namespaceId)
+                        effectiveIntegrationConfigs
                             .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
                     when {
                         listed.isEmpty() -> {

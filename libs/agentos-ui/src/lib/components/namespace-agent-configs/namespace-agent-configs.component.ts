@@ -58,7 +58,7 @@ export class NamespaceAgentConfigsComponent {
   private configsById = new Map<string, AgentConfig>()
 
   constructor() {
-    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs) => {
+    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs: AgentConfig[]) => {
       this.configsById = new Map(configs.map((c: AgentConfig) => [c.id ?? '', c]))
     })
   }

@@ -907,14 +907,17 @@ paths:
       description: |-
         Scope is inferred from the query params :
 
-        | query                                              | mode             | required permission                            |
-        |----------------------------------------------------|------------------|------------------------------------------------|
-        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
-        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
-        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
-        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
+        | query                            | mode             | required permission                            |
+        |----------------------------------|------------------|------------------------------------------------|
+        | (no params)                      | platform         | authenticated                                  |
+        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
 
         `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+
+        When called with no params, returns platform-level configs.
       operationId: listIntegrationConfig
       parameters:
       - name: namespaceId
@@ -945,7 +948,7 @@ paths:
 
         | body.namespaceId | body.userId        | scope         | required permission                  |
         |------------------|--------------------|---------------|--------------------------------------|
-        | null             | null               | —             | 400 Bad Request                      |
+        | null             | null               | platform      | Super Admin only                     |
         | present          | null               | NS-shared     | WRITE on the namespace               |
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |

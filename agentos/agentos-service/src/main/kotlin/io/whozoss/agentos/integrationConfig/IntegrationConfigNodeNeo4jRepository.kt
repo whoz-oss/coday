@@ -42,6 +42,22 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     fun findActiveByUserId(userId: String): List<IntegrationConfigNode>
 
     /**
+     * Find all non-removed platform-level configs (namespaceId IS NULL AND userId IS NULL),
+     * ordered by name.
+     *
+     * Platform configs have no BELONGS_TO edge to a Namespace node, so no edge traversal
+     * is needed — a plain label scan filtered on the scalar properties is sufficient.
+     */
+    @Query(
+        """MATCH (c:IntegrationConfig)
+            WHERE c.namespaceId IS NULL AND c.userId IS NULL
+            AND (c.removed IS NULL OR c.removed = false)
+            RETURN c ORDER BY c.name ASC
+            """,
+    )
+    fun findActivePlatform(): List<IntegrationConfigNode>
+
+    /**
      * Find a single non-removed config matched by its [IntegrationConfigNode.tripleKey] discriminator.
      *
      * The lookup is a single-property exact match on a non-null String, which the Neo4j planner
@@ -62,4 +78,34 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
             """,
     )
     fun findActiveByTripleKey(tripleKey: String): IntegrationConfigNode?
+
+    @Query(
+        $$"""
+            MATCH (c:IntegrationConfig)
+            WHERE (c.namespaceId IS NULL OR c.namespaceId = $namespaceId)
+            AND (c.userId IS NULL OR c.userId = $userId)
+            AND (c.removed IS NULL OR c.removed = false)
+            RETURN c
+        """,
+    )
+    fun findAllForNamespaceIdAndUserId(
+        namespaceId: String?,
+        userId: String?,
+    ): List<IntegrationConfigNode>
+
+    /**
+     * Find all non-removed namespace-shared configs (userId IS NULL, namespaceId IS NOT NULL)
+     * matching the given name, across all namespaces.
+     */
+    @Query(
+        $$"""
+            MATCH (c:IntegrationConfig)
+            WHERE c.name = $name
+            AND c.userId IS NULL
+            AND c.namespaceId IS NOT NULL
+            AND (c.removed IS NULL OR c.removed = false)
+            RETURN c ORDER BY c.name ASC
+        """,
+    )
+    fun findNsSharedByName(name: String): List<IntegrationConfigNode>
 }

@@ -1,7 +1,6 @@
 package io.whozoss.agentos.tool
 
 import com.fasterxml.jackson.databind.JsonNode
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -9,11 +8,8 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
-import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
-import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
-import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -25,10 +21,17 @@ import java.util.UUID
 class ToolResolverServiceSpec :
     StringSpec({
 
-        fun makeTool(name: String): StandardTool<Nothing> =
+        // -------------------------------------------------------------------------
+        // Shared fixtures
+        // -------------------------------------------------------------------------
+
+        fun makeTool(
+            name: String,
+            integrationName: String? = null,
+        ): StandardTool<Nothing> =
             object : StandardTool<Nothing> {
-                override val name = name
-                override val description = "Tool $name"
+                override val name = (integrationName?.let { "${it}__" } ?: "") + name
+                override val description = (integrationName?.let { "${it}__" } ?: "") + name
                 override val inputSchema = """{"type":"object"}"""
                 override val version = "1.0.0"
                 override val paramType: Class<Nothing>? = null
@@ -39,7 +42,7 @@ class ToolResolverServiceSpec :
                 ): ToolExecutionResult = ToolExecutionResult.success(name)
             }
 
-        fun makeConfigLessPlugin(
+        fun makePlugin(
             integrationType: String,
             vararg toolNames: String,
         ): ToolPlugin =
@@ -51,101 +54,69 @@ class ToolResolverServiceSpec :
                     config: JsonNode?,
                     configName: String?,
                     context: ToolContext?,
-                ): List<StandardTool<*>> = toolNames.map { makeTool(it) }
+                ): List<StandardTool<*>> = toolNames.map { makeTool(it, configName) }
             }
 
-        fun makeConfiguredPlugin(
+        fun integrationConfig(
+            namespaceId: UUID? = null,
+            userId: UUID? = null,
+            name: String,
             integrationType: String,
-            vararg toolNames: String,
-        ): ToolPlugin =
-            object : ToolPlugin {
-                override val integrationType = integrationType
-                override val configSchema: JsonNode = mockk(relaxed = true)
+            parameters: JsonNode? = null,
+        ) = IntegrationConfig(
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            userId = userId,
+            name = name,
+            integrationType = integrationType,
+            parameters = parameters,
+        )
 
-                override fun provideTools(
-                    config: JsonNode?,
-                    configName: String?,
-                    context: ToolContext?,
-                ): List<StandardTool<*>> = toolNames.map { makeTool(it) }
-            }
+        fun ctx(
+            namespaceId: UUID,
+            userId: UUID? = null,
+        ) = ToolContext(
+            namespaceId = namespaceId,
+            userId = userId,
+            userExternalId = null,
+            caseEvents = emptyList(),
+            agentName = null,
+        )
 
         fun initRegistry(plugins: List<ToolPlugin>): ToolRegistryService {
             val pluginManager = mockk<PluginManager>(relaxed = true)
             every { pluginManager.getExtensions(ToolPlugin::class.java) } returns plugins
             every { pluginManager.whichPlugin(any()) } returns null
-            val integrationTypeRegistry = mockk<IntegrationTypeRegistry>(relaxed = true)
-            val registry = ToolRegistryService(pluginManager, integrationTypeRegistry)
+            val registry = ToolRegistryService(pluginManager, mockk<IntegrationTypeRegistry>(relaxed = true))
             registry.initialize()
             return registry
         }
 
-        fun buildService(
-            plugins: List<ToolPlugin> = emptyList(),
-            configs: List<IntegrationConfig> = emptyList(),
-        ): ToolResolverService {
-            val registry = initRegistry(plugins)
-            val integrationConfigService = mockk<IntegrationConfigService>(relaxed = true)
-            every { integrationConfigService.findByParent(any()) } answers {
-                val namespaceId = firstArg<UUID>()
-                configs.filter { it.namespaceId == namespaceId }
-            }
-            val reconciliationService = mockk<ConfigMergeService<IntegrationConfig>>(relaxed = true)
-            return ToolResolverService(registry, integrationConfigService, reconciliationService)
-        }
-
-        fun integrationConfig(
-            namespaceId: UUID,
-            name: String,
-            integrationType: String,
-        ) = IntegrationConfig(
-            metadata = EntityMetadata(),
-            namespaceId = namespaceId,
-            name = name,
-            integrationType = integrationType,
-        )
+        fun buildService(plugins: List<ToolPlugin> = emptyList()): ToolResolverService = ToolResolverService(initRegistry(plugins))
 
         // -------------------------------------------------------------------------
-        // Core lifecycle contract: fresh instances per run
+        // Core lifecycle contract
         // -------------------------------------------------------------------------
 
-        "resolveToolsForNamespace produces distinct tool instances on each call for config-less plugins" {
-            val namespaceId = UUID.randomUUID()
-            val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val config = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
-            val service = buildService(plugins = listOf(plugin), configs = listOf(config))
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
+        "resolveToolsForRun produces distinct tool instances on each call" {
+            val nsId = UUID.randomUUID()
+            val plugin = makePlugin("DATETIME", "GetCurrentDateTime")
+            val config = integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME")
+            val service = buildService(plugins = listOf(plugin))
+            val agentIntegrations = mapOf("MY_DATETIME" to null)
+
+            val tools1 =
+                service.resolveToolsForRun(
+                    agentIntegrations = agentIntegrations,
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
                 )
-
-            val tools1 = service.resolveToolsForNamespace(context = ctx)
-            val tools2 = service.resolveToolsForNamespace(context = ctx)
-
-            tools1 shouldHaveSize 1
-            tools2 shouldHaveSize 1
-            tools1.first() shouldNotBe tools2.first()
-        }
-
-        "resolveToolsForNamespace produces distinct tool instances on each call for configured plugins" {
-            val namespaceId = UUID.randomUUID()
-            val config = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val plugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val service = buildService(plugins = listOf(plugin), configs = listOf(config))
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
+            val tools2 =
+                service.resolveToolsForRun(
+                    agentIntegrations = agentIntegrations,
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
                 )
-
-            val tools1 = service.resolveToolsForNamespace(context = ctx)
-            val tools2 = service.resolveToolsForNamespace(context = ctx)
 
             tools1 shouldHaveSize 1
             tools2 shouldHaveSize 1
@@ -156,472 +127,200 @@ class ToolResolverServiceSpec :
         // Correctness: right tools are returned
         // -------------------------------------------------------------------------
 
-        "resolveToolsForNamespace returns no tools when namespace has no IntegrationConfig" {
-            val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val service = buildService(plugins = listOf(plugin))
-            val namespaceId = UUID.randomUUID()
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
-                )
+        "resolveToolsForRun returns no tools when allIntegrationConfigs is empty" {
+            val service = buildService(plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime")))
 
-            val tools = service.resolveToolsForNamespace(context = ctx)
-
-            tools.shouldBeEmpty()
+            service.resolveToolsForRun(context = ctx(UUID.randomUUID()), allIntegrationConfigs = emptyList()).shouldBeEmpty()
         }
 
-        "resolveToolsForNamespace returns config-less tools when a matching IntegrationConfig exists" {
-            val namespaceId = UUID.randomUUID()
-            val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime", "GetCurrentDate")
-            val config = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
-            val service = buildService(plugins = listOf(plugin), configs = listOf(config))
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
-                )
+        "resolveToolsForRun returns all tools from a matching config" {
+            val nsId = UUID.randomUUID()
+            val config = integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME")
+            val service = buildService(plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime", "GetCurrentDate")))
 
-            val tools = service.resolveToolsForNamespace(context = ctx)
+            val tools =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("MY_DATETIME" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
+                )
 
             tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetCurrentDate")
+            tools.map { it.name }.toSet() shouldBe setOf("MY_DATETIME__GetCurrentDateTime", "MY_DATETIME__GetCurrentDate")
         }
 
-        "resolveToolsForNamespace returns configured tools matching the namespace" {
-            val namespaceId = UUID.randomUUID()
-            val config = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val plugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues")
-            val service = buildService(plugins = listOf(plugin), configs = listOf(config))
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
-                )
-
-            val tools = service.resolveToolsForNamespace(context = ctx)
-
-            tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetIssue", "SearchIssues")
-        }
-
-        "resolveToolsForNamespace combines config-less and configured tools via their IntegrationConfigs" {
-            val namespaceId = UUID.randomUUID()
-            val datetimeConfig = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
-            val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val configLessPlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
+        "resolveToolsForRun combines tools from multiple IntegrationConfigs" {
+            val nsId = UUID.randomUUID()
             val service =
                 buildService(
-                    plugins = listOf(configLessPlugin, configuredPlugin),
-                    configs = listOf(datetimeConfig, jiraConfig),
+                    plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime"), makePlugin("JIRA", "GetIssue")),
                 )
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
-                )
-
-            val tools = service.resolveToolsForNamespace(context = ctx)
-
-            tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetIssue")
-        }
-
-        "resolveToolsForNamespace returns no tools for a namespace with no matching IntegrationConfig" {
-            val namespaceId = UUID.randomUUID()
-            val otherNamespaceId = UUID.randomUUID()
-            val configInOtherNamespace = integrationConfig(otherNamespaceId, "JIRA_PROD", "JIRA")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val service =
-                buildService(
-                    plugins = listOf(configuredPlugin),
-                    configs = listOf(configInOtherNamespace),
-                )
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
-                )
-
-            val tools = service.resolveToolsForNamespace(context = ctx)
-
-            tools.shouldBeEmpty()
-        }
-
-        // -------------------------------------------------------------------------
-        // Agent integrations filter — always by IntegrationConfig.name
-        // -------------------------------------------------------------------------
-
-        "resolveToolsForNamespace with agentIntegrations null returns all tools" {
-            val namespaceId = UUID.randomUUID()
-            val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val datetimeConfig = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val configLessPlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val service =
-                buildService(
-                    plugins = listOf(configuredPlugin, configLessPlugin),
-                    configs = listOf(jiraConfig, datetimeConfig),
-                )
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
-                )
-
-            val tools = service.resolveToolsForNamespace(context = ctx)
-
-            tools shouldHaveSize 2
-        }
-
-        "resolveToolsForNamespace with agentIntegrations filters by IntegrationConfig name, not integrationType" {
-            val namespaceId = UUID.randomUUID()
-            val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val datetimeConfig = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val configLessPlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val service =
-                buildService(
-                    plugins = listOf(configuredPlugin, configLessPlugin),
-                    configs = listOf(jiraConfig, datetimeConfig),
-                )
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
+                    integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA"),
                 )
 
             val tools =
-                service.resolveToolsForNamespace(
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("MY_DATETIME" to null, "JIRA_PROD" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = configs,
+                )
+
+            tools shouldHaveSize 2
+            tools.map { it.name }.toSet() shouldBe setOf("MY_DATETIME__GetCurrentDateTime", "JIRA_PROD__GetIssue")
+        }
+
+        "resolveToolsForRun ignores configs not listed in agentIntegrations" {
+            val nsId = UUID.randomUUID()
+            val service =
+                buildService(
+                    plugins = listOf(makePlugin("JIRA", "GetIssue"), makePlugin("DATETIME", "GetCurrentDateTime")),
+                )
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA"),
+                    integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
+                )
+
+            val tools =
+                service.resolveToolsForRun(
                     agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = ctx,
+                    context = ctx(nsId),
+                    allIntegrationConfigs = configs,
                 )
 
             tools shouldHaveSize 1
-            tools.first().name shouldBe "GetIssue"
+            tools.first().name shouldBe "JIRA_PROD__GetIssue"
         }
 
-        "resolveToolsForNamespace with agentIntegrations excludes config-less tools when their config name is absent" {
-            val namespaceId = UUID.randomUUID()
-            val datetimeConfig = integrationConfig(namespaceId, "MY_DATETIME", "DATETIME")
-            val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val configLessPlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
+        "resolveToolsForRun returns 4 tools from two configs of the same plugin type" {
+            // Two IntegrationConfigs (JIRA_PROD, JIRA_STAGING) share the same integrationType.
+            // The plugin prefixes tool names with configName, so all 4 names are distinct.
+            val nsId = UUID.randomUUID()
+            val jiraPlugin = makePlugin("JIRA", "GetIssue", "SearchIssues")
+            val service = buildService(plugins = listOf(jiraPlugin))
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA"),
+                    integrationConfig(namespaceId = nsId, name = "JIRA_STAGING", integrationType = "JIRA"),
+                )
+
+            val tools =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("JIRA_PROD" to null, "JIRA_STAGING" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = configs,
+                )
+
+            tools shouldHaveSize 4
+            tools.map { it.name }.toSet() shouldBe
+                setOf("JIRA_PROD__GetIssue", "JIRA_PROD__SearchIssues", "JIRA_STAGING__GetIssue", "JIRA_STAGING__SearchIssues")
+        }
+
+        // -------------------------------------------------------------------------
+        // agentIntegrations filter
+        // -------------------------------------------------------------------------
+
+        "resolveToolsForRun with agentIntegrations null returns no tools" {
+            // null means the agent declared no integrations at all — no tools are loaded.
+            val nsId = UUID.randomUUID()
             val service =
                 buildService(
-                    plugins = listOf(configLessPlugin, configuredPlugin),
-                    configs = listOf(datetimeConfig, jiraConfig),
+                    plugins = listOf(makePlugin("JIRA", "GetIssue"), makePlugin("DATETIME", "GetCurrentDateTime")),
                 )
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA"),
+                    integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
                 )
 
-            val tools =
-                service.resolveToolsForNamespace(
-                    agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = ctx,
-                )
-
-            tools shouldHaveSize 1
-            tools.first().name shouldBe "GetIssue"
+            service.resolveToolsForRun(agentIntegrations = null, context = ctx(nsId), allIntegrationConfigs = configs).shouldBeEmpty()
         }
 
-        "resolveToolsForNamespace with non-null allowed list filters tools within an integration" {
-            val namespaceId = UUID.randomUUID()
-            val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")
-            val service = buildService(plugins = listOf(configuredPlugin), configs = listOf(jiraConfig))
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
+        "resolveToolsForRun with explicit integrations map returns all matching tools" {
+            val nsId = UUID.randomUUID()
+            val service =
+                buildService(
+                    plugins = listOf(makePlugin("JIRA", "GetIssue"), makePlugin("DATETIME", "GetCurrentDateTime")),
+                )
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA"),
+                    integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
                 )
 
+            service.resolveToolsForRun(
+                agentIntegrations = mapOf("JIRA_PROD" to null, "MY_DATETIME" to null),
+                context = ctx(nsId),
+                allIntegrationConfigs = configs,
+            ) shouldHaveSize 2
+        }
+
+        "resolveToolsForRun with non-null allowed list filters tools within an integration" {
+            val nsId = UUID.randomUUID()
+            val service = buildService(plugins = listOf(makePlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")))
+            val config = integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA")
+
             val tools =
-                service.resolveToolsForNamespace(
+                service.resolveToolsForRun(
                     agentIntegrations = mapOf("JIRA_PROD" to listOf("GetIssue", "SearchIssues")),
-                    context = ctx,
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
                 )
 
             tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetIssue", "SearchIssues")
+            tools.map { it.name }.toSet() shouldBe setOf("JIRA_PROD__GetIssue", "JIRA_PROD__SearchIssues")
         }
 
-        "resolveToolsForNamespace with null allowed list returns all tools from that integration" {
-            val namespaceId = UUID.randomUUID()
-            val jiraConfig = integrationConfig(namespaceId, "JIRA_PROD", "JIRA")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")
-            val service = buildService(plugins = listOf(configuredPlugin), configs = listOf(jiraConfig))
-            val ctx =
-                ToolContext(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    userExternalId = null,
-                    caseEvents = emptyList(),
-                    agentName = null,
-                )
+        "resolveToolsForRun with null allowed list returns all tools from that integration" {
+            val nsId = UUID.randomUUID()
+            val service = buildService(plugins = listOf(makePlugin("JIRA", "GetIssue", "SearchIssues", "CreateIssue")))
+            val config = integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA")
 
-            val tools =
-                service.resolveToolsForNamespace(
-                    agentIntegrations = mapOf("JIRA_PROD" to null),
-                    context = ctx,
-                )
-
-            tools shouldHaveSize 3
+            service.resolveToolsForRun(
+                agentIntegrations = mapOf("JIRA_PROD" to null),
+                context = ctx(nsId),
+                allIntegrationConfigs = listOf(config),
+            ) shouldHaveSize 3
         }
 
         // -------------------------------------------------------------------------
-        // isToolAllowed helper
+        // isToolAllowed
         // -------------------------------------------------------------------------
 
         "isToolAllowed returns true when allowedNames is null" {
-            val service = buildService()
-            service.isToolAllowed("ReadFile", "FILES", null) shouldBe true
+            buildService().isToolAllowed("ReadFile", "FILES", null) shouldBe true
         }
 
         "isToolAllowed returns true for exact name match" {
-            val service = buildService()
-            service.isToolAllowed("ReadFile", "FILES", listOf("ReadFile", "ListFiles")) shouldBe true
+            buildService().isToolAllowed("ReadFile", "FILES", listOf("ReadFile", "ListFiles")) shouldBe true
         }
 
         "isToolAllowed returns false when name not in allowed list" {
-            val service = buildService()
-            service.isToolAllowed("EditFile", "FILES", listOf("ReadFile", "ListFiles")) shouldBe false
+            buildService().isToolAllowed("EditFile", "FILES", listOf("ReadFile", "ListFiles")) shouldBe false
         }
 
         "isToolAllowed matches prefixed tool name via KEY__suffix convention" {
-            val service = buildService()
-            service.isToolAllowed("JIRA_PROD__GetIssue", "JIRA_PROD", listOf("GetIssue")) shouldBe true
+            buildService().isToolAllowed("JIRA_PROD__GetIssue", "JIRA_PROD", listOf("GetIssue")) shouldBe true
         }
 
         "isToolAllowed does not match wrong prefix" {
-            val service = buildService()
-            service.isToolAllowed("JIRA_STAGING__GetIssue", "JIRA_PROD", listOf("GetIssue")) shouldBe false
+            buildService().isToolAllowed("JIRA_STAGING__GetIssue", "JIRA_PROD", listOf("GetIssue")) shouldBe false
         }
 
         // -------------------------------------------------------------------------
-        // resolveToolsForRun — story 6.4 AC1-AC4 (6+ scenarios)
+        // ToolContext forwarding
         // -------------------------------------------------------------------------
 
-        fun buildServiceForRun(
-            plugins: List<ToolPlugin> = emptyList(),
-            sharedConfigs: List<IntegrationConfig> = emptyList(),
-            userOverrides: List<IntegrationConfig> = emptyList(),
-            reconciledConfigs: Map<String, IntegrationConfig> = emptyMap(),
-        ): ToolResolverService {
-            val registry = initRegistry(plugins)
-            val integrationConfigService = mockk<IntegrationConfigService>(relaxed = true)
-            every { integrationConfigService.findByNamespaceShared(any()) } returns sharedConfigs
-            every { integrationConfigService.findByUserId(any()) } returns userOverrides
-
-            val reconciliationService = mockk<ConfigMergeService<IntegrationConfig>>(relaxed = true)
-            every { reconciliationService.resolve(any(), any(), any()) } answers {
-                val name = thirdArg<String>()
-                reconciledConfigs[name]
-                    ?: throw ConfigNotFoundException(firstArg(), secondArg(), name)
-            }
-
-            return ToolResolverService(registry, integrationConfigService, reconciliationService)
-        }
-
-        "resolveToolsForRun returns empty when no IntegrationConfig exists, even if config-less plugins are loaded" {
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val plugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val service = buildServiceForRun(plugins = listOf(plugin))
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            tools.shouldBeEmpty()
-        }
-
-        "resolveToolsForRun resolves tools from namespace-shared config only (no user override)" {
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val plugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val shared = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "jira", integrationType = "JIRA")
-            val reconciled = shared
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(plugin),
-                    sharedConfigs = listOf(shared),
-                    reconciledConfigs = mapOf("jira" to reconciled),
-                )
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            tools shouldHaveSize 1
-            tools.first().name shouldBe "GetIssue"
-        }
-
-        "resolveToolsForRun resolves tools from user-global override only (no namespace config)" {
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val plugin = makeConfiguredPlugin("GITHUB", "CreatePR")
-            val userGlobal = IntegrationConfig(metadata = EntityMetadata(), userId = userId, name = "github", integrationType = "GITHUB")
-            val reconciled = userGlobal
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(plugin),
-                    userOverrides = listOf(userGlobal),
-                    reconciledConfigs = mapOf("github" to reconciled),
-                )
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            tools shouldHaveSize 1
-            tools.first().name shouldBe "CreatePR"
-        }
-
-        "resolveToolsForRun 3-tier fold: user×namespace override applied" {
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val plugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val shared = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "jira", integrationType = "JIRA")
-            val userNs =
-                IntegrationConfig(
-                    metadata = EntityMetadata(),
-                    namespaceId = namespaceId,
-                    userId = userId,
-                    name = "jira",
-                    integrationType = "JIRA",
-                )
-            val reconciled = userNs
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(plugin),
-                    sharedConfigs = listOf(shared),
-                    userOverrides = listOf(userNs),
-                    reconciledConfigs = mapOf("jira" to reconciled),
-                )
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            tools shouldHaveSize 1
-        }
-
-        "resolveToolsForRun fails fast when a namespace-shared name fails reconciliation (NFR-REL-1)" {
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val plugin = makeConfiguredPlugin("GITHUB", "CreatePR")
-            val shared1 = IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "jira", integrationType = "JIRA")
-            val shared2 =
-                IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "github", integrationType = "GITHUB")
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(plugin),
-                    sharedConfigs = listOf(shared1, shared2),
-                    reconciledConfigs = mapOf("github" to shared2),
-                )
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            shouldThrow<ConfigNotFoundException> {
-                service.resolveToolsForRun(context = ctx)
-            }
-        }
-
-        "resolveToolsForRun silently skips dormant user overrides whose name has no shared config (FR30)" {
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val plugin = makeConfiguredPlugin("GITHUB", "CreatePR")
-            val shared =
-                IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "github", integrationType = "GITHUB")
-            val dormantOverride =
-                IntegrationConfig(
-                    metadata = EntityMetadata(),
-                    namespaceId = namespaceId,
-                    userId = userId,
-                    name = "ghost-name",
-                    integrationType = "JIRA",
-                )
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(plugin),
-                    sharedConfigs = listOf(shared),
-                    userOverrides = listOf(dormantOverride),
-                    reconciledConfigs = mapOf("github" to shared),
-                )
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            tools shouldHaveSize 1
-            tools.first().name shouldBe "CreatePR"
-        }
-
-        "resolveToolsForRun dormant override on different namespace is filtered out (AC4)" {
-            val ns1 = UUID.randomUUID()
-            val ns2 = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val plugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val overrideForNs2 =
-                IntegrationConfig(metadata = EntityMetadata(), namespaceId = ns2, userId = userId, name = "jira", integrationType = "JIRA")
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(plugin),
-                    userOverrides = listOf(overrideForNs2),
-                )
-            val ctx = ToolContext(namespaceId = ns1, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            tools shouldHaveSize 0
-        }
-
-        // -------------------------------------------------------------------------
-        // RedirectToolPlugin: ToolContext must be forwarded so namespaceId is available
-        // -------------------------------------------------------------------------
-
-        "resolveToolsForNamespace passes namespaceId via ToolContext to plugins that need it" {
-            // Regression: ToolResolverService called provideTools(config, name) without a ToolContext.
-            // RedirectToolPlugin requires context?.namespaceId to resolve eligible agents;
-            // without it, it returns emptyList() regardless of the config patterns.
-            val namespaceId = UUID.randomUUID()
+        "resolveToolsForRun passes the full ToolContext to plugins" {
+            val nsId = UUID.randomUUID()
             var capturedContext: ToolContext? = null
-            val contextCapturingPlugin =
+            val capturingPlugin =
                 object : ToolPlugin {
                     override val integrationType = "REDIRECT"
-                    override val configSchema: JsonNode = mockk(relaxed = true)
+                    override val configSchema: JsonNode? = null
 
                     override fun provideTools(
                         config: JsonNode?,
@@ -629,87 +328,21 @@ class ToolResolverServiceSpec :
                         context: ToolContext?,
                     ): List<StandardTool<*>> {
                         capturedContext = context
-                        // Simulate what RedirectToolPlugin does: return empty when context is null
-                        if (context?.namespaceId == null) return emptyList()
-                        return listOf(makeTool("redirect"))
+                        return if (context?.namespaceId != null) listOf(makeTool("redirect")) else emptyList()
                     }
                 }
-            val config = integrationConfig(namespaceId, "REDIRECT_all", "REDIRECT")
-            val service = buildService(plugins = listOf(contextCapturingPlugin), configs = listOf(config))
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = null, userExternalId = null, caseEvents = emptyList(), agentName = null)
+            val service = buildService(plugins = listOf(capturingPlugin))
+            val config = integrationConfig(namespaceId = nsId, name = "REDIRECT_all", integrationType = "REDIRECT")
 
-            val tools = service.resolveToolsForNamespace(context = ctx)
+            val tools =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("REDIRECT_all" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
+                )
 
             capturedContext shouldNotBe null
-            capturedContext!!.namespaceId shouldBe namespaceId
+            capturedContext!!.namespaceId shouldBe nsId
             tools shouldHaveSize 1
-        }
-
-        "resolveToolsForRun passes namespaceId via ToolContext to plugins that need it" {
-            // Same regression for the user-scoped resolution path.
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            var capturedContext: ToolContext? = null
-            val contextCapturingPlugin =
-                object : ToolPlugin {
-                    override val integrationType = "REDIRECT"
-                    override val configSchema: JsonNode = mockk(relaxed = true)
-
-                    override fun provideTools(
-                        config: JsonNode?,
-                        configName: String?,
-                        context: ToolContext?,
-                    ): List<StandardTool<*>> {
-                        capturedContext = context
-                        if (context?.namespaceId == null) return emptyList()
-                        return listOf(makeTool("redirect"))
-                    }
-                }
-            val shared =
-                IntegrationConfig(
-                    metadata = EntityMetadata(),
-                    namespaceId = namespaceId,
-                    name = "REDIRECT_all",
-                    integrationType = "REDIRECT",
-                )
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(contextCapturingPlugin),
-                    sharedConfigs = listOf(shared),
-                    reconciledConfigs = mapOf("REDIRECT_all" to shared),
-                )
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            capturedContext shouldNotBe null
-            capturedContext!!.namespaceId shouldBe namespaceId
-            tools shouldHaveSize 1
-        }
-
-        "resolveToolsForRun combines config-less and configured tools when both have IntegrationConfigs" {
-            val namespaceId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val configLessPlugin = makeConfigLessPlugin("DATETIME", "GetCurrentDateTime")
-            val configuredPlugin = makeConfiguredPlugin("JIRA", "GetIssue")
-            val datetimeConfig =
-                IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "datetime", integrationType = "DATETIME")
-            val jiraConfig =
-                IntegrationConfig(metadata = EntityMetadata(), namespaceId = namespaceId, name = "jira", integrationType = "JIRA")
-            val service =
-                buildServiceForRun(
-                    plugins = listOf(configLessPlugin, configuredPlugin),
-                    sharedConfigs = listOf(datetimeConfig, jiraConfig),
-                    reconciledConfigs = mapOf("datetime" to datetimeConfig, "jira" to jiraConfig),
-                )
-            val ctx =
-                ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = null, caseEvents = emptyList(), agentName = null)
-
-            val tools = service.resolveToolsForRun(context = ctx)
-
-            tools shouldHaveSize 2
-            tools.map { it.name }.toSet() shouldBe setOf("GetCurrentDateTime", "GetIssue")
         }
     })
