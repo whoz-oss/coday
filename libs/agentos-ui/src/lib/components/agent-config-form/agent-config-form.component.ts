@@ -2,13 +2,9 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import {
-  AgentConfig,
-  AgentConfigControllerService,
-  IntegrationConfig,
-  IntegrationConfigControllerService,
-} from '@whoz-oss/agentos-api-client'
-import { forkJoin } from 'rxjs'
+import { AgentConfig, AgentConfigControllerService, IntegrationConfig } from '@whoz-oss/agentos-api-client'
+import { forkJoin, of } from 'rxjs'
+import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 
 /**
  * Tracks the per-integration state within the form:
@@ -54,7 +50,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
-  private readonly integrationConfigController = inject(IntegrationConfigControllerService)
+  private readonly integrationConfigState = inject(IntegrationConfigStateService)
 
   /**
    * namespaceId from the route, or undefined when operating in platform mode
@@ -131,8 +127,8 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * In edit mode: load the agent config and the namespace integrations in parallel,
-   * then hydrate both the main form and the integration rows.
+   * In edit mode: load the agent config, the namespace integrations, and the platform
+   * integrations in parallel, then hydrate both the main form and the integration rows.
    */
   private loadConfigAndIntegrations(agentConfigId: string): void {
     this.isLoading.set(true)
@@ -163,19 +159,22 @@ export class AgentConfigFormComponent implements OnInit {
 
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
-      integrations: this.integrationConfigController.listIntegrationConfig(this.namespaceId),
+      namespaceIntegrations: this.namespaceId
+        ? this.integrationConfigState.loadNamespaceConfigs(this.namespaceId)
+        : of([]),
+      platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ config, integrations }) => {
+        next: ({ config, namespaceIntegrations, platformIntegrations }) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
-          this.enabledControl.setValue(config.enabled ?? true)
-          this.integrationRows.set(this.buildIntegrationRows(integrations, config.integrations ?? undefined))
+          const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
+          this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
           this.isLoading.set(false)
         },
         error: () => {
@@ -185,17 +184,22 @@ export class AgentConfigFormComponent implements OnInit {
       })
   }
 
-  /** In create mode: only load the namespace integrations (undefined = no existing filter). */
+  /**
+   * In create mode: load platform + namespace integrations and merge them.
+   * Platform configs are visible to non-admins (backend returns [] for them, not 403).
+   */
   private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
-    // Platform-level configs have no namespace — integrations are not available.
-    if (this.isPlatformMode) return
-
-    this.integrationConfigController
-      .listIntegrationConfig(this.namespaceId)
+    forkJoin({
+      namespaceIntegrations: this.namespaceId
+        ? this.integrationConfigState.loadNamespaceConfigs(this.namespaceId)
+        : of([]),
+      platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
+    })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (integrations: IntegrationConfig[]) => {
-          this.integrationRows.set(this.buildIntegrationRows(integrations, existingIntegrations ?? undefined))
+        next: ({ namespaceIntegrations, platformIntegrations }) => {
+          const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
+          this.integrationRows.set(this.buildIntegrationRows(allIntegrations, existingIntegrations ?? undefined))
         },
       })
   }
@@ -274,7 +278,13 @@ export class AgentConfigFormComponent implements OnInit {
     // In platform mode, namespaceId is intentionally undefined (platform-level config).
     const payload = {
       ...(this.existingConfig ?? {}),
-      ...(this.isPlatformMode ? {} : { namespaceId: this.namespaceId }),
+      // `createdOn` / `updatedOn` are server-managed timestamps — omit them in the FE
+      // payload; the backend ignores them on create and preserves them on update.
+      // Cast needed because the generated model marks them as required (non-optional)
+      // but the backend does not require them in the request body.
+      createdOn: this.existingConfig?.createdOn as string,
+      updatedOn: this.existingConfig?.updatedOn as string,
+      namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
       description: this.descriptionControl.value?.trim() || undefined,
       modelName: this.modelNameControl.value?.trim() || undefined,

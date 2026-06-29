@@ -53,10 +53,11 @@ class IntegrationConfigControllerSpec : StringSpec({
     val bobId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")
 
-    fun aliceUser() = User(
+    fun aliceUser(isAdmin: Boolean = false) = User(
         metadata = EntityMetadata(id = aliceId),
         externalId = "alice@example.com",
         email = "alice@example.com",
+        isAdmin = isAdmin,
     )
 
     fun authFor(userId: UUID): Authentication =
@@ -163,12 +164,25 @@ class IntegrationConfigControllerSpec : StringSpec({
         verify(exactly = 0) { service.create(any()) }
     }
 
-    "create rejects payload with neither namespaceId nor userId with 400" {
+    "create with neither namespaceId nor userId and non-admin user throws AccessDeniedException (platform scope)" {
         withAuth(aliceId) {
-            shouldThrow<BadRequestException> {
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
                 controller.create(resource(id = null, nsId = null, userId = null))
             }
         }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create platform scope (null, null) succeeds for Super Admin" {
+        every { userService.getCurrentUser() } returns aliceUser(isAdmin = true)
+        val captured = slot<IntegrationConfig>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        withAuth(aliceId) { controller.create(resource(id = null, nsId = null, userId = null)) }
+
+        captured.captured.namespaceId shouldBe null
+        captured.captured.userId shouldBe null
+        verify(exactly = 0) { permissionService.hasPermission(any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------
@@ -332,17 +346,28 @@ class IntegrationConfigControllerSpec : StringSpec({
     // list — three modes, mass-assignment guard
     // -------------------------------------------------------------------------
 
-    "list without namespace filter returns rows for both modes" {
+    "list without namespace filter and userId=me returns caller's own rows" {
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL_JIRA"),
             config(nsId = namespaceId, userId = aliceId, name = "NS_JIRA"),
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = null, userId = "me", auth = authFor(aliceId))
 
         resp.size shouldBe 2
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
+    }
+
+    "list without any param returns platform configs for any authenticated user" {
+        val rows = listOf(
+            config(nsId = null, userId = null, name = "PLATFORM_JIRA"),
+        )
+        every { service.findPlatform() } returns rows
+
+        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
+
+        resp.map { it.name } shouldBe listOf("PLATFORM_JIRA")
     }
 
     "list with namespaceId=none returns only user-global rows" {

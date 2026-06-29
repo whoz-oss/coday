@@ -34,8 +34,7 @@ open class Neo4jIntegrationConfigRepository(
                 entity.namespaceId?.let { nsId ->
                     childLinkService.link("IntegrationConfig", savedNode.id, "Namespace", nsId.toString())
                 }
-            }
-            .toDomain(objectMapper)
+            }.toDomain(objectMapper)
             .also {
                 logger.debug {
                     "[Neo4jIntegrationConfigRepository] Saved config ${it.id} ('${entity.name}') " +
@@ -43,7 +42,10 @@ open class Neo4jIntegrationConfigRepository(
                 }
             }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<IntegrationConfig> =
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<IntegrationConfig> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { withRemoved || it.removed != true }
@@ -62,6 +64,11 @@ open class Neo4jIntegrationConfigRepository(
             .findActiveByUserId(userId.toString())
             .map { it.toDomain(objectMapper) }
 
+    override fun findPlatform(): List<IntegrationConfig> =
+        neo4jRepository
+            .findActivePlatform()
+            .map { it.toDomain(objectMapper) }
+
     override fun findByTriple(
         namespaceId: UUID?,
         userId: UUID?,
@@ -70,6 +77,23 @@ open class Neo4jIntegrationConfigRepository(
         neo4jRepository
             .findActiveByTripleKey(IntegrationConfigNode.computeTripleKey(namespaceId, userId, name))
             ?.toDomain(objectMapper)
+
+    override fun findAllForNamespaceIdAndUserId(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig> =
+        neo4jRepository
+            .findAllForNamespaceIdAndUserId(
+                namespaceId = namespaceId?.toString(),
+                userId = userId?.toString(),
+            ).map {
+                it.toDomain(objectMapper)
+            }
+
+    override fun findNsSharedByName(name: String): List<IntegrationConfig> =
+        neo4jRepository
+            .findNsSharedByName(name)
+            .map { it.toDomain(objectMapper) }
 
     override fun delete(id: UUID): Boolean =
         neo4jRepository

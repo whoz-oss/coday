@@ -223,13 +223,126 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
             repo.findByTriple(ns.id, null, "JIRA")?.id shouldBe second.id
         }
 
-        "findByTriple matche distinctement les 3 modes (ns-only, user-only, ns x user)" {
+        "findPlatform returns configs with both namespaceId and userId null" {
+            // Regression test: findActivePlatform uses IS NULL predicates on both
+            // namespaceId and userId — SDN does not store null properties, so the
+            // node has no namespaceId/userId property at all. Neo4j treats absent
+            // properties as null in IS NULL predicates, so the query must match.
+            val platform = repo.save(config(namespaceId = null, userId = null, name = "PLATFORM_JIRA"))
+            val ns = namespaceRepo.save(namespace())
+            val nsShared = repo.save(config(namespaceId = ns.id, userId = null, name = "NS_JIRA"))
+            val userId = UUID.randomUUID()
+            val userOnly = repo.save(config(namespaceId = null, userId = userId, name = "USER_JIRA"))
+
+            val result = repo.findPlatform()
+
+            result shouldHaveSize 1
+            result.first().id shouldBe platform.id
+            result.first().namespaceId shouldBe null
+            result.first().userId shouldBe null
+            result.first().name shouldBe "PLATFORM_JIRA"
+        }
+
+        // -------------------------------------------------------------------------
+        // findAllForNamespaceIdAndUserId — context-scoped multi-name lookup
+        // -------------------------------------------------------------------------
+
+        "findAllForNamespaceIdAndUserId — returns all four layers when all match" {
+            // All four layers exist for the same name. The query must return all of them
+            // so the caller can apply precedence logic in Kotlin.
             val ns = namespaceRepo.save(namespace())
             val userId = UUID.randomUUID()
+            val platform = repo.save(config(namespaceId = null, userId = null, name = "JIRA"))
+            val nsShared = repo.save(config(namespaceId = ns.id, userId = null, name = "JIRA"))
+            val userGlobal = repo.save(config(namespaceId = null, userId = userId, name = "JIRA"))
+            val userNs = repo.save(config(namespaceId = ns.id, userId = userId, name = "JIRA"))
+
+            val result = repo.findAllForNamespaceIdAndUserId(ns.id, userId)
+
+            result shouldHaveSize 4
+            result.map { it.id }.toSet() shouldBe setOf(platform.id, nsShared.id, userGlobal.id, userNs.id)
+        }
+
+        "findAllForNamespaceIdAndUserId — excludes configs for a different namespace" {
+            val ns1 = namespaceRepo.save(namespace())
+            val ns2 = namespaceRepo.save(namespace())
+            val userId = UUID.randomUUID()
+            val forNs1 = repo.save(config(namespaceId = ns1.id, userId = null, name = "JIRA"))
+            val forNs2 = repo.save(config(namespaceId = ns2.id, userId = null, name = "JIRA"))
+            // user×ns2 must NOT appear when querying for ns1
+            repo.save(config(namespaceId = ns2.id, userId = userId, name = "JIRA"))
+
+            val result = repo.findAllForNamespaceIdAndUserId(ns1.id, userId)
+
+            result shouldHaveSize 1
+            result.first().id shouldBe forNs1.id
+        }
+
+        "findAllForNamespaceIdAndUserId — excludes configs for a different user" {
+            val ns = namespaceRepo.save(namespace())
+            val user1 = UUID.randomUUID()
+            val user2 = UUID.randomUUID()
+            val nsShared = repo.save(config(namespaceId = ns.id, userId = null, name = "JIRA"))
+            val forUser1 = repo.save(config(namespaceId = ns.id, userId = user1, name = "JIRA"))
+            // user2 override must NOT appear when querying for user1
+            repo.save(config(namespaceId = ns.id, userId = user2, name = "JIRA"))
+
+            val result = repo.findAllForNamespaceIdAndUserId(ns.id, user1)
+
+            result shouldHaveSize 2
+            result.map { it.id }.toSet() shouldBe setOf(nsShared.id, forUser1.id)
+        }
+
+        "findAllForNamespaceIdAndUserId — platform config is visible without namespace" {
+            // When namespaceId=null and userId=null (platform-only lookup), only the
+            // platform layer is returned — namespace-shared configs are excluded.
+            val ns = namespaceRepo.save(namespace())
+            val platform = repo.save(config(namespaceId = null, userId = null, name = "JIRA"))
+            repo.save(config(namespaceId = ns.id, userId = null, name = "JIRA"))
+
+            val result = repo.findAllForNamespaceIdAndUserId(null, null)
+
+            result shouldHaveSize 1
+            result.first().id shouldBe platform.id
+        }
+
+        "findAllForNamespaceIdAndUserId — excludes soft-deleted configs" {
+            val ns = namespaceRepo.save(namespace())
+            val userId = UUID.randomUUID()
+            val active = repo.save(config(namespaceId = ns.id, userId = null, name = "JIRA"))
+            val deleted = repo.save(config(namespaceId = ns.id, userId = null, name = "SLACK"))
+            repo.delete(deleted.id)
+
+            val result = repo.findAllForNamespaceIdAndUserId(ns.id, userId)
+
+            result shouldHaveSize 1
+            result.first().id shouldBe active.id
+        }
+
+        "findAllForNamespaceIdAndUserId — user-global config is visible when userId matches" {
+            // A user-global config (namespaceId=null, userId=U) must be returned when
+            // querying for (namespaceId=N, userId=U) — it is reachable from any namespace.
+            val ns = namespaceRepo.save(namespace())
+            val userId = UUID.randomUUID()
+            val userGlobal = repo.save(config(namespaceId = null, userId = userId, name = "GITHUB"))
+
+            val result = repo.findAllForNamespaceIdAndUserId(ns.id, userId)
+
+            result shouldHaveSize 1
+            result.first().id shouldBe userGlobal.id
+        }
+
+        // -------------------------------------------------------------------------
+
+        "findByTriple matchs distinctly the 4 modes (platform, ns-only, user-only, ns x user)" {
+            val ns = namespaceRepo.save(namespace())
+            val userId = UUID.randomUUID()
+            val platform = repo.save(config(namespaceId = null, userId = null, name = "JIRA"))
             val nsOnly = repo.save(config(namespaceId = ns.id, userId = null, name = "JIRA"))
             val userOnly = repo.save(config(namespaceId = null, userId = userId, name = "JIRA"))
             val nsAndUser = repo.save(config(namespaceId = ns.id, userId = userId, name = "JIRA"))
 
+            repo.findByTriple(null, null, "JIRA")?.id shouldBe platform.id
             repo.findByTriple(ns.id, null, "JIRA")?.id shouldBe nsOnly.id
             repo.findByTriple(null, userId, "JIRA")?.id shouldBe userOnly.id
             repo.findByTriple(ns.id, userId, "JIRA")?.id shouldBe nsAndUser.id
