@@ -1,5 +1,6 @@
 package io.whozoss.agentos.delegation
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -148,7 +149,7 @@ class DelegationTool(
                     val result = extractLastAgentMessage(subCaseId)
                     logger.info { "[DelegationTool] Sub-case $subCaseId finished, result length=${result.length}" }
                     ToolExecutionResult(
-                        output = result,
+                        output = objectMapper.writeValueAsString(mapOf("result" to result)),
                         success = true,
                         metadata = mapOf("subCaseId" to subCaseId.toString()),
                     )
@@ -181,5 +182,7 @@ class DelegationTool(
             ?.takeIf { it.isNotBlank() }
             ?: "Sub-agent completed the task but produced no text output."
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private val objectMapper = jacksonObjectMapper()
+    }
 }

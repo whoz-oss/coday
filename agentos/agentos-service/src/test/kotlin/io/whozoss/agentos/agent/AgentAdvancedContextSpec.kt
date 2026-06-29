@@ -10,11 +10,17 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.*
+import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
-import java.util.*
+import java.util.UUID
 
 class AgentAdvancedContextSpec :
     StringSpec({
@@ -392,6 +398,7 @@ class AgentAdvancedContextSpec :
             // AgentInterrupt), the message conversion must still produce a
             // ToolResponseMessage — OpenAI returns 400 if an AssistantMessage with
             // tool_calls is not followed by a ToolResponseMessage for each call.
+            // The response data is JSON-wrapped (Gemini compatibility).
             val events =
                 listOf(
                     userMessage("go"),

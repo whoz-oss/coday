@@ -1,5 +1,6 @@
 package io.whozoss.agentos.delegation
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -95,7 +96,7 @@ class DelegationToolUnitSpec : StringSpec({
     // Nominal path
     // -------------------------------------------------------------------------
 
-    "returns last agent message when sub-case reaches IDLE" {
+    "returns last agent message as JSON when sub-case reaches IDLE" {
         val launcher = mockk<SubCaseLauncher>()
         val runtime = idleRuntime()
         val events = listOf(agentMessage("the result"))
@@ -106,7 +107,8 @@ class DelegationToolUnitSpec : StringSpec({
         val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
 
         result.success shouldBe true
-        result.output shouldBe "the result"
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.get("result").asText() shouldBe "the result"
         result.metadata.containsKey("subCaseId") shouldBe true
         result.metadata["subCaseId"] shouldBe subCaseId.toString()
     }
@@ -128,7 +130,8 @@ class DelegationToolUnitSpec : StringSpec({
         val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
 
         result.success shouldBe true
-        result.output shouldBe "part one\npart two"
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.get("result").asText() shouldBe "part one\npart two"
     }
 
     "picks the last agent message when history contains multiple" {
@@ -142,10 +145,11 @@ class DelegationToolUnitSpec : StringSpec({
         val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
 
         result.success shouldBe true
-        result.output shouldBe "final answer"
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.get("result").asText() shouldBe "final answer"
     }
 
-    "returns fallback message when sub-case produces no agent message" {
+    "returns fallback message as JSON when sub-case produces no agent message" {
         val launcher = mockk<SubCaseLauncher>()
         val runtime = idleRuntime()
         val tool = makeTool(launcher, events = emptyList())
@@ -155,7 +159,8 @@ class DelegationToolUnitSpec : StringSpec({
         val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
 
         result.success shouldBe true
-        result.output shouldBe "Sub-agent completed the task but produced no text output."
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.get("result").asText() shouldBe "Sub-agent completed the task but produced no text output."
     }
 
     // -------------------------------------------------------------------------

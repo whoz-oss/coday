@@ -158,8 +158,9 @@ class AgentServiceImpl(
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
+                allIntegrationConfigs = effectiveIntegrationConfigs,
             )
-        val tools = baseTools + buildDelegationTools(effectiveIntegrationConfigs, context, subCaseLauncher)
+        val tools = baseTools + buildDelegationTools(agentConfig, context, subCaseLauncher)
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
