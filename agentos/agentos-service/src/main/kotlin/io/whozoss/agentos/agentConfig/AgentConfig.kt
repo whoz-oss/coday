@@ -73,14 +73,15 @@ data class AgentConfig(
      */
     val enabled: Boolean = false,
     /**
-     * Allowlist of agent names this agent is permitted to delegate to.
+     * Glob patterns controlling which agents this agent is permitted to delegate to.
      *
      * When null or empty, no delegation tool is provided to the agent.
      * When non-empty, a [io.whozoss.agentos.delegation.DelegationTool] is instantiated
-     * and added to the agent's tool set at build time, restricted to exactly the
-     * listed agent names.
+     * and added to the agent's tool set at build time, with the allowlist resolved by
+     * matching these patterns against agents accessible to the current user in the namespace.
      *
-     * Names are matched against [AgentConfig.name] within the same namespace.
+     * `*` matches any sequence of characters (anchored, case-insensitive).
+     * Examples: `["*"]` allows all agents, `["*Fixer"]` allows `BugFixer`, `StoryFixer`, etc.
      */
     val subAgents: List<String>? = null,
 ) : Entity

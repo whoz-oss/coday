@@ -14,6 +14,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
+import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -434,8 +435,8 @@ class AgentServiceImpl(
      *    path) or [config.subAgents] is null/empty.
      * 2. Fetch the agents accessible to the current user in the namespace.
      * 3. Filter them by matching each accessible agent name against the [config.subAgents]
-     *    patterns (substring, case-insensitive). This lets patterns like `"copilot"` match
-     *    `"copilot-fr"` and `"copilot-en"` without requiring exact names in the config.
+     *    glob patterns via [globToRegex] (anchored, case-insensitive, `*` = any sequence).
+     *    Examples: `"*Fixer"` matches `BugFixer` and `StoryFixer`; `"*"` matches all agents.
      * 4. Build a [DelegationTool] only when the resolved allowlist is non-empty and a
      *    [context.caseId] is available (no delegation outside a live case).
      */
@@ -458,10 +459,8 @@ class AgentServiceImpl(
                     .map { it.name }
             }
 
-        val allowedAgents =
-            accessibleNames.filter { name ->
-                patterns.any { pattern -> name.contains(pattern, ignoreCase = true) }
-            }
+        val regexes = patterns.map { globToRegex(it) }
+        val allowedAgents = accessibleNames.filter { name -> regexes.any { it.matches(name) } }
 
         if (allowedAgents.isEmpty()) {
             logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
