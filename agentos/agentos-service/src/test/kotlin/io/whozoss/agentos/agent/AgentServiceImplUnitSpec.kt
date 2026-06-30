@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -11,6 +12,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
@@ -18,6 +20,7 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
@@ -34,6 +37,8 @@ import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.ai.chat.client.ChatClient
+import java.nio.file.Files
+import java.time.Instant
 import java.util.UUID
 
 class AgentServiceImplUnitSpec : StringSpec() {
@@ -53,6 +58,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolRegistryService: ToolRegistryService = mockk(relaxed = true)
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
+    private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -70,12 +76,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolRegistryService,
             toolMetricsService,
             caseEventService,
+            exchangeStorageService,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
     private val aiProviderId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
-    private val context = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId)
+    private val caseCreatedAt: Instant = Instant.parse("2025-12-15T10:30:00Z")
+    private val context = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, caseCreatedAt = caseCreatedAt)
     private val namespace =
         Namespace(
             metadata = EntityMetadata(id = namespaceId),
@@ -124,6 +132,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
     init {
         every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any()) } returns emptyList()
+        // dedupToolsByName is the shared collision-reconciler; identity is fine (no collisions in these tests).
+        every { toolResolverService.dedupToolsByName(any()) } answers { firstArg() }
+        // isToolAllowed gates the exchange grant's per-tool allowlist; allow all (tests use null allowlists).
+        every { toolResolverService.isToolAllowed(any(), any(), any()) } returns true
 
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
@@ -151,6 +163,54 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("my-agent", context)
 
             agent.name shouldBe "my-agent"
+        }
+
+        // -------------------------------------------------------------------------
+        // File-exchange tool gating (B4) — fail-closed
+        // -------------------------------------------------------------------------
+
+        "case exchange routes through the FILE_ACCESS plugin rooted at the case dir when enabled with a live case" {
+            val tmp = Files.createTempDirectory("case-exchange-test")
+            val filePlugin = mockk<ToolPlugin>(relaxed = true)
+            every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
+            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns tmp
+
+            val config = agentConfig(name = "case-agent", modelName = "sonnet").copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null))
+            every { agentConfigService.findByName(namespaceId, "case-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            agentService.findAgentByName("case-agent", context)
+
+            val cfg = slot<JsonNode>()
+            verify { filePlugin.provideTools(capture(cfg), "case-exchange", any()) }
+            cfg.captured.get("rootPath").asText() shouldBe tmp.toAbsolutePath().toString()
+            cfg.captured.get("readOnly").asBoolean() shouldBe false
+
+            every { toolRegistryService.findPlugin(any()) } returns null
+        }
+
+        "namespace exchange routes through FILE_ACCESS read-only, and case is fail-closed without a live case id" {
+            val tmp = Files.createTempDirectory("ns-exchange-test")
+            val filePlugin = mockk<ToolPlugin>(relaxed = true)
+            every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
+            every { exchangeStorageService.namespaceRoot(namespaceId) } returns tmp
+
+            val config = agentConfig(name = "ns-agent", modelName = "sonnet").copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null, "NAMESPACE_FILE_EXCHANGE" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            val cfg = slot<JsonNode>()
+            verify { filePlugin.provideTools(capture(cfg), "namespace-exchange", any()) }
+            cfg.captured.get("readOnly").asBoolean() shouldBe true
+            // resolveDefinition carries no live case id → case exchange must NOT be granted
+            verify(exactly = 0) { filePlugin.provideTools(any(), "case-exchange", any()) }
+
+            every { toolRegistryService.findPlugin(any()) } returns null
         }
 
         // WZ-31596: when advancedExecution=true, AgentAdvancedContext must receive the
@@ -349,6 +409,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService,
                     toolMetricsService,
                     caseEventService,
+                    exchangeStorageService,
                 )
             val configs =
                 listOf(
