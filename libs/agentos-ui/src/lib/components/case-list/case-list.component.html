@@ -27,6 +27,6 @@
       (input)="onInput($event)"
       (keydown)="onKeydown($event)"
     ></textarea>
-    <p class="case-list__hint">Press Enter to send, Shift+Enter for new line</p>
+    <p class="case-list__hint">{{ preferences.composerHint() }}</p>
   </div>
 </div>

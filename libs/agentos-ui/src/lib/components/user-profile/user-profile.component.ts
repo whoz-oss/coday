@@ -7,6 +7,7 @@ import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
+import { EnterKeyBehavior, USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
 
 interface UserGlobalEntry {
@@ -51,6 +52,7 @@ export class UserProfileComponent implements OnInit {
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
   private readonly themePort = inject(THEME_PORT)
+  private readonly preferencesPort = inject(USER_PREFERENCES_PORT)
   protected readonly isEditing = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isSaving = signal(false)
@@ -64,6 +66,13 @@ export class UserProfileComponent implements OnInit {
     { value: 'light', label: 'Light' },
     { value: 'dark', label: 'Dark' },
     { value: 'system', label: 'System' },
+  ]
+
+  /** Current ENTER-key behavior in the chat composer, reflected in the Composer section. */
+  protected readonly enterKeyBehavior = this.preferencesPort.enterKeyBehavior
+  protected readonly enterKeyOptions: ReadonlyArray<{ value: EnterKeyBehavior; label: string }> = [
+    { value: 'send', label: 'Send' },
+    { value: 'newline', label: 'New line' },
   ]
 
   protected readonly form = new FormGroup({
@@ -141,6 +150,10 @@ export class UserProfileComponent implements OnInit {
 
   protected setTheme(mode: ThemeMode): void {
     this.themePort.setTheme(mode)
+  }
+
+  protected setEnterKeyBehavior(behavior: EnterKeyBehavior): void {
+    this.preferencesPort.setEnterKeyBehavior(behavior)
   }
 
   protected save(): void {
