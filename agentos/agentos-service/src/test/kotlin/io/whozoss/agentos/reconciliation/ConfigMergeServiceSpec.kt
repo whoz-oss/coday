@@ -49,14 +49,13 @@ class ConfigMergeServiceSpec : StringSpec({
         )
 
     fun newService(
+        platform: IntegrationConfig? = null,
         namespaceShared: IntegrationConfig?,
         userGlobal: IntegrationConfig?,
         userNamespace: IntegrationConfig?,
     ): ConfigMergeService<IntegrationConfig> {
         val lookup = mockk<ConfigLookup<IntegrationConfig>>()
-        // Platform layer is always null in the legacy 3-layer tests — the 4-layer
-        // tests use newServiceWithPlatform instead.
-        every { lookup.findByTriple(null, null, NAME) } returns null
+        every { lookup.findByTriple(null, null, NAME) } returns platform
         every { lookup.findByTriple(NAMESPACE_ID, null, NAME) } returns namespaceShared
         every { lookup.findByTriple(null, USER_ID, NAME) } returns userGlobal
         every { lookup.findByTriple(NAMESPACE_ID, USER_ID, NAME) } returns userNamespace
@@ -65,6 +64,7 @@ class ConfigMergeServiceSpec : StringSpec({
 
     // -------------------------------------------------------------------------
     // AC10 — 8 combinations of (namespace shared, user-global, user × namespace)
+    // Platform layer absent in all legacy cases (preserves existing semantics).
     // -------------------------------------------------------------------------
 
     "Cas 1 — namespace shared only → returns namespace shared (FR12)" {
@@ -132,7 +132,7 @@ class ConfigMergeServiceSpec : StringSpec({
         )
         val userGlobal = config(null, USER_ID, """{"apiKey":"global-key","tenant":"global-tenant"}""")
         val userNamespace = config(NAMESPACE_ID, USER_ID, """{"tenant":"user-ns-tenant"}""")
-        val service = newService(nsShared, userGlobal, userNamespace)
+        val service = newService(namespaceShared = nsShared, userGlobal = userGlobal, userNamespace = userNamespace)
 
         val resolved = service.resolve(NAMESPACE_ID, USER_ID, NAME)
         resolved.parameters?.get("apiUrl")?.asText() shouldBe "https://ns"
@@ -208,6 +208,51 @@ class ConfigMergeServiceSpec : StringSpec({
 
     "no layer at all (including no platform) — still throws ConfigNotFoundException" {
         val service = newServiceWithPlatform(null, null, null, null)
+
+        shouldThrow<ConfigNotFoundException> {
+            service.resolve(NAMESPACE_ID, USER_ID, NAME)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Platform layer — 4-tier precedence cases
+    // -------------------------------------------------------------------------
+
+    "Cas P1 — platform only → returns platform as base" {
+        val platform = config(null, null, """{"apiUrl":"https://platform"}""")
+        val service = newService(platform = platform, namespaceShared = null, userGlobal = null, userNamespace = null)
+
+        val resolved = service.resolve(NAMESPACE_ID, USER_ID, NAME)
+        resolved.parameters?.get("apiUrl")?.asText() shouldBe "https://platform"
+        resolved.metadata.id shouldBe platform.metadata.id
+    }
+
+    "Cas P2 — platform + namespace → namespace wins per-key, platform fills the rest" {
+        val platform = config(null, null, """{"apiUrl":"https://platform","apiKey":"platform-key"}""")
+        val nsShared = config(NAMESPACE_ID, null, """{"apiKey":"ns-key"}""")
+        val service = newService(platform = platform, namespaceShared = nsShared, userGlobal = null, userNamespace = null)
+
+        val resolved = service.resolve(NAMESPACE_ID, USER_ID, NAME)
+        resolved.parameters?.get("apiUrl")?.asText() shouldBe "https://platform"
+        resolved.parameters?.get("apiKey")?.asText() shouldBe "ns-key"
+    }
+
+    "Cas P3 — all four layers → user × namespace > user-global > namespace > platform per-key" {
+        val platform = config(null, null, """{"apiUrl":"https://platform","apiKey":"platform-key","tenant":"platform-tenant","region":"eu"}""")
+        val nsShared = config(NAMESPACE_ID, null, """{"apiKey":"ns-key","tenant":"ns-tenant"}""")
+        val userGlobal = config(null, USER_ID, """{"tenant":"global-tenant"}""")
+        val userNamespace = config(NAMESPACE_ID, USER_ID, """{"tenant":"user-ns-tenant"}""")
+        val service = newService(platform = platform, namespaceShared = nsShared, userGlobal = userGlobal, userNamespace = userNamespace)
+
+        val resolved = service.resolve(NAMESPACE_ID, USER_ID, NAME)
+        resolved.parameters?.get("apiUrl")?.asText() shouldBe "https://platform"  // only in platform
+        resolved.parameters?.get("apiKey")?.asText() shouldBe "ns-key"            // ns overrides platform
+        resolved.parameters?.get("tenant")?.asText() shouldBe "user-ns-tenant"    // user-ns wins all
+        resolved.parameters?.get("region")?.asText() shouldBe "eu"               // only in platform
+    }
+
+    "Cas P4 — platform only, no other layer → throws ConfigNotFoundException when platform absent" {
+        val service = newService(platform = null, namespaceShared = null, userGlobal = null, userNamespace = null)
 
         shouldThrow<ConfigNotFoundException> {
             service.resolve(NAMESPACE_ID, USER_ID, NAME)

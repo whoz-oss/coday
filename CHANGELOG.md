@@ -1,3 +1,35 @@
+## 0.190.2 (2026-06-30)
+
+### 🩹 Fixes
+
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([4cb204c6](https://github.com/whoz-oss/coday/commit/4cb204c6))
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([#1071](https://github.com/whoz-oss/coday/pull/1071))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.190.1 (2026-06-29)
+
+### 🩹 Fixes
+
+- suppress Neo4j ClientNotification warnings in logs ([#1065](https://github.com/whoz-oss/coday/pull/1065))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.190.0 (2026-06-26)
+
+### 🚀 Features
+
+- #31851 add platform-level scope to IntegrationConfig ([#1006](https://github.com/whoz-oss/coday/pull/1006), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.189.1 (2026-06-25)
 
 ### 🩹 Fixes

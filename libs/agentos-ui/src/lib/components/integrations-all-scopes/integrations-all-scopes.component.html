@@ -19,7 +19,7 @@
     <agentos-integration-config-item
       [config]="resolved.config"
       [scope]="resolved.scope"
-      [readOnly]="resolved.scope === 'namespace' && !isAdmin()"
+      [readOnly]="(resolved.scope === 'namespace' || resolved.scope === 'platform') && !isAdmin()"
       (editRequested)="onEdit(resolved)"
       (deleteRequested)="onDelete(resolved)"
       (duplicateRequested)="onDuplicate(resolved)"

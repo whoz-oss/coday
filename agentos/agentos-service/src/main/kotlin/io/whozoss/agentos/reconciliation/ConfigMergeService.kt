@@ -52,20 +52,24 @@ interface MergeStrategy<T : Entity> {
 }
 
 /**
- * Generic 3-tier reconciliation engine for namespace × user-overlay configuration entities.
+ * Generic 4-tier reconciliation engine for platform × namespace × user-overlay configuration entities.
  *
- * Resolves a single entity from up to three layers, applying [MergeStrategy.merge] left-to-right
- * along the precedence chain:
+ * Resolves a single entity from up to four layers, applying [MergeStrategy.merge] left-to-right
+ * along the precedence chain (lowest to highest):
  *
- * | Layer                | Precedence | Lookup triple                |
- * |----------------------|-----------|-------------------------------|
+ * | Layer                | Precedence | Lookup triple                  |
+ * |----------------------|-----------|--------------------------------|
  * | Platform             | lowest    | `(null,        null,    name)` |
  * | Namespace shared     | low       | `(namespaceId, null,    name)` |
- * | User-global          | middle    | `(null,        userId,  name)` |
+ * | User-global          | high      | `(null,        userId,  name)` |
  * | User × namespace     | highest   | `(namespaceId, userId,  name)` |
  *
+ * The platform layer is an environment-wide default, automatically visible across all namespaces
+ * without manual setup. It is stored as a `(namespaceId=null, userId=null)` row and folded
+ * first so every more-specific layer can override it.
+ *
  * Each existing layer is folded onto the accumulator via [MergeStrategy.merge]; missing layers
- * are skipped. When all three layers are absent the call fails with [ConfigNotFoundException]
+ * are skipped. When all four layers are absent the call fails with [ConfigNotFoundException]
  * (FR13, NFR-REL-2).
  *
  * Open class with explicit constructor injection: per-entity beans are wired by
@@ -84,8 +88,8 @@ class ConfigMergeService<T : Entity>(
      * Resolve the entity for the given `(namespaceId, userId, name)` triple by folding
      * the four precedence layers from lowest to highest.
      *
-     * The platform layer `(null, null, name)` is the lowest: it provides a system-wide
-     * default that any namespace- or user-scoped layer can override.
+     * The platform layer `(null, null, name)` is always consulted first as the base default.
+     * Namespace-shared, user-global, and user×namespace layers are then folded on top.
      *
      * @throws ConfigNotFoundException when none of the four layers contains a row.
      */
@@ -93,27 +97,14 @@ class ConfigMergeService<T : Entity>(
         namespaceId: UUID,
         userId: UUID,
         name: String,
-    ): T {
-        val platform = lookup.findByTriple(null, null, name)
-        val nsShared = lookup.findByTriple(namespaceId, null, name)
-        val userGlobal = lookup.findByTriple(null, userId, name)
-        val userNamespace = lookup.findByTriple(namespaceId, userId, name)
-
-        val afterNsShared = foldLayer(platform, nsShared)
-        val afterUserGlobal = foldLayer(afterNsShared, userGlobal)
-        val afterUserNamespace = foldLayer(afterUserGlobal, userNamespace)
-
-        return afterUserNamespace
+    ): T =
+        listOf(
+            null to null,           // platform
+            namespaceId to null,    // namespace-shared
+            null to userId,         // user-global
+            namespaceId to userId,  // user × namespace
+        )
+            .mapNotNull { (ns, user) -> lookup.findByTriple(ns, user, name) }
+            .reduceOrNull { base, layer -> mergeStrategy.merge(base, layer) }
             ?: throw ConfigNotFoundException(namespaceId, userId, name)
-    }
-
-    private fun foldLayer(
-        accumulator: T?,
-        higher: T?,
-    ): T? =
-        when {
-            higher == null -> accumulator
-            accumulator == null -> higher
-            else -> mergeStrategy.merge(accumulator, higher)
-        }
 }

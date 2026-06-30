@@ -45,7 +45,7 @@ export class NamespaceAgentConfigsComponent {
   protected readonly configItems$ = this.configs$.pipe(
     map((configs) =>
       configs.map(
-        (c): EntityListItem => ({
+        (c: AgentConfig): EntityListItem => ({
           id: c.id ?? '',
           name: c.name,
           description: c.description,
@@ -58,8 +58,8 @@ export class NamespaceAgentConfigsComponent {
   private configsById = new Map<string, AgentConfig>()
 
   constructor() {
-    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs) => {
-      this.configsById = new Map(configs.map((c) => [c.id ?? '', c]))
+    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs: AgentConfig[]) => {
+      this.configsById = new Map(configs.map((c: AgentConfig) => [c.id ?? '', c]))
     })
   }
 
