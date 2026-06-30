@@ -37,51 +37,12 @@
         />
       </div>
 
-      <!-- Content -->
-      <fieldset class="prompt-form__section" [formArrayName]="'content'">
-        <legend class="prompt-form__label">
-          Content <span aria-hidden="true">*</span>
-          <span class="prompt-form__label-hint">Ordered list of text commands</span>
-        </legend>
-        <p class="prompt-form__section-hint">
-          Each content entry is a command. Use <code>&#64;AgentName</code> to target an agent,
-          <code>/promptName param1 param2</code> to call another prompt, and
-          <code>{{ paramPlaceholderSyntax }}</code> for parameter placeholders.
-        </p>
-
-        @for (ctrl of contentArray.controls; track $index) {
-          <div class="prompt-form__content-row">
-            <span class="prompt-form__content-index">{{ $index + 1 }}</span>
-            <textarea
-              class="prompt-form__textarea"
-              rows="4"
-              placeholder="Enter a command…"
-              [formControlName]="$index"
-            ></textarea>
-            <button
-              class="prompt-form__remove-btn"
-              type="button"
-              title="Remove this entry"
-              [disabled]="contentArray.length === 1"
-              (click)="removeContentEntry($index)"
-            >
-              &#215;
-            </button>
-          </div>
-        }
-
-        <button class="prompt-form__add-btn" type="button" (click)="addContentEntry()">+ Add content entry</button>
-      </fieldset>
-
       <!-- Parameters -->
       <fieldset class="prompt-form__section" [formArrayName]="'parameters'">
         <legend class="prompt-form__label">
           Parameters
           <span class="prompt-form__label-hint">Named placeholders used in content</span>
         </legend>
-        <p class="prompt-form__section-hint">
-          Leave <em>Default value</em> empty to make a parameter required at execution time.
-        </p>
 
         @if (parametersArray.length === 0) {
           <p class="prompt-form__empty-hint">No parameters defined.</p>
@@ -138,6 +99,42 @@
         }
 
         <button class="prompt-form__add-btn" type="button" (click)="addParameter()">+ Add parameter</button>
+      </fieldset>
+
+      <!-- Content -->
+      <fieldset class="prompt-form__section" [formArrayName]="'content'">
+        <legend class="prompt-form__label">
+          Content <span aria-hidden="true">*</span>
+          <span class="prompt-form__label-hint">Ordered list of text commands</span>
+        </legend>
+        <p class="prompt-form__section-hint">
+          Each content entry is a command. Use <code>&#64;AgentName</code> to target an agent,
+          <code>/promptName param1 param2</code> to call another prompt, and
+          <code>{{ paramPlaceholderSyntax }}</code> for parameter placeholders.
+        </p>
+
+        @for (ctrl of contentArray.controls; track $index) {
+          <div class="prompt-form__content-row">
+            <span class="prompt-form__content-index">{{ $index + 1 }}</span>
+            <textarea
+              class="prompt-form__textarea"
+              rows="4"
+              placeholder="Enter a command…"
+              [formControlName]="$index"
+            ></textarea>
+            <button
+              class="prompt-form__remove-btn"
+              type="button"
+              title="Remove this entry"
+              [disabled]="contentArray.length === 1"
+              (click)="removeContentEntry($index)"
+            >
+              &#215;
+            </button>
+          </div>
+        }
+
+        <button class="prompt-form__add-btn" type="button" (click)="addContentEntry()">+ Add content entry</button>
       </fieldset>
 
       <!-- Error message -->

@@ -1,11 +1,6 @@
 <div class="prompt-item" role="listitem">
   <div class="prompt-item__body">
     <span class="prompt-item__name">{{ prompt.name }}</span>
-    @if (prompt.parameters.length > 0) {
-      <span class="prompt-item__meta"
-        >{{ prompt.parameters.length }} parameter{{ prompt.parameters.length === 1 ? '' : 's' }}</span
-      >
-    }
     @if (prompt.description) {
       <span class="prompt-item__description">{{ prompt.description }}</span>
     }
