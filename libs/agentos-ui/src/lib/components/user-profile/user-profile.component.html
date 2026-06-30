@@ -10,6 +10,30 @@
   @if (isLoading()) {
     <p class="user-profile__loading">Loading…</p>
   } @else if (currentUser(); as user) {
+    <!-- Appearance is mode-independent: the theme selector stays at a stable position above the
+         profile content, visible and editable in both read and edit modes (it is not part of the
+         profile form). -->
+    <div class="user-profile__section">
+      <h2 class="user-profile__section-title">Appearance</h2>
+
+      <div class="user-profile__field">
+        <span class="user-profile__label">Theme</span>
+        <div class="user-profile__theme" role="group" aria-label="Theme">
+          @for (option of themeOptions; track option.value) {
+            <button
+              type="button"
+              class="user-profile__theme-option"
+              [class.user-profile__theme-option--active]="theme() === option.value"
+              [attr.aria-pressed]="theme() === option.value"
+              (click)="setTheme(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
     @if (isEditing()) {
       <!-- Edit mode -->
       <form class="user-profile__form" [formGroup]="form" (ngSubmit)="save()">
@@ -115,27 +139,6 @@
           </button>
         </div>
 
-        <div class="user-profile__section">
-          <h2 class="user-profile__section-title">Appearance</h2>
-
-          <div class="user-profile__field">
-            <span class="user-profile__label">Theme</span>
-            <div class="user-profile__theme" role="group" aria-label="Theme">
-              @for (option of themeOptions; track option.value) {
-                <button
-                  type="button"
-                  class="user-profile__theme-option"
-                  [class.user-profile__theme-option--active]="theme() === option.value"
-                  [attr.aria-pressed]="theme() === option.value"
-                  (click)="setTheme(option.value)"
-                >
-                  {{ option.label }}
-                </button>
-              }
-            </div>
-          </div>
-        </div>
-
         <!-- Story 6.6 — recap of user-global overrides (namespaceId IS NULL) across the 3 ressources.
              Section is collapsable and discreet. Edit goes through the namespace pages. -->
         <div class="user-profile__overrides">
@@ -150,14 +153,14 @@
               [class.user-profile__overrides-arrow--open]="isOverridesExpanded()"
               >▶</span
             >
-            Mes configurations utilisateur globales
+            My global user configurations
             <span class="user-profile__overrides-count">({{ recap().total }})</span>
           </button>
 
           @if (isOverridesExpanded()) {
             @if (recap().total === 0) {
               <p class="user-profile__overrides-empty">
-                Aucune configuration globale. Crée-en depuis les pages Integrations / AI Providers / AI Models de tes
+                No global configuration yet. Create one from the Integrations / AI Providers / AI Models pages of your
                 namespaces.
               </p>
             } @else {

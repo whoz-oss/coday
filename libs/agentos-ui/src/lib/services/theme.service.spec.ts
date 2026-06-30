@@ -29,13 +29,13 @@ describe('AgentosThemeService', () => {
   })
 
   it('defaults to system when nothing is stored', () => {
-    expect(new AgentosThemeService().getCurrentTheme()).toBe('system')
+    expect(new AgentosThemeService().theme()).toBe('system')
   })
 
   it('reads and applies the persisted theme on init', () => {
     localStorage.setItem(STORAGE_KEY, 'dark')
     const service = new AgentosThemeService()
-    expect(service.getCurrentTheme()).toBe('dark')
+    expect(service.theme()).toBe('dark')
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
   })
 
@@ -43,7 +43,7 @@ describe('AgentosThemeService', () => {
     const service = new AgentosThemeService()
 
     service.setTheme('dark')
-    expect(service.getCurrentTheme()).toBe('dark')
+    expect(service.theme()).toBe('dark')
     expect(localStorage.getItem(STORAGE_KEY)).toBe('dark')
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
 
@@ -52,12 +52,11 @@ describe('AgentosThemeService', () => {
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
   })
 
-  it('emits theme changes on currentTheme$', () => {
+  it('reflects theme changes on the theme signal', () => {
     const service = new AgentosThemeService()
-    const seen: string[] = []
-    service.currentTheme$.subscribe((t) => seen.push(t))
+    expect(service.theme()).toBe('system')
     service.setTheme('dark')
-    expect(seen).toEqual(['system', 'dark'])
+    expect(service.theme()).toBe('dark')
   })
 
   it('resolves system to the OS preference', () => {
@@ -69,7 +68,7 @@ describe('AgentosThemeService', () => {
 
   it('falls back to system for an invalid stored value', () => {
     localStorage.setItem(STORAGE_KEY, 'rainbow')
-    expect(new AgentosThemeService().getCurrentTheme()).toBe('system')
+    expect(new AgentosThemeService().theme()).toBe('system')
   })
 
   it('removes its system-preference listener on destroy', () => {

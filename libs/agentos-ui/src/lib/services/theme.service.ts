@@ -1,5 +1,4 @@
-import { inject, Injectable, InjectionToken, OnDestroy } from '@angular/core'
-import { BehaviorSubject, Observable } from 'rxjs'
+import { inject, Injectable, InjectionToken, OnDestroy, signal, Signal } from '@angular/core'
 
 /** Supported theme modes — single source for both the type and runtime validation. */
 export const THEME_MODES = ['light', 'dark', 'system'] as const
@@ -8,10 +7,12 @@ export type ThemeMode = (typeof THEME_MODES)[number]
 /**
  * Abstraction over theme state. agentos-ui components consume this port — never a concrete host
  * service — so the lib keeps no dependency on app-level services from apps/client (see GUIDELINES.md).
+ *
+ * State is exposed as a single reactive `theme` signal: consumers read it directly in templates
+ * (no Observable-to-signal bridging, no imperative getter).
  */
 export interface ThemePort {
-  readonly currentTheme$: Observable<ThemeMode>
-  getCurrentTheme(): ThemeMode
+  readonly theme: Signal<ThemeMode>
   setTheme(mode: ThemeMode): void
 }
 
@@ -28,21 +29,21 @@ const STORAGE_KEY = 'agentos.theme'
  */
 @Injectable({ providedIn: 'root' })
 export class AgentosThemeService implements ThemePort, OnDestroy {
-  private readonly subject = new BehaviorSubject<ThemeMode>(this.readStoredTheme())
-  readonly currentTheme$ = this.subject.asObservable()
+  private readonly _theme = signal<ThemeMode>(this.readStoredTheme())
+  readonly theme = this._theme.asReadonly()
 
   private readonly media =
     typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
 
   private readonly onSystemChange = (): void => {
     // Only react to OS changes while following the system preference.
-    if (this.subject.value === 'system') {
+    if (this._theme() === 'system') {
       this.applyTheme('system')
     }
   }
 
   constructor() {
-    this.applyTheme(this.subject.value)
+    this.applyTheme(this._theme())
     this.media?.addEventListener('change', this.onSystemChange)
   }
 
@@ -50,12 +51,8 @@ export class AgentosThemeService implements ThemePort, OnDestroy {
     this.media?.removeEventListener('change', this.onSystemChange)
   }
 
-  getCurrentTheme(): ThemeMode {
-    return this.subject.value
-  }
-
   setTheme(mode: ThemeMode): void {
-    this.subject.next(mode)
+    this._theme.set(mode)
     try {
       localStorage.setItem(STORAGE_KEY, mode)
     } catch {
