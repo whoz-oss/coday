@@ -1,0 +1,237 @@
+import { computed, inject, Injectable, Signal, signal } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
+import {
+  ExchangeControllerService,
+  ExchangeFileContent,
+  ExchangeFileEntry,
+  ExchangeFileEntryScopeEnum,
+  ExchangeManifest,
+  ExchangeManifestCapabilityEnum,
+} from '@whoz-oss/agentos-api-client'
+import { BehaviorSubject, catchError, map, Observable, of, shareReplay, switchMap, throwError } from 'rxjs'
+
+/** Scope of an exchange (matches the generated `ExchangeFileEntryScopeEnum`). */
+export type ExchangeScope = ExchangeFileEntryScopeEnum
+
+/** Per-scope load status — drives the fail-closed gating (forbidden ≠ error ≠ ready). */
+export type ExchangeScopeStatus = 'loading' | 'ready' | 'forbidden' | 'error'
+
+/** Minimal reference to a file, used to address it across components. */
+export interface ExchangeFileRef {
+  scope: ExchangeScope
+  path: string
+}
+
+interface ExchangeScopeView {
+  status: ExchangeScopeStatus
+  files: ExchangeFileEntry[]
+  capability: ExchangeManifestCapabilityEnum
+}
+
+const NEUTRAL_LOADING: ExchangeScopeView = {
+  status: 'loading',
+  files: [],
+  capability: ExchangeManifestCapabilityEnum.NONE,
+}
+
+function sortByDateDesc(files: ExchangeFileEntry[]): ExchangeFileEntry[] {
+  return [...files].sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime())
+}
+
+/**
+ * ExchangeStateService — reactive state for the case / namespace file-exchange drawer.
+ *
+ * Source of truth = the server-computed manifest. Capability is **fail-closed**:
+ *   - any error maps to capability `NONE`;
+ *   - 403/404 → `forbidden` (section hidden, zero disclosure);
+ *   - other errors → `error` (retry banner), still `NONE` (no write affordance).
+ * We deliberately DO NOT use `multicastRefreshable` (it fail-opens, swallowing 403/404/5xx),
+ * so the forbidden / error / ready distinction the gating depends on is preserved.
+ *
+ * Never injects HttpClient for the listing — only the generated `ExchangeControllerService`.
+ */
+@Injectable({ providedIn: 'root' })
+export class ExchangeStateService {
+  private readonly controller = inject(ExchangeControllerService)
+
+  private namespaceId: string | null = null
+  private caseId: string | null = null
+
+  // Per-scope refresh triggers: the agent only mutates the case scope, so case-driven refreshes
+  // don't refetch the (read-only) namespace manifest. refreshManifest() refreshes both.
+  private readonly caseRefresh$ = new BehaviorSubject<void>(undefined)
+  private readonly namespaceRefresh$ = new BehaviorSubject<void>(undefined)
+
+  private readonly caseView = this.buildScopeView(
+    this.caseRefresh$,
+    () => this.caseId,
+    (id) => this.controller.getCaseFilesManifestExchange(id)
+  )
+  private readonly namespaceView = this.buildScopeView(
+    this.namespaceRefresh$,
+    () => this.namespaceId,
+    (id) => this.controller.getNamespaceFilesManifestExchange(id)
+  )
+
+  // ── Public derived state (always from the manifest, never inferred from raw roles) ──
+  readonly caseStatus = computed(() => this.caseView().status)
+  readonly namespaceStatus = computed(() => this.namespaceView().status)
+  readonly caseFiles = computed(() => this.caseView().files)
+  readonly namespaceFiles = computed(() => this.namespaceView().files)
+  readonly caseFileCount = computed(() => this.caseFiles().length)
+  readonly namespaceFileCount = computed(() => this.namespaceFiles().length)
+  readonly fileCount = computed(() => this.caseFileCount() + this.namespaceFileCount())
+  readonly canWriteCase = computed(() => this.caseView().capability === ExchangeManifestCapabilityEnum.READ_WRITE)
+  readonly canWriteNamespace = computed(
+    () => this.namespaceView().capability === ExchangeManifestCapabilityEnum.READ_WRITE
+  )
+  readonly caseSectionVisible = computed(() => this.caseView().status !== 'forbidden')
+  readonly namespaceSectionVisible = computed(() => this.namespaceView().status !== 'forbidden')
+  readonly isUploading = signal(false)
+
+  private loadScope(loader: () => Observable<ExchangeManifest>): Observable<ExchangeScopeView> {
+    return loader().pipe(
+      map((manifest) => ({
+        status: 'ready' as const,
+        files: sortByDateDesc(manifest.files ?? []),
+        capability: manifest.capability ?? ExchangeManifestCapabilityEnum.NONE,
+      })),
+      catchError((err: { status?: number }) => {
+        const forbidden = err?.status === 403 || err?.status === 404
+        return of({
+          status: forbidden ? ('forbidden' as const) : ('error' as const),
+          files: [] as ExchangeFileEntry[],
+          // fail-closed: no write action is ever derived from an error state.
+          capability: ExchangeManifestCapabilityEnum.NONE,
+        })
+      })
+    )
+  }
+
+  /**
+   * Build the reactive view signal for one scope: re-fetch its manifest on every `refresh$`,
+   * map to the fail-closed [ExchangeScopeView] via [loadScope], expose as a signal.
+   */
+  private buildScopeView(
+    refresh$: Observable<void>,
+    getId: () => string | null,
+    load: (id: string) => Observable<ExchangeManifest>
+  ): Signal<ExchangeScopeView> {
+    const view$ = refresh$.pipe(
+      switchMap(() => {
+        const id = getId()
+        return id ? this.loadScope(() => load(id)) : of(NEUTRAL_LOADING)
+      }),
+      shareReplay({ bufferSize: 1, refCount: true })
+    )
+    return toSignal(view$, { initialValue: NEUTRAL_LOADING })
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────────
+  initializeForCase(namespaceId: string, caseId: string): void {
+    this.namespaceId = namespaceId
+    this.caseId = caseId
+    this.refreshManifest()
+  }
+
+  clear(): void {
+    this.namespaceId = null
+    this.caseId = null
+    this.refreshManifest()
+  }
+
+  /** Refresh both scope manifests (user-driven actions, init). */
+  refreshManifest(): void {
+    this.caseRefresh$.next()
+    this.namespaceRefresh$.next()
+  }
+
+  /** Refresh only the case manifest — the agent only mutates the case scope (namespace is read-only). */
+  refreshCase(): void {
+    this.caseRefresh$.next()
+  }
+
+  // ── Reads ───────────────────────────────────────────────────────────────────
+  getContent(scope: ExchangeScope, path: string): Observable<ExchangeFileContent> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return throwError(() => new Error('No active scope for content request'))
+    return isCase
+      ? this.controller.getCaseFileContentExchange(id, path)
+      : this.controller.getNamespaceFileContentExchange(id, path)
+  }
+
+  // ── Writes (case only) ────────────────────────────────────────────────────────
+  async uploadFile(file: File): Promise<{ success: boolean; error?: string }> {
+    const caseId = this.caseId
+    if (!caseId) return { success: false, error: 'No active case' }
+    this.isUploading.set(true)
+    return new Promise((resolve) => {
+      this.controller.uploadCaseFileExchange(caseId, file).subscribe({
+        next: () => {
+          this.isUploading.set(false)
+          this.refreshManifest()
+          resolve({ success: true })
+        },
+        error: (err: { status?: number; message?: string }) => {
+          this.isUploading.set(false)
+          const conflict = err?.status === 409
+          resolve({
+            success: false,
+            error: conflict ? 'A file with this name already exists.' : (err?.message ?? 'Upload failed'),
+          })
+        },
+      })
+    })
+  }
+
+  async deleteFile(path: string): Promise<{ success: boolean; error?: string }> {
+    const caseId = this.caseId
+    if (!caseId) return { success: false, error: 'No active case' }
+    return new Promise((resolve) => {
+      this.controller.deleteCaseFileExchange(caseId, path).subscribe({
+        next: () => {
+          this.refreshManifest()
+          resolve({ success: true })
+        },
+        error: (err: { message?: string }) => resolve({ success: false, error: err?.message ?? 'Delete failed' }),
+      })
+    })
+  }
+
+  // ── Download ──────────────────────────────────────────────────────────────────
+  downloadFile(scope: ExchangeScope, path: string): void {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return
+    const filename = path.split('/').pop() ?? path
+    const download$ = isCase
+      ? this.controller.downloadCaseFileExchange(id, path)
+      : this.controller.downloadNamespaceFileExchange(id, path)
+    // The generated method is typed Observable<string> but requests responseType:'blob'
+    // (Accept '*/*'), so at runtime it yields a Blob.
+    ;(download$ as unknown as Observable<Blob>).subscribe({
+      next: (body) => this.saveBlob(body, filename),
+      error: (err) => console.error('[exchange] download failed', err),
+    })
+  }
+
+  /** Download every file of a scope, staggered 300 ms apart (ported from legacy). */
+  downloadAll(scope: ExchangeScope): void {
+    const files = scope === ExchangeFileEntryScopeEnum.CASE ? this.caseFiles() : this.namespaceFiles()
+    files.forEach((file, index) => setTimeout(() => this.downloadFile(scope, file.path), index * 300))
+  }
+
+  private saveBlob(body: Blob | string, filename: string): void {
+    const blob = body instanceof Blob ? body : new Blob([body])
+    const url = window.URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.style.display = 'none'
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    window.URL.revokeObjectURL(url)
+  }
+}

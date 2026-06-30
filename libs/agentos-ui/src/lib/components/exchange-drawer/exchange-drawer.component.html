@@ -1,0 +1,142 @@
+<div class="exchange-drawer">
+  @if (activeFile(); as ref) {
+    <agentos-exchange-content-viewer
+      [file]="ref"
+      [content]="selectedContent()"
+      [status]="contentStatus()"
+      [canView]="canViewSelected()"
+      (closeRequested)="onViewerClose()"
+      (downloadRequested)="downloadRequested.emit($event)"
+    />
+  } @else {
+    <header class="exchange-drawer__header">
+      <span class="exchange-drawer__title">Files</span>
+      <ds-icon-button icon="close" variant="default" title="Close files panel" (action)="closeRequested.emit()" />
+    </header>
+
+    <div class="exchange-drawer__sections">
+      @if (caseSectionVisible()) {
+        <section class="exchange-drawer__section">
+          <div class="exchange-drawer__section-header">
+            <h3 class="exchange-drawer__section-title">Case files</h3>
+            <div class="exchange-drawer__section-actions">
+              @if (canWriteCase()) {
+                <ds-icon-button
+                  icon="upload_file"
+                  variant="primary"
+                  title="Upload a file"
+                  [disabled]="isUploading()"
+                  (action)="triggerUpload()"
+                />
+              } @else {
+                <span class="exchange-drawer__readonly-badge">read-only</span>
+              }
+              @if (caseFiles().length > 0) {
+                <ds-icon-button
+                  icon="download"
+                  variant="default"
+                  title="Download all case files"
+                  (action)="downloadAllRequested.emit(CASE)"
+                />
+              }
+            </div>
+          </div>
+
+          @if (isUploading()) {
+            <p class="exchange-drawer__inflight">Uploading…</p>
+          }
+
+          @switch (caseStatus()) {
+            @case ('loading') {
+              <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading case files" /></div>
+            }
+            @case ('error') {
+              <div class="exchange-drawer__error" role="alert">
+                <span>Couldn't load case files.</span>
+                <button type="button" class="exchange-drawer__retry" (click)="retryRequested.emit()">Retry</button>
+              </div>
+            }
+            @default {
+              @if (caseFiles().length === 0) {
+                <ds-empty-state
+                  icon="folder_open"
+                  title="No case files"
+                  [hint]="canWriteCase() ? 'Upload a file to share it with this case.' : undefined"
+                />
+              } @else {
+                <agentos-exchange-file-list
+                  [rows]="caseRows()"
+                  [scope]="CASE"
+                  [canWrite]="canWriteCase()"
+                  [activeFile]="activeFile()"
+                  (fileSelected)="onFileSelected($event)"
+                  (downloadRequested)="downloadRequested.emit($event)"
+                  (deleteRequested)="deleteRequested.emit($event)"
+                />
+              }
+            }
+          }
+        </section>
+      }
+
+      @if (namespaceSectionVisible()) {
+        <section class="exchange-drawer__section">
+          <div class="exchange-drawer__section-header">
+            <h3 class="exchange-drawer__section-title">Namespace files</h3>
+            <div class="exchange-drawer__section-actions">
+              <span class="exchange-drawer__readonly-badge">read-only</span>
+              @if (namespaceFiles().length > 0) {
+                <ds-icon-button
+                  icon="download"
+                  variant="default"
+                  title="Download all namespace files"
+                  (action)="downloadAllRequested.emit(NAMESPACE)"
+                />
+              }
+            </div>
+          </div>
+
+          @switch (namespaceStatus()) {
+            @case ('loading') {
+              <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading namespace files" /></div>
+            }
+            @case ('error') {
+              <div class="exchange-drawer__error" role="alert">
+                <span>Couldn't load namespace files.</span>
+                <button type="button" class="exchange-drawer__retry" (click)="retryRequested.emit()">Retry</button>
+              </div>
+            }
+            @default {
+              @if (namespaceFiles().length === 0) {
+                <ds-empty-state icon="folder_shared" title="No namespace files" />
+              } @else {
+                <agentos-exchange-file-list
+                  [rows]="namespaceRows()"
+                  [scope]="NAMESPACE"
+                  [canWrite]="false"
+                  [activeFile]="activeFile()"
+                  (fileSelected)="onFileSelected($event)"
+                  (downloadRequested)="downloadRequested.emit($event)"
+                />
+              }
+            }
+          }
+        </section>
+      }
+
+      @if (!caseSectionVisible() && !namespaceSectionVisible()) {
+        <p class="exchange-drawer__no-access">No files available.</p>
+      }
+    </div>
+  }
+
+  <input
+    #fileInput
+    class="exchange-drawer__file-input"
+    type="file"
+    multiple
+    (change)="onFileInputChange($event)"
+    aria-hidden="true"
+    tabindex="-1"
+  />
+</div>

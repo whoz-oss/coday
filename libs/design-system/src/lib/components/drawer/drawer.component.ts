@@ -51,8 +51,17 @@ export class DrawerComponent implements OnInit {
   /** Whether the sidenav is open. Supports two-way binding via [(open)]. */
   @Input() open: boolean = true
 
+  /** Side of the container the drawer is anchored to. Default: 'start' (left). */
+  @Input() position: 'start' | 'end' = 'start'
+
   /** Width of the sidenav panel. */
   @Input() drawerWidth: string = '280px'
+
+  /**
+   * When true, the panel spans the full viewport width (100vw) in mobile overlay mode,
+   * where a fixed `drawerWidth` would be too wide. Opt-in so existing drawers are unaffected.
+   */
+  @Input() mobileFullWidth: boolean = false
 
   /**
    * Viewport width threshold (px) below which the drawer switches to overlay mode.
