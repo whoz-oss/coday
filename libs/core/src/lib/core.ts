@@ -246,15 +246,17 @@ export class Coday {
    */
   async cleanup(): Promise<void> {
     try {
+      // Save thread FIRST to prevent data loss if subsequent cleanup steps hang or fail
+      // (e.g. MCP process cleanup after SIGINT propagation).
+      // An in-flight tool response could still land after this save, but losing one
+      // response is far less damaging than losing the entire thread.
+      await this.aiThreadService.autoSave()
+
       if (this.services.agent) {
         await this.services.agent.kill()
       }
 
-      // Save thread AFTER agent.kill() to ensure all tool responses are written to the thread,
-      // and BEFORE aiThreadService.kill() which sets isKilled=true blocking autoSave.
-      await this.aiThreadService.autoSave()
-
-      this.aiThreadService.kill()
+      await this.aiThreadService.kill()
 
       // Reset AI client provider for fresh connections
       this.aiClientProvider.cleanup()
