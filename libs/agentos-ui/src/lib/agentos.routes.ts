@@ -99,6 +99,24 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformIntegrationConfigsComponent
               ),
           },
+          // --- Admin: Platform AI Providers ---
+          {
+            path: 'admin/ai-providers',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-ai-providers/platform-ai-providers.component').then(
+                (m) => m.PlatformAiProvidersComponent
+              ),
+          },
+          // --- Admin: Platform AI Models ---
+          {
+            path: 'admin/ai-models',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-ai-models/platform-ai-models.component').then(
+                (m) => m.PlatformAiModelsComponent
+              ),
+          },
           // --- Admin: Platform Agent Configs ---
           {
             path: 'admin/agent-configs/new',

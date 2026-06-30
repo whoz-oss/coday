@@ -1,0 +1,23 @@
+<ds-entity-list
+  title="Platform AI Providers"
+  [items]="(providerItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No platform AI providers defined yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="aiProviderItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="platform-ai-providers__back" type="button" (click)="goBack()">&#8592; Admin</button>
+</ds-entity-list>
+
+<!-- Item template: renders AiProviderItemComponent for each entity-list card slot -->
+<ng-template #aiProviderItemTpl let-item>
+  @if (resolveProvider(item.id); as provider) {
+    <agentos-ai-provider-item
+      [config]="provider"
+      scope="namespace"
+      (editRequested)="onEdit($event)"
+      (deleteRequested)="onDelete($event)"
+    />
+  }
+</ng-template>
