@@ -65,7 +65,12 @@ open class Neo4jPromptRepository(
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
-                neo4jRepository.save(node.copy(removed = true))
+                neo4jRepository.save(
+                    node.copy(
+                        removed = true,
+                        scopeKey = PromptNode.tombstoneScopeKey(node.id),
+                    ),
+                )
                 logger.debug { "[Neo4jPromptRepository] Soft-deleted prompt $id" }
                 true
             } ?: false
@@ -73,7 +78,14 @@ open class Neo4jPromptRepository(
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
-        neo4jRepository.saveAll(active.map { it.copy(removed = true) })
+        neo4jRepository.saveAll(
+            active.map {
+                it.copy(
+                    removed = true,
+                    scopeKey = PromptNode.tombstoneScopeKey(it.id),
+                )
+            },
+        )
         logger.debug { "[Neo4jPromptRepository] Soft-deleted ${active.size} prompts under namespace $parentId" }
         return active.size
     }

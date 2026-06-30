@@ -10,11 +10,12 @@ import org.springframework.stereotype.Component
 /**
  * Idempotent Neo4j schema initialiser for [Prompt].
  *
- * Creates an index on namespaceId to back efficient namespace-scoped listing
- * (PromptNodeNeo4jRepository.findActiveByNamespaceId).
- *
- * No uniqueness constraint on name — the same name may coexist across platform
- * and namespace scopes by design.
+ * Creates:
+ * - An index on `namespaceId` for efficient namespace-scoped listing.
+ * - A UNIQUE constraint on `scopeKey` to enforce name uniqueness per scope.
+ *   The `scopeKey` encodes `(namespaceId, name)` into a single non-null string,
+ *   using `_` as sentinel for null namespaceId (platform scope). On soft-delete
+ *   the key is rewritten to `tombstone:<id>` to free the unique slot.
  */
 @Component
 @ConditionalOnExpression(
@@ -26,6 +27,7 @@ class PromptSchemaInitializer(
 ) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
         ensureNamespaceIdIndex()
+        ensureScopeKeyConstraint()
     }
 
     private fun ensureNamespaceIdIndex() {
@@ -34,6 +36,15 @@ class PromptSchemaInitializer(
                 "CREATE INDEX prompt_namespace_id IF NOT EXISTS FOR (p:Prompt) ON (p.namespaceId)",
             ).run()
         logger.info { "[PromptSchema] index 'prompt_namespace_id' ensured" }
+    }
+
+    private fun ensureScopeKeyConstraint() {
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT prompt_scope_key_unique IF NOT EXISTS " +
+                    "FOR (p:Prompt) REQUIRE p.scopeKey IS UNIQUE",
+            ).run()
+        logger.info { "[PromptSchema] constraint 'prompt_scope_key_unique' ensured" }
     }
 
     companion object : KLogging()

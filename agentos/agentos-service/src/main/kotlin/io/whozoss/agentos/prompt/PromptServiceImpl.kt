@@ -1,6 +1,7 @@
 package io.whozoss.agentos.prompt
 
 import mu.KLogging
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -14,6 +15,11 @@ import java.util.UUID
  * Custom validation on [create] and [update]:
  * - Every element of [Prompt.content] must be non-blank.
  * - The names of [Prompt.parameters] must be unique within the list.
+ *
+ * Name uniqueness per scope is enforced by the `scopeKey` UNIQUE constraint in Neo4j.
+ * An applicative pre-check gives a descriptive 409 message; the catch on
+ * [DataIntegrityViolationException] handles concurrent inserts that race past the
+ * pre-check (mirrors the IntegrationConfigServiceImpl pattern).
  */
 @Service
 class PromptServiceImpl(
@@ -21,12 +27,12 @@ class PromptServiceImpl(
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
-        return repository.save(entity)
+        return saveOrConflict(entity)
     }
 
     override fun update(entity: Prompt): Prompt {
         validate(entity)
-        return repository.save(entity)
+        return saveOrConflict(entity)
     }
 
     override fun findByIds(
@@ -67,10 +73,39 @@ class PromptServiceImpl(
         if (duplicateName != null) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "Duplicate parameter name '$duplicateName' — parameter names must be unique within a prompt",
+                "Duplicate parameter name '$duplicateName' \u2014 parameter names must be unique within a prompt",
             )
         }
     }
 
-    companion object : KLogging()
+    private fun saveOrConflict(entity: Prompt): Prompt =
+        try {
+            repository.save(entity)
+        } catch (e: DataIntegrityViolationException) {
+            if (!isScopeKeyConflict(e)) {
+                throw e
+            }
+            logger.warn {
+                "[PromptService] scopeKey unique-constraint violation on save " +
+                    "(namespaceId=${entity.namespaceId}, name='${entity.name}')"
+            }
+            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+        }
+
+    private fun isScopeKeyConflict(e: DataIntegrityViolationException): Boolean {
+        val haystack =
+            generateSequence<Throwable>(e) { it.cause }
+                .mapNotNull { it.message }
+                .joinToString(separator = " | ")
+        return SCOPE_KEY_CONSTRAINT_NAME in haystack || SCOPE_KEY_PROPERTY in haystack
+    }
+
+    private fun conflictMessage(entity: Prompt): String =
+        "A prompt named '${entity.name}' already exists in this scope " +
+            "(namespaceId=${entity.namespaceId ?: "platform"})"
+
+    companion object : KLogging() {
+        private const val SCOPE_KEY_CONSTRAINT_NAME = "prompt_scope_key_unique"
+        private const val SCOPE_KEY_PROPERTY = "scopeKey"
+    }
 }

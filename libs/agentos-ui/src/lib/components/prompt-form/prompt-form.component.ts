@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { HttpErrorResponse } from '@angular/common/http'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
@@ -79,6 +80,7 @@ export class PromptFormComponent implements OnInit {
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
+  protected readonly errorMessage = signal<string | null>(null)
 
   /** Displayed literally in the hint text — avoids Angular interpolation parsing issues. */
   protected readonly paramPlaceholderSyntax = '{{paramName}}'
@@ -205,9 +207,20 @@ export class PromptFormComponent implements OnInit {
         ? this.promptController.updatePrompt(this.existingPrompt.id, payload)
         : this.promptController.createPrompt(payload)
 
+    this.errorMessage.set(null)
+
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
-      error: () => this.isSubmitting.set(false),
+      error: (err: HttpErrorResponse) => {
+        this.isSubmitting.set(false)
+        if (err.status === 409) {
+          this.errorMessage.set(`A prompt named "${payload.name}" already exists in this namespace.`)
+        } else if (err.status === 400) {
+          this.errorMessage.set(err.error?.message ?? 'Invalid prompt data.')
+        } else {
+          this.errorMessage.set('An unexpected error occurred. Please try again.')
+        }
+      },
     })
   }
 

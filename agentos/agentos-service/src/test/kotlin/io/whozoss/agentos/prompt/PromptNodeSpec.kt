@@ -142,6 +142,36 @@ class PromptNodeSpec : StringSpec() {
         // toDomain — field mapping
         // -------------------------------------------------------------------------
 
+        // -------------------------------------------------------------------------
+        // scopeKey
+        // -------------------------------------------------------------------------
+
+        "fromDomain computes scopeKey as namespaceId:name for namespace-scoped prompt" {
+            val nsId = UUID.randomUUID()
+            val p = prompt(namespaceId = nsId, name = "deploy")
+
+            val node = PromptNode.fromDomain(p, objectMapper)
+
+            node.scopeKey shouldBe "$nsId:deploy"
+        }
+
+        "fromDomain computes scopeKey with _ sentinel for platform prompt" {
+            val p = prompt(namespaceId = null, name = "global-helper")
+
+            val node = PromptNode.fromDomain(p, objectMapper)
+
+            node.scopeKey shouldBe "_:global-helper"
+        }
+
+        "fromDomain computes tombstone scopeKey when entity is removed" {
+            val id = UUID.randomUUID()
+            val p = prompt(id = id).copy(metadata = EntityMetadata(id = id, removed = true))
+
+            val node = PromptNode.fromDomain(p, objectMapper)
+
+            node.scopeKey shouldBe "tombstone:$id"
+        }
+
         "toDomain maps id, namespaceId, name, description from node" {
             val id = UUID.randomUUID()
             val nsId = UUID.randomUUID()
@@ -151,6 +181,7 @@ class PromptNodeSpec : StringSpec() {
                 name = "Greeting",
                 description = "A greeting",
                 contentJson = objectMapper.writeValueAsString(listOf("Hi {{name}}")),
+                scopeKey = "$nsId:Greeting",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -167,6 +198,7 @@ class PromptNodeSpec : StringSpec() {
                 namespaceId = null,
                 name = "Platform",
                 contentJson = objectMapper.writeValueAsString(listOf("Platform prompt")),
+                scopeKey = "_:Platform",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -180,6 +212,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(content),
+                scopeKey = "_:Test",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -193,6 +226,7 @@ class PromptNodeSpec : StringSpec() {
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
                 parametersJson = null,
+                scopeKey = "_:Test",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -209,6 +243,7 @@ class PromptNodeSpec : StringSpec() {
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hi {{name}}")),
                 parametersJson = objectMapper.writeValueAsString(params),
+                scopeKey = "_:Test",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -224,6 +259,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
+                scopeKey = "tombstone:test",
                 removed = true,
             )
 
@@ -237,6 +273,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
+                scopeKey = "_:Test",
                 removed = null,
             )
 
@@ -250,6 +287,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
+                scopeKey = "_:Test",
                 version = 5L,
             )
 

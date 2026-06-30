@@ -140,6 +140,11 @@
         <button class="prompt-form__add-btn" type="button" (click)="addParameter()">+ Add parameter</button>
       </fieldset>
 
+      <!-- Error message -->
+      @if (errorMessage()) {
+        <p class="prompt-form__error">{{ errorMessage() }}</p>
+      }
+
       <!-- Actions -->
       <div class="prompt-form__actions">
         <button

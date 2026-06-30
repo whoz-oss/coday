@@ -43,6 +43,7 @@ data class PromptNode(
     val description: String? = null,
     val contentJson: String,
     val parametersJson: String? = null,
+    val scopeKey: String,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
@@ -75,6 +76,19 @@ data class PromptNode(
         private val CONTENT_TYPE = object : TypeReference<List<String>>() {}
         private val PARAMETERS_TYPE = object : TypeReference<List<PromptParameter>>() {}
 
+        /**
+         * Compute the active scope key for a prompt.
+         * Format: `<namespaceId|_>:<name>` — uses `_` sentinel for null namespaceId (platform).
+         */
+        fun computeScopeKey(namespaceId: UUID?, name: String): String =
+            (namespaceId?.toString() ?: "_") + ":" + name
+
+        /**
+         * Compute a tombstone scope key that frees the unique slot on soft-delete.
+         * Format: `tombstone:<entityId>` — unique by construction.
+         */
+        fun tombstoneScopeKey(id: String): String = "tombstone:$id"
+
         fun fromDomain(
             prompt: Prompt,
             objectMapper: ObjectMapper,
@@ -86,6 +100,7 @@ data class PromptNode(
                 description = prompt.description,
                 contentJson = objectMapper.writeValueAsString(prompt.content),
                 parametersJson = prompt.parameters.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
+                scopeKey = if (prompt.metadata.removed) tombstoneScopeKey(prompt.id.toString()) else computeScopeKey(prompt.namespaceId, prompt.name),
                 version = prompt.metadata.version,
                 created = prompt.metadata.created,
                 createdBy = prompt.metadata.createdBy,
