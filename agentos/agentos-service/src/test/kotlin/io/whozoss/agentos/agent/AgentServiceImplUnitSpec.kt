@@ -248,6 +248,89 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Platform-level model and provider resolution
+        //
+        // A platform-level AiModel (namespaceId=null) backed by a platform-level
+        // AiProvider (namespaceId=null, userId=null) must be usable from any namespace.
+        // AgentServiceImpl.applyOverlaysToModel loads the provider via getById; when
+        // userId is absent in the context it bypasses reconciliation and uses the
+        // provider directly — so a platform provider must work unchanged.
+        // -------------------------------------------------------------------------
+
+        "findAgentByName resolves agent when model and provider are platform-level (namespaceId=null)" {
+            val platformProviderId = UUID.randomUUID()
+            val platformModel = AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                aiProviderId = platformProviderId,
+                namespaceId = null,   // platform-level: inherited from platform AiProvider
+                apiModelName = "claude-sonnet-4-5",
+                alias = "default",
+                priority = 0,
+            )
+            val platformProvider = AiProvider(
+                metadata = EntityMetadata(id = platformProviderId),
+                namespaceId = null,   // platform-level
+                userId = null,
+                name = "anthropic-platform",
+                apiType = AiApiType.Anthropic,
+                apiKey = "sk-platform-key",
+            )
+            val config = agentConfig(name = "my-agent", modelName = "default")
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "default") } returns platformModel
+            every { aiProviderService.getById(platformProviderId) } returns platformProvider
+            every { chatClientProvider.getChatClient(platformModel, platformProvider) } returns chatClient
+
+            val agent = agentService.findAgentByName("my-agent", context)
+
+            agent.name shouldBe "my-agent"
+            verify(exactly = 1) { chatClientProvider.getChatClient(platformModel, platformProvider) }
+        }
+
+        "findAgentByName uses platform provider via reconciliation when userId is set" {
+            // When a userId is present, applyOverlaysToModel calls the reconciliation service.
+            // A platform provider (namespaceId=null) must survive reconciliation: the
+            // ConfigMergeService now includes the platform layer (null, null, name) as the
+            // lowest tier, so it is returned even when no namespace/user layers exist.
+            val userId = UUID.randomUUID()
+            val platformProviderId = UUID.randomUUID()
+            val platformModel = AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                aiProviderId = platformProviderId,
+                namespaceId = null,
+                apiModelName = "claude-sonnet-4-5",
+                alias = "default",
+                priority = 0,
+            )
+            val platformProvider = AiProvider(
+                metadata = EntityMetadata(id = platformProviderId),
+                namespaceId = null, userId = null,
+                name = "anthropic-platform",
+                apiType = AiApiType.Anthropic,
+                apiKey = "sk-platform-key",
+            )
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val config = agentConfig(name = "my-agent", modelName = "default")
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "default") } returns platformModel
+            every { aiProviderService.getById(platformProviderId) } returns platformProvider
+            // Reconciliation returns the platform provider unchanged (no user/ns overlay).
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-platform") } returns platformProvider
+            every { chatClientProvider.getChatClient(platformModel, platformProvider) } returns chatClient
+            every { userService.findById(userId) } returns null
+
+            val agent = agentService.findAgentByName("my-agent", contextWithUser)
+
+            agent.name shouldBe "my-agent"
+            verify(exactly = 1) { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-platform") }
+            verify(exactly = 1) { chatClientProvider.getChatClient(platformModel, platformProvider) }
+        }
+
+        // -------------------------------------------------------------------------
         // Namespace context injection into instructions
         // -------------------------------------------------------------------------
 

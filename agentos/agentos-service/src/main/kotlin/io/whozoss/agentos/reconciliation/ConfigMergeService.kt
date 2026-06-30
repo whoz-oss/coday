@@ -59,7 +59,8 @@ interface MergeStrategy<T : Entity> {
  *
  * | Layer                | Precedence | Lookup triple                |
  * |----------------------|-----------|-------------------------------|
- * | Namespace shared     | lowest    | `(namespaceId, null,    name)` |
+ * | Platform             | lowest    | `(null,        null,    name)` |
+ * | Namespace shared     | low       | `(namespaceId, null,    name)` |
  * | User-global          | middle    | `(null,        userId,  name)` |
  * | User × namespace     | highest   | `(namespaceId, userId,  name)` |
  *
@@ -81,20 +82,25 @@ class ConfigMergeService<T : Entity>(
 ) {
     /**
      * Resolve the entity for the given `(namespaceId, userId, name)` triple by folding
-     * the three precedence layers from lowest to highest.
+     * the four precedence layers from lowest to highest.
      *
-     * @throws ConfigNotFoundException when none of the three layers contains a row.
+     * The platform layer `(null, null, name)` is the lowest: it provides a system-wide
+     * default that any namespace- or user-scoped layer can override.
+     *
+     * @throws ConfigNotFoundException when none of the four layers contains a row.
      */
     fun resolve(
         namespaceId: UUID,
         userId: UUID,
         name: String,
     ): T {
+        val platform = lookup.findByTriple(null, null, name)
         val nsShared = lookup.findByTriple(namespaceId, null, name)
         val userGlobal = lookup.findByTriple(null, userId, name)
         val userNamespace = lookup.findByTriple(namespaceId, userId, name)
 
-        val afterUserGlobal = foldLayer(nsShared, userGlobal)
+        val afterNsShared = foldLayer(platform, nsShared)
+        val afterUserGlobal = foldLayer(afterNsShared, userGlobal)
         val afterUserNamespace = foldLayer(afterUserGlobal, userNamespace)
 
         return afterUserNamespace

@@ -92,7 +92,11 @@ class AiModelServiceImpl(
         namespaceId: UUID,
         name: String,
     ): AiModel? {
-        val candidates = repository.findByNamespaceId(namespaceId)
+        // Platform-level models (namespaceId=null) are included as the lowest-priority
+        // candidates so that a platform-wide default model is visible from any namespace.
+        // Namespace-scoped models always win over platform ones when priority is equal
+        // because they appear first in the list and maxByOrNull returns the first maximum.
+        val candidates = repository.findByNamespaceId(namespaceId) + repository.findPlatformLevel()
         return candidates
             .filter { it.alias.equals(name, ignoreCase = true) }
             .maxByOrNull { it.priority }

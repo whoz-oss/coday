@@ -30,7 +30,6 @@ class AiProviderServiceImpl(
     private val repository: AiProviderRepository,
 ) : AiProviderService {
     override fun create(entity: AiProvider): AiProvider {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
         }
@@ -39,7 +38,6 @@ class AiProviderServiceImpl(
     }
 
     override fun update(entity: AiProvider): AiProvider {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -49,7 +47,10 @@ class AiProviderServiceImpl(
         return saveOrConflict(entity)
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiProvider> = repository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<AiProvider> = repository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<AiProvider> = repository.findByParent(parentId)
 
@@ -75,39 +76,38 @@ class AiProviderServiceImpl(
         callerId: UUID,
         userRequested: Boolean,
         canReadNamespace: (UUID) -> Boolean,
-    ): List<AiProvider> = when {
-        // Platform level: namespaceId=none without userId — open to all authenticated users
-        namespaceIsNone && !userRequested -> findPlatformLevel()
-
-        // NS-shared layer of a specific namespace (no userId param) : check READ permission
-        namespaceId != null && !userRequested -> {
-            if (!canReadNamespace(namespaceId)) emptyList()
-            else findByNamespaceId(namespaceId).filter { it.userId == null }
-        }
-
-        // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
-        userRequested -> {
-            val nsFilter: (UUID?) -> Boolean = when {
-                namespaceIsNone -> { nsId -> nsId == null }
-                namespaceId != null -> { nsId -> nsId == namespaceId }
-                else -> { _ -> true }
+    ): List<AiProvider> =
+        when {
+            // Platform level: namespaceId=none without userId — open to all authenticated users
+            namespaceIsNone && !userRequested -> {
+                findPlatformLevel()
             }
-            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+
+            // NS-shared layer of a specific namespace (no userId param) : check READ permission
+            namespaceId != null && !userRequested -> {
+                if (!canReadNamespace(namespaceId)) {
+                    emptyList()
+                } else {
+                    findByNamespaceId(namespaceId).filter { it.userId == null }
+                }
+            }
+
+            // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
+            userRequested -> {
+                val nsFilter: (UUID?) -> Boolean =
+                    when {
+                        namespaceIsNone -> { nsId -> nsId == null }
+                        namespaceId != null -> { nsId -> nsId == namespaceId }
+                        else -> { _ -> true }
+                    }
+                findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+            }
+
+            // No filter at all : surface the caller's own overlays
+            else -> {
+                findByUserId(callerId)
+            }
         }
-
-        // No filter at all : surface the caller's own overlays
-        else -> findByUserId(callerId)
-    }
-
-    /**
-     * Platform-level entities (namespaceId=null AND userId=null) are allowed — they represent
-     * environment-wide defaults managed by super-admins. The controller enforces the
-     * super-admin permission check before reaching the service layer.
-     */
-    private fun requireScope(entity: AiProvider) {
-        // All scopes are valid: namespace-shared, user-global, user×namespace, and platform (both null).
-        // No validation needed here; the controller enforces per-scope authorization.
-    }
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
@@ -139,13 +139,15 @@ class AiProviderServiceImpl(
             )
 
         if (namespaceId != null) {
-            repository.findByTriple(namespaceId, null, name)
+            repository
+                .findByTriple(namespaceId, null, name)
                 ?.takeIf { it.metadata.id != entityId && it.apiType != type }
                 ?.let(::reject)
         }
 
         if (userId != null) {
-            repository.findByTriple(null, userId, name)
+            repository
+                .findByTriple(null, userId, name)
                 ?.takeIf { it.metadata.id != entityId && it.apiType != type }
                 ?.let(::reject)
 
@@ -157,8 +159,7 @@ class AiProviderServiceImpl(
                             it.namespaceId != null &&
                             it.name == name &&
                             it.apiType != type
-                    }
-                    ?.let(::reject)
+                    }?.let(::reject)
             }
         }
     }
