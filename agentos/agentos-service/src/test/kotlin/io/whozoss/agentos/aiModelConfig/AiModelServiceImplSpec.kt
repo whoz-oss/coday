@@ -394,13 +394,15 @@ class AiModelServiceImplSpec : StringSpec() {
                 ),
             )
 
-            // Namespace model listed first in candidates, maxByOrNull returns first on tie.
             val found = service.findAiModel(targetNs, "default")
             found.shouldNotBeNull()
             found.apiModelName shouldBe "claude-sonnet-4-5"
         }
 
-        "findModelConfig platform model with higher priority wins over namespace model" {
+        "findModelConfig namespace-scoped model wins over platform model even when platform has higher priority" {
+            // Scope always wins over priority: a more-specific namespace model at priority=0
+            // must beat a platform model at priority=100. Priority only competes within the
+            // same scope level.
             val mixedProviderService = mockk<AiProviderService>()
             val platformProviderId = UUID.randomUUID()
             val nsProviderId = UUID.randomUUID()
@@ -437,7 +439,47 @@ class AiModelServiceImplSpec : StringSpec() {
 
             val found = service.findAiModel(targetNs, "default")
             found.shouldNotBeNull()
-            found.apiModelName shouldBe "claude-opus-4-6"
+            found.apiModelName shouldBe "claude-haiku-4-5"
+        }
+
+        "findModelConfig priority breaks ties between platform-level models from different providers" {
+            // Two platform-level providers can each expose the same alias — priority decides which wins.
+            val platformProviderService = mockk<AiProviderService>()
+            val platformProviderA = UUID.randomUUID()
+            val platformProviderB = UUID.randomUUID()
+            every { platformProviderService.getById(platformProviderA) } answers {
+                AiProvider(
+                    metadata = EntityMetadata(id = platformProviderA),
+                    namespaceId = null, userId = null,
+                    name = "openai-platform", apiType = AiApiType.Anthropic,
+                )
+            }
+            every { platformProviderService.getById(platformProviderB) } answers {
+                AiProvider(
+                    metadata = EntityMetadata(id = platformProviderB),
+                    namespaceId = null, userId = null,
+                    name = "anthropic-platform", apiType = AiApiType.Anthropic,
+                )
+            }
+            val service = AiModelServiceImpl(InMemoryAiModelRepository(), platformProviderService)
+            service.create(
+                AiModel(
+                    metadata = EntityMetadata(), aiProviderId = platformProviderA,
+                    namespaceId = null, apiModelName = "gpt-4o",
+                    alias = "default", priority = 0,
+                ),
+            )
+            service.create(
+                AiModel(
+                    metadata = EntityMetadata(), aiProviderId = platformProviderB,
+                    namespaceId = null, apiModelName = "claude-sonnet-4-5",
+                    alias = "default", priority = 10,
+                ),
+            )
+
+            val found = service.findAiModel(UUID.randomUUID(), "default")
+            found.shouldNotBeNull()
+            found.apiModelName shouldBe "claude-sonnet-4-5"
         }
 
         "findModelConfig returns null when neither namespace nor platform has a matching alias" {

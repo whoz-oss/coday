@@ -110,11 +110,16 @@ class AiModelServiceImpl(
 
     companion object : KLogging() {
         /**
-         * Comparator for model resolution: primary key is [AiModel.priority] (higher wins),
-         * secondary key is scope rank (namespace-scoped > platform) to break ties deterministically.
-         * A namespace-scoped model (namespaceId != null) has rank 1; platform (namespaceId == null) has rank 0.
+         * Comparator for model resolution: primary key is scope rank (namespace-scoped > platform),
+         * secondary key is [AiModel.priority] (higher wins) to break ties within the same scope.
+         *
+         * Scope always wins over priority: a namespace-scoped model at priority=0 beats a
+         * platform model at priority=100 because it is more specific. Priority only competes
+         * among models at the same scope level.
+         *
+         * Scope ranks: namespace-scoped (namespaceId != null) = 1, platform = 0.
          */
         private val MODEL_COMPARATOR: Comparator<AiModel> =
-            compareBy({ it.priority }, { if (it.namespaceId != null) 1 else 0 })
+            compareBy({ if (it.namespaceId != null) 1 else 0 }, { it.priority })
     }
 }
