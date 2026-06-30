@@ -1,3 +1,15 @@
+## 0.190.2 (2026-06-30)
+
+### 🩹 Fixes
+
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([4cb204c6](https://github.com/whoz-oss/coday/commit/4cb204c6))
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([#1071](https://github.com/whoz-oss/coday/pull/1071))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.190.1 (2026-06-29)
 
 ### 🩹 Fixes
