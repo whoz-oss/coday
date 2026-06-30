@@ -1,3 +1,14 @@
+## 0.192.0 (2026-06-30)
+
+### 🚀 Features
+
+- #1009 add dark mode to AgentOS UI ([#1066](https://github.com/whoz-oss/coday/pull/1066), [#1009](https://github.com/whoz-oss/coday/issues/1009))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.191.0 (2026-06-30)
 
 ### 🚀 Features
