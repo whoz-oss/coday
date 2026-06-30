@@ -1,3 +1,15 @@
+## 0.190.3 (2026-06-30)
+
+### 🩹 Fixes
+
+- #1067 switch Anthropic completions to streaming for large token limits ([#1067](https://github.com/whoz-oss/coday/issues/1067))
+- #1067 switch Anthropic completions to streaming for large token … ([#1072](https://github.com/whoz-oss/coday/pull/1072), [#1067](https://github.com/whoz-oss/coday/issues/1067))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.190.2 (2026-06-30)
 
 ### 🩹 Fixes
