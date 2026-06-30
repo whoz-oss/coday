@@ -1847,6 +1847,12 @@ paths:
         schema:
           type: boolean
           default: false
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -1854,6 +1860,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentDefinition"
+  /api/agent-configs/platform:
+    get:
+      tags:
+      - agent-config-controller
+      operationId: listPlatformAgentsAgentConfig
+      parameters:
+      - name: withDisabled
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
   /api/agent-configs/by-parentId/{parentId}:
     get:
       tags:
@@ -2107,7 +2134,6 @@ components:
       required:
       - createdOn
       - name
-      - namespaceId
       - updatedOn
     GroupsByExternalIdsRequest:
       type: object

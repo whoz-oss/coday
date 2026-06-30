@@ -38,6 +38,7 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired lateinit var mockMvc: MockMvc
+
     @Autowired lateinit var agentConfigService: AgentConfigService
 
     private val namespaceId = UUID.randomUUID()
@@ -48,63 +49,60 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         // POST /api/agent-configs — create
         // -------------------------------------------------------------------------
 
-        "POST /api/agent-configs with missing namespaceId returns 400" {
-            mockMvc.perform(
-                post("/api/agent-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "name": "my-agent" }""")
-            ).andExpect(status().isBadRequest)
-        }
-
         "POST /api/agent-configs with blank name returns 400" {
-            mockMvc.perform(
-                post("/api/agent-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "" }""")
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "POST /api/agent-configs with valid minimal payload returns 201" {
-            mockMvc.perform(
-                post("/api/agent-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "my-agent" }""")
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "my-agent" }"""),
+                ).andExpect(status().isCreated)
         }
 
         "POST /api/agent-configs with all fields returns 201" {
-            mockMvc.perform(
-                post("/api/agent-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {
-                            "namespaceId": "$namespaceId",
-                            "name": "full-agent",
-                            "description": "A fully configured agent",
-                            "instructions": "You are a helpful assistant.",
-                            "modelName": "BIG"
-                        }
-                    """.trimIndent())
-            ).andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                                "namespaceId": "$namespaceId",
+                                "name": "full-agent",
+                                "description": "A fully configured agent",
+                                "instructions": "You are a helpful assistant.",
+                                "modelName": "BIG"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isCreated)
         }
 
         "POST /api/agent-configs without advancedExecution defaults to false" {
-            mockMvc.perform(
-                post("/api/agent-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "no-advanced" }""")
-            )
-                .andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "no-advanced" }"""),
+                ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.advancedExecution").doesNotExist())
         }
 
         "POST /api/agent-configs with advancedExecution=true returns true" {
-            mockMvc.perform(
-                post("/api/agent-configs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "advanced-agent", "advancedExecution": true }""")
-            )
-                .andExpect(status().isCreated)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "advanced-agent", "advancedExecution": true }"""),
+                ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.advancedExecution").value(true))
         }
 
@@ -115,34 +113,82 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         "PUT /api/agent-configs/{id} with blank name returns 400" {
             val id = UUID.randomUUID()
 
-            mockMvc.perform(
-                put("/api/agent-configs/$id")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "$id", "namespaceId": "$namespaceId", "name": "" }""")
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    put("/api/agent-configs/$id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$id", "namespaceId": "$namespaceId", "name": "" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "PUT /api/agent-configs/{id} with valid payload returns 200" {
-            val created = agentConfigService.create(
+            val created =
+                agentConfigService.create(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespaceId,
+                        name = "initial-agent",
+                    ),
+                )
+
+            mockMvc
+                .perform(
+                    put("/api/agent-configs/${created.id}")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """
+                            {
+                                "id": "${created.id}",
+                                "namespaceId": "$namespaceId",
+                                "name": "updated-agent",
+                                "modelName": "SMALL"
+                            }
+                            """.trimIndent(),
+                        ),
+                ).andExpect(status().isOk)
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/agent-configs/platform
+        // -------------------------------------------------------------------------
+
+        "GET /api/agent-configs/platform returns only enabled platform agents by default" {
+            agentConfigService.create(
                 AgentConfig(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "initial-agent",
-                )
+                    namespaceId = null,
+                    name = "enabled-platform",
+                    enabled = true,
+                ),
+            )
+            agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    name = "disabled-platform",
+                    enabled = false,
+                ),
             )
 
-            mockMvc.perform(
-                put("/api/agent-configs/${created.id}")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {
-                            "id": "${created.id}",
-                            "namespaceId": "$namespaceId",
-                            "name": "updated-agent",
-                            "modelName": "SMALL"
-                        }
-                    """.trimIndent())
-            ).andExpect(status().isOk)
+            mockMvc
+                .perform(get("/api/agent-configs/platform"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(1)))
+                .andExpect(jsonPath("$[0].name").value("enabled-platform"))
+        }
+
+        "GET /api/agent-configs/platform?withDisabled=true returns disabled platform agents" {
+            // The DB is shared across tests in this spec — do not assert on total count.
+            // Instead verify that a disabled agent created here is present in the response.
+            val disabledName = "platform-disabled-${UUID.randomUUID()}"
+            agentConfigService.create(
+                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = null, name = disabledName, enabled = false),
+            )
+
+            mockMvc
+                .perform(get("/api/agent-configs/platform").param("withDisabled", "true"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$disabledName')]", org.hamcrest.Matchers.hasSize<Any>(1)))
         }
 
         // -------------------------------------------------------------------------
@@ -158,9 +204,14 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                 AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = listNamespaceId, name = "agent-b"),
             )
 
-            mockMvc.perform(get("/api/agent-configs/by-parentId/$listNamespaceId"))
+            // The response includes namespace agents UNION platform agents — assert on presence
+            // of the two namespace-scoped agents rather than total count, since platform agents
+            // created by other tests in this spec also appear in the result.
+            mockMvc
+                .perform(get("/api/agent-configs/by-parentId/$listNamespaceId"))
                 .andExpect(status().isOk)
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+                .andExpect(jsonPath("$[?(@.name == 'agent-a')]", org.hamcrest.Matchers.hasSize<Any>(1)))
+                .andExpect(jsonPath("$[?(@.name == 'agent-b')]", org.hamcrest.Matchers.hasSize<Any>(1)))
         }
 
         // -------------------------------------------------------------------------
@@ -168,16 +219,18 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "GET /api/agent-configs/{id} returns 200 with payload for super-admin caller" {
-            val created = agentConfigService.create(
-                AgentConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "fetched-agent",
-                    description = "loaded by id",
-                ),
-            )
+            val created =
+                agentConfigService.create(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespaceId,
+                        name = "fetched-agent",
+                        description = "loaded by id",
+                    ),
+                )
 
-            mockMvc.perform(get("/api/agent-configs/${created.id}"))
+            mockMvc
+                .perform(get("/api/agent-configs/${created.id}"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.id").value(created.id.toString()))
                 .andExpect(jsonPath("$.name").value("fetched-agent"))
@@ -189,15 +242,17 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "DELETE /api/agent-configs/{id} returns 204 when entity exists" {
-            val created = agentConfigService.create(
-                AgentConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "to-be-deleted",
-                ),
-            )
+            val created =
+                agentConfigService.create(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespaceId,
+                        name = "to-be-deleted",
+                    ),
+                )
 
-            mockMvc.perform(delete("/api/agent-configs/${created.id}"))
+            mockMvc
+                .perform(delete("/api/agent-configs/${created.id}"))
                 .andExpect(status().isNoContent)
         }
 
@@ -212,29 +267,31 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
             // for admins and returns all entities matching the requested ids.
             // Subset-filtering for non-admins is covered by the UnitSpec
             // (AgentConfigControllerUnitSpec) which mocks PermissionService directly.
-            val a = agentConfigService.create(
-                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespaceId, name = "byid-a"),
-            )
-            val b = agentConfigService.create(
-                AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespaceId, name = "byid-b"),
-            )
+            val a =
+                agentConfigService.create(
+                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespaceId, name = "byid-a"),
+                )
+            val b =
+                agentConfigService.create(
+                    AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespaceId, name = "byid-b"),
+                )
 
-            mockMvc.perform(
-                post("/api/agent-configs/by-ids")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "ids": ["${a.id}", "${b.id}"] }"""),
-            )
-                .andExpect(status().isOk)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs/by-ids")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "ids": ["${a.id}", "${b.id}"] }"""),
+                ).andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
         }
 
         "POST /api/agent-configs/by-ids with empty array returns 200 with empty list" {
-            mockMvc.perform(
-                post("/api/agent-configs/by-ids")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "ids": [] }"""),
-            )
-                .andExpect(status().isOk)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs/by-ids")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "ids": [] }"""),
+                ).andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
         }
 
@@ -243,27 +300,30 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "POST /api/agent-configs/search with blank namespaceId returns 400" {
-            mockMvc.perform(
-                post("/api/agent-configs/search")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "", "userExternalId": "alice@example.com" }""")
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "", "userExternalId": "alice@example.com" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "POST /api/agent-configs/search with blank userExternalId returns 400" {
-            mockMvc.perform(
-                post("/api/agent-configs/search")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "242c4c1b-a41f-4a90-9613-e13b2a51c377", "userExternalId": "" }""")
-            ).andExpect(status().isBadRequest)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "242c4c1b-a41f-4a90-9613-e13b2a51c377", "userExternalId": "" }"""),
+                ).andExpect(status().isBadRequest)
         }
 
         "POST /api/agent-configs/search with unknown user returns 404" {
-            mockMvc.perform(
-                post("/api/agent-configs/search")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "242c4c1b-a41f-4a90-9613-e13b2a51c377", "userExternalId": "ghost@example.com" }""")
-            ).andExpect(status().isNotFound)
+            mockMvc
+                .perform(
+                    post("/api/agent-configs/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "242c4c1b-a41f-4a90-9613-e13b2a51c377", "userExternalId": "ghost@example.com" }"""),
+                ).andExpect(status().isNotFound)
         }
     }
 }

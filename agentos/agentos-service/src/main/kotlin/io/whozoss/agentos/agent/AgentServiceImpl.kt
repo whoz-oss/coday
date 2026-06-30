@@ -46,15 +46,56 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
 ) : AgentService {
+    /**
+     * Resolves an agent by name for a given [context].
+     *
+     * **Matching semantics differ by path:**
+     * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
+     *   client-side with `.contains()` (case-insensitive substring). This is intentional for
+     *   interactive use cases where a partial name typed by a user should resolve loosely.
+     * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
+     *   a case-insensitive exact match, then falls back to platform agents.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match.
+     *
+     * The three paths serve different call sites with different precision requirements.
+     * If exact-match semantics are needed on the userId path, pass the full name and the
+     * single-result check below will still enforce uniqueness.
+     */
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
+        require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
-            agentConfigService.findByName(context.namespaceId, namePart)
-                ?: throw IllegalArgumentException(
-                    "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
-                )
+            if (context.userId != null) {
+                val namePartLowercase = namePart.lowercase()
+                val agentConfigs =
+                    agentConfigService
+                        .findDeployedByNamespaceIdAndUserIdAndName(
+                            namespaceId = context.namespaceId,
+                            userId = context.userId,
+                            agentName = null,
+                        ).filter { it.name.lowercase().contains(namePartLowercase) }
+                when {
+                    agentConfigs.isEmpty() -> {
+                        null
+                    }
+
+                    agentConfigs.size > 1 -> {
+                        throw IllegalArgumentException(
+                            "No unique AgentConfig found for name '$namePart', found ${agentConfigs.size} in namespace ${context.namespaceId}.",
+                        )
+                    }
+
+                    else -> {
+                        agentConfigs.first()
+                    }
+                }
+            } else {
+                agentConfigService.findByName(context.namespaceId, namePart)
+            } ?: throw IllegalArgumentException(
+                "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+            )
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
         val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
         return instantiateAgent(definition, context, resolvedUser)
@@ -81,12 +122,12 @@ class AgentServiceImpl(
 
     override fun resolveAgentName(
         namePart: String,
-        namespaceId: UUID,
+        namespaceId: UUID?,
         userId: UUID?,
     ): String? =
         if (userId != null) {
             agentConfigService
-                .findAvailableByNamespaceIdAndUserId(
+                .findDeployedByNamespaceIdAndUserIdAndName(
                     namespaceId = namespaceId,
                     userId = userId,
                     agentName = namePart,

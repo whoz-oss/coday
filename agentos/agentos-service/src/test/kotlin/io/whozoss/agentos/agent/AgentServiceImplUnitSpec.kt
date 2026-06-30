@@ -661,7 +661,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -697,7 +697,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -750,7 +750,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns provider
@@ -838,7 +838,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val userId = UUID.randomUUID()
             val config = agentConfig(name = "my-agent")
             every {
-                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "my-agent")
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent")
             } returns listOf(config)
 
             agentService.resolveAgentName("my-agent", namespaceId, userId) shouldBe "my-agent"
@@ -849,7 +849,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         "resolveAgentName with userId returns null when agent not accessible to user" {
             val userId = UUID.randomUUID()
             every {
-                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "restricted")
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "restricted")
             } returns emptyList()
 
             agentService.resolveAgentName("restricted", namespaceId, userId) shouldBe null

@@ -117,7 +117,9 @@ class NamespaceServiceImpl(
             .takeIf { it.isNotEmpty() }
             ?.let { ids ->
                 val found = agentConfigRepository.findByIds(ids)
-                val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
+                // An agent is valid if it belongs to the target namespace OR is a platform agent
+                // (namespaceId = null), which can be deployed on any namespace.
+                val validIds = found.filter { it.namespaceId == null || it.namespaceId == namespaceId }.map { it.id }.toSet()
                 val invalidIds = ids.toSet() - validIds
                 if (invalidIds.isNotEmpty()) {
                     throw UnprocessableEntityException("Agent configs not found in namespace $namespaceId: $invalidIds")
