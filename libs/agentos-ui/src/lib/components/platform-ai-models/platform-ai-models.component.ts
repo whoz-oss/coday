@@ -84,9 +84,7 @@ export class PlatformAiModelsComponent {
   }
 
   protected openCreateForm(): void {
-    // namespaceId='none' is the sentinel for namespaceId IS NULL (platform scope).
-    // The form's navigateBack() will return to /agentos/none/ai-models.
-    this.router.navigate(['/agentos', 'none', 'ai-models', 'new'])
+    this.router.navigate(['/agentos', 'admin', 'ai-models', 'new'])
   }
 
   protected deleteModel(model: AiModel): void {
@@ -94,6 +92,11 @@ export class PlatformAiModelsComponent {
       .deleteAiModel(model.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
+  }
+
+  protected onEdit(model: AiModel): void {
+    if (!model.id) return
+    this.router.navigate(['/agentos', 'admin', 'ai-models', model.id, 'edit'])
   }
 
   protected resolveModel(id: string): AiModel | null {

@@ -101,6 +101,18 @@ export const AGENTOS_ROUTES: Route[] = [
           },
           // --- Admin: Platform AI Providers ---
           {
+            path: 'admin/ai-providers/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
+          },
+          {
+            path: 'admin/ai-providers/:aiProviderId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
+          },
+          {
             path: 'admin/ai-providers',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
@@ -109,6 +121,18 @@ export const AGENTOS_ROUTES: Route[] = [
               ),
           },
           // --- Admin: Platform AI Models ---
+          {
+            path: 'admin/ai-models/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+          },
+          {
+            path: 'admin/ai-models/:modelId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+          },
           {
             path: 'admin/ai-models',
             canActivate: [agentosReadyGuard],

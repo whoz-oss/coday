@@ -62,18 +62,12 @@ export class PlatformAiProvidersComponent {
   }
 
   protected openCreateForm(): void {
-    // namespaceId='none' is the sentinel for namespaceId IS NULL (platform scope).
-    // The form's navigateBack() will return to /agentos/none/ai-providers which
-    // resolves to AiProvidersAllScopesComponent with the platform scope filter.
-    this.router.navigate(['/agentos', 'none', 'ai-providers', 'new'], {
-      queryParams: { scope: 'namespace' },
-    })
+    this.router.navigate(['/agentos', 'admin', 'ai-providers', 'new'])
   }
 
   protected onEdit(provider: AiProvider): void {
     if (!provider.id) return
-    // Same sentinel pattern: the form loads by id and derives scope from the resource.
-    this.router.navigate(['/agentos', 'none', 'ai-providers', provider.id, 'edit'])
+    this.router.navigate(['/agentos', 'admin', 'ai-providers', provider.id, 'edit'])
   }
 
   protected onDelete(provider: AiProvider): void {
