@@ -3,10 +3,8 @@ package io.whozoss.agentos.prompt
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.entity.GetByIdsRequest
-import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -25,13 +23,14 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
  * REST API for [Prompt] entities at /api/prompts.
+ *
+ * Listing uses the standard `by-parentId` pattern with namespace READ permission.
  *
  * Scope dispatch on POST is inferred from body.namespaceId:
  * - null     -> platform scope (Super Admin only)
@@ -41,10 +40,6 @@ import java.util.UUID
  *
  * Mass-assignment guard on PUT: [namespaceId] is immutable post-create.
  * Mutable fields: name, description, content, parameters.
- *
- * GET /api/prompts lists by scope:
- * - No params           -> platform prompts (authenticated only)
- * - ?namespaceId=<uuid> -> namespace prompts (READ on namespace required; empty list if denied)
  */
 @RestController
 @RequestMapping(
@@ -108,6 +103,10 @@ class PromptController(
             defaultValue = defaultValue,
         )
 
+    // -------------------------------------------------------------------------
+    // Read endpoints
+    // -------------------------------------------------------------------------
+
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Prompt', 'READ')")
     @HideOnAccessDenied
@@ -125,40 +124,21 @@ class PromptController(
         @RequestBody request: GetByIdsRequest,
     ): List<PromptResource> = super.getByIds(request)
 
-    @Operation(
-        summary = "List Prompts by scope",
-        description =
-            "Scope is inferred from the query params:\n\n" +
-                "| query                 | mode      | required permission                            |\n" +
-                "|-----------------------|-----------|------------------------------------------------|\n" +
-                "| (no params)           | platform  | authenticated                                  |\n" +
-                "| ?namespaceId=<uuid>   | namespace | READ on the namespace (empty list if missing)  |",
-    )
-    @GetMapping
-    @PreAuthorize("isAuthenticated()")
-    fun list(
-        @RequestParam(required = false) namespaceId: String?,
-    ): List<PromptResource> {
-        if (namespaceId == null) {
-            return promptService.findPlatform().map { toResource(it) }
-        }
+    /**
+     * List all prompts belonging to a namespace.
+     *
+     * Uses the standard `by-parentId` pattern with READ permission on the namespace.
+     * Platform-level prompts (namespaceId == null) are not returned by this endpoint.
+     */
+    @GetMapping("/by-parentId/{parentId}")
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    override fun listByParent(
+        @PathVariable parentId: UUID,
+    ): List<PromptResource> = promptService.findByNamespaceId(parentId).map { toResource(it) }
 
-        val resolvedNs =
-            runCatching { UUID.fromString(namespaceId) }
-                .getOrElse { throw BadRequestException("Invalid namespaceId: '$namespaceId'") }
-
-        val currentUser = userService.getCurrentUser()
-        val canRead =
-            permissionService.hasPermission(
-                userId = currentUser.id.toString(),
-                entityType = EntityType.NAMESPACE,
-                entityId = resolvedNs.toString(),
-                action = Action.READ,
-            )
-        if (!canRead) return emptyList()
-
-        return promptService.findByNamespaceId(resolvedNs).map { toResource(it) }
-    }
+    // -------------------------------------------------------------------------
+    // Write endpoints
+    // -------------------------------------------------------------------------
 
     @Operation(
         summary = "Create a Prompt",
@@ -191,7 +171,7 @@ class PromptController(
                     userId = currentUser.id.toString(),
                     entityType = EntityType.NAMESPACE,
                     entityId = resolvedNs.toString(),
-                    action = Action.WRITE,
+                    action = io.whozoss.agentos.permissions.Action.WRITE,
                 )
             if (!granted) {
                 throw AccessDeniedException("Cannot create Prompt in namespace $resolvedNs (WRITE required)")

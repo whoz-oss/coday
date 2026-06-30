@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpContext, HttpParams } from '@angular/common/http'
+import { HttpClient, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { BASE_PATH } from '../lib/variables'
 import { Configuration } from '../lib/configuration'
@@ -43,7 +43,7 @@ export interface Prompt {
  *   GET    /api/prompts/{id}               → getById
  *   PUT    /api/prompts/{id}               → update
  *   DELETE /api/prompts/{id}               → delete (soft)
- *   GET    /api/prompts?namespaceId=<uuid>  → list by namespace
+ *   GET    /api/prompts/by-parentId/<uuid>   → list by namespace
  */
 @Injectable({
   providedIn: 'root',
@@ -59,10 +59,8 @@ export class PromptControllerService extends BaseService {
 
   /** List all prompts belonging to a namespace. */
   listByNamespacePrompt(namespaceId: string): Observable<Prompt[]> {
-    const params = new HttpParams().set('namespaceId', namespaceId)
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.get<Prompt[]>(`${basePath}/api/prompts`, {
-      params,
+    return this.httpClient.get<Prompt[]>(`${basePath}/api/prompts/by-parentId/${encodeURIComponent(namespaceId)}`, {
       headers: this.defaultHeaders,
       ...(withCredentials ? { withCredentials } : {}),
       context: new HttpContext(),

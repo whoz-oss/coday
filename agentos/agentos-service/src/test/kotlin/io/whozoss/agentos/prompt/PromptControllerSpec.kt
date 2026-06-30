@@ -10,7 +10,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -30,7 +29,7 @@ import java.util.UUID
  * exercised by the MVC integration specs. This spec covers:
  * - toResource / toDomain mapping
  * - create: scope dispatch, authorization guards, namespace existence check
- * - list: platform vs namespace scope, READ permission check
+ * - listByParent: namespace listing
  * - update: namespaceId mass-assignment guard, 404 path
  * - delete: soft-delete, platform admin guard
  * - getById / getByIds: inherited delegates
@@ -207,54 +206,26 @@ class PromptControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // list — platform scope (no params)
+    // listByParent — namespace scope
     // -------------------------------------------------------------------------
 
-    "list with no namespaceId returns platform prompts" {
-        val p1 = prompt(nsId = null, name = "Platform A")
-        val p2 = prompt(nsId = null, name = "Platform B")
-        every { service.findPlatform() } returns listOf(p1, p2)
-
-        val result = controller.list(namespaceId = null)
-
-        result shouldHaveSize 2
-        result.map { it.name } shouldBe listOf("Platform A", "Platform B")
-        verify(exactly = 1) { service.findPlatform() }
-        verify(exactly = 0) { service.findByNamespaceId(any()) }
-    }
-
-    // -------------------------------------------------------------------------
-    // list — namespace scope (?namespaceId=<uuid>)
-    // -------------------------------------------------------------------------
-
-    "list with namespaceId returns namespace prompts when caller has READ" {
+    "listByParent returns namespace prompts" {
         val p = prompt(nsId = namespaceId, name = "NS Prompt")
-        every {
-            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-        } returns true
         every { service.findByNamespaceId(namespaceId) } returns listOf(p)
 
-        val result = controller.list(namespaceId = namespaceId.toString())
+        val result = controller.listByParent(namespaceId)
 
         result shouldHaveSize 1
         result[0].name shouldBe "NS Prompt"
+        verify(exactly = 1) { service.findByNamespaceId(namespaceId) }
     }
 
-    "list with namespaceId returns empty list when caller lacks READ" {
-        every {
-            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
-        } returns false
+    "listByParent returns empty list when no prompts exist" {
+        every { service.findByNamespaceId(namespaceId) } returns emptyList()
 
-        val result = controller.list(namespaceId = namespaceId.toString())
+        val result = controller.listByParent(namespaceId)
 
         result shouldBe emptyList()
-        verify(exactly = 0) { service.findByNamespaceId(any()) }
-    }
-
-    "list with invalid namespaceId throws BadRequestException" {
-        shouldThrow<BadRequestException> {
-            controller.list(namespaceId = "not-a-uuid")
-        }
     }
 
     // -------------------------------------------------------------------------
