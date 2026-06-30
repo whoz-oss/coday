@@ -135,9 +135,9 @@ class PromptServiceImplSpec : StringSpec() {
         "create rejects prompt with duplicate parameter names" {
             val service = newService()
             val params = listOf(
-                PromptParameter(name = "name"),
-                PromptParameter(name = "language"),
-                PromptParameter(name = "name"),
+                PromptParameter(name = "name", defaultValue = ""),
+                PromptParameter(name = "language", defaultValue = "English"),
+                PromptParameter(name = "name", defaultValue = ""),
             )
 
             val ex = shouldThrow<ResponseStatusException> {
@@ -156,7 +156,7 @@ class PromptServiceImplSpec : StringSpec() {
         "create accepts prompt with unique parameter names" {
             val service = newService()
             val params = listOf(
-                PromptParameter(name = "name", description = "The name"),
+                PromptParameter(name = "name", description = "The name", defaultValue = ""),
                 PromptParameter(name = "language", defaultValue = "English"),
             )
             val saved = service.create(prompt(parameters = params))
@@ -185,8 +185,8 @@ class PromptServiceImplSpec : StringSpec() {
                 service.update(
                     saved.copy(
                         parameters = listOf(
-                            PromptParameter(name = "city"),
-                            PromptParameter(name = "city"),
+                            PromptParameter(name = "city", defaultValue = ""),
+                            PromptParameter(name = "city", defaultValue = ""),
                         ),
                     ),
                 )

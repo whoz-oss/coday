@@ -110,9 +110,17 @@ class PromptControllerSpec : StringSpec({
 
     "toResource maps all fields correctly" {
         val id = UUID.randomUUID()
-        val p = prompt(
-            id = id,
-            nsId = namespaceId,
+        val created = java.time.Instant.parse("2024-01-01T00:00:00Z")
+        val modified = java.time.Instant.parse("2024-06-01T12:00:00Z")
+        val p = Prompt(
+            metadata = EntityMetadata(
+                id = id,
+                created = created,
+                createdBy = "creator@example.com",
+                modified = modified,
+                modifiedBy = "editor@example.com",
+            ),
+            namespaceId = namespaceId,
             name = "Greeting",
             description = "A greeting prompt",
             content = listOf("Hello {{name}}", "How are you?"),
@@ -130,6 +138,10 @@ class PromptControllerSpec : StringSpec({
         result.parameters[0].name shouldBe "name"
         result.parameters[0].description shouldBe "User name"
         result.parameters[0].defaultValue shouldBe "World"
+        result.createdBy shouldBe "creator@example.com"
+        result.createdOn shouldBe created
+        result.updatedBy shouldBe "editor@example.com"
+        result.updatedOn shouldBe modified
     }
 
     "toResource maps null namespaceId for platform prompts" {
@@ -156,7 +168,7 @@ class PromptControllerSpec : StringSpec({
             name = "Summary",
             description = "Summarise input",
             content = listOf("Summarise: {{text}}"),
-            parameters = listOf(PromptParameterResource(name = "text", description = "Input text")),
+            parameters = listOf(PromptParameterResource(name = "text", description = "Input text", defaultValue = "")),
         )
 
         val result = controller.toDomain(r)
@@ -363,7 +375,7 @@ class PromptControllerSpec : StringSpec({
 
     "update allows changing name, description, content, and parameters" {
         val p = prompt()
-        val newParams = listOf(PromptParameterResource(name = "city", description = "City name"))
+        val newParams = listOf(PromptParameterResource(name = "city", description = "City name", defaultValue = ""))
         val payload = resource(
             id = p.id,
             name = "New Name",

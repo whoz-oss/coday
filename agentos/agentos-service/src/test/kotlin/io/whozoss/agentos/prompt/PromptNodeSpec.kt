@@ -92,7 +92,7 @@ class PromptNodeSpec : StringSpec() {
         "fromDomain serializes non-empty parameters list as JSON" {
             val params = listOf(
                 PromptParameter(name = "name", description = "The name", defaultValue = "World"),
-                PromptParameter(name = "language", description = null, defaultValue = null),
+                PromptParameter(name = "language", description = null, defaultValue = ""),
             )
             val p = prompt(parameters = params)
 
@@ -120,6 +120,22 @@ class PromptNodeSpec : StringSpec() {
             val node = PromptNode.fromDomain(p, objectMapper)
 
             node.removed.shouldBeNull()
+        }
+
+        "fromDomain carries version from EntityMetadata" {
+            val p = prompt().copy(metadata = EntityMetadata(version = 3L))
+
+            val node = PromptNode.fromDomain(p, objectMapper)
+
+            node.version shouldBe 3L
+        }
+
+        "fromDomain carries null version when EntityMetadata.version is null (new entity)" {
+            val p = prompt().copy(metadata = EntityMetadata(version = null))
+
+            val node = PromptNode.fromDomain(p, objectMapper)
+
+            node.version.shouldBeNull()
         }
 
         // -------------------------------------------------------------------------
@@ -187,7 +203,7 @@ class PromptNodeSpec : StringSpec() {
         "toDomain deserializes parametersJson back to PromptParameter list" {
             val params = listOf(
                 PromptParameter(name = "name", description = "User name", defaultValue = "World"),
-            )
+            ) // defaultValue is required — empty string is a valid default
             val node = PromptNode(
                 id = UUID.randomUUID().toString(),
                 name = "Test",
@@ -229,6 +245,19 @@ class PromptNodeSpec : StringSpec() {
             domain.metadata.removed shouldBe false
         }
 
+        "toDomain carries version into EntityMetadata" {
+            val node = PromptNode(
+                id = UUID.randomUUID().toString(),
+                name = "Test",
+                contentJson = objectMapper.writeValueAsString(listOf("Hello")),
+                version = 5L,
+            )
+
+            val domain = node.toDomain(objectMapper)
+
+            domain.metadata.version shouldBe 5L
+        }
+
         // -------------------------------------------------------------------------
         // Full round-trip: fromDomain -> toDomain
         // -------------------------------------------------------------------------
@@ -243,7 +272,7 @@ class PromptNodeSpec : StringSpec() {
                 description = "Summarise the input",
                 content = listOf("Summarise this: {{input}}", "Be concise."),
                 parameters = listOf(
-                    PromptParameter(name = "input", description = "Text to summarise"),
+                    PromptParameter(name = "input", description = "Text to summarise", defaultValue = ""),
                     PromptParameter(name = "style", defaultValue = "bullet points"),
                 ),
             )

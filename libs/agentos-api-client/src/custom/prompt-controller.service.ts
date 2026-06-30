@@ -12,8 +12,7 @@ import { BaseService } from '../lib/api.base.service'
 export interface PromptParameter {
   name: string
   description?: string
-  /** null means the parameter is required at execution time */
-  defaultValue?: string | null
+  defaultValue: string
 }
 
 /**

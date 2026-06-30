@@ -163,7 +163,10 @@ export class PromptFormComponent implements OnInit {
         validators: [Validators.required, Validators.minLength(1)],
       }),
       description: new FormControl<string | null>(param?.description ?? null),
-      defaultValue: new FormControl<string | null>(param?.defaultValue ?? null),
+      defaultValue: new FormControl<string>(param?.defaultValue ?? '', {
+        nonNullable: true,
+        validators: [Validators.required],
+      }),
     })
   }
 
@@ -193,7 +196,7 @@ export class PromptFormComponent implements OnInit {
       parameters: this.parametersArray.controls.map((group) => ({
         name: group.controls.name.value.trim(),
         description: group.controls.description.value?.trim() || undefined,
-        defaultValue: group.controls.defaultValue.value ?? null,
+        defaultValue: group.controls.defaultValue.value.trim(),
       })),
     }
 
@@ -221,5 +224,5 @@ export class PromptFormComponent implements OnInit {
 interface ParameterGroup {
   name: FormControl<string>
   description: FormControl<string | null>
-  defaultValue: FormControl<string | null>
+  defaultValue: FormControl<string>
 }

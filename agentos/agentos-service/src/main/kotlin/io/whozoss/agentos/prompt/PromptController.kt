@@ -74,6 +74,10 @@ class PromptController(
                         defaultValue = p.defaultValue,
                     )
                 },
+            createdBy = entity.metadata.createdBy,
+            createdOn = entity.metadata.created,
+            updatedBy = entity.metadata.modifiedBy,
+            updatedOn = entity.metadata.modified,
         )
 
     override fun toDomain(resource: PromptResource): Prompt =

@@ -1,8 +1,10 @@
 package io.whozoss.agentos.prompt
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -16,10 +18,15 @@ import java.util.UUID
  *
  * On PUT, [namespaceId] is immutable (preserved from the persisted entity).
  *
+ * [createdBy], [createdOn], [updatedBy], [updatedOn] are read-only audit fields populated
+ * by Spring Data auditing. They are ignored on write (POST/PUT) and only present in
+ * GET responses.
+ *
  * Annotated with @Schema(name = "Prompt") so the generated OpenAPI spec uses the clean
  * name instead of "PromptResource".
  */
 @Schema(name = "Prompt")
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class PromptResource(
     val id: UUID? = null,
     // SpringDoc 2.x workaround: explicit schema types for nullable UUID.
@@ -29,11 +36,17 @@ data class PromptResource(
     val description: String? = null,
     @field:NotEmpty val content: List<String>,
     val parameters: List<PromptParameterResource> = emptyList(),
+    // Read-only audit fields — populated from EntityMetadata on GET responses,
+    // ignored on POST/PUT (Spring Data auditing sets them server-side).
+    val createdBy: String? = null,
+    val createdOn: Instant? = null,
+    val updatedBy: String? = null,
+    val updatedOn: Instant? = null,
 )
 
 @Schema(name = "PromptParameter")
 data class PromptParameterResource(
     @field:NotBlank val name: String,
     val description: String? = null,
-    val defaultValue: String? = null,
+    val defaultValue: String,
 )

@@ -4,6 +4,11 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.data.annotation.CreatedBy
+import org.springframework.data.annotation.CreatedDate
+import org.springframework.data.annotation.LastModifiedBy
+import org.springframework.data.annotation.LastModifiedDate
+import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
@@ -26,6 +31,9 @@ import java.util.UUID
  *
  * [namespace] is a nullable var so SDN can call the primary constructor before
  * injecting the @Relationship field via property injection.
+ *
+ * [version] backs Spring Data Neo4j optimistic locking. A null version means the
+ * entity has never been persisted (new entity); SDN sets it to 0 on first save.
  */
 @Node("Prompt")
 data class PromptNode(
@@ -35,10 +43,11 @@ data class PromptNode(
     val description: String? = null,
     val contentJson: String,
     val parametersJson: String? = null,
-    val created: Instant = Instant.now(),
-    val createdBy: String? = null,
-    val modified: Instant = Instant.now(),
-    val modifiedBy: String? = null,
+    @Version val version: Long? = null,
+    @CreatedDate val created: Instant = Instant.now(),
+    @CreatedBy val createdBy: String? = null,
+    @LastModifiedDate val modified: Instant = Instant.now(),
+    @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     var namespace: NamespaceNode? = null,
@@ -53,6 +62,7 @@ data class PromptNode(
                     modified = modified,
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
+                    version = version,
                 ),
             namespaceId = namespaceId?.let { UUID.fromString(it) },
             name = name,
@@ -76,6 +86,7 @@ data class PromptNode(
                 description = prompt.description,
                 contentJson = objectMapper.writeValueAsString(prompt.content),
                 parametersJson = prompt.parameters.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
+                version = prompt.metadata.version,
                 created = prompt.metadata.created,
                 createdBy = prompt.metadata.createdBy,
                 modified = prompt.metadata.modified,
