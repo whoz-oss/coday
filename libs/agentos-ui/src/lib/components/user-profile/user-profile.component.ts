@@ -6,6 +6,7 @@ import { Router } from '@angular/router'
 import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
+import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 
 interface UserGlobalEntry {
@@ -28,7 +29,7 @@ interface UserGlobalRecap {
  *   - Read mode: displays all user fields (email, externalId read-only + firstname, lastname, bio)
  *   - Edit mode: reactive form for firstname, lastname, bio
  *
- * Story 6.6 also adds a "Mes configurations utilisateur" section that recaps the user's
+ * Story 6.6 also adds a "My global user configurations" section that recaps the user's
  * user-global overrides (`namespaceId IS NULL`) for Integrations and AI Providers.
  * The section is collapsable and discreet, and each entry exposes a
  * delete action — edit navigation requires a namespace context which `/me` doesn't have, so
@@ -49,12 +50,21 @@ export class UserProfileComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
+  private readonly themePort = inject(THEME_PORT)
   protected readonly isEditing = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isSaving = signal(false)
   protected readonly isOverridesExpanded = signal(false)
 
   protected readonly currentUser = this.userState.currentUser
+
+  /** Current theme mode (light / dark / system), reflected in the Appearance section. */
+  protected readonly theme = this.themePort.theme
+  protected readonly themeOptions: ReadonlyArray<{ value: ThemeMode; label: string }> = [
+    { value: 'light', label: 'Light' },
+    { value: 'dark', label: 'Dark' },
+    { value: 'system', label: 'System' },
+  ]
 
   protected readonly form = new FormGroup({
     firstname: new FormControl<string>('', { nonNullable: true }),
@@ -127,6 +137,10 @@ export class UserProfileComponent implements OnInit {
 
   protected cancelEditing(): void {
     this.isEditing.set(false)
+  }
+
+  protected setTheme(mode: ThemeMode): void {
+    this.themePort.setTheme(mode)
   }
 
   protected save(): void {
