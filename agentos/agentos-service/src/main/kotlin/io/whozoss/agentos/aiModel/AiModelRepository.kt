@@ -43,4 +43,10 @@ interface AiModelRepository : EntityRepository<AiModel, UUID> {
      * Find all non-removed platform-level model configs (namespaceId IS NULL AND userId IS NULL).
      */
     fun findPlatformLevel(): List<AiModel>
+
+    /**
+     * Fetch all non-removed model configs visible for a given namespace in a single query —
+     * namespace-scoped models and platform-level models (namespaceId IS NULL).
+     */
+    fun findAllForNamespace(namespaceId: UUID): List<AiModel>
 }

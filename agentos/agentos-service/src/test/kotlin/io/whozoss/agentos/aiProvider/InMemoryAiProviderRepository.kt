@@ -34,5 +34,14 @@ class InMemoryAiProviderRepository : AiProviderRepository {
     override fun findPlatformLevel(): List<AiProvider> =
         delegate.findAll().filter { it.namespaceId == null && it.userId == null }
 
+    override fun findAllForScope(
+        namespaceId: UUID,
+        userId: UUID,
+    ): List<AiProvider> =
+        delegate.findAll().filter {
+            (it.namespaceId == null || it.namespaceId == namespaceId) &&
+                (it.userId == null || it.userId == userId)
+        }
+
     companion object { private const val ALL_KEY = "all" }
 }

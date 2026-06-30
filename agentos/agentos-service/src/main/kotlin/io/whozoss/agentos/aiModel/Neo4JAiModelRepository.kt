@@ -78,6 +78,11 @@ open class Neo4JAiModelRepository(
             .findActivePlatformLevel()
             .map { it.toDomain() }
 
+    override fun findAllForNamespace(namespaceId: UUID): List<AiModel> =
+        neo4jRepository
+            .findAllForNamespace(namespaceId.toString())
+            .map { it.toDomain() }
+
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByAiProviderId(parentId.toString())

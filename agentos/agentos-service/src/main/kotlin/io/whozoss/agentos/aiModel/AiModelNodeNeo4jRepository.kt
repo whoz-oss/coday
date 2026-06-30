@@ -75,4 +75,22 @@ interface AiModelNodeNeo4jRepository : Neo4jRepository<AiModelNode, String> {
             """,
     )
     fun findActivePlatformLevel(): List<AiModelNode>
+
+    /**
+     * Fetch all non-removed model configs visible for a given namespace in a single query —
+     * namespace-scoped models and platform-level models (namespaceId IS NULL).
+     *
+     * `namespaceId IS NULL OR namespaceId = $namespaceId` covers both layers in one
+     * round-trip, avoiding the two separate calls previously made by [findActiveByNamespaceId]
+     * + [findActivePlatformLevel].
+     */
+    @Query(
+        $$"""
+            MATCH (m:AiModel)
+            WHERE (m.namespaceId IS NULL OR m.namespaceId = $namespaceId)
+            AND (m.removed IS NULL OR m.removed = false)
+            RETURN m ORDER BY m.apiName ASC
+            """,
+    )
+    fun findAllForNamespace(namespaceId: String): List<AiModelNode>
 }

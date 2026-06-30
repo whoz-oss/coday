@@ -1,5 +1,6 @@
 package io.whozoss.agentos.aiProvider
 
+import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
@@ -28,6 +29,7 @@ import java.util.UUID
 @Service
 class AiProviderServiceImpl(
     private val repository: AiProviderRepository,
+    private val mergeStrategy: AiProviderMergeStrategy,
 ) : AiProviderService {
     override fun create(entity: AiProvider): AiProvider {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -63,6 +65,23 @@ class AiProviderServiceImpl(
     override fun findByUserId(userId: UUID): List<AiProvider> = repository.findByUserId(userId)
 
     override fun findPlatformLevel(): List<AiProvider> = repository.findPlatformLevel()
+
+    override fun resolveProvider(
+        namespaceId: UUID,
+        userId: UUID,
+        name: String,
+    ): AiProvider {
+        val layers =
+            repository
+                .findAllForScope(namespaceId, userId)
+                .filter { it.name == name }
+                .sortedWith(LAYER_COMPARATOR)
+        return layers
+            .drop(1)
+            .fold(layers.firstOrNull() ?: throw ConfigNotFoundException(namespaceId, userId, name)) { base, override ->
+                mergeStrategy.merge(base, override)
+            }
+    }
 
     override fun findByTriple(
         namespaceId: UUID?,
@@ -202,5 +221,30 @@ class AiProviderServiceImpl(
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "ai_provider_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+
+        /**
+         * Comparator defining the 4-tier overlay precedence (lowest → highest).
+         *
+         * | Scope            | namespaceId | userId   | rank |
+         * |------------------|-------------|----------|------|
+         * | Platform         | null        | null     | 0    |
+         * | User-global      | null        | non-null | 1    |
+         * | Namespace-shared | non-null    | null     | 2    |
+         * | User × namespace | non-null    | non-null | 3    |
+         *
+         * Namespace-shared (rank 2) overrides user-global (rank 1): namespace admins
+         * enforce a config that supersedes user preferences. User×namespace (rank 3)
+         * lets the user restore a personal override for that specific namespace.
+         */
+        val LAYER_COMPARATOR: Comparator<AiProvider> =
+            Comparator { a, b ->
+                layerRank(a).compareTo(layerRank(b))
+            }
+
+        private fun layerRank(p: AiProvider): Int {
+            val nsRank = if (p.namespaceId == null) 0 else 2
+            val userRank = if (p.userId == null) 0 else 1
+            return nsRank + userRank
+        }
     }
 }

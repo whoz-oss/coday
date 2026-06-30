@@ -40,7 +40,7 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
      * Find all non-removed platform-level configs (namespaceId IS NULL AND userId IS NULL).
      */
     @Query(
-        """
+        $$"""
             MATCH (c:AiProvider)
             WHERE c.namespaceId IS NULL AND c.userId IS NULL AND (c.removed IS NULL OR c.removed = false)
             RETURN c ORDER BY c.name ASC
@@ -63,4 +63,32 @@ interface AiProviderNodeNeo4jRepository : Neo4jRepository<AiProviderNode, String
             """,
     )
     fun findActiveByTripleKey(tripleKey: String): AiProviderNode?
+
+    /**
+     * Fetch all non-removed providers visible for a given (namespaceId, userId) execution
+     * context in a single query — platform layer + namespace-shared layer + user layers.
+     *
+     * Predicate mirrors [IntegrationConfigNodeNeo4jRepository.findAllForNamespaceIdAndUserId]:
+     * - `namespaceId IS NULL OR namespaceId = $namespaceId` — includes platform (null) and
+     *   the specific namespace
+     * - `userId IS NULL OR userId = $userId` — includes namespace-shared (null) and the
+     *   specific user
+     *
+     * The cross-product of these two OR-clauses naturally covers all four layers:
+     * platform (null,null), namespace-shared (ns,null), user-global (null,user),
+     * user×namespace (ns,user).
+     */
+    @Query(
+        $$"""
+            MATCH (c:AiProvider)
+            WHERE (c.namespaceId IS NULL OR c.namespaceId = $namespaceId)
+            AND (c.userId IS NULL OR c.userId = $userId)
+            AND (c.removed IS NULL OR c.removed = false)
+            RETURN c
+            """,
+    )
+    fun findAllForNamespaceAndUser(
+        namespaceId: String,
+        userId: String,
+    ): List<AiProviderNode>
 }

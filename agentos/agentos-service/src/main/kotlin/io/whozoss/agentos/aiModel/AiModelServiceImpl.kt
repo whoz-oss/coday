@@ -2,6 +2,7 @@ package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -78,6 +79,8 @@ class AiModelServiceImpl(
 
     override fun findPlatformLevel(): List<AiModel> = repository.findPlatformLevel()
 
+    override fun findAllForNamespace(namespaceId: UUID): List<AiModel> = repository.findAllForNamespace(namespaceId)
+
     override fun findByAiProviderAndApiName(
         aiProviderId: UUID,
         apiName: String,
@@ -92,16 +95,26 @@ class AiModelServiceImpl(
         namespaceId: UUID,
         name: String,
     ): AiModel? {
-        // Platform-level models (namespaceId=null) are included as the lowest-priority
-        // candidates so that a platform-wide default model is visible from any namespace.
-        // Namespace-scoped models always win over platform ones when priority is equal
-        // because they appear first in the list and maxByOrNull returns the first maximum.
-        val candidates = repository.findByNamespaceId(namespaceId) + repository.findPlatformLevel()
+        // Single query fetches both namespace-scoped and platform-level models.
+        // At equal priority, namespace-scoped models win over platform (namespaceId=null)
+        // because they are more specific. The comparator encodes this: higher scope rank
+        // wins on ties, so we pick the candidate with the highest (priority, scopeRank) pair.
+        val candidates = repository.findAllForNamespace(namespaceId)
         return candidates
             .filter { it.alias.equals(name, ignoreCase = true) }
-            .maxByOrNull { it.priority }
+            .maxWithOrNull(MODEL_COMPARATOR)
             ?: candidates
                 .filter { it.apiModelName.equals(name, ignoreCase = true) }
-                .maxByOrNull { it.priority }
+                .maxWithOrNull(MODEL_COMPARATOR)
+    }
+
+    companion object : KLogging() {
+        /**
+         * Comparator for model resolution: primary key is [AiModel.priority] (higher wins),
+         * secondary key is scope rank (namespace-scoped > platform) to break ties deterministically.
+         * A namespace-scoped model (namespaceId != null) has rank 1; platform (namespaceId == null) has rank 0.
+         */
+        private val MODEL_COMPARATOR: Comparator<AiModel> =
+            compareBy({ it.priority }, { if (it.namespaceId != null) 1 else 0 })
     }
 }

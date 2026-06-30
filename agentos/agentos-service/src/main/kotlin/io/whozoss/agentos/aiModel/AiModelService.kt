@@ -38,6 +38,12 @@ interface AiModelService : EntityService<AiModel, UUID> {
     fun findByNamespaceId(namespaceId: UUID): List<AiModel>
 
     /**
+     * Find all non-removed [AiModel] visible for a given namespace in a single query —
+     * namespace-scoped models and platform-level models (namespaceId IS NULL).
+     */
+    fun findAllForNamespace(namespaceId: UUID): List<AiModel>
+
+    /**
      * Find all platform-level [AiModel] (namespaceId IS NULL AND userId IS NULL).
      * These belong to platform-level [io.whozoss.agentos.aiProvider.AiProvider] entries.
      * Readable by any authenticated user; writable only by super-admins.

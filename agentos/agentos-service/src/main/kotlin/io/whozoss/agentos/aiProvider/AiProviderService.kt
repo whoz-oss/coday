@@ -34,6 +34,22 @@ interface AiProviderService : EntityService<AiProvider, UUID>, ConfigLookup<AiPr
     fun findPlatformLevel(): List<AiProvider>
 
     /**
+     * Resolve the effective [AiProvider] for a given (namespaceId, userId, name) triple by
+     * fetching all applicable layers in a single query and folding them from lowest to highest
+     * precedence via [AiProviderMergeStrategy].
+     *
+     * Precedence (lowest → highest): platform → namespace-shared → user-global → user×namespace.
+     *
+     * Throws [io.whozoss.agentos.exception.ConfigNotFoundException] when no layer contains
+     * a provider with the given name.
+     */
+    fun resolveProvider(
+        namespaceId: UUID,
+        userId: UUID,
+        name: String,
+    ): AiProvider
+
+    /**
      * Scope-aware filtered listing used by [io.whozoss.agentos.aiProvider.AiProviderController.list].
      *
      * Dispatches the query based on the resolved namespace/user filter combination:

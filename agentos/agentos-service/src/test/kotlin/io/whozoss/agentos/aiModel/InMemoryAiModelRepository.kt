@@ -25,4 +25,7 @@ class InMemoryAiModelRepository : AiModelRepository {
 
     override fun findPlatformLevel(): List<AiModel> =
         delegate.findAll().filter { it.namespaceId == null && it.userId == null }
+
+    override fun findAllForNamespace(namespaceId: UUID): List<AiModel> =
+        delegate.findAll().filter { it.namespaceId == null || it.namespaceId == namespaceId }
 }
