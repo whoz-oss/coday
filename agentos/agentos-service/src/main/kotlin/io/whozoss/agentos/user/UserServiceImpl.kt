@@ -27,7 +27,10 @@ class UserServiceImpl(
     @Transactional
     override fun update(entity: User): User = userRepository.save(entity)
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<User> = userRepository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<User> = userRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: String): List<User> = userRepository.findByParent(parentId)
 
@@ -53,14 +56,27 @@ class UserServiceImpl(
                         metadata = EntityMetadata(),
                         externalId = externalId,
                         email = extractEmailFromExternalId(externalId),
-                        isAdmin = isFirstUser  // First user = super-admin
-                    )
+                        isAdmin = isFirstUser, // First user = super-admin
+                    ),
                 )
             }
         }
 
-    override fun getCurrentUser(): User =
-        resolveOrCreateByExternalId(securityService.resolveCurrentIdentity())
+    override fun createByExternalIds(externalIds: Set<String>): List<User> {
+        logger.info { "[UserService] Auto-creating users for ${externalIds.size}" }
+        return externalIds.map { externalId ->
+            create(
+                User(
+                    metadata = EntityMetadata(),
+                    externalId = externalId,
+                    email = extractEmailFromExternalId(externalId),
+                    isAdmin = false,
+                ),
+            )
+        }
+    }
+
+    override fun getCurrentUser(): User = resolveOrCreateByExternalId(securityService.resolveCurrentIdentity())
 
     @Transactional
     override fun delete(id: UUID): Boolean = userRepository.delete(id)

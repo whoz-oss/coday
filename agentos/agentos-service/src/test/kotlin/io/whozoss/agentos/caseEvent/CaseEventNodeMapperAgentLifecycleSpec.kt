@@ -51,6 +51,8 @@ class CaseEventNodeMapperAgentLifecycleSpec :
                     timestamp = Instant.parse("2026-05-19T15:01:00Z"),
                     agentId = agentId,
                     agentName = "WorkerAgent",
+                    llmProvider = "anthropic",
+                    llmModel = "claude-sonnet-4-20250514",
                 )
 
             val node = nodeMapper.fromDomain(original)
@@ -62,6 +64,8 @@ class CaseEventNodeMapperAgentLifecycleSpec :
             roundTripped.timestamp shouldBe original.timestamp
             roundTripped.agentId shouldBe agentId
             roundTripped.agentName shouldBe "WorkerAgent"
+            roundTripped.llmProvider shouldBe "anthropic"
+            roundTripped.llmModel shouldBe "claude-sonnet-4-20250514"
         }
 
         "AgentFinishedEvent survives the fromDomain/toDomain round-trip" {
@@ -74,6 +78,8 @@ class CaseEventNodeMapperAgentLifecycleSpec :
                     timestamp = Instant.parse("2026-05-19T15:02:00Z"),
                     agentId = agentId,
                     agentName = "WorkerAgent",
+                    llmProvider = "anthropic",
+                    llmModel = "claude-sonnet-4-20250514",
                 )
 
             val node = nodeMapper.fromDomain(original)
@@ -85,5 +91,7 @@ class CaseEventNodeMapperAgentLifecycleSpec :
             roundTripped.timestamp shouldBe original.timestamp
             roundTripped.agentId shouldBe agentId
             roundTripped.agentName shouldBe "WorkerAgent"
+            roundTripped.llmProvider shouldBe "anthropic"
+            roundTripped.llmModel shouldBe "claude-sonnet-4-20250514"
         }
     })

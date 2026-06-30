@@ -22,11 +22,14 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             RETURN a ORDER BY a.name ASC
             """,
     )
-    fun findActiveByNamespaceId(namespaceId: String, withDisabled: Boolean = true): List<AgentConfigNode>
-
+    fun findActiveByNamespaceId(
+        namespaceId: String,
+        withDisabled: Boolean = true,
+    ): List<AgentConfigNode>
 
     /**
      * Returns the union of [AgentConfigNode]s accessible to [userId] in [namespaceId]:
+     * - (admin path) all active agents in the namespace when the user has isAdmin = true
      * - agents deployed on a [io.whozoss.agentos.userGroup.UserGroup] the user is a member of (within the namespace)
      * - agents deployed directly on the namespace, for a user holding MEMBER or ADMIN
      *
@@ -38,28 +41,25 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
     @Query(
         $$"""
             MATCH (u:User {id: $userId})
-              WHERE NOT COALESCE(u.removed, false)
             MATCH (ns:Namespace {id: $namespaceId})
-              WHERE NOT COALESCE(ns.removed, false)
-            MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns)
-              WHERE NOT COALESCE(g.removed, false)
-            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-              WHERE NOT COALESCE(a.removed, false)
-                AND a.enabled
-                AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
-            RETURN DISTINCT a
-            UNION
-            MATCH (u:User {id: $userId})
-              WHERE NOT COALESCE(u.removed, false)
-            MATCH (ns:Namespace {id: $namespaceId})
-              WHERE NOT COALESCE(ns.removed, false)
-            MATCH (u)-[:MEMBER|ADMIN]->(ns)
-            MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(ns)
-              WHERE NOT COALESCE(a.removed, false)
-                AND a.enabled
-                AND (toLower(a.name) = toLower(COALESCE($agentName, a.name)))
-            RETURN DISTINCT a
+            WHERE NOT COALESCE(u.removed, false)
+              AND NOT COALESCE(ns.removed, false)
+            MATCH (a:AgentConfig)
+            WHERE a.namespaceId = $namespaceId
+              AND a.enabled
+              AND NOT COALESCE(a.removed, false)
+              AND ($agentName IS NULL OR toLower(a.name) = toLower($agentName))
+              AND (
+                u.isAdmin = true
+                OR EXISTS { MATCH (u)-[:MEMBER]->(g:UserGroup)-[:BELONGS_TO]->(ns) MATCH (a)-[:DEPLOYED_TO]->(g) WHERE NOT COALESCE(g.removed, false) }
+                OR EXISTS { MATCH (u)-[:MEMBER|ADMIN]->(ns) MATCH (a)-[:DEPLOYED_TO]->(ns) }
+              )
+            RETURN DISTINCT a ORDER BY a.name ASC
             """,
     )
-    fun findAvailableByNamespaceIdAndUserId(namespaceId: String, userId: String, agentName: String?): List<AgentConfigNode>
+    fun findAvailableByNamespaceIdAndUserId(
+        namespaceId: String,
+        userId: String,
+        agentName: String?,
+    ): List<AgentConfigNode>
 }

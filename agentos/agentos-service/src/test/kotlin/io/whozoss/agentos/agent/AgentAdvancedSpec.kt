@@ -61,7 +61,7 @@ import kotlin.io.path.writeText
 internal class TestRemoveTool(
     private val rootDir: java.nio.file.Path,
     override val name: String = "FILES__remove",
-    override val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
+    private val forcedMode: ConfirmationMode = ConfirmationMode.EVERY_TIME,
 ) : StandardTool<TestRemoveTool.Input> {
     data class Input(
         val path: String? = null,
@@ -84,6 +84,8 @@ internal class TestRemoveTool(
         }
         return ToolExecutionResult.success("File $path deleted successfully")
     }
+
+    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = forcedMode
 
     override fun getConfirmationInstructions(): String = "Be strict: explicit confirmation only after the assistant's question."
 
@@ -131,6 +133,8 @@ class AgentAdvancedSpec :
                 context = context,
                 intentionGenerator = mockk(),
                 objectMapper = testObjectMapper,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
             )
         }
 
@@ -201,6 +205,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events =
@@ -274,6 +280,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events =
@@ -343,6 +351,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events =
@@ -421,6 +431,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -543,6 +555,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 10,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -603,6 +617,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -645,6 +661,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -680,6 +698,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -716,6 +736,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -768,6 +790,8 @@ class AgentAdvancedSpec :
                     context = context,
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1188,6 +1212,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "FILES__remove"),
                     objectMapper = testObjectMapper,
                     maxIterations = 3,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1243,6 +1269,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1301,6 +1329,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = intentionGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1365,6 +1395,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1385,7 +1417,7 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
             val tempDir = Files.createTempDirectory("agentadvanced-ac6bis-").also { it.toFile().deleteOnExit() }
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
-            val tool = TestRemoveTool(tempDir, name = "TEST__safe", confirmationMode = ConfirmationMode.INFER)
+            val tool = TestRemoveTool(tempDir, name = "TEST__safe", forcedMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
             every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
@@ -1420,6 +1452,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1441,7 +1475,8 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.INFER
 
                     override suspend fun execute(
                         input: Map<String, Any>?,
@@ -1482,6 +1517,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1511,7 +1548,6 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.EVERY_TIME // static fallback
 
                     // Always returns NONE dynamically — mimicking a bypass condition
                     override suspend fun getConfirmationMode(
@@ -1558,6 +1594,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1583,7 +1621,8 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.INFER
+
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.INFER
 
                     override fun getConfirmationInstructions(): String = "Be strict: 'pourquoi pas' is not consent."
 
@@ -1634,6 +1673,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1660,7 +1701,6 @@ class AgentAdvancedSpec :
                     override val inputSchema = """{"type":"object","properties":{"id":{"type":"string"}}}"""
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.NONE
 
                     override suspend fun getConfirmationMode(
                         argsJson: String?,
@@ -1709,6 +1749,8 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     maxIterations = 2,
                     caseEventsProvider = { initialEvents },
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             agent.run(initialEvents).toList()
 
@@ -1749,6 +1791,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockk(),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(initialUserMsg + pending).toList()
 
@@ -1769,7 +1813,8 @@ class AgentAdvancedSpec :
                     override val inputSchema = "{}"
                     override val version = "1.0.0"
                     override val paramType = null
-                    override val confirmationMode = ConfirmationMode.EVERY_TIME
+
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.EVERY_TIME
 
                     override suspend fun execute(
                         input: Map<String, Any>?,
@@ -1807,6 +1852,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userYes).toList()
 
@@ -1856,6 +1903,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending).toList()
 
@@ -1919,6 +1968,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 10,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -1949,7 +2000,6 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
@@ -1996,6 +2046,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2017,7 +2069,6 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
@@ -2068,6 +2119,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2093,7 +2146,6 @@ class AgentAdvancedSpec :
             every { mockTool.inputSchema } returns
                 """{"type":"object","properties":{"entitiesId":{"type":"array","items":{"type":"string"}}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("entity data")
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -2140,6 +2192,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2164,7 +2218,6 @@ class AgentAdvancedSpec :
             every { mockTool.description } returns "A test tool"
             every { mockTool.inputSchema } returns """{"type":"object","properties":{"value":{"type":"string"}}}"""
             every { mockTool.paramType } returns String::class.java
-            every { mockTool.confirmationMode } returns ConfirmationMode.NONE
             coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
             coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
@@ -2212,6 +2265,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2242,6 +2297,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "DOES_NOT_EXIST"),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2348,6 +2405,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2439,6 +2498,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2544,6 +2605,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2666,6 +2729,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2707,7 +2772,8 @@ class AgentAdvancedSpec :
             //   iteration THRESHOLD: window has THRESHOLD identical → Warned
             //   iteration THRESHOLD+1: window still has ≥THRESHOLD identical → count > THRESHOLD → ForceStop
             // The loop must exit WITHOUT calling intentionGenerator again and must emit
-            // a second WarnEvent containing the force-stop message.
+            // a WarnEvent containing the force-stop message, an IntentionGeneratedEvent with
+            // toolName=Answer (the force-stop intention), and then a final generated response.
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
@@ -2756,6 +2822,8 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     // High maxIterations: without the fix the agent would run until exhaustion.
                     maxIterations = 50,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2767,6 +2835,27 @@ class AgentAdvancedSpec :
             val warnEvents = events.filterIsInstance<WarnEvent>()
             warnEvents shouldHaveSize 1
             warnEvents[0].message shouldContain "Forcing loop termination"
+
+            // A synthetic IntentionGeneratedEvent with toolName=Answer must be emitted
+            // so that generateFinalResponse is called and can explain the forced stop to the user.
+            val intentionEvents = events.filterIsInstance<IntentionGeneratedEvent>()
+            val forceStopIntention = intentionEvents.last()
+            forceStopIntention.toolName shouldBe AgentIntentionGenerator.ANSWER_TOOL
+            forceStopIntention.intention shouldContain "repetitions"
+            forceStopIntention.isFailedIntention shouldBe false
+
+            // generateFinalResponse must have been called: a TextChunkEvent and MessageEvent
+            // are produced from the mocked streaming response.
+            events.filterIsInstance<TextChunkEvent>() shouldHaveSize 1
+            events.filterIsInstance<TextChunkEvent>()[0].chunk shouldBe "Forced stop."
+            val agentMessages = events.filterIsInstance<MessageEvent>().filter { it.actor.role == ActorRole.AGENT }
+            agentMessages shouldHaveSize 1
+            (agentMessages[0].content.first() as MessageContent.Text).content shouldBe "Forced stop."
+
+            // The WarnEvent must appear before the force-stop IntentionGeneratedEvent.
+            val warnIdx = events.indexOf(warnEvents[0])
+            val intentionIdx = events.indexOf(forceStopIntention)
+            (warnIdx < intentionIdx) shouldBe true
 
             // The run must have terminated cleanly with AgentFinishedEvent.
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
@@ -2841,6 +2930,8 @@ class AgentAdvancedSpec :
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
                     maxIterations = 20,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()

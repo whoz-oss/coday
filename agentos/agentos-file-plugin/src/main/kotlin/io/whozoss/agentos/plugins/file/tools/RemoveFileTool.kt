@@ -44,7 +44,7 @@ class RemoveFileTool(
     override val paramType: Class<Input> = Input::class.java
 
     // File deletion is irreversible — implicit consent must never be trusted.
-    override val confirmationMode: ConfirmationMode = ConfirmationMode.EVERY_TIME
+    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.EVERY_TIME
 
     // language=JSON
     override val inputSchema: String =

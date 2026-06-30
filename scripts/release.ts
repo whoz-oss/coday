@@ -11,8 +11,18 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run')
   if (dryRun) console.log('Dry run mode — no files will be written, no git operations performed')
 
+  const specifierIndex = process.argv.indexOf('--specifier')
+  const specifier = specifierIndex !== -1 ? process.argv[specifierIndex + 1] : undefined
+  if (specifier) {
+    console.log(`Forced specifier: ${specifier}`)
+  }
+
   // Step 1: Determine new version and update package.json files
-  const { projectsVersionData, releaseGraph, workspaceVersion } = await releaseVersion({ dryRun, verbose: false })
+  const { projectsVersionData, releaseGraph, workspaceVersion } = await releaseVersion({
+    dryRun,
+    verbose: false,
+    specifier,
+  })
 
   // workspaceVersion is null when conventional commits detected no changes, undefined would indicate a misconfiguration
   if (workspaceVersion === undefined) {

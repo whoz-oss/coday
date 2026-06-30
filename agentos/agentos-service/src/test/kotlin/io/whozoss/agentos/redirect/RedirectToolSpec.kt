@@ -19,6 +19,26 @@ class RedirectToolSpec : StringSpec({
     // description - integration rendering
     // -------------------------------------------------------------------------
 
+    "description is the no-agents warning when eligible agents list is empty" {
+        val tool = RedirectTool(configName = null, eligibleAgents = emptyList())
+        tool.description shouldBe
+            "No other agents are currently available for redirection. Do not attempt to delegate — handle the request yourself or inform the user that no other agent can address it."
+    }
+
+    "description includes relevance instructions and agent list when agents are available" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(RedirectTool.EligibleAgent(name = "AgentA", description = "Does A")),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
+            Available agents:
+              - AgentA: Does A
+        """.trimIndent()
+    }
+
     "description includes integration names when agent has integrations" {
         val tool = RedirectTool(
             configName = null,
@@ -34,7 +54,9 @@ class RedirectToolSpec : StringSpec({
             ),
         )
         tool.description shouldBe """
-            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
             Available agents:
               - AgentA: Does A
                 Integrations:
@@ -57,7 +79,9 @@ class RedirectToolSpec : StringSpec({
             ),
         )
         tool.description shouldBe """
-            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
             Available agents:
               - AgentA: Does A
                 Integrations:
@@ -73,7 +97,9 @@ class RedirectToolSpec : StringSpec({
             ),
         )
         tool.description shouldBe """
-            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
             Available agents:
               - AgentA: Does A
         """.trimIndent()
@@ -94,7 +120,9 @@ class RedirectToolSpec : StringSpec({
             ),
         )
         tool.description shouldBe """
-            Route the current request to another agent. Use this when the request is better handled by a specialised agent.
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
             Available agents:
               - AgentA: Does A
                 Integrations:

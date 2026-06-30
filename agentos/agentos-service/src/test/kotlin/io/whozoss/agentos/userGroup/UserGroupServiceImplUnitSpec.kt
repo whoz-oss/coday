@@ -299,7 +299,7 @@ class UserGroupServiceImplUnitSpec :
             every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
             // alice is being added and does not exist yet
             every { userService.findByExternalIds(setOf("alice@example.com")) } returns emptyList()
-            every { userService.resolveOrCreateByExternalId("alice@example.com") } returns makeUser("alice@example.com")
+            every { userService.createByExternalIds(setOf("alice@example.com")) } returns listOf(makeUser("alice@example.com"))
 
             val service = buildService(userGroupRepository, agentConfigRepository = agentConfigRepository, userService = userService)
             val result =
@@ -317,7 +317,7 @@ class UserGroupServiceImplUnitSpec :
                 userGroupRepository.save(match { it.name == "New Name" })
                 userGroupRepository.removeAllAgents(groupId)
                 userGroupRepository.addAgents(groupId, setOf(agentId))
-                userService.resolveOrCreateByExternalId("alice@example.com")
+                userService.createByExternalIds(setOf("alice@example.com"))
                 userGroupRepository.addUsers(groupId, setOf("alice@example.com"))
                 userGroupRepository.removeUsers(groupId, setOf("bob@example.com"))
             }

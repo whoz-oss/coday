@@ -41,4 +41,5 @@ data class IntegrationConfig(
     val integrationType: String,
     val description: String? = null,
     val parameters: JsonNode? = null,
-) : Entity
+) : Entity {
+}

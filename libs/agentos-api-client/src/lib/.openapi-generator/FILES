@@ -9,6 +9,7 @@ api/ai-provider-controller.service.ts
 api/api.ts
 api/case-controller.service.ts
 api/case-event-rest-controller.service.ts
+api/feedback-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
@@ -40,8 +41,11 @@ model/confirmation-resolved-event.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
+model/feedback-input.ts
+model/feedback.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
+model/groups-by-external-ids-request.ts
 model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts

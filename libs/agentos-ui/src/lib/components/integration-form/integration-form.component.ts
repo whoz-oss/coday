@@ -11,9 +11,10 @@ import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-syst
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
-const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
+const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['platform', 'namespace', 'userOnNs', 'userGlobal'])
 
 const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
+  platform: 'Configuration plateforme',
   namespace: 'Configuration du namespace',
   userOnNs: 'Pour moi sur ce namespace',
   userGlobal: 'Pour moi globalement',
@@ -100,6 +101,7 @@ export class IntegrationFormComponent implements OnInit {
   protected readonly isLoading = signal(false)
 
   protected readonly scopeOptions: ReadonlyArray<{ value: IntegrationScope; label: string }> = [
+    { value: 'platform', label: SCOPE_LABEL.platform },
     { value: 'namespace', label: SCOPE_LABEL.namespace },
     { value: 'userOnNs', label: SCOPE_LABEL.userOnNs },
     { value: 'userGlobal', label: SCOPE_LABEL.userGlobal },
@@ -133,15 +135,16 @@ export class IntegrationFormComponent implements OnInit {
   private existingConfig: IntegrationConfig | null = null
 
   constructor() {
-    // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
-    // default, or via a hand-crafted URL), bounce the radio to `userOnNs` once the role
-    // lookup resolves. We watch `isAdmin` reactively rather than reading it once at mount
-    // because the service is async — at mount time the signal is still at its `false`
-    // initial value and we cannot tell admin from not-yet-resolved.
+    // URL-forging defence: in create-mode, if a non-admin lands on a privileged scope
+    // (`platform` or `namespace`, the default or via a hand-crafted URL), bounce the radio
+    // to `userOnNs` once the role lookup resolves. We watch `isAdmin` reactively rather
+    // than reading it once at mount because the service is async — at mount time the signal
+    // is still at its `false` initial value and we cannot tell admin from not-yet-resolved.
     effect(() => {
       const admin = this.isAdmin()
       if (admin || this.isEditMode()) return
-      if (this.scopeControl.value === 'namespace') {
+      const privilegedScopes: IntegrationScope[] = ['platform', 'namespace']
+      if (privilegedScopes.includes(this.scopeControl.value)) {
         this.scopeControl.setValue('userOnNs')
       }
     })
@@ -179,10 +182,16 @@ export class IntegrationFormComponent implements OnInit {
    * a forged `?scope=` would otherwise route the update to the wrong controller. The
    * unified controller returns the entity regardless of scope ; we read `(userId,
    * namespaceId)` to determine which radio option to select.
+   *
+   * Decision table:
+   *   - no userId, no namespaceId → platform
+   *   - no userId, namespaceId    → namespace
+   *   - userId, namespaceId       → userOnNs
+   *   - userId, no namespaceId    → userGlobal
    */
   private deriveScopeFromConfig(config: IntegrationConfig): IntegrationScope {
-    const isUserScope = !!config.userId
-    if (!isUserScope) return 'namespace'
+    if (!config.userId && !config.namespaceId) return 'platform'
+    if (!config.userId) return 'namespace'
     return config.namespaceId ? 'userOnNs' : 'userGlobal'
   }
 

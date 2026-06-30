@@ -19,7 +19,8 @@ export interface AgentConfig {
   advancedExecution?: boolean
   externalMetadata?: { [key: string]: any }
   createdBy?: string
-  createdOn?: string
+  createdOn: string
   updatedBy?: string
-  updatedOn?: string
+  updatedOn: string
+  enabled?: boolean
 }
