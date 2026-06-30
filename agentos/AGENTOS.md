@@ -88,6 +88,10 @@ data/                                  # AGENTOS_PERSISTENCE_DATA_DIR (default: 
   cases/<projectId>/<caseId>.json
   case-events/<caseId>/<eventId>.json
   namespaces/all/<namespaceId>.json
+
+data/exchange/                         # AGENTOS_EXCHANGE_MOUNT_ROOT (default: data/exchange/), see docs/file-exchange.md
+  <namespaceId>/cases/<YYYY>/<MM>/<DD>/<caseId>/   # case-scoped file exchange (read/write)
+  <namespaceId>/shared/                            # namespace-shared file exchange (read-only)
 ```
 
 To switch to **in-memory** mode (data lost on restart):
@@ -197,6 +201,7 @@ repositories {
 ## Detailed Documentation
 
 - **Full architecture**: [docs/ARCHITECTURE.md](docs/to-rework/ARCHITECTURE.md)
+- **File exchange** (storage layout, configuration, REST API, agent tools): [docs/file-exchange.md](docs/file-exchange.md)
 
 ---
 
