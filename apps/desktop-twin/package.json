@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-desktop-twin",
-  "version": "0.190.3",
+  "version": "0.191.0",
   "description": "CodayTwin Desktop - Digital Twin Electron application",
   "repository": "https://github.com/whoz-oss/coday",
   "license": "MIT",

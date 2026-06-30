@@ -1,3 +1,13 @@
+## 0.191.0 (2026-06-30)
+
+### 🚀 Features
+
+- wz-32804: clear conf for agentos datadog custom metrics ([#1074](https://github.com/whoz-oss/coday/pull/1074))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.190.3 (2026-06-30)
 
 ### 🩹 Fixes
