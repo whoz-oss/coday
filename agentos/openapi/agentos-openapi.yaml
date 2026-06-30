@@ -739,33 +739,6 @@ paths:
         "204":
           description: No Content
   /api/prompts:
-    get:
-      tags:
-      - prompt-controller
-      summary: List Prompts by scope
-      description: |-
-        Scope is inferred from the query params:
-
-        | query                 | mode      | required permission                            |
-        |-----------------------|-----------|------------------------------------------------|
-        | (no params)           | platform  | authenticated                                  |
-        | ?namespaceId=<uuid>   | namespace | READ on the namespace (empty list if missing)  |
-      operationId: listPrompt
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
     post:
       tags:
       - prompt-controller
@@ -2068,6 +2041,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PromptParameter"
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
       required:
       - content
       - name
@@ -2083,6 +2066,7 @@ components:
         defaultValue:
           type: string
       required:
+      - defaultValue
       - name
     Namespace:
       type: object
