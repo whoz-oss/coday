@@ -33,14 +33,6 @@
     text-overflow: ellipsis;
   }
 
-  &__meta {
-    font-size: 0.78rem;
-    color: var(--color-text-secondary, #6e6e73);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   &__description {
     font-size: 0.75rem;
     color: var(--color-text-secondary, #6e6e73);
@@ -59,7 +51,8 @@
   }
 
   &:hover &__actions,
-  &:focus-within &__actions {
+  &:focus-within &__actions,
+  &--pending-delete &__actions {
     opacity: 1;
   }
 

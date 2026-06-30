@@ -43,6 +43,10 @@
           Parameters
           <span class="prompt-form__label-hint">Named placeholders used in content</span>
         </legend>
+        <p class="prompt-form__section-hint">
+          Each parameter must have a name and a default value. Use <code>{{ paramPlaceholderSyntax }}</code> in content
+          entries to reference them.
+        </p>
 
         @if (parametersArray.length === 0) {
           <p class="prompt-form__empty-hint">No parameters defined.</p>
@@ -81,7 +85,7 @@
                   [id]="'param-default-' + $index"
                   class="prompt-form__input"
                   type="text"
-                  placeholder="Empty = required at runtime"
+                  placeholder="e.g. English"
                   formControlName="defaultValue"
                   autocomplete="off"
                 />

@@ -1,4 +1,4 @@
-<div class="prompt-item" role="listitem">
+<div class="prompt-item" role="listitem" [class.prompt-item--pending-delete]="pendingDelete()">
   <div class="prompt-item__body">
     <span class="prompt-item__name">{{ prompt.name }}</span>
     @if (prompt.description) {
