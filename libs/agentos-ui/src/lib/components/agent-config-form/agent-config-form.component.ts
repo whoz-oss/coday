@@ -267,6 +267,10 @@ export class AgentConfigFormComponent implements OnInit {
   protected submit(): void {
     if (this.form.invalid || this.isSubmitting()) return
 
+    // Flush the "add pattern" input: if the user typed a pattern and clicked Save
+    // without pressing "+" or Enter, we include it rather than silently dropping it.
+    this.addSubAgent()
+
     this.isSubmitting.set(true)
 
     const payload: AgentConfig = {

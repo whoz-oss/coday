@@ -115,7 +115,7 @@
 
         @if (subAgentRows().length > 0) {
           <ul class="agent-config-form__sub-agent-list">
-            @for (row of subAgentRows(); track row.control) {
+            @for (row of subAgentRows(); track $index) {
               <li class="agent-config-form__sub-agent-row">
                 <input
                   class="agent-config-form__input agent-config-form__sub-agent-input"
