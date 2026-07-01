@@ -1,3 +1,13 @@
+## 0.194.0 (2026-07-01)
+
+### 🚀 Features
+
+- add platform level for AgentConfig.namespaceId ([#1056](https://github.com/whoz-oss/coday/pull/1056))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.193.0 (2026-07-01)
 
 ### 🚀 Features
