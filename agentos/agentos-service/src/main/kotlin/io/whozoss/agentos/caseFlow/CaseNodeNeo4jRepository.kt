@@ -19,7 +19,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false)
             RETURN c, r, ns ORDER BY c.created ASC
             """,
@@ -42,7 +42,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
               AND (
                 EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
@@ -65,7 +65,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE (c.removed IS NULL OR c.removed = false)
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
             RETURN c, r, ns ORDER BY c.created ASC
@@ -81,7 +81,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
             RETURN c, r, ns ORDER BY c.created ASC
@@ -103,7 +103,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE c.parentCaseId = $parentCaseId
               AND (c.removed IS NULL OR c.removed = false)
               AND NOT c.status IN ['KILLED', 'ERROR']
@@ -123,7 +123,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Transactional(readOnly = true)
     @Query(
-        $"""MATCH (c:Case {id: $caseId})
+        $$"""MATCH (c:Case {id: $caseId})
             OPTIONAL MATCH path = (c)<-[:PARENT_OF*..10]-(ancestor:Case)
             RETURN coalesce(length(path), 0) AS depth
             ORDER BY depth DESC LIMIT 1
@@ -138,7 +138,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * so that [countAncestorDepth] can traverse the chain.
      */
     @Query(
-        $$"""MATCH (parent:Case {id: $parentCaseId}), (child:Case {id: $childCaseId})
+        $$$"""MATCH (parent:Case {id: $parentCaseId}), (child:Case {id: $childCaseId})
             MERGE (parent)-[:PARENT_OF]->(child)
             """,
     )
