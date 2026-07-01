@@ -66,7 +66,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
 
     fun config(
         id: UUID = UUID.randomUUID(),
-        nsId: UUID = namespaceId,
+        nsId: UUID? = namespaceId,
         name: String = "my-agent",
         description: String? = "An agent",
         instructions: String? = "Be helpful.",
@@ -391,6 +391,10 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // listByParent (inherited)
     // -------------------------------------------------------------------------
 
+    "listByParent with null parentId throws NullPointerException (null unreachable via HTTP — UUID path segment cannot be null)" {
+        shouldThrow<NullPointerException> { controller.listByParent(null) }
+    }
+
     "listByParent returns configs for the given namespaceId" {
         val c1 = config(name = "alpha")
         val c2 = config(name = "beta")
@@ -413,12 +417,46 @@ class AgentConfigControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // create (inherited)
+    // listPlatformAgents
+    // -------------------------------------------------------------------------
+
+    "listPlatformAgents default (withDisabled=false) returns only enabled platform configs" {
+        val p1 = config(nsId = null, name = "published-platform").copy(enabled = true)
+        every { service.findByNamespace(null, withDisabled = false) } returns listOf(p1)
+
+        // Default: withDisabled = false
+        val result = controller.listPlatformAgents(withDisabled = false)
+
+        result shouldBe listOf(controller.toResource(p1))
+        verify(exactly = 1) { service.findByNamespace(null, withDisabled = false) }
+    }
+
+    "listPlatformAgents with withDisabled=true returns all platform configs including disabled" {
+        val p1 = config(nsId = null, name = "platform-agent-a")
+        val p2 = config(nsId = null, name = "platform-agent-b")
+        every { service.findByNamespace(null, withDisabled = true) } returns listOf(p1, p2)
+
+        val result = controller.listPlatformAgents(withDisabled = true)
+
+        result shouldBe listOf(controller.toResource(p1), controller.toResource(p2))
+        verify(exactly = 1) { service.findByNamespace(null, withDisabled = true) }
+    }
+
+    "listPlatformAgents returns empty list when no platform agents exist" {
+        every { service.findByNamespace(null, withDisabled = false) } returns emptyList()
+
+        controller.listPlatformAgents(withDisabled = false) shouldBe emptyList()
+    }
+
+    // -------------------------------------------------------------------------
+    // create
     // -------------------------------------------------------------------------
 
     "create converts resource to domain, delegates to service, and returns mapped resource" {
         val r = resource(id = null)
         val saved = controller.toDomain(r)
+        // Namespace-scoped create: super-admin bypasses permission check.
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.create(any()) } returns saved
 
         val result = controller.create(r)
@@ -435,6 +473,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val c = config()
         val updatedResource = resource(id = c.id, name = "updated-agent")
         val updatedDomain = controller.toDomain(updatedResource)
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } returns updatedDomain
 
@@ -448,11 +487,44 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val c = config()
         val otherNs = UUID.randomUUID()
         val payload = resource(id = c.id, nsId = otherNs, name = "renamed")
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } answers {
             val saved = firstArg<AgentConfig>()
             saved.namespaceId shouldBe namespaceId
             saved.name shouldBe "renamed"
+            saved
+        }
+
+        controller.update(c.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update applies enabled=true from payload" {
+        val c = config().copy(enabled = false)
+        val payload = resource(id = c.id).copy(enabled = true)
+        every { userService.getCurrentUser() } returns superAdmin
+        every { service.findById(c.id) } returns c
+        every { service.update(any()) } answers {
+            val saved = firstArg<AgentConfig>()
+            saved.enabled shouldBe true
+            saved
+        }
+
+        controller.update(c.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update preserves existing enabled when payload omits it (null)" {
+        val c = config().copy(enabled = true)
+        val payload = resource(id = c.id).copy(enabled = null)
+        every { userService.getCurrentUser() } returns superAdmin
+        every { service.findById(c.id) } returns c
+        every { service.update(any()) } answers {
+            val saved = firstArg<AgentConfig>()
+            saved.enabled shouldBe true
             saved
         }
 
@@ -472,6 +544,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val metadata = mapOf("theme" to "OPERATIONS", "starters" to emptyList<String>())
         val c = config()
         val payload = resource(id = c.id, externalMetadata = metadata)
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } answers {
             val saved = firstArg<AgentConfig>()
@@ -488,6 +561,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val existingMetadata = mapOf("theme" to "TALENT")
         val c = config(externalMetadata = existingMetadata)
         val payload = resource(id = c.id, externalMetadata = null)
+        every { userService.getCurrentUser() } returns superAdmin
         every { service.findById(c.id) } returns c
         every { service.update(any()) } answers {
             val saved = firstArg<AgentConfig>()
@@ -525,20 +599,23 @@ class AgentConfigControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // delete (inherited)
+    // delete
     // -------------------------------------------------------------------------
 
     "delete succeeds when entity exists" {
-        val id = UUID.randomUUID()
-        every { service.delete(id) } returns true
+        val c = config()
+        // EntityController.delete calls service.delete(id) directly — no prior findById.
+        every { service.delete(c.id) } returns true
 
-        controller.delete(id)
+        controller.delete(c.id)
 
-        verify(exactly = 1) { service.delete(id) }
+        verify(exactly = 1) { service.delete(c.id) }
     }
 
-    "delete throws 404 when service returns false" {
+    "delete throws 404 when entity is not found" {
         val id = UUID.randomUUID()
+        // EntityController.delete calls service.delete(id) directly (no prior findById).
+        // When the entity does not exist, the service returns false and the controller throws 404.
         every { service.delete(id) } returns false
 
         shouldThrow<ResourceNotFoundException> { controller.delete(id) }
@@ -560,7 +637,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = false)
+        val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
 
         result.agentConfigId shouldBe configId
         result.name shouldBe definition.name
@@ -581,7 +658,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = false)
+        val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
 
         result.systemPrompt shouldBe null
     }
@@ -594,7 +671,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, callerId) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = true)
+        val result = controller.getDefinition(configId, withUserOverlay = true, namespaceId = null)
 
         result.userId shouldBe callerId
         coVerify(exactly = 1) { agentService.resolveDefinition(configId, namespaceId, callerId) }
@@ -613,7 +690,7 @@ class AgentConfigControllerUnitSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         coEvery { agentService.resolveDefinition(configId, namespaceId, null) } returns definition
 
-        val result = controller.getDefinition(configId, withUserOverlay = false)
+        val result = controller.getDefinition(configId, withUserOverlay = false, namespaceId = null)
 
         result.tools.size shouldBe 1
         result.tools[0].name shouldBe "get-issue"
@@ -625,6 +702,6 @@ class AgentConfigControllerUnitSpec : StringSpec({
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null
 
-        shouldThrow<ResourceNotFoundException> { controller.getDefinition(id, withUserOverlay = false) }
+        shouldThrow<ResourceNotFoundException> { controller.getDefinition(id, withUserOverlay = false, namespaceId = null) }
     }
 })
