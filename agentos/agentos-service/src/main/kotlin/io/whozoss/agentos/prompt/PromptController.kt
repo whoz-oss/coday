@@ -136,7 +136,7 @@ class PromptController(
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(
         @PathVariable parentId: UUID,
-    ): List<PromptResource> = promptService.findByNamespaceId(parentId).map { toResource(it) }
+    ): List<PromptResource> = promptService.findByParent(parentId).map { toResource(it) }
 
     // -------------------------------------------------------------------------
     // Write endpoints

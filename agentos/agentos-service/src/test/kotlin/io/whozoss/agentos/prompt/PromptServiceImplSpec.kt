@@ -61,20 +61,6 @@ class PromptServiceImplSpec : StringSpec() {
         // Scope queries
         // -------------------------------------------------------------------------
 
-        "findByNamespaceId returns only prompts for the given namespace" {
-            val service = newService()
-            val nsA = UUID.randomUUID()
-            val nsB = UUID.randomUUID()
-
-            service.create(prompt(namespaceId = nsA, name = "Alpha"))
-            service.create(prompt(namespaceId = nsA, name = "Beta"))
-            service.create(prompt(namespaceId = nsB, name = "Gamma"))
-
-            service.findByNamespaceId(nsA) shouldHaveSize 2
-            service.findByNamespaceId(nsB) shouldHaveSize 1
-            service.findByNamespaceId(UUID.randomUUID()).shouldBeEmpty()
-        }
-
         "findPlatform returns only platform-level prompts (namespaceId == null)" {
             val service = newService()
             service.create(prompt(namespaceId = null, name = "Platform Prompt"))
@@ -86,12 +72,18 @@ class PromptServiceImplSpec : StringSpec() {
             platform.first().namespaceId shouldBe null
         }
 
-        "findByParent delegates to findByNamespaceId" {
+        "findByParent returns only prompts for the given namespace" {
             val service = newService()
-            val nsId = UUID.randomUUID()
-            service.create(prompt(namespaceId = nsId, name = "Scoped"))
+            val nsA = UUID.randomUUID()
+            val nsB = UUID.randomUUID()
 
-            service.findByParent(nsId) shouldHaveSize 1
+            service.create(prompt(namespaceId = nsA, name = "Alpha"))
+            service.create(prompt(namespaceId = nsA, name = "Beta"))
+            service.create(prompt(namespaceId = nsB, name = "Gamma"))
+
+            service.findByParent(nsA) shouldHaveSize 2
+            service.findByParent(nsB) shouldHaveSize 1
+            service.findByParent(UUID.randomUUID()).shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
@@ -213,7 +205,7 @@ class PromptServiceImplSpec : StringSpec() {
             service.delete(saved.id) shouldBe true
 
             service.findById(saved.id).shouldBeNull()
-            service.findByNamespaceId(nsId).shouldBeEmpty()
+            service.findByParent(nsId).shouldBeEmpty()
         }
 
         "delete returns false for unknown id" {
@@ -230,7 +222,7 @@ class PromptServiceImplSpec : StringSpec() {
             val count = service.deleteByParent(nsId)
 
             count shouldBe 2
-            service.findByNamespaceId(nsId).shouldBeEmpty()
+            service.findByParent(nsId).shouldBeEmpty()
         }
 
         "deleteByParent does not affect other namespaces" {
@@ -242,8 +234,8 @@ class PromptServiceImplSpec : StringSpec() {
 
             service.deleteByParent(nsA)
 
-            service.findByNamespaceId(nsA).shouldBeEmpty()
-            service.findByNamespaceId(nsB) shouldHaveSize 1
+            service.findByParent(nsA).shouldBeEmpty()
+            service.findByParent(nsB) shouldHaveSize 1
         }
     }
 }

@@ -12,11 +12,6 @@ import java.util.UUID
  */
 interface PromptService : EntityService<Prompt, UUID> {
     /**
-     * Find all non-removed prompts scoped to the given namespace.
-     */
-    fun findByNamespaceId(namespaceId: UUID): List<Prompt>
-
-    /**
      * Find all non-removed platform-level prompts (namespaceId IS NULL).
      */
     fun findPlatform(): List<Prompt>

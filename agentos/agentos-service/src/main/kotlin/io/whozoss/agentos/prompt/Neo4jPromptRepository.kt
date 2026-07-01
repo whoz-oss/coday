@@ -16,7 +16,7 @@ import java.util.UUID
  *
  * Platform-level prompts (namespaceId == null) skip the link step.
  *
- * [findByParent] delegates to [findByNamespaceId] by convention.
+ * [findByParent] returns only non-removed prompts scoped to the given namespace.
  */
 open class Neo4jPromptRepository(
     private val neo4jRepository: PromptNodeNeo4jRepository,
@@ -48,11 +48,9 @@ open class Neo4jPromptRepository(
             .filter { withRemoved || it.removed != true }
             .map { it.toDomain(objectMapper) }
 
-    override fun findByParent(parentId: UUID): List<Prompt> = findByNamespaceId(parentId)
-
-    override fun findByNamespaceId(namespaceId: UUID): List<Prompt> =
+    override fun findByParent(parentId: UUID): List<Prompt> =
         neo4jRepository
-            .findActiveByNamespaceId(namespaceId.toString())
+            .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain(objectMapper) }
 
     override fun findPlatform(): List<Prompt> =

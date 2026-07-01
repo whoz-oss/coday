@@ -24,9 +24,6 @@ class InMemoryPromptRepository : PromptRepository {
 
     override fun deleteByParent(parentId: UUID): Int = delegate.deleteByParent(parentId.toString())
 
-    override fun findByNamespaceId(namespaceId: UUID): List<Prompt> =
-        delegate.findByParent(namespaceId.toString())
-
     override fun findPlatform(): List<Prompt> = delegate.findByParent(PLATFORM_KEY)
 
     companion object {

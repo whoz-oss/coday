@@ -45,8 +45,6 @@ class PromptServiceImpl(
 
     override fun findByParent(parentId: UUID): List<Prompt> = repository.findByParent(parentId)
 
-    override fun findByNamespaceId(namespaceId: UUID): List<Prompt> = repository.findByNamespaceId(namespaceId)
-
     override fun findPlatform(): List<Prompt> = repository.findPlatform()
 
     override fun delete(id: UUID): Boolean = repository.delete(id)
