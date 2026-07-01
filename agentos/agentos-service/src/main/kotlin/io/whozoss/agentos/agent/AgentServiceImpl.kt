@@ -48,15 +48,44 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
 ) : AgentService {
+    /**
+     * Resolves an agent by name for a given [context].
+     *
+     * **Matching semantics differ by path:**
+     * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
+     *   client-side with `.contains()` (case-insensitive substring). This is intentional for
+     *   interactive use cases where a partial name typed by a user should resolve loosely.
+     * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
+     *   a case-insensitive exact match, then falls back to platform agents.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match.
+     *
+     * **Scoping / shadowing rule (both paths):**
+     * Platform agents (namespaceId = null) are shadowed by namespace-scoped agents with the
+     * same name. Uniqueness is enforced *per level*: two configs at the same level (both
+     * namespace-scoped, or both platform) with the same name is an error; one config at each
+     * level is resolved by preferring the namespace-scoped one.
+     */
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
+        require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
-            agentConfigService.findByName(context.namespaceId, namePart)
-                ?: throw IllegalArgumentException(
-                    "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
-                )
+            if (context.userId != null) {
+                val namePartLowercase = namePart.lowercase()
+                val agentConfigs =
+                    agentConfigService
+                        .findDeployedByNamespaceIdAndUserIdAndName(
+                            namespaceId = context.namespaceId,
+                            userId = context.userId,
+                            agentName = null,
+                        ).filter { it.name.lowercase().contains(namePartLowercase) }
+                resolveWithShadowing(agentConfigs, namePart, context.namespaceId)
+            } else {
+                agentConfigService.findByName(context.namespaceId, namePart)
+            } ?: throw IllegalArgumentException(
+                "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+            )
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
         val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
         return instantiateAgent(definition, context, resolvedUser)
@@ -83,12 +112,12 @@ class AgentServiceImpl(
 
     override fun resolveAgentName(
         namePart: String,
-        namespaceId: UUID,
+        namespaceId: UUID?,
         userId: UUID?,
     ): String? =
         if (userId != null) {
             agentConfigService
-                .findAvailableByNamespaceIdAndUserId(
+                .findDeployedByNamespaceIdAndUserIdAndName(
                     namespaceId = namespaceId,
                     userId = userId,
                     agentName = namePart,
@@ -97,6 +126,40 @@ class AgentServiceImpl(
         } else {
             agentConfigService.findByName(namespaceId, namePart)?.name
         }
+
+    // -------------------------------------------------------------------------
+    // Shadowing / uniqueness helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolves a single [AgentConfig] from [candidates] applying the platform-vs-namespace
+     * shadowing rule:
+     * - Namespace-scoped configs shadow platform configs with the same name.
+     * - Uniqueness is enforced *per level*: duplicate names at the same level are an error.
+     * - Returns null when [candidates] is empty.
+     *
+     * The precedence order is: namespace > platform.
+     */
+    private fun resolveWithShadowing(
+        candidates: List<AgentConfig>,
+        namePart: String,
+        namespaceId: UUID,
+    ): AgentConfig? {
+        val (namespaceCandidates, platformCandidates) = candidates.partition { it.namespaceId != null }
+
+        val duplicatesAtSameLevel = namespaceCandidates.size > 1 || platformCandidates.size > 1
+        if (duplicatesAtSameLevel) {
+            val culprit = if (namespaceCandidates.size > 1) "namespace" else "platform"
+            throw IllegalArgumentException(
+                "No unique AgentConfig found for name '$namePart': " +
+                    "${if (namespaceCandidates.size > 1) namespaceCandidates.size else platformCandidates.size} " +
+                    "$culprit-level configs match in namespace $namespaceId.",
+            )
+        }
+
+        // Namespace-scoped agent shadows the platform agent when both exist.
+        return namespaceCandidates.firstOrNull() ?: platformCandidates.firstOrNull()
+    }
 
     // -------------------------------------------------------------------------
     // Resolution helpers

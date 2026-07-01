@@ -224,7 +224,7 @@ class CaseServiceImpl(
             isAgentAuthorized = { agentName, userId ->
                 userId == null ||
                     agentConfigService
-                        .findAvailableByNamespaceIdAndUserId(
+                        .findDeployedByNamespaceIdAndUserIdAndName(
                             namespaceId = case.namespaceId,
                             userId = userId,
                             agentName = agentName,

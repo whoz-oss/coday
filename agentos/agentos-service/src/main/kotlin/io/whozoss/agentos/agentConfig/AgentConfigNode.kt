@@ -32,7 +32,8 @@ import java.util.UUID
 data class AgentConfigNode(
     @Id
     val id: String,
-    val namespaceId: String,
+    /** Null for platform-level agents (no namespace scope). */
+    val namespaceId: String?,
     val name: String,
     val description: String? = null,
     val instructions: String? = null,
@@ -63,7 +64,7 @@ data class AgentConfigNode(
                     removed = removed ?: false,
                     version = version,
                 ),
-            namespaceId = UUID.fromString(namespaceId),
+            namespaceId = namespaceId?.let { UUID.fromString(it) },
             name = name,
             description = description,
             instructions = instructions,
@@ -82,7 +83,7 @@ data class AgentConfigNode(
         fun fromDomain(config: AgentConfig): AgentConfigNode =
             AgentConfigNode(
                 id = config.id.toString(),
-                namespaceId = config.namespaceId.toString(),
+                namespaceId = config.namespaceId?.toString(),
                 name = config.name,
                 description = config.description,
                 instructions = config.instructions,
