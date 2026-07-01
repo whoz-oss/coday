@@ -2,6 +2,7 @@ package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import java.time.Instant
@@ -35,7 +36,7 @@ data class PromptResource(
     @field:NotBlank val name: String,
     val description: String? = null,
     @field:NotEmpty val content: List<String>,
-    val parameters: List<PromptParameterResource> = emptyList(),
+    @field:Valid val parameters: List<PromptParameterResource> = emptyList(),
     // Read-only audit fields — populated from EntityMetadata on GET responses,
     // ignored on POST/PUT (Spring Data auditing sets them server-side).
     val createdBy: String? = null,
