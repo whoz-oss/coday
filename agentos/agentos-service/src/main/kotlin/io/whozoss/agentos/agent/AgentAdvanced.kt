@@ -999,7 +999,7 @@ class AgentAdvanced(
                         appendLine()
                         appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
                     } else {
-                        appendLine("Your are decided to answer the user because of: ${it.intention}")
+                        appendLine("Your have decided to answer the user because: ${it.intention}")
                     }
                     appendLine()
                 }
