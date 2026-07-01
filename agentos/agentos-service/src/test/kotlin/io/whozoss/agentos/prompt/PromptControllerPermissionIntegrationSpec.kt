@@ -56,7 +56,7 @@ import java.util.UUID
  * - Assert HTTP status codes that prove the full evaluator path is working.
  *
  * Contrast with [PromptControllerMvcIntegrationSpec], which mocks [PermissionService]
- * and focuses on Bean Validation and scope-dispatch logic rather than the permission graph.
+ * and focuses on Bean Validation, service-level validation, and CRUD happy paths.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc

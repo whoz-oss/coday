@@ -31,18 +31,12 @@ import java.util.UUID
 /**
  * MVC-layer integration test for [PromptController].
  *
- * Verifies:
- * - Bean Validation activation on POST and PUT (@Valid on @RequestBody)
- * - Scope dispatch on POST (platform vs namespace-scoped)
- * - Authorization guards (403 for non-admin on platform, 403 for missing namespace WRITE)
- * - Existence-leak guard (authz before namespace existence check)
- * - Duplicate name returns 409
- * - Service-level validation (blank content element, duplicate parameter names) returns 400
- * - CRUD happy paths (201, 200, 204, 404)
+ * Verifies Bean Validation activation on POST and PUT, scope dispatch on POST,
+ * service-level validation (duplicate parameter names), and CRUD happy paths.
  *
- * The "test" profile uses InMemoryPermissionServiceImpl which is a permissive no-op.
- * Authorization paths that require a denial are exercised via @MockkBean on [PermissionService]
- * and [UserService], following the pattern of [IntegrationConfigControllerMvcIntegrationSpec].
+ * [PermissionService] is mocked to keep this spec focused on the HTTP/validation layer.
+ * Permission scenarios (membership, ADMIN/MEMBER, platform scope, cross-user isolation)
+ * are covered by [PromptControllerPermissionIntegrationSpec].
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -117,6 +111,14 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
+        "POST with blank content element returns 400" {
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "name": "Bad-${UUID.randomUUID()}", "content": ["Hello", "   "] }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
         "POST with blank parameter name returns 400" {
             mockMvc.perform(
                 post("/api/prompts")
@@ -148,84 +150,8 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // POST — scope dispatch and authorization
-        // -------------------------------------------------------------------------
-
-        "POST platform prompt returns 403 for non-admin" {
-            mockMvc.perform(
-                post("/api/prompts")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "name": "Global", "content": ["Hello"] }"""),
-            ).andExpect(status().isForbidden)
-        }
-
-        "POST platform prompt returns 201 for super-admin" {
-            every { userService.getCurrentUser() } returns admin
-            mockMvc.perform(
-                post("/api/prompts")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "name": "Global-${UUID.randomUUID()}", "content": ["Hello"] }"""),
-            ).andExpect(status().isCreated)
-                .andExpect(jsonPath("$.namespaceId").doesNotExist())
-        }
-
-        "POST namespace prompt returns 201 when caller has WRITE on namespace" {
-            mockMvc.perform(
-                post("/api/prompts")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "NS-${UUID.randomUUID()}", "content": ["Hello"] }"""),
-            ).andExpect(status().isCreated)
-                .andExpect(jsonPath("$.namespaceId").value(namespaceId.toString()))
-        }
-
-        "POST namespace prompt returns 403 when caller lacks WRITE" {
-            every {
-                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
-            } returns false
-
-            mockMvc.perform(
-                post("/api/prompts")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "Blocked", "content": ["Hello"] }"""),
-            ).andExpect(status().isForbidden)
-        }
-
-        "POST with dangling namespaceId returns 404 for authorised caller" {
-            val unknownNs = UUID.randomUUID()
-            every { namespaceService.findById(unknownNs) } returns null
-            every {
-                permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.WRITE)
-            } returns true
-
-            mockMvc.perform(
-                post("/api/prompts")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$unknownNs", "name": "Orphan", "content": ["Hello"] }"""),
-            ).andExpect(status().isNotFound)
-        }
-
-        "POST with dangling namespaceId returns 403 for non-member (no existence leak)" {
-            val unknownNs = UUID.randomUUID()
-            every { namespaceService.findById(unknownNs) } returns null
-
-            mockMvc.perform(
-                post("/api/prompts")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$unknownNs", "name": "Orphan", "content": ["Hello"] }"""),
-            ).andExpect(status().isForbidden)
-        }
-
-        // -------------------------------------------------------------------------
         // POST — service-level validation
         // -------------------------------------------------------------------------
-
-        "POST with blank content element returns 400" {
-            mockMvc.perform(
-                post("/api/prompts")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "name": "Bad-${UUID.randomUUID()}", "content": ["Hello", "   "] }"""),
-            ).andExpect(status().isBadRequest)
-        }
 
         "POST with duplicate parameter names returns 400" {
             mockMvc.perform(
@@ -260,6 +186,15 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
             ).andExpect(status().isConflict)
         }
 
+        "POST namespace prompt returns 201" {
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "name": "NS-${UUID.randomUUID()}", "content": ["Hello"] }"""),
+            ).andExpect(status().isCreated)
+                .andExpect(jsonPath("\$.namespaceId").value(namespaceId.toString()))
+        }
+
         // -------------------------------------------------------------------------
         // PUT — Bean Validation
         // -------------------------------------------------------------------------
@@ -279,26 +214,6 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                 put("/api/prompts/$id")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "id": "$id", "name": "My Prompt", "content": [] }"""),
-            ).andExpect(status().isBadRequest)
-        }
-
-        "PUT with blank content element returns 400" {
-            val created = promptService.create(
-                Prompt(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "BLANK-CONTENT-${UUID.randomUUID()}",
-                    content = listOf("Hello"),
-                ),
-            )
-            every {
-                permissionService.hasPermission(aliceId.toString(), EntityType.PROMPT, created.id.toString(), Action.WRITE)
-            } returns true
-
-            mockMvc.perform(
-                put("/api/prompts/${created.id}")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "id": "${created.id}", "name": "${created.name}", "content": ["Hello", "   "] }"""),
             ).andExpect(status().isBadRequest)
         }
 
