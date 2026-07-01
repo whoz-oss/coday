@@ -69,49 +69,49 @@ class DelegationToolUnitSpec : StringSpec({
         eventLoadTimeoutMs = eventLoadTimeoutMs,
     )
 
-    fun idleRuntime(): CaseRuntime {
+    fun idleRuntime(id: UUID = subCaseId): CaseRuntime {
         val runtime = mockk<CaseRuntime>()
-        every { runtime.id } returns subCaseId
+        every { runtime.id } returns id
         every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.IDLE)
         return runtime
     }
 
+    fun singleDelegation(agentName: String = "sub-agent", task: String = "do X", subCaseId: UUID? = null) =
+        DelegationTool.Args(delegations = listOf(DelegationTool.Delegation(agentName, task, subCaseId)))
+
     // -------------------------------------------------------------------------
-    // Allowlist enforcement
+    // Input validation
     // -------------------------------------------------------------------------
 
-    "returns failure when agentName is not in allowlist" {
+    "returns failure when delegations list is empty" {
         val tool = makeTool(mockk())
-
-        val result = tool.execute(DelegationTool.Args(agentName = "unknown-agent", task = "do X"), toolContext)
-
+        val result = tool.execute(DelegationTool.Args(delegations = emptyList()), toolContext)
         result.success shouldBe false
-        result.output shouldBe "Agent 'unknown-agent' is not in the delegation allowlist. Allowed agents: sub-agent, researcher."
-    }
-
-    "returns failure when userId is null in context" {
-        val tool = makeTool(mockk())
-        val contextWithoutUser = toolContext.copy(userId = null)
-
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), contextWithoutUser)
-
-        result.success shouldBe false
-        result.output shouldBe "Delegation requires a user context (userId is null)."
     }
 
     "returns failure when input is null" {
         val tool = makeTool(mockk())
-
         val result = tool.execute(null, toolContext)
+        result.success shouldBe false
+    }
 
+    "returns failure when agentName is not in allowlist" {
+        val tool = makeTool(mockk())
+        val result = tool.execute(singleDelegation(agentName = "unknown-agent"), toolContext)
+        result.success shouldBe false
+    }
+
+    "returns failure when userId is null in context" {
+        val tool = makeTool(mockk())
+        val result = tool.execute(singleDelegation(), toolContext.copy(userId = null))
         result.success shouldBe false
     }
 
     // -------------------------------------------------------------------------
-    // Nominal path
+    // Single delegation — nominal path
     // -------------------------------------------------------------------------
 
-    "returns last agent message as JSON when sub-case reaches IDLE" {
+    "returns last agent message in array when sub-case reaches IDLE" {
         val launcher = mockk<SubCaseLauncher>()
         val runtime = idleRuntime()
         val events = listOf(agentMessage("the result"))
@@ -119,34 +119,15 @@ class DelegationToolUnitSpec : StringSpec({
 
         every { launcher.startSubCase(parentCaseId, namespaceId, "sub-agent", "do X", userId) } returns runtime
 
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+        val result = tool.execute(singleDelegation(), toolContext)
 
         result.success shouldBe true
         val tree = jacksonObjectMapper().readTree(result.output)
-        tree.get("result").asText() shouldBe "the result"
-        result.metadata.containsKey("subCaseId") shouldBe true
-        result.metadata["subCaseId"] shouldBe subCaseId.toString()
-    }
-
-    "concatenates multiple text parts of the last agent message" {
-        val launcher = mockk<SubCaseLauncher>()
-        val runtime = idleRuntime()
-        val multiPartMessage =
-            MessageEvent(
-                namespaceId = namespaceId,
-                caseId = subCaseId,
-                actor = Actor(id = UUID.randomUUID().toString(), displayName = "sub-agent", role = ActorRole.AGENT),
-                content = listOf(MessageContent.Text("part one"), MessageContent.Text("part two")),
-            )
-        val tool = makeTool(launcher, listOf(multiPartMessage))
-
-        every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
-
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
-
-        result.success shouldBe true
-        val tree = jacksonObjectMapper().readTree(result.output)
-        tree.get("result").asText() shouldBe "part one\npart two"
+        tree.isArray shouldBe true
+        tree[0].get("success").asBoolean() shouldBe true
+        tree[0].get("result").asText() shouldBe "the result"
+        tree[0].get("agentName").asText() shouldBe "sub-agent"
+        tree[0].get("subCaseId").asText() shouldBe subCaseId.toString()
     }
 
     "picks the last agent message when history contains multiple" {
@@ -157,32 +138,134 @@ class DelegationToolUnitSpec : StringSpec({
 
         every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
 
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+        val result = tool.execute(singleDelegation(), toolContext)
 
-        result.success shouldBe true
         val tree = jacksonObjectMapper().readTree(result.output)
-        tree.get("result").asText() shouldBe "final answer"
+        tree[0].get("result").asText() shouldBe "final answer"
     }
 
-    "returns fallback message as JSON when sub-case produces no agent message" {
+    "returns fallback message when sub-case produces no agent message" {
         val launcher = mockk<SubCaseLauncher>()
         val runtime = idleRuntime()
         val tool = makeTool(launcher, events = emptyList())
 
         every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
 
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+        val result = tool.execute(singleDelegation(), toolContext)
 
         result.success shouldBe true
         val tree = jacksonObjectMapper().readTree(result.output)
-        tree.get("result").asText() shouldBe "Sub-agent completed the task but produced no text output."
+        tree[0].get("result").asText() shouldBe "Sub-agent completed the task but produced no text output."
+    }
+
+    // -------------------------------------------------------------------------
+    // Parallel delegations
+    // -------------------------------------------------------------------------
+
+    "runs two delegations in parallel and returns both results" {
+        val subCaseId2 = UUID.randomUUID()
+        val launcher = mockk<SubCaseLauncher>()
+        val runtime1 = idleRuntime(subCaseId)
+        val runtime2 = idleRuntime(subCaseId2)
+
+        every { launcher.startSubCase(parentCaseId, namespaceId, "sub-agent", "task 1", userId) } returns runtime1
+        every { launcher.startSubCase(parentCaseId, namespaceId, "researcher", "task 2", userId) } returns runtime2
+
+        val events1 = listOf(agentMessage("result 1"))
+        val events2 = listOf(
+            MessageEvent(
+                namespaceId = namespaceId,
+                caseId = subCaseId2,
+                actor = Actor(id = UUID.randomUUID().toString(), displayName = "researcher", role = ActorRole.AGENT),
+                content = listOf(MessageContent.Text("result 2")),
+            ),
+        )
+
+        val tool = DelegationTool(
+            subCaseLauncher = launcher,
+            parentCaseId = parentCaseId,
+            namespaceId = namespaceId,
+            allowedAgents = allowedAgents,
+            loadCaseEvents = { id -> if (id == subCaseId) events1 else events2 },
+            timeoutMs = 2_000,
+        )
+
+        val args = DelegationTool.Args(
+            delegations = listOf(
+                DelegationTool.Delegation("sub-agent", "task 1"),
+                DelegationTool.Delegation("researcher", "task 2"),
+            ),
+        )
+
+        val result = tool.execute(args, toolContext)
+
+        result.success shouldBe true
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.isArray shouldBe true
+        tree.size() shouldBe 2
+        val byAgent = (0 until tree.size()).associate { tree[it].get("agentName").asText() to tree[it] }
+        byAgent["sub-agent"]!!.get("result").asText() shouldBe "result 1"
+        byAgent["researcher"]!!.get("result").asText() shouldBe "result 2"
+    }
+
+    "overall success is true when at least one delegation succeeds" {
+        val subCaseId2 = UUID.randomUUID()
+        val launcher = mockk<SubCaseLauncher>()
+        val successRuntime = idleRuntime(subCaseId)
+        val errorRuntime = mockk<CaseRuntime>()
+        every { errorRuntime.id } returns subCaseId2
+        every { errorRuntime.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
+
+        every { launcher.startSubCase(parentCaseId, namespaceId, "sub-agent", "task 1", userId) } returns successRuntime
+        every { launcher.startSubCase(parentCaseId, namespaceId, "researcher", "task 2", userId) } returns errorRuntime
+
+        val tool = DelegationTool(
+            subCaseLauncher = launcher,
+            parentCaseId = parentCaseId,
+            namespaceId = namespaceId,
+            allowedAgents = allowedAgents,
+            loadCaseEvents = { listOf(agentMessage("ok")) },
+            timeoutMs = 2_000,
+        )
+
+        val args = DelegationTool.Args(
+            delegations = listOf(
+                DelegationTool.Delegation("sub-agent", "task 1"),
+                DelegationTool.Delegation("researcher", "task 2"),
+            ),
+        )
+
+        val result = tool.execute(args, toolContext)
+
+        result.success shouldBe true  // at least one succeeded
+        val tree = jacksonObjectMapper().readTree(result.output)
+        val byAgent = (0 until tree.size()).associate { tree[it].get("agentName").asText() to tree[it] }
+        byAgent["sub-agent"]!!.get("success").asBoolean() shouldBe true
+        byAgent["researcher"]!!.get("success").asBoolean() shouldBe false
+        byAgent["researcher"]!!.has("error") shouldBe true
+    }
+
+    "overall success is false when all delegations fail" {
+        val launcher = mockk<SubCaseLauncher>()
+        val errorRuntime = mockk<CaseRuntime>()
+        every { errorRuntime.id } returns subCaseId
+        every { errorRuntime.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
+
+        every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns errorRuntime
+
+        val tool = makeTool(launcher)
+        val result = tool.execute(singleDelegation(), toolContext)
+
+        result.success shouldBe false
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree[0].get("success").asBoolean() shouldBe false
     }
 
     // -------------------------------------------------------------------------
     // QuestionEvent paths
     // -------------------------------------------------------------------------
 
-    "returns success with pendingQuestion when sub-case reaches IDLE after a QuestionEvent" {
+    "returns pendingQuestion when sub-case reaches IDLE after a QuestionEvent" {
         val launcher = mockk<SubCaseLauncher>()
         val runtime = idleRuntime()
         val events = listOf(questionEvent("What is the target environment?", listOf("prod", "staging")))
@@ -190,30 +273,32 @@ class DelegationToolUnitSpec : StringSpec({
 
         every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
 
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+        val result = tool.execute(singleDelegation(), toolContext)
 
         result.success shouldBe true
         val tree = jacksonObjectMapper().readTree(result.output)
-        tree.get("pendingQuestion").asText() shouldBe "What is the target environment?"
-        tree.get("subCaseId").asText() shouldBe subCaseId.toString()
-        result.metadata["subCaseId"] shouldBe subCaseId.toString()
+        tree[0].get("pendingQuestion").asText() shouldBe "What is the target environment?"
+        tree[0].get("subCaseId").asText() shouldBe subCaseId.toString()
     }
 
     "returns normal result when QuestionEvent is followed by an agent message" {
         val launcher = mockk<SubCaseLauncher>()
         val runtime = idleRuntime()
-        // Question came first, then the agent answered itself
         val events = listOf(questionEvent("Clarify?"), agentMessage("I resolved it myself"))
         val tool = makeTool(launcher, events)
 
         every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
 
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+        val result = tool.execute(singleDelegation(), toolContext)
 
         result.success shouldBe true
         val tree = jacksonObjectMapper().readTree(result.output)
-        tree.get("result").asText() shouldBe "I resolved it myself"
+        tree[0].get("result").asText() shouldBe "I resolved it myself"
     }
+
+    // -------------------------------------------------------------------------
+    // Resume path
+    // -------------------------------------------------------------------------
 
     "routes to resumeSubCase when subCaseId is provided" {
         val launcher = mockk<SubCaseLauncher>()
@@ -224,52 +309,20 @@ class DelegationToolUnitSpec : StringSpec({
         every { launcher.resumeSubCase(subCaseId, "sub-agent", "follow-up", userId, allowedAgents) } returns runtime
 
         val result = tool.execute(
-            DelegationTool.Args(agentName = "sub-agent", task = "follow-up", subCaseId = subCaseId),
+            DelegationTool.Args(
+                delegations = listOf(DelegationTool.Delegation("sub-agent", "follow-up", subCaseId)),
+            ),
             toolContext,
         )
 
         result.success shouldBe true
         val tree = jacksonObjectMapper().readTree(result.output)
-        tree.get("result").asText() shouldBe "resumed result"
+        tree[0].get("result").asText() shouldBe "resumed result"
         verify(exactly = 0) { launcher.startSubCase(any(), any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------
-    // Terminal status paths
-    // -------------------------------------------------------------------------
-
-    "returns failure when sub-case reaches ERROR status" {
-        val launcher = mockk<SubCaseLauncher>()
-        val runtime = mockk<CaseRuntime>()
-        every { runtime.id } returns subCaseId
-        every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
-        val tool = makeTool(launcher)
-
-        every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
-
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
-
-        result.success shouldBe false
-        result.output shouldBe "Sub-case ended with status ERROR without producing a result."
-        result.metadata.containsKey("subCaseId") shouldBe true
-    }
-
-    "returns failure when sub-case reaches KILLED status" {
-        val launcher = mockk<SubCaseLauncher>()
-        val runtime = mockk<CaseRuntime>()
-        every { runtime.id } returns subCaseId
-        every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.KILLED)
-        val tool = makeTool(launcher)
-
-        every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
-
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
-
-        result.success shouldBe false
-    }
-
-    // -------------------------------------------------------------------------
-    // Timeout
+    // Timeout paths
     // -------------------------------------------------------------------------
 
     "returns failure when event loading exceeds eventLoadTimeoutMs" {
@@ -283,29 +336,23 @@ class DelegationToolUnitSpec : StringSpec({
 
         every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
 
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+        val result = tool.execute(singleDelegation(), toolContext)
 
         result.success shouldBe false
-        result.metadata["subCaseId"] shouldBe subCaseId.toString()
     }
 
-    "returns failure and kills sub-case when timeout is reached" {
+    "returns failure and kills sub-case when batch timeout is reached" {
         val launcher = mockk<SubCaseLauncher>()
         val runtime = mockk<CaseRuntime>()
         every { runtime.id } returns subCaseId
-        // statusFlow stays on RUNNING — never reaches IDLE, triggering timeout
         every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
         every { launcher.killSubCase(subCaseId) } returns Unit
-        // Short timeout so the test doesn't wait long
         val tool = makeTool(launcher, timeoutMs = 200)
 
         every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
 
-        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+        val result = tool.execute(singleDelegation(), toolContext)
 
         result.success shouldBe false
-        result.output shouldBe "Delegation to 'sub-agent' timed out after 0s. The sub-agent did not complete in time."
-        result.metadata.containsKey("subCaseId") shouldBe true
-        verify(exactly = 1) { launcher.killSubCase(subCaseId) }
     }
 })

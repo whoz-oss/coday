@@ -10,6 +10,8 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
@@ -17,34 +19,39 @@ import mu.KLogging
 import java.util.UUID
 
 /**
- * Internal tool that delegates a task to a sub-agent by creating a child [Case].
+ * Internal tool that delegates one or more tasks to sub-agents by creating child [Case]s.
  *
- * The tool suspends until the sub-case reaches [CaseStatus.IDLE] or a terminal status,
- * then returns the last agent [MessageEvent] as the result.
+ * All delegations are launched in parallel and the tool suspends until every sub-case
+ * reaches [CaseStatus.IDLE] or a terminal status (or the global [timeoutMs] fires).
+ * Results are aggregated into a JSON array — one entry per delegation — and returned
+ * as a single [ToolExecutionResult]. The overall [ToolExecutionResult.success] is `true`
+ * when at least one delegation succeeded.
  *
- * Sub-cases must run autonomously. If the sub-case blocks on a [QuestionEvent] (the
- * sub-agent needs interactive input), the tool returns a success result containing the
- * pending question text so the parent agent can decide how to handle it (relay to the
- * user or resolve it autonomously). The sub-case is left in IDLE, resumable via
- * [Args.subCaseId].
+ * Each delegation entry in the response carries:
+ * - `agentName` — the sub-agent that handled the task
+ * - `subCaseId` — UUID of the created (or resumed) sub-case, usable for follow-up calls
+ * - `success` — whether this individual delegation produced a usable result
+ * - `result` — the last agent message text (when success and no pending question)
+ * - `pendingQuestion` — the question text when the sub-agent is waiting for input
+ * - `options` — optional list of choices for the pending question
+ * - `error` — error description when success is false
  *
- * If the sub-case does not complete within [timeoutMs], the delegation fails and the
- * sub-case is killed.
+ * **Timeout** applies to the entire batch: all sub-cases must complete within [timeoutMs].
+ * Sub-cases still running when the timeout fires are killed individually.
+ *
+ * **Resume**: a delegation with a non-null [Delegation.subCaseId] resumes an existing
+ * IDLE sub-case instead of creating a new one.
  *
  * This tool is never registered globally. It is instantiated per-agent in
  * [io.whozoss.agentos.agent.AgentServiceImpl] only when
- * [io.whozoss.agentos.agentConfig.AgentConfig.subAgents] is non-empty, with its
- * [allowedAgents] list fixed to the configured allowlist.
+ * [io.whozoss.agentos.agentConfig.AgentConfig.subAgents] is non-empty.
  *
  * @param subCaseLauncher  Used to create, resume, and observe sub-cases.
- * @param parentCaseId     Case id of the delegating agent's case, stored on the sub-case.
+ * @param parentCaseId     Case id of the delegating agent's case.
  * @param namespaceId      Namespace both cases belong to.
  * @param allowedAgents    Allowlist of agent names this tool may delegate to.
  * @param loadCaseEvents   Lambda that loads persisted events for a case id.
- *                         Provided as a lambda to keep [DelegationTool] decoupled from
- *                         [io.whozoss.agentos.caseEvent.CaseEventService] (avoids a
- *                         circular dependency through the Spring context).
- * @param timeoutMs        Max time to wait for the sub-case to reach IDLE (default 5 min).
+ * @param timeoutMs        Max wall-clock time for the entire batch (default 5 min).
  */
 class DelegationTool(
     private val subCaseLauncher: SubCaseLauncher,
@@ -56,16 +63,22 @@ class DelegationTool(
     private val eventLoadTimeoutMs: Long = EVENT_LOAD_TIMEOUT_MS,
 ) : StandardTool<DelegationTool.Args> {
 
-    data class Args(
+    /**
+     * A single delegation within the batch.
+     *
+     * @param agentName  Name of the sub-agent to delegate to (must be in [allowedAgents]).
+     * @param task       Full, self-contained task description for the sub-agent.
+     * @param subCaseId  Optional UUID of an existing IDLE sub-case to resume instead of
+     *                   creating a new one.
+     */
+    data class Delegation(
         val agentName: String,
         val task: String,
-        /**
-         * Optional id of an existing sub-case to resume. When provided, the tool injects
-         * [task] as a new user message into that sub-case instead of creating a new one.
-         * The sub-case must be in [CaseStatus.IDLE] — resuming a running or terminal case
-         * is rejected.
-         */
         val subCaseId: UUID? = null,
+    )
+
+    data class Args(
+        val delegations: List<Delegation>,
     )
 
     override val name = "DELEGATE__delegate"
@@ -73,9 +86,9 @@ class DelegationTool(
         allowedAgents.isEmpty() ->
             "No sub-agents are currently available for delegation. Do not attempt to delegate — handle the request yourself or inform the user that no sub-agent can address it."
         else ->
-            "Delegate a task to a specialized sub-agent and wait for the result. " +
-                "The sub-agent runs autonomously — if it needs to ask a question, the question is returned so you can relay it or resolve it yourself. " +
-                "To resume a previous sub-case (e.g. after relaying a question), provide its subCaseId. " +
+            "Delegate one or more tasks to specialized sub-agents and wait for all results. " +
+                "All delegations run in parallel — pass multiple entries to fan out work concurrently. " +
+                "Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. " +
                 "Available agents: ${allowedAgents.joinToString(", ")}."
     }
     override val version = "1.0.0"
@@ -85,27 +98,36 @@ class DelegationTool(
         .createObjectNode().apply {
             put("type", "object")
             putObject("properties").apply {
-                putObject("agentName").apply {
-                    put("type", "string")
-                    put("description", "Name of the sub-agent to delegate to.")
-                    putArray("enum").also { arr -> allowedAgents.forEach(arr::add) }
-                }
-                putObject("task").apply {
-                    put("type", "string")
-                    put("description", "Full, self-contained task description for the sub-agent.")
-                }
-                putObject("subCaseId").apply {
-                    put("type", "string")
-                    put("format", "uuid")
-                    put(
-                        "description",
-                        "Optional UUID of an existing IDLE sub-case to resume. " +
-                            "When provided, the task is injected as a new message into that sub-case " +
-                            "instead of creating a new one.",
-                    )
+                putObject("delegations").apply {
+                    put("type", "array")
+                    put("description", "List of tasks to delegate. All run in parallel.")
+                    putObject("items").apply {
+                        put("type", "object")
+                        putObject("properties").apply {
+                            putObject("agentName").apply {
+                                put("type", "string")
+                                put("description", "Name of the sub-agent to delegate to.")
+                                putArray("enum").also { arr -> allowedAgents.forEach(arr::add) }
+                            }
+                            putObject("task").apply {
+                                put("type", "string")
+                                put("description", "Full, self-contained task description for the sub-agent.")
+                            }
+                            putObject("subCaseId").apply {
+                                put("type", "string")
+                                put("format", "uuid")
+                                put(
+                                    "description",
+                                    "Optional UUID of an existing IDLE sub-case to resume. " +
+                                        "When provided, the task is injected as a new message instead of creating a new sub-case.",
+                                )
+                            }
+                        }
+                        putArray("required").add("agentName").add("task")
+                    }
                 }
             }
-            putArray("required").add("agentName").add("task")
+            putArray("required").add("delegations")
         }
         .let { objectMapper.writeValueAsString(it) }
 
@@ -113,20 +135,23 @@ class DelegationTool(
         input: Args?,
         context: ToolContext,
     ): ToolExecutionResult {
-        if (input == null) {
+        if (input == null || input.delegations.isEmpty()) {
             return ToolExecutionResult(
-                output = "Delegation requires agentName and task arguments.",
+                output = "Delegation requires at least one entry in the delegations list.",
                 success = false,
             )
         }
-        if (input.agentName !in allowedAgents) {
+
+        val invalidAgents = input.delegations.map { it.agentName }.filter { it !in allowedAgents }
+        if (invalidAgents.isNotEmpty()) {
             return ToolExecutionResult(
                 output =
-                    "Agent '${input.agentName}' is not in the delegation allowlist. " +
+                    "Agent(s) ${invalidAgents.joinToString(", ") { "'$it'" }} are not in the delegation allowlist. " +
                         "Allowed agents: ${allowedAgents.joinToString(", ")}.",
                 success = false,
             )
         }
+
         val userId =
             context.userId
                 ?: return ToolExecutionResult(
@@ -134,123 +159,157 @@ class DelegationTool(
                     success = false,
                 )
 
-        val agentName = input.agentName
-        val task = input.task
+        logger.info {
+            "[DelegationTool] Launching ${input.delegations.size} delegation(s) in parallel " +
+                "from parent case $parentCaseId (timeout=${timeoutMs}ms)"
+        }
 
-        val subRuntime =
-            when (val resumeId = input.subCaseId) {
-                null -> {
-                    logger.info { "[DelegationTool] Delegating to '$agentName' from parent case $parentCaseId" }
-                    subCaseLauncher.startSubCase(
-                        parentCaseId = parentCaseId,
-                        namespaceId = namespaceId,
-                        agentName = agentName,
-                        task = task,
-                        userId = userId,
-                    )
-                }
-
-                else -> {
-                    logger.info { "[DelegationTool] Resuming sub-case $resumeId for agent '$agentName'" }
-                    subCaseLauncher.resumeSubCase(
-                        subCaseId = resumeId,
-                        agentName = agentName,
-                        task = task,
-                        userId = userId,
-                        allowedAgents = allowedAgents,
-                    )
-                }
-            }
-        val subCaseId = subRuntime.id
-        logger.info { "[DelegationTool] Sub-case $subCaseId active, waiting for completion (timeout=${timeoutMs}ms)" }
-
-        // Phase 1: wait for the sub-case to reach IDLE or a terminal status.
-        // TimeoutCancellationException here means the run timeout fired — isolated so
-        // the event-load timeout below cannot accidentally trigger this handler.
-        val finalStatus =
+        // Run all delegations in parallel, bounded by the global wall-clock timeout.
+        val results: List<DelegationResult> =
             try {
                 withTimeout(timeoutMs) {
-                    subRuntime.statusFlow
-                        .filter { it == CaseStatus.IDLE || it.isTerminal() }
-                        .first()
+                    coroutineScope {
+                        input.delegations.map { delegation ->
+                            async { runSingleDelegation(delegation, userId) }
+                        }.map { it.await() }
+                    }
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                logger.warn { "[DelegationTool] Sub-case $subCaseId timed out after ${timeoutMs}ms — killing" }
-                runCatching { subCaseLauncher.killSubCase(subCaseId) }
+                // The batch timeout fired before all sub-cases completed.
+                // Individual sub-cases that are still running need to be killed.
+                // We cannot know which ones finished vs. timed out here since the
+                // coroutineScope was cancelled, so we return a global timeout error.
+                logger.warn { "[DelegationTool] Batch timed out after ${timeoutMs}ms" }
                 return ToolExecutionResult(
-                    output =
-                        "Delegation to '$agentName' timed out after ${timeoutMs / 1000}s. " +
-                            "The sub-agent did not complete in time.",
+                    output = "Delegation batch timed out after ${timeoutMs / 1000}s. Not all sub-agents completed in time.",
                     success = false,
-                    metadata = mapOf("subCaseId" to subCaseId.toString()),
                 )
             }
 
-        // Phase 2: sub-case has stopped — evaluate the outcome.
+        val anySuccess = results.any { it.success }
+        val output = objectMapper.writeValueAsString(results.map { it.toMap() })
+
+        logger.info {
+            "[DelegationTool] Batch complete: ${results.count { it.success }}/${results.size} succeeded"
+        }
+
+        return ToolExecutionResult(
+            output = output,
+            success = anySuccess,
+        )
+    }
+
+    /**
+     * Runs a single delegation: starts or resumes the sub-case, waits for completion,
+     * loads events, and extracts the result. Never throws — errors are captured as
+     * [DelegationResult.success] = false.
+     */
+    private suspend fun runSingleDelegation(
+        delegation: Delegation,
+        userId: UUID,
+    ): DelegationResult {
+        val agentName = delegation.agentName
+        val subRuntime =
+            runCatching {
+                when (val resumeId = delegation.subCaseId) {
+                    null -> {
+                        logger.info { "[DelegationTool] Starting sub-case for '$agentName'" }
+                        subCaseLauncher.startSubCase(
+                            parentCaseId = parentCaseId,
+                            namespaceId = namespaceId,
+                            agentName = agentName,
+                            task = delegation.task,
+                            userId = userId,
+                        )
+                    }
+                    else -> {
+                        logger.info { "[DelegationTool] Resuming sub-case $resumeId for '$agentName'" }
+                        subCaseLauncher.resumeSubCase(
+                            subCaseId = resumeId,
+                            agentName = agentName,
+                            task = delegation.task,
+                            userId = userId,
+                            allowedAgents = allowedAgents,
+                        )
+                    }
+                }
+            }.getOrElse { e ->
+                logger.warn(e) { "[DelegationTool] Failed to start sub-case for '$agentName'" }
+                return DelegationResult(
+                    agentName = agentName,
+                    subCaseId = delegation.subCaseId,
+                    success = false,
+                    error = "Failed to start sub-case: ${e.message}",
+                )
+            }
+
+        val subCaseId = subRuntime.id
+
+        // Wait for the sub-case to reach IDLE or a terminal status.
+        val finalStatus =
+            try {
+                subRuntime.statusFlow
+                    .filter { it == CaseStatus.IDLE || it.isTerminal() }
+                    .first()
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                // Propagate up to the batch withTimeout handler.
+                runCatching { subCaseLauncher.killSubCase(subCaseId) }
+                throw e
+            }
+
         if (finalStatus.isTerminal()) {
             logger.warn { "[DelegationTool] Sub-case $subCaseId ended with terminal status $finalStatus" }
-            return ToolExecutionResult(
-                output = "Sub-case ended with status $finalStatus without producing a result.",
+            return DelegationResult(
+                agentName = agentName,
+                subCaseId = subCaseId,
                 success = false,
-                metadata = mapOf("subCaseId" to subCaseId.toString()),
+                error = "Sub-case ended with status $finalStatus without producing a result.",
             )
         }
 
-        // Phase 3: load events to extract the result. Isolated timeout so a slow event
-        // store does not trigger the run-timeout handler above (which would wrongly kill
-        // a successfully completed sub-case and report the wrong duration).
+        // Load events with an isolated timeout so a slow store doesn't corrupt the batch timeout.
         val events =
             try {
                 withTimeout(eventLoadTimeoutMs) { loadCaseEvents(subCaseId) }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                logger.warn { "[DelegationTool] Sub-case $subCaseId: event load timed out after ${eventLoadTimeoutMs}ms" }
-                return ToolExecutionResult(
-                    output = "Sub-case completed but its event history could not be loaded in time.",
+                logger.warn { "[DelegationTool] Sub-case $subCaseId: event load timed out" }
+                return DelegationResult(
+                    agentName = agentName,
+                    subCaseId = subCaseId,
                     success = false,
-                    metadata = mapOf("subCaseId" to subCaseId.toString()),
+                    error = "Sub-case completed but its event history could not be loaded in time.",
                 )
             }
 
-        // A QuestionEvent as the last significant event means the sub-agent is waiting
-        // for interactive input it cannot receive autonomously. Return it as a success so
-        // the parent agent can decide how to handle it (relay to the user or resolve it
-        // autonomously). The sub-case stays IDLE and can be resumed via subCaseId.
+        // Detect a pending QuestionEvent (no agent message emitted after it).
         val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull()
         val lastAgentMessage = events
             .filterIsInstance<MessageEvent>()
             .lastOrNull { it.actor.role == ActorRole.AGENT }
-        // A question is pending when no agent message was emitted after it.
         val lastQuestionIsPending = lastQuestion != null &&
             (lastAgentMessage == null || events.indexOf(lastQuestion) > events.indexOf(lastAgentMessage))
 
         return if (lastQuestionIsPending) {
             logger.info { "[DelegationTool] Sub-case $subCaseId reached IDLE with a pending question" }
-            ToolExecutionResult(
-                output = objectMapper.writeValueAsString(
-                    mapOf(
-                        "subCaseId" to subCaseId.toString(),
-                        "pendingQuestion" to lastQuestion!!.question,
-                        "options" to lastQuestion.options,
-                    ),
-                ),
+            DelegationResult(
+                agentName = agentName,
+                subCaseId = subCaseId,
                 success = true,
-                metadata = mapOf("subCaseId" to subCaseId.toString()),
+                pendingQuestion = lastQuestion.question,
+                options = lastQuestion.options,
             )
         } else {
             val result = extractLastAgentMessage(events)
             logger.info { "[DelegationTool] Sub-case $subCaseId finished, result length=${result.length}" }
-            ToolExecutionResult(
-                output = objectMapper.writeValueAsString(mapOf("subCaseId" to subCaseId.toString(), "result" to result)),
+            DelegationResult(
+                agentName = agentName,
+                subCaseId = subCaseId,
                 success = true,
-                metadata = mapOf("subCaseId" to subCaseId.toString()),
+                result = result,
             )
         }
     }
 
-    /**
-     * Extracts the text of the last [MessageEvent] emitted by an agent from a pre-loaded
-     * event list. Falls back to a generic message if no agent message is found.
-     */
     private fun extractLastAgentMessage(events: List<CaseEvent>): String =
         events
             .filterIsInstance<MessageEvent>()
@@ -261,10 +320,33 @@ class DelegationTool(
             ?.takeIf { it.isNotBlank() }
             ?: "Sub-agent completed the task but produced no text output."
 
+    // -------------------------------------------------------------------------
+    // Internal result model
+    // -------------------------------------------------------------------------
+
+    private data class DelegationResult(
+        val agentName: String,
+        val subCaseId: UUID?,
+        val success: Boolean,
+        val result: String? = null,
+        val pendingQuestion: String? = null,
+        val options: List<String>? = null,
+        val error: String? = null,
+    ) {
+        fun toMap(): Map<String, Any?> =
+            buildMap {
+                put("agentName", agentName)
+                put("subCaseId", subCaseId?.toString())
+                put("success", success)
+                result?.let { put("result", it) }
+                pendingQuestion?.let { put("pendingQuestion", it) }
+                options?.let { put("options", it) }
+                error?.let { put("error", it) }
+            }
+    }
+
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
-
-        /** Max time allowed to load sub-case events after the sub-case has completed. */
         private const val EVENT_LOAD_TIMEOUT_MS = 10_000L
     }
 }
