@@ -282,6 +282,26 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
             ).andExpect(status().isBadRequest)
         }
 
+        "PUT with blank content element returns 400" {
+            val created = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "BLANK-CONTENT-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.PROMPT, created.id.toString(), Action.WRITE)
+            } returns true
+
+            mockMvc.perform(
+                put("/api/prompts/${created.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "${created.name}", "content": ["Hello", "   "] }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
         "PUT with valid payload returns 200" {
             val created = promptService.create(
                 Prompt(

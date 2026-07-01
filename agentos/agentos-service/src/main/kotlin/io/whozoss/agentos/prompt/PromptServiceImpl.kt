@@ -53,15 +53,9 @@ class PromptServiceImpl(
 
     /**
      * Validates business rules that cannot be expressed via Bean Validation:
-     * - Each content element must be non-blank.
      * - Parameter names must be unique within the list.
      */
     private fun validate(prompt: Prompt) {
-        val blankIndex = prompt.content.indexOfFirst { it.isBlank() }
-        if (blankIndex >= 0) {
-            throw BadRequestException("content[$blankIndex] must not be blank")
-        }
-
         val duplicateName =
             prompt.parameters
                 .groupBy { it.name }

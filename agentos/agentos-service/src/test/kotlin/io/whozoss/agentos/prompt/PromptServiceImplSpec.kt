@@ -17,6 +17,9 @@ import java.util.UUID
  *
  * Uses [InMemoryPromptRepository] to keep tests fast and isolated.
  * Each test builds its own service instance to guarantee full isolation.
+ *
+ * Blank content element validation is enforced by Bean Validation at the controller
+ * layer (List<@NotBlank String> with -Xemit-jvm-type-annotations) and is not tested here.
  */
 class PromptServiceImplSpec : StringSpec() {
     private fun newService(): PromptServiceImpl = PromptServiceImpl(InMemoryPromptRepository())
@@ -87,25 +90,8 @@ class PromptServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // Content validation
+        // Content
         // -------------------------------------------------------------------------
-
-        "create rejects prompt with a blank content element" {
-            val service = newService()
-
-            val ex = shouldThrow<BadRequestException> {
-                service.create(prompt(content = listOf("Hello", "   ", "World")))
-            }
-            ex.message shouldContain "content[1]"
-        }
-
-        "create rejects prompt with an empty string content element" {
-            val service = newService()
-
-            shouldThrow<BadRequestException> {
-                service.create(prompt(content = listOf("")))
-            }
-        }
 
         "create accepts prompt with a single non-blank content element" {
             val service = newService()
@@ -154,17 +140,8 @@ class PromptServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // Update validation mirrors create validation
+        // Update validation
         // -------------------------------------------------------------------------
-
-        "update rejects blank content element" {
-            val service = newService()
-            val saved = service.create(prompt())
-
-            shouldThrow<BadRequestException> {
-                service.update(saved.copy(content = listOf("Good", "")))
-            }
-        }
 
         "update rejects duplicate parameter names" {
             val service = newService()

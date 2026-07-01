@@ -35,7 +35,7 @@ data class PromptResource(
     val namespaceId: UUID? = null,
     @field:NotBlank val name: String,
     val description: String? = null,
-    @field:NotEmpty val content: List<String>,
+    @field:NotEmpty val content: List<@NotBlank String>,
     @field:Valid val parameters: List<PromptParameterResource> = emptyList(),
     // Read-only audit fields — populated from EntityMetadata on GET responses,
     // ignored on POST/PUT (Spring Data auditing sets them server-side).
