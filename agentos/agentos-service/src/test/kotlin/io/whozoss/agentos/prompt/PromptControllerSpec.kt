@@ -29,10 +29,11 @@ import java.util.UUID
  * exercised by the MVC integration specs. This spec covers:
  * - toResource / toDomain mapping
  * - create: scope dispatch, authorization guards, namespace existence check
- * - listByParent: namespace listing
- * - update: namespaceId mass-assignment guard, 404 path
- * - delete: soft-delete, 404 path
- * - getById / getByIds: inherited delegates
+ * - update: namespaceId mass-assignment guard, mutable fields, 404 path
+ * - delete: 404 path
+ *
+ * HTTP-level flows (Bean Validation, status codes, @PreAuthorize wiring) are
+ * covered by [PromptControllerMvcIntegrationSpec].
  *
  * Platform-level admin guard (Super Admin required for WRITE/DELETE on platform prompts)
  * is enforced by PermissionServiceImpl, not the controller. Those cases are covered
@@ -189,47 +190,6 @@ class PromptControllerSpec : StringSpec({
         val first = controller.toDomain(resource(id = null))
         val second = controller.toDomain(resource(id = null))
         (first.id == second.id) shouldBe false
-    }
-
-    // -------------------------------------------------------------------------
-    // getById
-    // -------------------------------------------------------------------------
-
-    "getById returns resource when found" {
-        val p = prompt()
-        every { service.findById(p.id, withRemoved = true) } returns p
-
-        controller.getById(p.id) shouldBe controller.toResource(p)
-    }
-
-    "getById throws 404 when not found" {
-        val id = UUID.randomUUID()
-        every { service.findById(id, withRemoved = true) } returns null
-
-        shouldThrow<ResourceNotFoundException> { controller.getById(id) }
-    }
-
-    // -------------------------------------------------------------------------
-    // listByParent — namespace scope
-    // -------------------------------------------------------------------------
-
-    "listByParent returns namespace prompts" {
-        val p = prompt(nsId = namespaceId, name = "NS Prompt")
-        every { service.findByNamespaceId(namespaceId) } returns listOf(p)
-
-        val result = controller.listByParent(namespaceId)
-
-        result shouldHaveSize 1
-        result[0].name shouldBe "NS Prompt"
-        verify(exactly = 1) { service.findByNamespaceId(namespaceId) }
-    }
-
-    "listByParent returns empty list when no prompts exist" {
-        every { service.findByNamespaceId(namespaceId) } returns emptyList()
-
-        val result = controller.listByParent(namespaceId)
-
-        result shouldBe emptyList()
     }
 
     // -------------------------------------------------------------------------
