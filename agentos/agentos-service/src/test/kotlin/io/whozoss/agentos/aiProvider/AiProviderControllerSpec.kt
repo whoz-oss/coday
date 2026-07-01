@@ -128,21 +128,20 @@ class AiProviderControllerSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "toDto masks a long apiKey" {
-        AiProviderController.maskApiKey("sk-ant-api03-abcdefghijklmnop") shouldBe "sk-a****mnop"
+        maskApiKey("sk-ant-api03-abcdefghijklmnop") shouldBe "sk-a****mnop"
     }
 
     "toDto returns null apiKey when no key is set" {
-        AiProviderController.maskApiKey(null).shouldBeNull()
+        maskApiKey(null).shouldBeNull()
     }
 
     "toDto maps namespaceId and userId" {
         val uid = UUID.randomUUID()
         val p = config(nsId = namespaceId, uId = uid)
-        // toDto is file-level; invoke via the controller's create path or directly via the extension
         val dto = AiProviderDto(
             id = p.metadata.id, namespaceId = p.namespaceId, userId = p.userId,
             name = p.name, apiType = p.apiType,
-            apiKey = AiProviderController.maskApiKey(p.apiKey),
+            apiKey = maskApiKey(p.apiKey),
         )
         dto.namespaceId shouldBe namespaceId
         dto.userId shouldBe uid
@@ -150,13 +149,13 @@ class AiProviderControllerSpec : StringSpec({
 
     "toDto masks apiKey and maps all fields" {
         val p = config(name = "MY_OPENAI", apiType = AiApiType.OpenAI, apiKey = "sk-openai-123456789012")
-        val masked = AiProviderController.maskApiKey(p.apiKey)
+        val masked = maskApiKey(p.apiKey)
         masked shouldBe maskApiKey("sk-openai-123456789012")
         masked shouldNotBe "sk-openai-123456789012"
     }
 
     "toDto with null apiKey returns null apiKey" {
-        AiProviderController.maskApiKey(null) shouldBe null
+        maskApiKey(null) shouldBe null
     }
 
     // -------------------------------------------------------------------------

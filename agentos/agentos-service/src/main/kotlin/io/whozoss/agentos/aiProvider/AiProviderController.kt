@@ -177,13 +177,7 @@ class AiProviderController(
             else -> incoming
         }
 
-    companion object : KLogging() {
-        private const val API_KEY_MASK = "****"
-
-        fun maskApiKey(key: String?): String? = key?.let { API_KEY_MASK }
-
-        fun isMasked(key: String?): Boolean = key?.contains(API_KEY_MASK) == true
-    }
+    companion object : KLogging()
 }
 
 private fun toDto(entity: AiProvider) =
@@ -195,6 +189,6 @@ private fun toDto(entity: AiProvider) =
         description = entity.description,
         apiType = entity.apiType,
         baseUrl = entity.baseUrl,
-        apiKey = AiProviderController.maskApiKey(entity.apiKey),
+        apiKey = maskApiKey(entity.apiKey),
         headers = entity.headers,
     )
