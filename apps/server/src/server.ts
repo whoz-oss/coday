@@ -75,11 +75,15 @@ let promptExecutionService: PromptExecutionService
 // consuming the request body before it can be forwarded.
 const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8124
 const AGENTOS_HOSTNAME = process.env.AGENTOS_HOSTNAME ?? 'localhost'
+const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
 const AGENTOS_URL = `http://${AGENTOS_HOSTNAME}:${AGENTOS_PORT}`
 app.use(
   '/api/agentos',
   (req, _res, next) => {
     console.log(`[AGENTOS PROXY] ${req.method} ${req.path}`)
+    if (AGENTOS_EXTERNAL_USERID) {
+      req.headers['X-External-User-Id'] = AGENTOS_EXTERNAL_USERID
+    }
     next()
   },
   createProxyMiddleware({

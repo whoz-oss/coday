@@ -14,14 +14,8 @@
         (keydown)="onKeydown($event)"
       ></textarea>
       <div class="case-home__composer-footer">
-        <span class="case-home__hint">Enter to send&nbsp;&nbsp;·&nbsp;&nbsp;Shift+Enter for new line</span>
-        <ds-icon-button
-          icon="send"
-          variant="primary"
-          title="Start case (Enter)"
-          [disabled]="!canSend"
-          (action)="submit()"
-        />
+        <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+        <ds-icon-button icon="send" variant="primary" title="Start case" [disabled]="!canSend" (action)="submit()" />
       </div>
     </div>
   </div>
