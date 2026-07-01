@@ -18,18 +18,43 @@
 
       <div class="user-profile__field">
         <span class="user-profile__label">Theme</span>
-        <div class="user-profile__theme" role="group" aria-label="Theme">
+        <div class="user-profile__segmented" role="group" aria-label="Theme">
           @for (option of themeOptions; track option.value) {
             <button
               type="button"
-              class="user-profile__theme-option"
-              [class.user-profile__theme-option--active]="theme() === option.value"
+              class="user-profile__segmented-option"
+              [class.user-profile__segmented-option--active]="theme() === option.value"
               [attr.aria-pressed]="theme() === option.value"
               (click)="setTheme(option.value)"
             >
               {{ option.label }}
             </button>
           }
+        </div>
+      </div>
+    </div>
+
+    <!-- Composer behavior is a front-only user preference, independent of read/edit mode. -->
+    <div class="user-profile__section">
+      <h2 class="user-profile__section-title">Composer</h2>
+
+      <div class="user-profile__field">
+        <span class="user-profile__label">Enter key</span>
+        <div class="user-profile__field-control">
+          <div class="user-profile__segmented" role="group" aria-label="Enter key behavior">
+            @for (option of enterKeyOptions; track option.value) {
+              <button
+                type="button"
+                class="user-profile__segmented-option"
+                [class.user-profile__segmented-option--active]="enterKeyBehavior() === option.value"
+                [attr.aria-pressed]="enterKeyBehavior() === option.value"
+                (click)="setEnterKeyBehavior(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            }
+          </div>
+          <p class="user-profile__hint">In "New line" mode, press Ctrl or Cmd + Enter to send.</p>
         </div>
       </div>
     </div>
