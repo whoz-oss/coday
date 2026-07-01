@@ -309,7 +309,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val config = agentConfig(name = "my-agent", modelName = "default")
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            // userId != null => findAgentByName takes the findDeployedByNamespaceIdAndUserIdAndName path
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "default") } returns platformModel
             every { aiProviderService.getById(platformProviderId) } returns platformProvider
             every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-platform") } returns platformProvider
