@@ -35,6 +35,9 @@ class PromptServiceImpl(
         return saveOrConflict(entity)
     }
 
+    override fun findById(id: UUID, withRemoved: Boolean): Prompt? =
+        repository.findByIds(listOf(id), withRemoved).firstOrNull()
+
     override fun findByIds(
         ids: Collection<UUID>,
         withRemoved: Boolean,

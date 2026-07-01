@@ -158,14 +158,14 @@ class PromptController(
     ): PromptResource {
         val resolvedNs: UUID? = resource.namespaceId
         val isPlatform = resolvedNs == null
+        val currentUser = userService.getCurrentUser()
 
         // Authorization - run BEFORE existence check to avoid leaking namespace existence.
         if (isPlatform) {
-            if (!userService.getCurrentUser().isAdmin) {
+            if (!currentUser.isAdmin) {
                 throw AccessDeniedException("Platform-level Prompt requires Super Admin")
             }
         } else {
-            val currentUser = userService.getCurrentUser()
             val granted =
                 permissionService.hasPermission(
                     userId = currentUser.id.toString(),

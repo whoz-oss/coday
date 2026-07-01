@@ -7,7 +7,7 @@ import java.util.UUID
 class InMemoryPromptRepository : PromptRepository {
     private val delegate =
         InMemoryEntityRepository<Prompt, String>(
-            parentIdExtractor = { ALL_KEY },
+            parentIdExtractor = { it.namespaceId?.toString() ?: PLATFORM_KEY },
             comparator = compareBy { it.name },
         )
 
@@ -18,20 +18,18 @@ class InMemoryPromptRepository : PromptRepository {
         withRemoved: Boolean,
     ): List<Prompt> = delegate.findByIds(ids, withRemoved)
 
-    override fun findByParent(parentId: UUID): List<Prompt> = findByNamespaceId(parentId)
+    override fun findByParent(parentId: UUID): List<Prompt> = delegate.findByParent(parentId.toString())
 
     override fun delete(id: UUID): Boolean = delegate.delete(id)
 
-    override fun deleteByParent(parentId: UUID): Int =
-        findByNamespaceId(parentId).count { delegate.delete(it.metadata.id) }
+    override fun deleteByParent(parentId: UUID): Int = delegate.deleteByParent(parentId.toString())
 
     override fun findByNamespaceId(namespaceId: UUID): List<Prompt> =
-        delegate.findAll().filter { it.namespaceId == namespaceId }
+        delegate.findByParent(namespaceId.toString())
 
-    override fun findPlatform(): List<Prompt> =
-        delegate.findAll().filter { it.namespaceId == null }
+    override fun findPlatform(): List<Prompt> = delegate.findByParent(PLATFORM_KEY)
 
     companion object {
-        private const val ALL_KEY = "all"
+        private const val PLATFORM_KEY = "__platform__"
     }
 }
