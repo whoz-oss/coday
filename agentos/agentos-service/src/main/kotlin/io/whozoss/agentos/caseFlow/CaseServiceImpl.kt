@@ -6,6 +6,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
+import io.whozoss.agentos.caseFlow.postprocessing.CasePostProcessingService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -22,9 +23,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -32,6 +31,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -47,14 +47,10 @@ class CaseServiceImpl(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
+    private val postProcessingService: CasePostProcessingService,
+    @Qualifier("caseCoroutineScope") private val scope: CoroutineScope,
 ) : CaseService {
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
-
-    /**
-     * Coroutine scope used to run case execution loops in the background.
-     * Each [run] call is launched here so HTTP threads are never blocked.
-     */
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
@@ -259,6 +255,14 @@ class CaseServiceImpl(
         runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
+        // Trigger post-processing after each user message (e.g. automatic title generation).
+        // Events are fetched fresh from the service so the newly stored MessageEvent is included.
+        val case = findById(caseId) ?: return
+        postProcessingService.trigger(
+            case = case,
+            events = caseEventService.findByParent(caseId),
+            emitEvent = { event -> runtime.emitEvent(event) },
+        )
     }
 
     // ======================================================
@@ -561,6 +565,19 @@ class CaseServiceImpl(
             logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
         } else {
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
+        }
+
+        // Trigger post-processing on turn completion so processors can refine their
+        // work with the full agent response available (e.g. naming refinement on 2nd turn).
+        if (newStatus == CaseStatus.IDLE) {
+            val runtime = activeRuntimes[caseId]
+            if (runtime != null) {
+                postProcessingService.trigger(
+                    case = updated,
+                    events = caseEventService.findByParent(caseId),
+                    emitEvent = { event -> runtime.emitEvent(event) },
+                )
+            }
         }
 
         val statusEvent =

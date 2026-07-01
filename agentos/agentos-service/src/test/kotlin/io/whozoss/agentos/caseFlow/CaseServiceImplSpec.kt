@@ -11,11 +11,12 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
-import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
+import io.whozoss.agentos.caseFlow.postprocessing.CasePostProcessingService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -38,6 +39,7 @@ import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
@@ -176,6 +178,16 @@ class CaseServiceImplSpec :
             clearMocks(allowAllAgentConfigService, answers = false)
         }
 
+        /** No-op post-processing service — tests do not exercise post-processors. */
+        val noOpPostProcessingService: CasePostProcessingService =
+            CasePostProcessingService(
+                processors = emptyList(),
+                scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+            )
+
+        /** Shared coroutine scope for all [CaseServiceImpl] instances under test. */
+        val testScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
             agent: Agent = finishingAgent(),
@@ -208,6 +220,8 @@ class CaseServiceImplSpec :
                 userService,
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
+                postProcessingService = noOpPostProcessingService,
+                scope = testScope,
             )
         }
 
@@ -347,6 +361,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -569,6 +585,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -666,6 +684,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -736,6 +756,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -780,6 +802,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -848,6 +872,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -914,6 +940,8 @@ class CaseServiceImplSpec :
                     userServiceMock,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1018,6 +1046,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1112,6 +1142,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1354,6 +1386,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1505,6 +1539,8 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    postProcessingService = noOpPostProcessingService,
+                    scope = testScope,
                 )
 
             // Insert the case directly into the repository so no runtime is created in
