@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component
  * - A UNIQUE constraint on `scopeKey` to enforce name uniqueness per scope.
  *   The `scopeKey` encodes `(namespaceId, name)` into a single non-null string,
  *   using `_` as sentinel for null namespaceId (platform scope). On soft-delete
- *   the key is rewritten to `tombstone:<id>` to free the unique slot.
+ *   the key is rewritten to `tombstone:<id>` on soft-delete to free the unique slot.
  */
 @Component
 @ConditionalOnExpression(

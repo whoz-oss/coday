@@ -84,10 +84,11 @@ data class PromptNode(
             (namespaceId?.toString() ?: "_") + ":" + name
 
         /**
-         * Compute a tombstone scope key that frees the unique slot on soft-delete.
+         * Compute the scope key written on soft-delete, freeing the unique slot
+         * so the same (namespaceId, name) pair can be recreated immediately.
          * Format: `tombstone:<entityId>` — unique by construction.
          */
-        fun tombstoneScopeKey(id: String): String = "tombstone:$id"
+        fun softRemovedScopeKey(id: String): String = "tombstone:$id"
 
         fun fromDomain(
             prompt: Prompt,

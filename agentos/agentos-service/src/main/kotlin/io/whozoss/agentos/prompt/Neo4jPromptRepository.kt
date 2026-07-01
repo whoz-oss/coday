@@ -68,7 +68,7 @@ open class Neo4jPromptRepository(
                 neo4jRepository.save(
                     node.copy(
                         removed = true,
-                        scopeKey = PromptNode.tombstoneScopeKey(node.id),
+                        scopeKey = PromptNode.softRemovedScopeKey(node.id),
                     ),
                 )
                 logger.debug { "[Neo4jPromptRepository] Soft-deleted prompt $id" }
@@ -82,7 +82,7 @@ open class Neo4jPromptRepository(
             active.map {
                 it.copy(
                     removed = true,
-                    scopeKey = PromptNode.tombstoneScopeKey(it.id),
+                    scopeKey = PromptNode.softRemovedScopeKey(it.id),
                 )
             },
         )
