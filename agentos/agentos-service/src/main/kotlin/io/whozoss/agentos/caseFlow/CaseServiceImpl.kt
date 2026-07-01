@@ -225,6 +225,7 @@ class CaseServiceImpl(
         CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
+            caseCreatedAt = case.metadata.created,
             updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
@@ -485,6 +486,7 @@ class CaseServiceImpl(
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
                 caseId = caseId,
+                caseCreatedAt = runtime.caseCreatedAt,
                 userId = userId,
                 caseEventsProvider = eventsProvider,
             )

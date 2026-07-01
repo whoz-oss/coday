@@ -1,6 +1,12 @@
 spring:
   application:
     name: agentos
+  servlet:
+    multipart:
+      # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB
+      # default. Overridable via env (relaxed binding), like the other params.
+      max-file-size: ${AGENTOS_MULTIPART_MAX_FILE_SIZE:25MB}
+      max-request-size: ${AGENTOS_MULTIPART_MAX_REQUEST_SIZE:30MB}
   cloud:
     # Spring Cloud 2024.0.x (Moore) targets Spring Boot 3.4.x officially.
     # AgentOS runs Spring Boot 3.5.x which is functionally compatible but

@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +51,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 class CaseRuntime(
     val id: UUID,
     val namespaceId: UUID,
+    /**
+     * The case's immutable creation timestamp — used to resolve the date-sharded exchange root.
+     * Defaulted only for test construction; production always supplies it via [buildRuntime].
+     */
+    val caseCreatedAt: Instant = Instant.EPOCH,
     private val updateStatusCallback: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
