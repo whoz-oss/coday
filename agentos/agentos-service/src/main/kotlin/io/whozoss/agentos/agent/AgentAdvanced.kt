@@ -212,6 +212,7 @@ class AgentAdvanced(
                             caseId = caseId,
                             shouldContinue = shouldContinue,
                             emitEvent = { event -> emit(event) },
+                            context = context
                         )
                     }
                     emit(
@@ -966,6 +967,7 @@ class AgentAdvanced(
         caseId: UUID,
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
+        context: AgentAdvancedContext,
     ) {
         val userFullName =
             accumulatedEvents
@@ -985,6 +987,9 @@ class AgentAdvanced(
         // Build the final prompt in clear, composable sections
         val prompt =
             buildString {
+                appendLine("Available agents and tools:")
+                val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
+                appendLine(toolsDescription)
                 lastIntention?.let {
                     if (it.isFailedIntention) {
                         appendLine("Your analysis:")
@@ -994,7 +999,7 @@ class AgentAdvanced(
                         appendLine()
                         appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
                     } else {
-                        appendLine("Your analysis: ${it.intention}")
+                        appendLine("Your are decided to answer the user because of: ${it.intention}")
                     }
                     appendLine()
                 }
