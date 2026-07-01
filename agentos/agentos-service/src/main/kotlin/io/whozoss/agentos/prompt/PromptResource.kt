@@ -48,5 +48,5 @@ data class PromptResource(
 data class PromptParameterResource(
     @field:NotBlank val name: String,
     val description: String? = null,
-    val defaultValue: String,
+    @field:NotBlank val defaultValue: String,
 )

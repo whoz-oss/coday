@@ -167,7 +167,7 @@ class PromptControllerSpec : StringSpec({
             name = "Summary",
             description = "Summarise input",
             content = listOf("Summarise: {{text}}"),
-            parameters = listOf(PromptParameterResource(name = "text", description = "Input text", defaultValue = "")),
+            parameters = listOf(PromptParameterResource(name = "text", description = "Input text", defaultValue = "default")),
         )
 
         val result = controller.toDomain(r)
@@ -346,7 +346,7 @@ class PromptControllerSpec : StringSpec({
 
     "update allows changing name, description, content, and parameters" {
         val p = prompt()
-        val newParams = listOf(PromptParameterResource(name = "city", description = "City name", defaultValue = ""))
+        val newParams = listOf(PromptParameterResource(name = "city", description = "City name", defaultValue = "Paris"))
         val payload = resource(
             id = p.id,
             name = "New Name",
