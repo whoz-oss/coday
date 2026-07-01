@@ -88,6 +88,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'agent-configs'])
   }
 
+  protected openCaseDefinitions(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'case-definitions'])
+  }
+
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {

@@ -146,6 +146,31 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAgentConfigsComponent
               ),
           },
+          // --- Case Definitions ---
+          {
+            path: ':namespaceId/case-definitions/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-form/case-definition-form.component').then(
+                (m) => m.CaseDefinitionFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/case-definitions/:caseDefinitionId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-form/case-definition-form.component').then(
+                (m) => m.CaseDefinitionFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/case-definitions',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-list/case-definition-list.component').then(
+                (m) => m.CaseDefinitionListComponent
+              ),
+          },
           // --- Admin ---
           {
             path: 'admin/users/new',
