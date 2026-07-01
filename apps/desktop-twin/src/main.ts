@@ -354,9 +354,37 @@ function copySchedulersWithOwner(src: string, dest: string): void {
 }
 
 /**
+ * Replace every occurrence of `oldValue` with `newValue` in `content`,
+ * but only within lines that also contain `contextSubstring`.
+ * This avoids accidental replacement of the same string in unrelated parts of the file.
+ */
+function replaceInContext(content: string, oldValue: string, newValue: string, contextSubstring: string): string {
+  return content
+    .split('\n')
+    .map((line) => {
+      if (line.includes(contextSubstring) && line.includes(oldValue)) {
+        return line.split(oldValue).join(newValue)
+      }
+      return line
+    })
+    .join('\n')
+}
+
+/**
  * Apply Slack config into the live coday.yaml inside the vault.
- * previousConfig must be read BEFORE the new config is stored.
- * Handles both cases: replacing placeholders (1st time) and replacing existing values (updates).
+ * previousConfig is used as a hint for the old value, but the function also
+ * reads the current file content to discover the actual stored value, making
+ * it robust against manual edits and stale preferences.json data.
+ *
+ * Replacement strategy (in priority order):
+ *   1. The value currently embedded in the file (extracted via regex from the curl command)
+ *   2. The value from previousConfig (what preferences.json remembers)
+ *   3. The original placeholder string (SLACK_NOTIFY_WEBHOOK_URL / SLACK_USER_ID)
+ *
+ * The webhook URL replacement is scoped to lines containing "curl -X POST" to
+ * avoid accidentally corrupting unrelated YAML content.
+ * The userId replacement is global (it appears in both parametersDescription and
+ * the command line, and both occurrences should be updated).
  */
 function applySlackConfigToVault(config: SlackConfig, previousConfig: SlackConfig): void {
   const vaultPath = getResolvedTwinPath()
@@ -372,25 +400,52 @@ function applySlackConfigToVault(config: SlackConfig, previousConfig: SlackConfi
     let changed = false
 
     if (config.webhookUrl) {
-      // Try replacing the previous real value first, then fall back to the placeholder
-      const candidates = [...new Set([previousConfig.webhookUrl, 'SLACK_NOTIFY_WEBHOOK_URL'].filter(Boolean))]
+      // Discover the webhook URL currently embedded in the curl command line
+      const curlMatch = /curl -X POST (\S+)/.exec(content)
+      const valueInFile = curlMatch ? curlMatch[1]! : null
+
+      // Build candidate list: current file value → previous stored value → placeholder
+      const candidates = [
+        ...new Set([valueInFile, previousConfig.webhookUrl, 'SLACK_NOTIFY_WEBHOOK_URL'].filter(Boolean)),
+      ] as string[]
+
       for (const candidate of candidates) {
-        if (content.includes(candidate) && candidate !== config.webhookUrl) {
-          content = content.replaceAll(candidate, config.webhookUrl)
+        if (candidate !== config.webhookUrl && content.includes(candidate)) {
+          // Scope replacement to lines containing the curl command to avoid
+          // accidentally replacing the same string elsewhere in the YAML
+          const updated = replaceInContext(content, candidate, config.webhookUrl, 'curl -X POST')
+          if (updated !== content) {
+            content = updated
+            changed = true
+            log('INFO', `Replaced webhook URL (was "${candidate}") in coday.yaml curl command`)
+            break
+          }
+          // Fallback: full replace if the curl context scope found nothing
+          // (handles edge cases where the template format differs)
+          content = content.split(candidate).join(config.webhookUrl)
           changed = true
-          log('INFO', `Replaced "${candidate}" with new webhookUrl in coday.yaml`)
+          log('INFO', `Replaced webhook URL (was "${candidate}") in coday.yaml (full replace fallback)`)
           break
         }
       }
     }
 
     if (config.userId) {
-      const candidates = [...new Set([previousConfig.userId, 'SLACK_USER_ID'].filter(Boolean))]
+      // The user ID appears in both parametersDescription and the command line.
+      // Both occurrences should be updated — a global replace is correct here.
+      // Discover the userId currently in the parametersDescription block.
+      const userIdMatch = /slackUserId:\s*(\S+)/.exec(content)
+      const userIdInFile = userIdMatch ? userIdMatch[1]! : null
+
+      const candidates = [
+        ...new Set([userIdInFile, previousConfig.userId, 'SLACK_USER_ID'].filter(Boolean)),
+      ] as string[]
+
       for (const candidate of candidates) {
-        if (content.includes(candidate) && candidate !== config.userId) {
-          content = content.replaceAll(candidate, config.userId)
+        if (candidate !== config.userId && content.includes(candidate)) {
+          content = content.split(candidate).join(config.userId)
           changed = true
-          log('INFO', `Replaced "${candidate}" with new userId in coday.yaml`)
+          log('INFO', `Replaced userId (was "${candidate}") in coday.yaml`)
           break
         }
       }
@@ -1248,6 +1303,17 @@ async function initialize(): Promise<void> {
     // Ensure vault directory and Coday project config exist
     initializeVault(twinProjectPath)
     ensureTwinProjectConfig(twinProjectPath)
+
+    // Re-apply Slack config to coday.yaml on every startup.
+    // initializeVault only substitutes placeholders when coday.yaml is first created
+    // from the template, so if the vault already existed when Slack was configured
+    // (e.g. after re-setup or a partial first-launch), the values would otherwise
+    // remain as placeholders. This mirrors the Google Calendar re-application
+    // pattern in ensureTwinProjectConfig.
+    const slackConfig = getStoredSlackConfig()
+    if (slackConfig.enabled && (slackConfig.webhookUrl || slackConfig.userId)) {
+      applySlackConfigToVault(slackConfig, { enabled: false, webhookUrl: '', userId: '' })
+    }
 
     // Start the CodayTwin server
     const result = await startCodayServer({
