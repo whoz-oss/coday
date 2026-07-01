@@ -91,29 +91,6 @@ class Neo4jSchemaInitializer(
             logger.info { "[Neo4jSchemaInitializer] Constraint $constraintName ensured" }
         }
 
-        // ── AgentConfig name-uniqueness constraints ────────────────────────────
-        // Two partial-uniqueness constraints enforce that (namespaceId, name) is unique
-        // within a namespace, and that platform-level agent names (namespaceId IS NULL)
-        // are globally unique. Neo4j 5.7+ supports WHERE clauses on constraints, which
-        // is required here because a single composite constraint on (name, namespaceId)
-        // would exclude nodes where namespaceId IS NULL (Neo4j omits null-property nodes
-        // from composite constraints).
-        neo4jClient
-            .query(
-                "CREATE CONSTRAINT agent_config_name_namespace_unique IF NOT EXISTS " +
-                    "FOR (a:AgentConfig) WHERE a.namespaceId IS NOT NULL " +
-                    "REQUIRE (a.namespaceId, a.name) IS UNIQUE",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Constraint agent_config_name_namespace_unique ensured" }
-
-        neo4jClient
-            .query(
-                "CREATE CONSTRAINT agent_config_platform_name_unique IF NOT EXISTS " +
-                    "FOR (a:AgentConfig) WHERE a.namespaceId IS NULL " +
-                    "REQUIRE a.name IS UNIQUE",
-            ).run()
-        logger.info { "[Neo4jSchemaInitializer] Constraint agent_config_platform_name_unique ensured" }
-
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?
         // which fails if the property is absent. Setting version = 0 makes existing nodes
