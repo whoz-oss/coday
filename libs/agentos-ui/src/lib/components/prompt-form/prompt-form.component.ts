@@ -3,7 +3,8 @@ import { HttpErrorResponse } from '@angular/common/http'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Prompt, PromptControllerService, PromptParameter } from '@whoz-oss/agentos-api-client'
+import { Prompt, PromptParameter } from '@whoz-oss/agentos-api-client'
+import { PromptStateService } from '../../services/prompt-state.service'
 
 /**
  * PromptFormComponent — full-page create / edit form for a prompt.
@@ -20,6 +21,7 @@ import { Prompt, PromptControllerService, PromptParameter } from '@whoz-oss/agen
  * The `content` field is an ordered list of free-text strings. The user can add
  * and remove entries (minimum 1 must remain). Each entry is a multiline textarea
  * supporting @AgentName references and {{paramName}} interpolations.
+ * Blank entries are rejected by the backend — inline validation surfaces this before submit.
  *
  * ## Parameters section
  *
@@ -39,7 +41,7 @@ export class PromptFormComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly promptController = inject(PromptControllerService)
+  private readonly promptState = inject(PromptStateService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -102,8 +104,8 @@ export class PromptFormComponent implements OnInit {
 
   private loadPrompt(id: string): void {
     this.isLoading.set(true)
-    this.promptController
-      .getByIdPrompt(id)
+    this.promptState
+      .getById(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (prompt) => {
@@ -140,7 +142,8 @@ export class PromptFormComponent implements OnInit {
   private createContentControl(value = ''): FormControl<string> {
     return new FormControl<string>(value, {
       nonNullable: true,
-      validators: [Validators.required],
+      // Validators.required rejects empty strings; pattern rejects whitespace-only.
+      validators: [Validators.required, Validators.pattern(/\S/)],
     })
   }
 
@@ -194,7 +197,10 @@ export class PromptFormComponent implements OnInit {
       namespaceId: this.namespaceId,
       name: this.nameControl.value.trim(),
       description: this.descriptionControl.value?.trim() || undefined,
-      content: this.contentArray.controls.map((ctrl) => ctrl.value.trim()).filter((v) => v.length > 0),
+      // No client-side blank filter: Validators.pattern(/\S/) already prevents submit
+      // when any entry is whitespace-only. The raw trimmed value is sent as-is so the
+      // backend sees exactly what the user typed.
+      content: this.contentArray.controls.map((ctrl) => ctrl.value.trim()),
       parameters: this.parametersArray.controls.map((group) => ({
         name: group.controls.name.value.trim(),
         description: group.controls.description.value?.trim() || undefined,
@@ -204,8 +210,8 @@ export class PromptFormComponent implements OnInit {
 
     const call$ =
       this.isEditMode() && this.existingPrompt?.id
-        ? this.promptController.updatePrompt(this.existingPrompt.id, payload)
-        : this.promptController.createPrompt(payload)
+        ? this.promptState.update(this.existingPrompt.id, payload)
+        : this.promptState.create(payload)
 
     this.errorMessage.set(null)
 

@@ -2,9 +2,10 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Prompt, PromptControllerService } from '@whoz-oss/agentos-api-client'
+import { Prompt } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptItemComponent } from '../prompt-item/prompt-item.component'
 
 /**
@@ -30,16 +31,14 @@ export class NamespacePromptsComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly promptController = inject(PromptControllerService)
+  private readonly promptState = inject(PromptStateService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   /** Raw prompts, kept for delete lookups. */
-  private readonly prompts$ = this.refresh$.pipe(
-    switchMap(() => this.promptController.listByNamespacePrompt(this.namespaceId))
-  )
+  private readonly prompts$ = this.refresh$.pipe(switchMap(() => this.promptState.listByNamespace(this.namespaceId)))
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly promptItems$ = this.prompts$.pipe(
@@ -72,8 +71,8 @@ export class NamespacePromptsComponent {
   }
 
   protected deletePrompt(prompt: Prompt): void {
-    this.promptController
-      .deletePrompt(prompt.id ?? '')
+    this.promptState
+      .delete(prompt.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }

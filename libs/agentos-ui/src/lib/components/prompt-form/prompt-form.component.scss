@@ -143,6 +143,13 @@
     align-items: flex-start;
   }
 
+  &__content-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
   &__content-index {
     flex-shrink: 0;
     width: 1.5rem;
@@ -238,6 +245,21 @@
     color: var(--color-error, #ff3b30);
     font-size: 0.875rem;
     line-height: 1.4;
+  }
+
+  &__field-error {
+    font-size: 0.8rem;
+    color: var(--color-error, #ff3b30);
+    line-height: 1.3;
+  }
+
+  &__input--invalid,
+  &__textarea--invalid {
+    border-color: var(--color-error, #ff3b30);
+
+    &:focus {
+      border-color: var(--color-error, #ff3b30);
+    }
   }
 
   // -------------------------------------------------------------------------

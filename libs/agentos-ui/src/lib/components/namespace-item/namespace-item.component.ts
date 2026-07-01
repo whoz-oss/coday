@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core'
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
-import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
  * NamespaceItemComponent — presentational component for a single namespace card.
@@ -9,12 +9,13 @@ import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
  * delete) are grouped in a ds-kebab-menu and emitted upward — no direct service
  * injection.
  *
- * Delete uses a native confirm() dialog to prevent accidental deletions.
+ * Delete uses a signal-based two-step inline confirmation (same pattern as
+ * PromptItemComponent) to avoid the synchronous, OnPush-incompatible confirm().
  */
 @Component({
   selector: 'agentos-namespace-item',
   standalone: true,
-  imports: [KebabMenuComponent],
+  imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './namespace-item.component.html',
   styleUrl: './namespace-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,6 +31,8 @@ export class NamespaceItemComponent {
   @Output() agentConfigsRequested = new EventEmitter<Namespace>()
   @Output() promptsRequested = new EventEmitter<Namespace>()
   @Output() deleteRequested = new EventEmitter<Namespace>()
+
+  protected readonly pendingDelete = signal(false)
 
   protected readonly menuItems: KebabMenuItem[] = [
     { key: 'edit', label: 'Edit namespace', icon: 'edit' },
@@ -66,10 +69,17 @@ export class NamespaceItemComponent {
         this.promptsRequested.emit(this.namespace)
         break
       case 'delete':
-        if (confirm(`Delete namespace "${this.namespace.name}"?`)) {
-          this.deleteRequested.emit(this.namespace)
-        }
+        this.pendingDelete.set(true)
         break
     }
+  }
+
+  protected onDeleteConfirmed(): void {
+    this.pendingDelete.set(false)
+    this.deleteRequested.emit(this.namespace)
+  }
+
+  protected onDeleteCancelled(): void {
+    this.pendingDelete.set(false)
   }
 }

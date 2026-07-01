@@ -17,11 +17,15 @@
         <input
           id="prompt-name"
           class="prompt-form__input"
+          [class.prompt-form__input--invalid]="nameControl.invalid && nameControl.touched"
           type="text"
           placeholder="e.g. Summarise meeting notes"
           [formControl]="nameControl"
           autocomplete="off"
         />
+        @if (nameControl.invalid && nameControl.touched) {
+          <span class="prompt-form__field-error">Name is required.</span>
+        }
       </div>
 
       <!-- Description -->
@@ -62,11 +66,15 @@
                 <input
                   [id]="'param-name-' + $index"
                   class="prompt-form__input"
+                  [class.prompt-form__input--invalid]="group.controls['name'].invalid && group.controls['name'].touched"
                   type="text"
                   placeholder="e.g. language"
                   formControlName="name"
                   autocomplete="off"
                 />
+                @if (group.controls['name'].invalid && group.controls['name'].touched) {
+                  <span class="prompt-form__field-error">Parameter name is required.</span>
+                }
               </div>
               <div class="prompt-form__field prompt-form__field--inline">
                 <label class="prompt-form__label" [for]="'param-desc-' + $index">Description</label>
@@ -120,12 +128,18 @@
         @for (ctrl of contentArray.controls; track $index) {
           <div class="prompt-form__content-row">
             <span class="prompt-form__content-index">{{ $index + 1 }}</span>
-            <textarea
-              class="prompt-form__textarea"
-              rows="4"
-              placeholder="Enter a command…"
-              [formControlName]="$index"
-            ></textarea>
+            <div class="prompt-form__content-field">
+              <textarea
+                class="prompt-form__textarea"
+                [class.prompt-form__textarea--invalid]="ctrl.invalid && ctrl.touched"
+                rows="4"
+                placeholder="Enter a command…"
+                [formControlName]="$index"
+              ></textarea>
+              @if (ctrl.invalid && ctrl.touched) {
+                <span class="prompt-form__field-error">Content entry must not be blank.</span>
+              }
+            </div>
             <button
               class="prompt-form__remove-btn"
               type="button"
