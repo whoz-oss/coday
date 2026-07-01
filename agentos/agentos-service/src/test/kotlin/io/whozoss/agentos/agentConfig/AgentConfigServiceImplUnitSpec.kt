@@ -99,6 +99,88 @@ class AgentConfigServiceImplUnitSpec :
         }
 
         // -------------------------------------------------------------------------
+        // create — uniqueness check
+        // -------------------------------------------------------------------------
+
+        "create throws when an AgentConfig with the same name already exists in the namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Dev", nsId = namespaceId))
+
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.create(config("Dev", nsId = namespaceId))
+            }
+        }
+
+        "create uniqueness check is case-insensitive" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Dev", nsId = namespaceId))
+
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.create(config("dev", nsId = namespaceId))
+            }
+        }
+
+        "create allows same name in a different namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            val otherNs = UUID.randomUUID()
+            repo.save(config("Dev", nsId = namespaceId))
+
+            svc.create(config("Dev", nsId = otherNs)).name shouldBe "Dev"
+        }
+
+        "create allows same name at platform level independently of namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Dev", nsId = namespaceId))
+
+            svc.create(config("Dev", nsId = null)).name shouldBe "Dev"
+        }
+
+        "create succeeds when no name conflict exists" {
+            val repo = repository()
+            val svc = service(repo)
+
+            svc.create(config("Dev", nsId = namespaceId)).name shouldBe "Dev"
+        }
+
+        // -------------------------------------------------------------------------
+        // update — uniqueness check
+        // -------------------------------------------------------------------------
+
+        "update throws when renaming to a name already taken in the same namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Alpha", nsId = namespaceId))
+            val beta = repo.save(config("Beta", nsId = namespaceId))
+
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.update(beta.copy(name = "Alpha"))
+            }
+        }
+
+        "update allows saving an entity with its own current name (no self-conflict)" {
+            val repo = repository()
+            val svc = service(repo)
+            val saved = repo.save(config("Dev", nsId = namespaceId))
+
+            svc.update(saved.copy(instructions = "updated")).name shouldBe "Dev"
+        }
+
+        "update uniqueness check is case-insensitive" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Alpha", nsId = namespaceId))
+            val beta = repo.save(config("Beta", nsId = namespaceId))
+
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.update(beta.copy(name = "alpha"))
+            }
+        }
+
+        // -------------------------------------------------------------------------
         // findAvailableByUserExternalId
         // -------------------------------------------------------------------------
 

@@ -14,9 +14,15 @@ class AgentConfigServiceImpl(
     private val agentConfigRepository: AgentConfigRepository,
     private val userService: UserService,
 ) : AgentConfigService {
-    override fun create(entity: AgentConfig): AgentConfig = agentConfigRepository.save(entity)
+    override fun create(entity: AgentConfig): AgentConfig {
+        requireUniqueName(entity.namespaceId, entity.name, excludeId = null)
+        return agentConfigRepository.save(entity)
+    }
 
-    override fun update(entity: AgentConfig): AgentConfig = agentConfigRepository.save(entity)
+    override fun update(entity: AgentConfig): AgentConfig {
+        requireUniqueName(entity.namespaceId, entity.name, excludeId = entity.metadata.id)
+        return agentConfigRepository.save(entity)
+    }
 
     override fun findByIds(
         ids: Collection<UUID>,
@@ -84,6 +90,30 @@ class AgentConfigServiceImpl(
             agentConfigRepository.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         return agentConfigRepository.save(existing.copy(enabled = false))
+    }
+
+    /**
+     * Throws [IllegalArgumentException] if an active [AgentConfig] with the same [name]
+     * (case-insensitive) already exists at the same scope ([namespaceId]).
+     *
+     * On update, pass [excludeId] = the entity being updated so it does not conflict
+     * with itself.
+     */
+    private fun requireUniqueName(
+        namespaceId: UUID?,
+        name: String,
+        excludeId: UUID?,
+    ) {
+        val conflict =
+            agentConfigRepository
+                .findByParent(namespaceId)
+                .firstOrNull { it.name.equals(name, ignoreCase = true) && it.metadata.id != excludeId }
+        if (conflict != null) {
+            val scope = namespaceId?.toString() ?: "platform"
+            throw IllegalArgumentException(
+                "An AgentConfig named '$name' already exists at scope '$scope' (id=${conflict.metadata.id}).",
+            )
+        }
     }
 
     companion object : KLogging()
