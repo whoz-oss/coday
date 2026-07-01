@@ -293,4 +293,24 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("ids") ids: Collection<String>,
         @Param("checkPlatform") checkPlatform: Boolean,
     ): List<String>
+
+    /**
+     * Returns true when an entity with [entityId] and label [entityLabel] exists
+     * and has NO outgoing BELONGS_TO relationship to any Namespace node.
+     *
+     * Used to detect "platform-scoped" instances of types that can exist either
+     * at platform level (namespaceId = null, no edge) or namespace level
+     * (namespaceId = X, edge present). Platform-scoped instances are readable
+     * by any authenticated user without an explicit permission grant.
+     */
+    @Query(
+        $$"""MATCH (e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+          AND NOT (e)-[:BELONGS_TO]->(:Namespace)
+        RETURN COUNT(e) > 0""",
+    )
+    fun isPlatformScoped(
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): Boolean
 }
