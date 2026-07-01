@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import { Case, Configuration } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { map, switchMap } from 'rxjs'
+import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
@@ -30,6 +31,7 @@ export class CaseHomeComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly config = inject(Configuration)
   private readonly destroyRef = inject(DestroyRef)
+  protected readonly preferences = inject(USER_PREFERENCES_PORT)
 
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
 
@@ -53,7 +55,7 @@ export class CaseHomeComponent {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
     }
