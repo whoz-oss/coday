@@ -133,22 +133,17 @@ class AgentConfigController(
      *
      * Delegates to [listByNamespace] with `withDisabled = true`.
      *
-     * [parentId] must be a valid namespace UUID. Null is rejected with 400 —
-     * platform agents are listed via [listPlatformAgents] instead.
+     * The [parentId] type is `UUID?` because `AgentConfigController` extends
+     * `EntityController<AgentConfig, UUID?, AgentConfigResource>` — the generic
+     * forces the override signature. Spring MVC cannot bind a path segment to null
+     * in practice, so null is unreachable via HTTP. Platform agents are listed via
+     * [listPlatformAgents] (`GET /api/agent-configs/platform`) instead.
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(
         @PathVariable parentId: UUID?,
-    ): List<AgentConfigResource> {
-        if (parentId == null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "parentId must not be null — use GET /api/agent-configs/platform for platform-level agents",
-            )
-        }
-        return listByNamespace(parentId, withDisabled = true)
-    }
+    ): List<AgentConfigResource> = listByNamespace(parentId!!, withDisabled = true)
 
     /**
      * GET /api/agent-configs/by-parentId/{parentId}?withDisabled=...
