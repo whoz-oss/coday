@@ -86,6 +86,7 @@ class AiModelController(
         @PathVariable parentId: UUID,
     ): List<AiModelDto> = crud.listByParent(parentId)
 
+    @ResponseStatus(HttpStatus.CREATED)
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("@aiModelGuard.canCreate(#resource)")
     override fun create(

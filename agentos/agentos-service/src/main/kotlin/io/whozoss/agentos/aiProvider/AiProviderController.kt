@@ -53,36 +53,38 @@ class AiProviderController(
     private val userService: UserService,
     private val permissionService: PermissionService,
 ) : AiProviderApi {
-    private val crud = ScopedOwnershipCrudDelegate<AiProviderDto>(
-        entityLabel = "AiProvider",
-        userService = userService,
-        namespaceService = namespaceService,
-        permissionService = permissionService,
-        ownerOf = { (it as AiProvider).userId },
-        userIdOf = { it.userId },
-        namespaceIdOf = { it.namespaceId },
-        buildEntity = { resource, resolvedNs, resolvedUser ->
-            AiProvider(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                namespaceId = resolvedNs,
-                userId = resolvedUser,
-                name = resource.name,
-                description = resource.description,
-                apiType = resource.apiType!!,
-                baseUrl = resource.baseUrl,
-                apiKey = resource.apiKey,
-            )
-        },
-        crud = EntityCrudDelegate(
-            service = aiProviderService,
+    private val crud =
+        ScopedOwnershipCrudDelegate<AiProviderDto>(
+            entityLabel = "AiProvider",
             userService = userService,
-            permissions = permissionService,
-            entityType = EntityType.AI_PROVIDER,
-            toResource = { toDto(it as AiProvider) },
-            // toDomain omitted: ScopedOwnershipCrudDelegate always calls createEntity,
-            // never crud.create(resource).
-        ),
-    )
+            namespaceService = namespaceService,
+            permissionService = permissionService,
+            ownerOf = { (it as AiProvider).userId },
+            userIdOf = { it.userId },
+            namespaceIdOf = { it.namespaceId },
+            buildEntity = { resource, resolvedNs, resolvedUser ->
+                AiProvider(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = resolvedNs,
+                    userId = resolvedUser,
+                    name = resource.name,
+                    description = resource.description,
+                    apiType = resource.apiType!!,
+                    baseUrl = resource.baseUrl,
+                    apiKey = resource.apiKey,
+                )
+            },
+            crud =
+                EntityCrudDelegate(
+                    service = aiProviderService,
+                    userService = userService,
+                    permissions = permissionService,
+                    entityType = EntityType.AI_PROVIDER,
+                    toResource = { toDto(it as AiProvider) },
+                    // toDomain omitted: ScopedOwnershipCrudDelegate always calls createEntity,
+                    // never crud.create(resource).
+                ),
+        )
 
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AiProvider', 'READ')")
@@ -155,6 +157,7 @@ class AiProviderController(
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AiProvider', 'DELETE')")
     @HideOnAccessDenied
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
     ) = crud.delete(id)

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.api.agentConfig
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import jakarta.validation.constraints.NotBlank
 import java.util.UUID
 
 /**
@@ -16,6 +17,7 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AgentConfigSearchRequest(
     val namespaceId: UUID,
+    @field:NotBlank(message = "userExternalId must not be blank")
     val userExternalId: String,
     val userId: String? = null,
 )

@@ -16,6 +16,7 @@ import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
@@ -90,6 +92,7 @@ class AgentConfigController(
         @RequestParam(required = false, defaultValue = "true") withDisabled: Boolean,
     ): List<AgentConfigDto> = agentConfigService.findByNamespace(parentId, withDisabled = withDisabled).map { it.toDto() }
 
+    @ResponseStatus(HttpStatus.CREATED)
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")
     override fun create(
@@ -122,6 +125,7 @@ class AgentConfigController(
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'DELETE')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
     ) = crud.delete(id)
