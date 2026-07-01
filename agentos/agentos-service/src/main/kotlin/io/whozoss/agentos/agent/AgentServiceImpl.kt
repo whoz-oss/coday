@@ -460,8 +460,7 @@ class AgentServiceImpl(
             }
 
         val regexes = patterns.map { globToRegex(it) }
-        // Exclude the agent itself to prevent self-delegation cycles.
-        val allowedAgents = accessibleNames.filter { name -> name != config.name && regexes.any { it.matches(name) } }
+        val allowedAgents = accessibleNames.filter { name -> regexes.any { it.matches(name) } }
 
         if (allowedAgents.isEmpty()) {
             logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
