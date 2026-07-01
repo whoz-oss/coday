@@ -514,8 +514,11 @@ class AgentServiceImpl(
         val accessibleNames =
             if (context.userId != null) {
                 agentConfigService
-                    .findAvailableByNamespaceIdAndUserId(context.namespaceId, context.userId)
-                    .map { it.name }
+                    .findDeployedByNamespaceIdAndUserIdAndName(
+                        namespaceId = context.namespaceId,
+                        userId = context.userId,
+                        agentName = null,
+                    ).map { it.name }
             } else {
                 agentConfigService
                     .findByNamespace(context.namespaceId, withDisabled = false)
