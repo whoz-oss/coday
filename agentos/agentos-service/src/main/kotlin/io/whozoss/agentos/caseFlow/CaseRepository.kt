@@ -44,11 +44,26 @@ interface CaseRepository : EntityRepository<Case, UUID> {
     fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
 
     /**
-     * Find all active (non-removed) sub-cases whose [Case.parentCaseId] matches [parentCaseId].
+     * Find all active (non-removed), non-terminal sub-cases whose [Case.parentCaseId] matches [parentCaseId].
      *
      * Used by [io.whozoss.agentos.caseFlow.CaseService.killCase] to propagate kill signals
-     * to sub-cases created by delegation. Does not filter by status — a sub-case may be
-     * IDLE, RUNNING, or PENDING and still needs to be killed when its parent is killed.
+     * to sub-cases created by delegation. Excludes sub-cases already in a terminal status
+     * (KILLED or ERROR) so that killing a parent does not overwrite their diagnostic status.
      */
     fun findActiveByParentCaseId(parentCaseId: UUID): List<Case>
+
+    /**
+     * Count the number of ancestor hops from [caseId] up through the parentCaseId chain.
+     *
+     * Returns 0 when [caseId] has no parent, 1 when it has one parent, etc.
+     * Used to enforce a maximum delegation depth before creating a new sub-case.
+     */
+    fun countAncestorDepth(caseId: UUID): Int
+
+    /**
+     * Create the [:PARENT_OF] graph relationship from [parentCaseId] to [childCaseId].
+     *
+     * Called after persisting a sub-case so the ancestor-depth query can traverse the chain.
+     */
+    fun linkParentToChild(parentCaseId: UUID, childCaseId: UUID)
 }

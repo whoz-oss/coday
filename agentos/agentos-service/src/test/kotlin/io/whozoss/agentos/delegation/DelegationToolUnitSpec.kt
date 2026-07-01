@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.tool.ToolContext
 import kotlinx.coroutines.delay
@@ -40,6 +41,16 @@ class DelegationToolUnitSpec : StringSpec({
             caseId = subCaseId,
             actor = Actor(id = UUID.randomUUID().toString(), displayName = "sub-agent", role = ActorRole.AGENT),
             content = listOf(MessageContent.Text(text)),
+        )
+
+    fun questionEvent(question: String, options: List<String>? = null) =
+        QuestionEvent(
+            namespaceId = namespaceId,
+            caseId = subCaseId,
+            agentId = UUID.randomUUID(),
+            agentName = "sub-agent",
+            question = question,
+            options = options,
         )
 
     fun makeTool(
@@ -165,6 +176,62 @@ class DelegationToolUnitSpec : StringSpec({
         result.success shouldBe true
         val tree = jacksonObjectMapper().readTree(result.output)
         tree.get("result").asText() shouldBe "Sub-agent completed the task but produced no text output."
+    }
+
+    // -------------------------------------------------------------------------
+    // QuestionEvent paths
+    // -------------------------------------------------------------------------
+
+    "returns success with pendingQuestion when sub-case reaches IDLE after a QuestionEvent" {
+        val launcher = mockk<SubCaseLauncher>()
+        val runtime = idleRuntime()
+        val events = listOf(questionEvent("What is the target environment?", listOf("prod", "staging")))
+        val tool = makeTool(launcher, events)
+
+        every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+
+        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+
+        result.success shouldBe true
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.get("pendingQuestion").asText() shouldBe "What is the target environment?"
+        tree.get("subCaseId").asText() shouldBe subCaseId.toString()
+        result.metadata["subCaseId"] shouldBe subCaseId.toString()
+    }
+
+    "returns normal result when QuestionEvent is followed by an agent message" {
+        val launcher = mockk<SubCaseLauncher>()
+        val runtime = idleRuntime()
+        // Question came first, then the agent answered itself
+        val events = listOf(questionEvent("Clarify?"), agentMessage("I resolved it myself"))
+        val tool = makeTool(launcher, events)
+
+        every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+
+        val result = tool.execute(DelegationTool.Args(agentName = "sub-agent", task = "do X"), toolContext)
+
+        result.success shouldBe true
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.get("result").asText() shouldBe "I resolved it myself"
+    }
+
+    "routes to resumeSubCase when subCaseId is provided" {
+        val launcher = mockk<SubCaseLauncher>()
+        val runtime = idleRuntime()
+        val events = listOf(agentMessage("resumed result"))
+        val tool = makeTool(launcher, events)
+
+        every { launcher.resumeSubCase(subCaseId, "sub-agent", "follow-up", userId, allowedAgents) } returns runtime
+
+        val result = tool.execute(
+            DelegationTool.Args(agentName = "sub-agent", task = "follow-up", subCaseId = subCaseId),
+            toolContext,
+        )
+
+        result.success shouldBe true
+        val tree = jacksonObjectMapper().readTree(result.output)
+        tree.get("result").asText() shouldBe "resumed result"
+        verify(exactly = 0) { launcher.startSubCase(any(), any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------

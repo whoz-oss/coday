@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import org.springframework.data.repository.query.Param
 
 /**
  * Spring Data Neo4j repository for [CaseNode].
@@ -84,16 +85,55 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     fun findConcerningUserInNamespace(userId: String, namespaceId: String): List<CaseNode>
 
     /**
-     * Find all active sub-cases whose parentCaseId matches, with their namespace edge.
+     * Find all active, non-terminal sub-cases whose parentCaseId matches, with their namespace edge.
+     *
+     * Excludes sub-cases that are already in a terminal status (KILLED or ERROR) — killing
+     * a parent must not overwrite the diagnostic status of sub-cases that already completed.
      *
      * The BELONGS_TO edge is always present (written by [Neo4jCaseRepository.save]),
      * so MATCH (not OPTIONAL MATCH) is safe here.
      */
     @Query(
         $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
-            WHERE c.parentCaseId = $parentCaseId AND (c.removed IS NULL OR c.removed = false)
+            WHERE c.parentCaseId = $parentCaseId
+              AND (c.removed IS NULL OR c.removed = false)
+              AND c.status <> 'KILLED' AND c.status <> 'ERROR'
             RETURN c, r, ns ORDER BY c.created ASC
             """,
     )
     fun findActiveByParentCaseId(parentCaseId: String): List<CaseNode>
+
+    /**
+     * Count the number of ancestor hops from [caseId] up through the PARENT_OF chain.
+     *
+     * Returns 0 when [caseId] has no parent, 1 when it has one parent, etc.
+     * Used by [io.whozoss.agentos.caseFlow.CaseServiceImpl.startSubCase] to enforce a
+     * maximum delegation depth before creating a new sub-case.
+     *
+     * Traverses the [:PARENT_OF] graph edges written by [linkParentToChild].
+     */
+    @Query(
+        $$"""MATCH (c:Case {id: $caseId})
+            OPTIONAL MATCH path = (c)<-[:PARENT_OF*]-(ancestor:Case)
+            RETURN CASE WHEN path IS NULL THEN 0 ELSE length(path) END AS depth
+            ORDER BY depth DESC LIMIT 1
+            """,
+    )
+    fun countAncestorDepth(caseId: String): Int
+
+    /**
+     * Creates the [:PARENT_OF] relationship from [parentCaseId] to [childCaseId].
+     *
+     * Called by [io.whozoss.agentos.caseFlow.Neo4jCaseRepository] after creating a sub-case
+     * so that [countAncestorDepth] can traverse the chain.
+     */
+    @Query(
+        $$"""MATCH (parent:Case {id: $parentCaseId}), (child:Case {id: $childCaseId})
+            MERGE (parent)-[:PARENT_OF]->(child)
+            """,
+    )
+    fun linkParentToChild(
+        @Param("parentCaseId") parentCaseId: String,
+        @Param("childCaseId") childCaseId: String,
+    )
 }

@@ -41,5 +41,16 @@ class InMemoryCaseRepository : CaseRepository {
     ): List<Case> = delegate.findByParent(namespaceId)
 
     override fun findActiveByParentCaseId(parentCaseId: UUID): List<Case> =
-        delegate.findAll().filter { it.parentCaseId == parentCaseId && !it.metadata.removed }
+        delegate.findAll().filter {
+            it.parentCaseId == parentCaseId &&
+                !it.metadata.removed &&
+                it.status != io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED &&
+                it.status != io.whozoss.agentos.sdk.caseFlow.CaseStatus.ERROR
+        }
+
+    /** In tests, depth is not enforced — always returns 0. */
+    override fun countAncestorDepth(caseId: UUID): Int = 0
+
+    /** In tests, no graph edge is needed — no-op. */
+    override fun linkParentToChild(parentCaseId: UUID, childCaseId: UUID): Unit = Unit
 }
