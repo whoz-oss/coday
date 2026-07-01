@@ -31,8 +31,12 @@ import java.util.UUID
  * - create: scope dispatch, authorization guards, namespace existence check
  * - listByParent: namespace listing
  * - update: namespaceId mass-assignment guard, 404 path
- * - delete: soft-delete, platform admin guard
+ * - delete: soft-delete, 404 path
  * - getById / getByIds: inherited delegates
+ *
+ * Platform-level admin guard (Super Admin required for WRITE/DELETE on platform prompts)
+ * is enforced by PermissionServiceImpl, not the controller. Those cases are covered
+ * by PermissionService tests.
  */
 class PromptControllerSpec : StringSpec({
 
@@ -376,27 +380,6 @@ class PromptControllerSpec : StringSpec({
         }
     }
 
-    "update platform prompt throws AccessDeniedException for non-admin" {
-        val p = prompt(nsId = null) // platform-level
-        every { service.findById(p.id) } returns p
-
-        shouldThrow<AccessDeniedException> {
-            controller.update(p.id, resource(id = p.id, nsId = null))
-        }
-        verify(exactly = 0) { service.update(any()) }
-    }
-
-    "update platform prompt succeeds for Super Admin" {
-        every { userService.getCurrentUser() } returns adminUser()
-        val p = prompt(nsId = null)
-        every { service.findById(p.id) } returns p
-        every { service.update(any()) } answers { firstArg() }
-
-        controller.update(p.id, resource(id = p.id, nsId = null, name = "Updated"))
-
-        verify(exactly = 1) { service.update(any()) }
-    }
-
     // -------------------------------------------------------------------------
     // delete
     // -------------------------------------------------------------------------
@@ -420,24 +403,4 @@ class PromptControllerSpec : StringSpec({
         }
     }
 
-    "delete platform prompt throws AccessDeniedException for non-admin" {
-        val p = prompt(nsId = null)
-        every { service.findById(p.id) } returns p
-
-        shouldThrow<AccessDeniedException> {
-            controller.delete(p.id)
-        }
-        verify(exactly = 0) { service.delete(any()) }
-    }
-
-    "delete platform prompt succeeds for Super Admin" {
-        every { userService.getCurrentUser() } returns adminUser()
-        val p = prompt(nsId = null)
-        every { service.findById(p.id) } returns p
-        every { service.delete(p.id) } returns true
-
-        controller.delete(p.id)
-
-        verify(exactly = 1) { service.delete(p.id) }
-    }
 })

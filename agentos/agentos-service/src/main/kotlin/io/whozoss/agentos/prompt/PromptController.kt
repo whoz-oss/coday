@@ -36,7 +36,9 @@ import java.util.UUID
  * - null     -> platform scope (Super Admin only)
  * - non-null -> namespace-scoped (WRITE permission on namespace required)
  *
- * Authorization on PUT / DELETE uses @PreAuthorize("hasPermission(#id, 'Prompt', ACTION)").
+ * Authorization on PUT / DELETE is fully handled by @PreAuthorize("hasPermission(#id, 'Prompt', ACTION)").
+ * PermissionServiceImpl enforces that platform-level entities (namespaceId == null) require Super Admin
+ * for WRITE/DELETE — no additional check is needed in the controller body.
  *
  * Mass-assignment guard on PUT: [namespaceId] is immutable post-create.
  * Mutable fields: name, description, content, parameters.
@@ -205,7 +207,6 @@ class PromptController(
         val existing =
             promptService.findById(id)
                 ?: throw ResourceNotFoundException("Prompt not found: $id")
-        requireAdminForPlatform(existing.namespaceId)
         return toResource(promptService.update(toDomainForUpdate(resource, existing)))
     }
 
@@ -218,19 +219,7 @@ class PromptController(
         val existing =
             promptService.findById(id)
                 ?: throw ResourceNotFoundException("Prompt not found: $id")
-        requireAdminForPlatform(existing.namespaceId)
         super.delete(id)
-    }
-
-    /**
-     * Throws AccessDeniedException when the scope is platform (namespaceId == null)
-     * and the current user is not a Super Admin.
-     */
-    private fun requireAdminForPlatform(namespaceId: UUID?) {
-        if (namespaceId != null) return
-        if (!userService.getCurrentUser().isAdmin) {
-            throw AccessDeniedException("Platform-level Prompt requires Super Admin")
-        }
     }
 
     companion object : KLogging()
