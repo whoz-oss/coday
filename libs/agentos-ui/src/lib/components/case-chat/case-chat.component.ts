@@ -32,9 +32,11 @@ import {
   ToolResponseEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent } from '@whoz-oss/design-system'
+import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
+import { ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 
 export interface ToolCall {
   requestId: string
@@ -86,7 +88,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
 @Component({
   selector: 'agentos-case-chat',
   standalone: true,
-  imports: [IconButtonComponent, JsonPipe],
+  imports: [IconButtonComponent, JsonPipe, DrawerComponent, ExchangeShellComponent],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -96,8 +98,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
   private readonly domSanitizer = inject(DomSanitizer)
+  private readonly exchangeState = inject(ExchangeStateService)
 
   private readonly config = inject(Configuration)
+
+  /** Right-side file-exchange drawer open state + entry-point badge count. */
+  protected readonly exchangeOpen = signal(false)
+  protected readonly exchangeFileCount = this.exchangeState.fileCount
+
+  protected toggleExchange(): void {
+    this.exchangeOpen.update((v) => !v)
+  }
 
   // Read from snapshot initially; updated reactively in ngOnInit via route.params
   private caseId = this.route.snapshot.params['caseId'] as string
@@ -441,6 +452,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             this.isRunning.set(false)
             // End-of-turn: reset streaming buffer.
             this.streamingText.set('')
+            // Safety net: refresh once at end-of-turn ONLY if a tool ran (covers a mutation the
+            // per-op regex may have missed); pure-conversation turns skip the manifest fetch.
+            if (this.anyToolResponseThisTurn) {
+              this.exchangeState.refreshCase()
+            }
+            this.anyToolResponseThisTurn = false
+            return
+          }
+
+          if (event.type === 'ToolResponseEvent') {
+            this.anyToolResponseThisTurn = true
+            // The agent touched the exchange filesystem → refresh the drawer + badge live.
+            if (this.isExchangeMutationTool((event as ToolResponseEvent).toolName)) {
+              this.exchangeState.refreshCase()
+            }
             return
           }
 
@@ -505,6 +531,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // Do not mark terminal on transport error: EventSource may reconnect.
       })
     }
+  }
+
+  /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
+  private anyToolResponseThisTurn = false
+
+  /** True for the file-plugin exchange tools that mutate files (create/edit/remove/move). */
+  private isExchangeMutationTool(toolName?: string): boolean {
+    return /^(case|namespace)-exchange__(editFiles|remove|moveFile)$/.test(toolName ?? '')
   }
 
   protected onInput(event: Event): void {

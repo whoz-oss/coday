@@ -1,0 +1,34 @@
+@if (open) {
+  <div class="ds-confirm-dialog__backdrop" (click)="onBackdropClick($event)">
+    <div
+      class="ds-confirm-dialog"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-label]="title || null"
+      tabindex="-1"
+      (keydown.escape)="onCancel()"
+      (keydown.enter)="onEnter($event)"
+    >
+      @if (title) {
+        <h2 class="ds-confirm-dialog__title">{{ title }}</h2>
+      }
+      @if (message) {
+        <p class="ds-confirm-dialog__message">{{ message }}</p>
+      }
+
+      <div class="ds-confirm-dialog__actions">
+        <button class="ds-confirm-dialog__button ds-confirm-dialog__button--cancel" type="button" (click)="onCancel()">
+          {{ cancelLabel }}
+        </button>
+        <button
+          #confirmButton
+          class="ds-confirm-dialog__button ds-confirm-dialog__button--confirm"
+          type="button"
+          (click)="onConfirm()"
+        >
+          {{ confirmLabel }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

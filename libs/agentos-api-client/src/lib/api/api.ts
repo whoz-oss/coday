@@ -8,6 +8,8 @@ export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
 import { CaseEventRestControllerService } from './case-event-rest-controller.service'
+export * from './exchange-controller.service'
+import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
 import { FeedbackControllerService } from './feedback-controller.service'
 export * from './integration-config-controller.service'
@@ -32,6 +34,7 @@ export const APIS = [
   AiProviderControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
+  ExchangeControllerService,
   FeedbackControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
