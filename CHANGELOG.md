@@ -1,3 +1,56 @@
+## 0.194.0 (2026-07-01)
+
+### 🚀 Features
+
+- add platform level for AgentConfig.namespaceId ([#1056](https://github.com/whoz-oss/coday/pull/1056))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.193.0 (2026-07-01)
+
+### 🚀 Features
+
+- user preference for ENTER key behavior in the chat composer ([#1077](https://github.com/whoz-oss/coday/pull/1077), [#1016](https://github.com/whoz-oss/coday/issues/1016))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.192.0 (2026-06-30)
+
+### 🚀 Features
+
+- #1009 add dark mode to AgentOS UI ([#1066](https://github.com/whoz-oss/coday/pull/1066), [#1009](https://github.com/whoz-oss/coday/issues/1009))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.191.0 (2026-06-30)
+
+### 🚀 Features
+
+- wz-32804: clear conf for agentos datadog custom metrics ([#1074](https://github.com/whoz-oss/coday/pull/1074))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.190.3 (2026-06-30)
+
+### 🩹 Fixes
+
+- #1067 switch Anthropic completions to streaming for large token limits ([#1067](https://github.com/whoz-oss/coday/issues/1067))
+- #1067 switch Anthropic completions to streaming for large token … ([#1072](https://github.com/whoz-oss/coday/pull/1072), [#1067](https://github.com/whoz-oss/coday/issues/1067))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.190.2 (2026-06-30)
 
 ### 🩹 Fixes
