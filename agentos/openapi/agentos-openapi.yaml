@@ -2065,6 +2065,7 @@ components:
           type: string
         defaultValue:
           type: string
+          minLength: 1
       required:
       - defaultValue
       - name
