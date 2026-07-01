@@ -8,7 +8,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
-import io.whozoss.agentos.delegation.SubCaseLauncher
+import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -56,7 +56,7 @@ class AgentServiceImpl(
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
-        subCaseLauncher: SubCaseLauncher?,
+        subCaseManager: SubCaseManager?,
     ): Agent {
         val agentConfig =
             agentConfigService.findByName(context.namespaceId, namePart)
@@ -64,7 +64,7 @@ class AgentServiceImpl(
                     "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
                 )
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
-        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser, subCaseLauncher)
+        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser, subCaseManager)
         return instantiateAgent(definition, context, resolvedUser)
     }
 
@@ -120,7 +120,7 @@ class AgentServiceImpl(
         agentConfig: AgentConfig,
         context: AgentExecutionContext,
         resolvedUser: User?,
-        subCaseLauncher: SubCaseLauncher? = null,
+        subCaseManager: SubCaseManager? = null,
     ): ResolvedAgentDefinition {
         val baseModel =
             agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
@@ -161,7 +161,7 @@ class AgentServiceImpl(
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
             )
-        val tools = baseTools + buildDelegationTools(agentConfig, context, subCaseLauncher)
+        val tools = baseTools + buildDelegationTools(agentConfig, context, subCaseManager)
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
@@ -431,7 +431,7 @@ class AgentServiceImpl(
      * Resolves the [DelegationTool] for [config] if delegation is configured.
      *
      * Resolution steps:
-     * 1. Skip entirely when [subCaseLauncher] is null (no delegation support in this call
+     * 1. Skip entirely when [subCaseManager] is null (no delegation support in this call
      *    path) or [config.subAgents] is null/empty.
      * 2. Fetch the agents accessible to the current user in the namespace.
      * 3. Filter them by matching each accessible agent name against the [config.subAgents]
@@ -443,10 +443,10 @@ class AgentServiceImpl(
     private fun buildDelegationTools(
         config: AgentConfig,
         context: AgentExecutionContext,
-        subCaseLauncher: SubCaseLauncher?,
+        subCaseManager: SubCaseManager?,
     ): List<DelegationTool> {
         val patterns = config.subAgents?.filter { it.isNotBlank() }
-        if (subCaseLauncher == null || patterns.isNullOrEmpty() || context.caseId == null) return emptyList()
+        if (subCaseManager == null || patterns.isNullOrEmpty() || context.caseId == null) return emptyList()
 
         val accessibleNames =
             if (context.userId != null) {
@@ -470,7 +470,7 @@ class AgentServiceImpl(
         logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
         return listOf(
             DelegationTool(
-                subCaseLauncher = subCaseLauncher,
+                subCaseManager = subCaseManager,
                 parentCaseId = context.caseId,
                 namespaceId = context.namespaceId,
                 allowedAgents = allowedAgents,

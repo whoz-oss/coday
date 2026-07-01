@@ -1,6 +1,6 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.delegation.SubCaseLauncher
+import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.sdk.agent.Agent
 import java.util.UUID
 
@@ -23,7 +23,7 @@ interface AgentService {
      * The agent is built with [context] so its instructions and tool set
      * are scoped to the given namespace and case.
      *
-     * When [subCaseLauncher] is non-null and the resolved [AgentConfig] declares
+     * When [subCaseManager] is non-null and the resolved [AgentConfig] declares
      * [io.whozoss.agentos.agentConfig.AgentConfig.subAgents], a
      * [io.whozoss.agentos.delegation.DelegationTool] is added to the agent's tool set.
      * The allowed agents list is computed by resolving the subAgents patterns against
@@ -34,7 +34,7 @@ interface AgentService {
     suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
-        subCaseLauncher: SubCaseLauncher? = null,
+        subCaseManager: SubCaseManager? = null,
     ): Agent
 
     /**
@@ -75,5 +75,4 @@ interface AgentService {
         namespaceId: UUID,
         userId: UUID? = null,
     ): String?
-
 }

@@ -6,7 +6,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
-import io.whozoss.agentos.delegation.SubCaseLauncher
+import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
@@ -54,7 +54,7 @@ class CaseServiceImpl(
     private val caseConfig: CaseConfigProperties,
     private val permissionService: PermissionService,
 ) : CaseService,
-    SubCaseLauncher {
+    SubCaseManager {
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     /**

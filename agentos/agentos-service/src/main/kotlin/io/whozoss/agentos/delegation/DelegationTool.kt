@@ -46,7 +46,7 @@ import java.util.UUID
  * [io.whozoss.agentos.agent.AgentServiceImpl] only when
  * [io.whozoss.agentos.agentConfig.AgentConfig.subAgents] is non-empty.
  *
- * @param subCaseLauncher  Used to create, resume, and observe sub-cases.
+ * @param subCaseManager  Used to create, resume, and observe sub-cases.
  * @param parentCaseId     Case id of the delegating agent's case.
  * @param namespaceId      Namespace both cases belong to.
  * @param allowedAgents    Allowlist of agent names this tool may delegate to.
@@ -54,7 +54,7 @@ import java.util.UUID
  * @param timeoutMs        Max wall-clock time for the entire batch (default 5 min).
  */
 class DelegationTool(
-    private val subCaseLauncher: SubCaseLauncher,
+    private val subCaseManager: SubCaseManager,
     private val parentCaseId: UUID,
     private val namespaceId: UUID,
     private val allowedAgents: List<String>,
@@ -62,7 +62,6 @@ class DelegationTool(
     private val timeoutMs: Long = 5 * 60 * 1_000L,
     private val eventLoadTimeoutMs: Long = EVENT_LOAD_TIMEOUT_MS,
 ) : StandardTool<DelegationTool.Args> {
-
     /**
      * A single delegation within the batch.
      *
@@ -82,54 +81,59 @@ class DelegationTool(
     )
 
     override val name = "DELEGATE__delegate"
-    override val description: String = when {
-        allowedAgents.isEmpty() ->
-            "No sub-agents are currently available for delegation. Do not attempt to delegate — handle the request yourself or inform the user that no sub-agent can address it."
-        else ->
-            "Delegate one or more tasks to specialized sub-agents and wait for all results. " +
-                "All delegations run in parallel — pass multiple entries to fan out work concurrently. " +
-                "Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. " +
-                "Available agents: ${allowedAgents.joinToString(", ")}."
-    }
+    override val description: String =
+        when {
+            allowedAgents.isEmpty() -> {
+                "No sub-agents are currently available for delegation. Do not attempt to delegate — handle the request yourself or inform the user that no sub-agent can address it."
+            }
+
+            else -> {
+                "Delegate one or more tasks to specialized sub-agents and wait for all results. " +
+                    "All delegations run in parallel — pass multiple entries to fan out work concurrently. " +
+                    "Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. " +
+                    "Available agents: ${allowedAgents.joinToString(", ")}."
+            }
+        }
     override val version = "1.0.0"
     override val paramType: Class<Args> = Args::class.java
 
-    override val inputSchema: String = objectMapper
-        .createObjectNode().apply {
-            put("type", "object")
-            putObject("properties").apply {
-                putObject("delegations").apply {
-                    put("type", "array")
-                    put("description", "List of tasks to delegate. All run in parallel.")
-                    putObject("items").apply {
-                        put("type", "object")
-                        putObject("properties").apply {
-                            putObject("agentName").apply {
-                                put("type", "string")
-                                put("description", "Name of the sub-agent to delegate to.")
-                                putArray("enum").also { arr -> allowedAgents.forEach(arr::add) }
+    override val inputSchema: String =
+        objectMapper
+            .createObjectNode()
+            .apply {
+                put("type", "object")
+                putObject("properties").apply {
+                    putObject("delegations").apply {
+                        put("type", "array")
+                        put("description", "List of tasks to delegate. All run in parallel.")
+                        putObject("items").apply {
+                            put("type", "object")
+                            putObject("properties").apply {
+                                putObject("agentName").apply {
+                                    put("type", "string")
+                                    put("description", "Name of the sub-agent to delegate to.")
+                                    putArray("enum").also { arr -> allowedAgents.forEach(arr::add) }
+                                }
+                                putObject("task").apply {
+                                    put("type", "string")
+                                    put("description", "Full, self-contained task description for the sub-agent.")
+                                }
+                                putObject("subCaseId").apply {
+                                    put("type", "string")
+                                    put("format", "uuid")
+                                    put(
+                                        "description",
+                                        "Optional UUID of an existing IDLE sub-case to resume. " +
+                                            "When provided, the task is injected as a new message instead of creating a new sub-case.",
+                                    )
+                                }
                             }
-                            putObject("task").apply {
-                                put("type", "string")
-                                put("description", "Full, self-contained task description for the sub-agent.")
-                            }
-                            putObject("subCaseId").apply {
-                                put("type", "string")
-                                put("format", "uuid")
-                                put(
-                                    "description",
-                                    "Optional UUID of an existing IDLE sub-case to resume. " +
-                                        "When provided, the task is injected as a new message instead of creating a new sub-case.",
-                                )
-                            }
+                            putArray("required").add("agentName").add("task")
                         }
-                        putArray("required").add("agentName").add("task")
                     }
                 }
-            }
-            putArray("required").add("delegations")
-        }
-        .let { objectMapper.writeValueAsString(it) }
+                putArray("required").add("delegations")
+            }.let { objectMapper.writeValueAsString(it) }
 
     override suspend fun execute(
         input: Args?,
@@ -169,9 +173,10 @@ class DelegationTool(
             try {
                 withTimeout(timeoutMs) {
                     coroutineScope {
-                        input.delegations.map { delegation ->
-                            async { runSingleDelegation(delegation, userId) }
-                        }.map { it.await() }
+                        input.delegations
+                            .map { delegation ->
+                                async { runSingleDelegation(delegation, userId) }
+                            }.map { it.await() }
                     }
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -214,7 +219,7 @@ class DelegationTool(
                 when (val resumeId = delegation.subCaseId) {
                     null -> {
                         logger.info { "[DelegationTool] Starting sub-case for '$agentName'" }
-                        subCaseLauncher.startSubCase(
+                        subCaseManager.startSubCase(
                             parentCaseId = parentCaseId,
                             namespaceId = namespaceId,
                             agentName = agentName,
@@ -222,9 +227,10 @@ class DelegationTool(
                             userId = userId,
                         )
                     }
+
                     else -> {
                         logger.info { "[DelegationTool] Resuming sub-case $resumeId for '$agentName'" }
-                        subCaseLauncher.resumeSubCase(
+                        subCaseManager.resumeSubCase(
                             subCaseId = resumeId,
                             agentName = agentName,
                             task = delegation.task,
@@ -253,7 +259,7 @@ class DelegationTool(
                     .first()
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 // Propagate up to the batch withTimeout handler.
-                runCatching { subCaseLauncher.killSubCase(subCaseId) }
+                runCatching { subCaseManager.killSubCase(subCaseId) }
                 throw e
             }
 
@@ -285,11 +291,13 @@ class DelegationTool(
 
         // Detect a pending QuestionEvent (no agent message emitted after it).
         val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull()
-        val lastAgentMessage = events
-            .filterIsInstance<MessageEvent>()
-            .lastOrNull { it.actor.role == ActorRole.AGENT }
-        val lastQuestionIsPending = lastQuestion != null &&
-            (lastAgentMessage == null || events.indexOf(lastQuestion) > events.indexOf(lastAgentMessage))
+        val lastAgentMessage =
+            events
+                .filterIsInstance<MessageEvent>()
+                .lastOrNull { it.actor.role == ActorRole.AGENT }
+        val lastQuestionIsPending =
+            lastQuestion != null &&
+                (lastAgentMessage == null || events.indexOf(lastQuestion) > events.indexOf(lastAgentMessage))
 
         return if (lastQuestionIsPending) {
             logger.info { "[DelegationTool] Sub-case $subCaseId reached IDLE with a pending question" }

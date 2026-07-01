@@ -16,7 +16,7 @@ import java.util.UUID
  * [io.whozoss.agentos.caseFlow.CaseServiceImpl] implements this interface alongside
  * [io.whozoss.agentos.caseFlow.CaseService] — no logic is duplicated.
  */
-interface SubCaseLauncher {
+interface SubCaseManager {
     /**
      * Create a new sub-case under [parentCaseId], inject [task] as the first user message,
      * start the execution loop, and return the live [CaseRuntime].
