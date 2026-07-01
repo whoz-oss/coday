@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
 import org.springframework.data.repository.query.Param
+import org.springframework.transaction.annotation.Transactional
 
 /**
  * Spring Data Neo4j repository for [CaseNode].
@@ -16,8 +17,9 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * is called after every save in [Neo4jCaseRepository]. Returning `c, r, ns`
      * gives SDN everything it needs to map the [CaseNode.namespace] @Relationship field.
      */
+    @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE ns.id = $namespaceId AND (c.removed IS NULL OR c.removed = false)
             RETURN c, r, ns ORDER BY c.created ASC
             """,
@@ -38,8 +40,9 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * upstream via [io.whozoss.agentos.permissions.PermissionService.hasPermission]
      * on the parent namespace.
      */
+    @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
               AND (
                 EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
@@ -60,8 +63,9 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * Namespace-level ADMIN is intentionally excluded: a namespace admin should only
      * see their own threads here, not every case in the namespace.
      */
+    @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE (c.removed IS NULL OR c.removed = false)
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
             RETURN c, r, ns ORDER BY c.created ASC
@@ -75,14 +79,18 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * Same permission rule as [findConcerningUser] (direct ADMIN or MEMBER on the case),
      * but restricted to the given namespace.
      */
+    @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
             RETURN c, r, ns ORDER BY c.created ASC
             """,
     )
-    fun findConcerningUserInNamespace(userId: String, namespaceId: String): List<CaseNode>
+    fun findConcerningUserInNamespace(
+        userId: String,
+        namespaceId: String,
+    ): List<CaseNode>
 
     /**
      * Find all active, non-terminal sub-cases whose parentCaseId matches, with their namespace edge.
@@ -93,11 +101,12 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * The BELONGS_TO edge is always present (written by [Neo4jCaseRepository.save]),
      * so MATCH (not OPTIONAL MATCH) is safe here.
      */
+    @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+        $"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
             WHERE c.parentCaseId = $parentCaseId
               AND (c.removed IS NULL OR c.removed = false)
-              AND c.status <> 'KILLED' AND c.status <> 'ERROR'
+              AND NOT c.status IN ['KILLED', 'ERROR']
             RETURN c, r, ns ORDER BY c.created ASC
             """,
     )
@@ -112,10 +121,11 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      *
      * Traverses the [:PARENT_OF] graph edges written by [linkParentToChild].
      */
+    @Transactional(readOnly = true)
     @Query(
-        $$"""MATCH (c:Case {id: $caseId})
-            OPTIONAL MATCH path = (c)<-[:PARENT_OF*]-(ancestor:Case)
-            RETURN CASE WHEN path IS NULL THEN 0 ELSE length(path) END AS depth
+        $"""MATCH (c:Case {id: $caseId})
+            OPTIONAL MATCH path = (c)<-[:PARENT_OF*..10]-(ancestor:Case)
+            RETURN coalesce(length(path), 0) AS depth
             ORDER BY depth DESC LIMIT 1
             """,
     )
