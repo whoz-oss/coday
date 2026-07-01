@@ -2036,6 +2036,7 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
           minItems: 1
         parameters:
           type: array
@@ -2324,6 +2325,7 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -2379,6 +2381,7 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -2386,6 +2389,7 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
