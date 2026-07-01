@@ -2,12 +2,14 @@ package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.time.Instant
 import java.util.UUID
@@ -106,12 +108,14 @@ class PromptNodeSpec : StringSpec() {
             parsed[0].get("defaultValue").asText() shouldBe "World"
         }
 
-        "fromDomain maps removed=true to removed property" {
-            val p = prompt().copy(metadata = EntityMetadata(removed = true))
+        "fromDomain throws when entity is already removed" {
+            val id = UUID.randomUUID()
+            val p = prompt(id = id).copy(metadata = EntityMetadata(id = id, removed = true))
 
-            val node = PromptNode.fromDomain(p, objectMapper)
-
-            node.removed shouldBe true
+            val ex = shouldThrow<IllegalArgumentException> {
+                PromptNode.fromDomain(p, objectMapper)
+            }
+            ex.message shouldContain id.toString()
         }
 
         "fromDomain maps removed=false to null (omit false from Neo4j storage)" {
@@ -161,15 +165,6 @@ class PromptNodeSpec : StringSpec() {
             val node = PromptNode.fromDomain(p, objectMapper)
 
             node.scopeKey shouldBe "_:global-helper"
-        }
-
-        "fromDomain computes tombstone scopeKey when entity is removed" {
-            val id = UUID.randomUUID()
-            val p = prompt(id = id).copy(metadata = EntityMetadata(id = id, removed = true))
-
-            val node = PromptNode.fromDomain(p, objectMapper)
-
-            node.scopeKey shouldBe "tombstone:$id"
         }
 
         "toDomain maps id, namespaceId, name, description from node" {

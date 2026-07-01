@@ -92,15 +92,20 @@ data class PromptNode(
         fun fromDomain(
             prompt: Prompt,
             objectMapper: ObjectMapper,
-        ): PromptNode =
-            PromptNode(
+        ): PromptNode {
+            require(!prompt.metadata.removed) {
+                "fromDomain must not be called with a removed entity (id=${prompt.id}). " +
+                    "Use Neo4jPromptRepository.delete / deleteByParent to soft-delete."
+            }
+            return PromptNode(
                 id = prompt.id.toString(),
                 namespaceId = prompt.namespaceId?.toString(),
                 name = prompt.name,
                 description = prompt.description,
                 contentJson = objectMapper.writeValueAsString(prompt.content),
                 parametersJson = prompt.parameters.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
-                scopeKey = if (prompt.metadata.removed) tombstoneScopeKey(prompt.id.toString()) else computeScopeKey(prompt.namespaceId, prompt.name),
+                // prompt.metadata.removed is guaranteed false by the require() above.
+                scopeKey = computeScopeKey(prompt.namespaceId, prompt.name),
                 version = prompt.metadata.version,
                 created = prompt.metadata.created,
                 createdBy = prompt.metadata.createdBy,
@@ -108,5 +113,6 @@ data class PromptNode(
                 modifiedBy = prompt.metadata.modifiedBy,
                 removed = prompt.metadata.removed.takeIf { it },
             )
+        }
     }
 }
