@@ -13,6 +13,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.delegation.DelegationTool
+import io.whozoss.agentos.delegation.SubCaseLauncher
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
@@ -742,6 +744,57 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allIntegrationConfigs = any(),
                 )
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // DelegationTool injection — self-exclusion guard
+        // -------------------------------------------------------------------------
+
+        "buildDelegationTools excludes the agent itself from the allowedAgents list" {
+            val selfName = "orchestrator"
+            val subAgentName = "worker"
+            val delegationUserId = UUID.randomUUID()
+            val subCaseLauncher = mockk<SubCaseLauncher>()
+            val config =
+                agentConfig(name = selfName, modelName = "sonnet")
+                    .copy(subAgents = listOf("*")) // wildcard would match self
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, selfName) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, delegationUserId, "anthropic-prod") } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            // Accessible agents include self and one other agent
+            every {
+                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, delegationUserId)
+            } returns listOf(
+                agentConfig(name = selfName),
+                agentConfig(name = subAgentName),
+            )
+
+            val contextWithUser = AgentExecutionContext(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                userId = delegationUserId,
+            )
+            val agent = agentService.findAgentByName(selfName, contextWithUser, subCaseLauncher) as AgentSimple
+
+            // Access the private 'tools' field via reflection
+            val toolsField = AgentSimple::class.java.getDeclaredField("tools").apply { isAccessible = true }
+            @Suppress("UNCHECKED_CAST")
+            val tools = toolsField.get(agent) as Collection<io.whozoss.agentos.sdk.tool.StandardTool<*>>
+
+            // The delegation tool should be present in the tool list
+            val delegationTool = tools.filterIsInstance<DelegationTool>().firstOrNull()
+            delegationTool.shouldNotBeNull()
+            // The agent's own name must NOT appear in the schema enum or description
+            delegationTool.inputSchema shouldNotContain selfName
+            delegationTool.description shouldNotContain selfName
+            // The sub-agent must appear
+            delegationTool.inputSchema shouldContain subAgentName
         }
 
         // -------------------------------------------------------------------------

@@ -136,27 +136,27 @@ class DelegationTool(
         context: ToolContext,
     ): ToolExecutionResult {
         if (input == null || input.delegations.isEmpty()) {
-            return ToolExecutionResult(
+            return ToolExecutionResult.error(
                 output = "Delegation requires at least one entry in the delegations list.",
-                success = false,
+                errorType = "INVALID_INPUT",
             )
         }
 
         val invalidAgents = input.delegations.map { it.agentName }.filter { it !in allowedAgents }
         if (invalidAgents.isNotEmpty()) {
-            return ToolExecutionResult(
+            return ToolExecutionResult.error(
                 output =
                     "Agent(s) ${invalidAgents.joinToString(", ") { "'$it'" }} are not in the delegation allowlist. " +
                         "Allowed agents: ${allowedAgents.joinToString(", ")}.",
-                success = false,
+                errorType = "UNAUTHORIZED_AGENT",
             )
         }
 
         val userId =
             context.userId
-                ?: return ToolExecutionResult(
+                ?: return ToolExecutionResult.error(
                     output = "Delegation requires a user context (userId is null).",
-                    success = false,
+                    errorType = "MISSING_USER_CONTEXT",
                 )
 
         logger.info {
@@ -180,9 +180,9 @@ class DelegationTool(
                 // We cannot know which ones finished vs. timed out here since the
                 // coroutineScope was cancelled, so we return a global timeout error.
                 logger.warn { "[DelegationTool] Batch timed out after ${timeoutMs}ms" }
-                return ToolExecutionResult(
+                return ToolExecutionResult.error(
                     output = "Delegation batch timed out after ${timeoutMs / 1000}s. Not all sub-agents completed in time.",
-                    success = false,
+                    errorType = "TIMEOUT",
                 )
             }
 
@@ -264,6 +264,7 @@ class DelegationTool(
                 subCaseId = subCaseId,
                 success = false,
                 error = "Sub-case ended with status $finalStatus without producing a result.",
+                errorType = "TERMINAL_STATUS",
             )
         }
 
@@ -278,6 +279,7 @@ class DelegationTool(
                     subCaseId = subCaseId,
                     success = false,
                     error = "Sub-case completed but its event history could not be loaded in time.",
+                    errorType = "EVENT_LOAD_TIMEOUT",
                 )
             }
 
@@ -332,6 +334,7 @@ class DelegationTool(
         val pendingQuestion: String? = null,
         val options: List<String>? = null,
         val error: String? = null,
+        val errorType: String? = null,
     ) {
         fun toMap(): Map<String, Any?> =
             buildMap {
@@ -342,6 +345,7 @@ class DelegationTool(
                 pendingQuestion?.let { put("pendingQuestion", it) }
                 options?.let { put("options", it) }
                 error?.let { put("error", it) }
+                errorType?.let { put("errorType", it) }
             }
     }
 
