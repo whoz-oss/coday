@@ -466,9 +466,8 @@ class AgentSimple(
                         } else {
                             all.filter { event ->
                                 when (event) {
-                                    is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
                                     is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
-                                    else -> true
+                                    else -> false
                                 }
                             }
                         }
