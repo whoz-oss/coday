@@ -173,7 +173,7 @@ class UserControllerSpec : StringSpec({
         val u1 = user(email = "a@x.com")
         val u2 = user(email = "b@x.com")
         every { userService.getCurrentUser() } returns adminUser
-        every { userService.findByIds(listOf(u1.id, u2.id), false) } returns listOf(u1, u2)
+        every { userService.findByIds(setOf(u1.id, u2.id), false) } returns listOf(u1, u2)
 
         val result = controller.getByIds(GetByIdsRequest(ids = listOf(u1.id, u2.id)))
 

@@ -92,22 +92,23 @@ class EntityControllerBatchSpec : StringSpec({
                 callerId.toString(), EntityType.AGENT_CONFIG, listOf(a.id.toString(), b.id.toString()), Action.READ,
             )
         } returns setOf(a.id.toString())
-        every { service.findByIds(setOf(a.id), false) } returns listOf(a)
+        // Delegate fetches all requested IDs then filters in-process — stub the full set.
+        every { service.findByIds(setOf(a.id, b.id), false) } returns listOf(a, b)
 
         val result = crud.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id)))
 
         result.map { it.tag } shouldContainExactly listOf("visible")
     }
 
-    "getByIds returns empty list for a regular caller with no visible ids (without calling service.findByIds)" {
+    "getByIds returns empty list for a regular caller with no visible ids" {
         val a = entity()
         every { userService.getCurrentUser() } returns regularUser
         every {
             permissionService.filterVisibleIds(any(), any(), any(), any())
         } returns emptySet()
+        every { service.findByIds(any(), any()) } returns emptyList()
 
         crud.getByIds(GetByIdsRequest(ids = listOf(a.id))) shouldBe emptyList()
-        verify(exactly = 0) { service.findByIds(any(), any()) }
     }
 
     "getByIds returns empty list when admin sees no matching entity (findByIds returns empty)" {
