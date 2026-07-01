@@ -1,10 +1,10 @@
 package io.whozoss.agentos.prompt
 
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -61,10 +61,7 @@ class PromptServiceImpl(
     private fun validate(prompt: Prompt) {
         val blankIndex = prompt.content.indexOfFirst { it.isBlank() }
         if (blankIndex >= 0) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "content[$blankIndex] must not be blank",
-            )
+            throw BadRequestException("content[$blankIndex] must not be blank")
         }
 
         val duplicateName =
@@ -74,8 +71,7 @@ class PromptServiceImpl(
                 .firstOrNull { it.value.size > 1 }
                 ?.key
         if (duplicateName != null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
+            throw BadRequestException(
                 "Duplicate parameter name '$duplicateName' \u2014 parameter names must be unique within a prompt",
             )
         }
@@ -92,7 +88,7 @@ class PromptServiceImpl(
                 "[PromptService] scopeKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, name='${entity.name}')"
             }
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+            throw ConflictException(conflictMessage(entity), e)
         }
 
     private fun isScopeKeyConflict(e: DataIntegrityViolationException): Boolean {

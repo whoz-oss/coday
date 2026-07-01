@@ -7,8 +7,9 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -100,20 +101,18 @@ class PromptServiceImplSpec : StringSpec() {
         "create rejects prompt with a blank content element" {
             val service = newService()
 
-            val ex = shouldThrow<ResponseStatusException> {
+            val ex = shouldThrow<BadRequestException> {
                 service.create(prompt(content = listOf("Hello", "   ", "World")))
             }
-            ex.statusCode.value() shouldBe 400
-            ex.reason?.contains("content[1]") shouldBe true
+            ex.message shouldContain "content[1]"
         }
 
         "create rejects prompt with an empty string content element" {
             val service = newService()
 
-            val ex = shouldThrow<ResponseStatusException> {
+            shouldThrow<BadRequestException> {
                 service.create(prompt(content = listOf("")))
             }
-            ex.statusCode.value() shouldBe 400
         }
 
         "create accepts prompt with a single non-blank content element" {
@@ -140,11 +139,10 @@ class PromptServiceImplSpec : StringSpec() {
                 PromptParameter(name = "name", defaultValue = ""),
             )
 
-            val ex = shouldThrow<ResponseStatusException> {
+            val ex = shouldThrow<BadRequestException> {
                 service.create(prompt(parameters = params))
             }
-            ex.statusCode.value() shouldBe 400
-            ex.reason?.contains("name") shouldBe true
+            ex.message shouldContain "name"
         }
 
         "create accepts prompt with empty parameters list" {
@@ -171,17 +169,16 @@ class PromptServiceImplSpec : StringSpec() {
             val service = newService()
             val saved = service.create(prompt())
 
-            val ex = shouldThrow<ResponseStatusException> {
+            shouldThrow<BadRequestException> {
                 service.update(saved.copy(content = listOf("Good", "")))
             }
-            ex.statusCode.value() shouldBe 400
         }
 
         "update rejects duplicate parameter names" {
             val service = newService()
             val saved = service.create(prompt())
 
-            val ex = shouldThrow<ResponseStatusException> {
+            shouldThrow<BadRequestException> {
                 service.update(
                     saved.copy(
                         parameters = listOf(
@@ -191,7 +188,6 @@ class PromptServiceImplSpec : StringSpec() {
                     ),
                 )
             }
-            ex.statusCode.value() shouldBe 400
         }
 
         "update with valid data persists changes" {
