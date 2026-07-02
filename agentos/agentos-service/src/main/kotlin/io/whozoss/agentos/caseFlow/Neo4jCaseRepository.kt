@@ -73,6 +73,11 @@ open class Neo4jCaseRepository(
             .findActiveByParentCaseId(parentCaseId.toString())
             .map { it.toDomain() }
 
+    override fun findActiveDescendants(caseId: UUID): List<Case> =
+        caseNodeNeo4jRepository
+            .findActiveDescendants(caseId.toString())
+            .map { it.toDomain() }
+
     override fun countAncestorDepth(caseId: UUID): Int =
         caseNodeNeo4jRepository.countAncestorDepth(caseId.toString())
 

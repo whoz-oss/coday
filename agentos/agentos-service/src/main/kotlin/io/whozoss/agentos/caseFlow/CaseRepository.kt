@@ -22,7 +22,10 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      *
      * Implementations must exclude soft-deleted cases.
      */
-    fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+    fun findAccessibleByUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case>
 
     /**
      * Find all cases concerning [userId] across every namespace.
@@ -41,12 +44,15 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      * but restricted to the given namespace.
      * Implementations must exclude soft-deleted cases.
      */
-    fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+    fun findConcerningUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case>
 
     /**
      * Find all active (non-removed), non-terminal sub-cases whose [Case.parentCaseId] matches [parentCaseId].
      *
-     * Used by [io.whozoss.agentos.caseFlow.CaseService.killCase] to propagate kill signals
+     * Used by [io.whozoss.agentos.caseFlow.CaseService.killSingleCase] to propagate kill signals
      * to sub-cases created by delegation. Excludes sub-cases already in a terminal status
      * (KILLED or ERROR) so that killing a parent does not overwrite their diagnostic status.
      */
@@ -61,9 +67,21 @@ interface CaseRepository : EntityRepository<Case, UUID> {
     fun countAncestorDepth(caseId: UUID): Int
 
     /**
+     * Find all active, non-terminal descendants of [caseId] via the [:PARENT_OF] chain,
+     * up to 10 levels deep, ordered leaves-first.
+     *
+     * Used by [io.whozoss.agentos.caseFlow.CaseService.killSingleCase] to collect the full
+     * subtree in one query instead of recursing through [findActiveByParentCaseId].
+     */
+    fun findActiveDescendants(caseId: UUID): List<Case>
+
+    /**
      * Create the [:PARENT_OF] graph relationship from [parentCaseId] to [childCaseId].
      *
      * Called after persisting a sub-case so the ancestor-depth query can traverse the chain.
      */
-    fun linkParentToChild(parentCaseId: UUID, childCaseId: UUID)
+    fun linkParentToChild(
+        parentCaseId: UUID,
+        childCaseId: UUID,
+    )
 }

@@ -6,6 +6,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
+import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
@@ -124,13 +125,13 @@ class CaseServiceImpl(
 
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
-            killCase(id)
+            killSingleCase(id)
         }
         return caseRepository.delete(id)
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { killCase(it.id) }
+        findByParent(parentId).forEach { killSingleCase(it.id) }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -607,7 +608,21 @@ class CaseServiceImpl(
         runtime.requestInterrupt()
     }
 
-    override fun killSubCase(caseId: UUID) = killCase(caseId)
+    private fun killSingleCase(caseId: UUID) {
+        logger.info { "Killing case: $caseId" }
+        activeRuntimes[caseId]?.requestKill()
+        handleStatusChange(caseId, CaseStatus.KILLED)
+    }
+
+    override fun killCase(caseId: UUID) {
+        logger.info { "Killing sub-case and its descendants: $caseId" }
+        val descendants = caseRepository.findActiveDescendants(caseId)
+        if (descendants.isNotEmpty()) {
+            logger.info { "Killing ${descendants.size} descendant(s) of sub-case $caseId" }
+        }
+        descendants.forEach { descendant -> killSingleCase(descendant.id) }
+        killSingleCase(caseId)
+    }
 
     override fun resumeSubCase(
         subCaseId: UUID,
@@ -643,21 +658,6 @@ class CaseServiceImpl(
         scope.launch { runtime.run() }
         logger.info { "Sub-case $subCaseId resumed, agent=$agentName" }
         return runtime
-    }
-
-    override fun killCase(caseId: UUID) {
-        logger.info { "Killing case: $caseId" }
-        // Propagate kill to all direct sub-cases first (depth-first recursion).
-        // Each recursive call will in turn kill its own sub-cases, so arbitrarily
-        // deep delegation chains are handled without any extra tracking.
-        caseRepository.findActiveByParentCaseId(caseId).forEach { subCase ->
-            logger.info { "Killing sub-case ${subCase.id} (parent: $caseId)" }
-            killCase(subCase.id)
-        }
-        // Signal the runtime loop to exit cleanly if it is currently running,
-        // then let handleStatusChange evict it via the isTerminal() path.
-        activeRuntimes[caseId]?.requestKill()
-        handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
     override fun startSubCase(
@@ -740,7 +740,7 @@ class CaseServiceImpl(
         logger.info { "Shutting down CaseService..." }
         activeRuntimes.keys.toList().forEach {
             try {
-                killCase(it)
+                killSingleCase(it)
             } catch (e: Exception) {
                 logger.warn(e) { "Error killing case $it during shutdown" }
             }

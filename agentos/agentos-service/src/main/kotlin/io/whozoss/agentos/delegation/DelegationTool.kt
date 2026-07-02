@@ -259,7 +259,7 @@ class DelegationTool(
                     .first()
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 // Propagate up to the batch withTimeout handler.
-                runCatching { subCaseManager.killSubCase(subCaseId) }
+                runCatching { subCaseManager.killCase(subCaseId) }
                 throw e
             }
 

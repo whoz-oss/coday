@@ -48,8 +48,8 @@ interface SubCaseManager {
     ): CaseRuntime
 
     /**
-     * Permanently terminate a sub-case that did not complete in time.
+     * Permanently terminate a case that did not complete in time.
      * Called by [DelegationTool] after a timeout to avoid leaving orphan runtimes in memory.
      */
-    fun killSubCase(caseId: UUID)
+    fun killCase(caseId: UUID)
 }

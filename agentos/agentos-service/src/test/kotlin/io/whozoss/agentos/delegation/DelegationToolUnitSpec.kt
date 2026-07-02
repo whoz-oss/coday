@@ -364,7 +364,7 @@ class DelegationToolUnitSpec :
             val runtime = mockk<CaseRuntime>()
             every { runtime.id } returns subCaseId
             every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
-            every { launcher.killSubCase(subCaseId) } returns Unit
+            every { launcher.killCase(subCaseId) } returns Unit
             val tool = makeTool(launcher, timeoutMs = 200)
 
             every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime

@@ -132,6 +132,28 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     fun countAncestorDepth(caseId: String): Int
 
     /**
+     * Find all active, non-terminal descendants of [caseId] via the [:PARENT_OF] graph edges,
+     * up to a maximum depth of 10 hops.
+     *
+     * Returns descendants leaves-first (deepest paths first) so that callers killing the
+     * tree process children before their parents. Excludes cases already in a terminal
+     * status (KILLED or ERROR) — there is no point signalling a case that has already stopped.
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH path = (root:Case)
+            WHERE root.id = $caseId
+            WITH root
+            MATCH path = (root)-[:PARENT_OF*1..10]->(descendant:Case)
+            WHERE (descendant.removed IS NULL OR descendant.removed = false)
+              AND NOT descendant.status IN ['KILLED', 'ERROR']
+            RETURN descendant
+            ORDER BY length(path) DESC
+            """,
+    )
+    fun findActiveDescendants(caseId: String): List<CaseNode>
+
+    /**
      * Creates the [:PARENT_OF] relationship from [parentCaseId] to [childCaseId].
      *
      * Called by [io.whozoss.agentos.caseFlow.Neo4jCaseRepository] after creating a sub-case
