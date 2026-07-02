@@ -15,6 +15,9 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
@@ -58,6 +61,7 @@ class AgentServiceImpl(
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
     private val exchangeStorageService: ExchangeStorageService,
+    private val permissionService: PermissionService,
 ) : AgentService {
     override suspend fun findAgentByName(
         namePart: String,
@@ -511,7 +515,9 @@ class AgentServiceImpl(
      * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
      * - case exchange (read/write) requires the [ExchangeIntegrationTypes.CASE] key AND a live
      *   [context.caseId];
-     * - namespace exchange (read-only) requires the [ExchangeIntegrationTypes.NAMESPACE] key.
+     * - namespace exchange requires the [ExchangeIntegrationTypes.NAMESPACE] key; the agent inherits
+     *   the invoking user's namespace right — read/write when the user holds Namespace WRITE
+     *   (admin/super-admin), read-only otherwise.
      */
     private fun buildExchangeTools(
         config: AgentConfig,
@@ -556,9 +562,20 @@ class AgentServiceImpl(
             )
         }
         if (integrations.containsKey(ExchangeIntegrationTypes.NAMESPACE)) {
+            // The agent inherits the invoking user's namespace right: read/write for a namespace
+            // admin (Namespace WRITE, super-admin included), read-only for a plain member.
+            val userCanWriteNamespace =
+                context.userId?.let {
+                    permissionService.hasPermission(
+                        it.toString(),
+                        EntityType.NAMESPACE,
+                        context.namespaceId.toString(),
+                        Action.WRITE,
+                    )
+                } ?: false
             tools += grant(
                 exchangeStorageService.namespaceRoot(context.namespaceId),
-                readOnly = true,
+                readOnly = !userCanWriteNamespace,
                 configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
                 allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
             )

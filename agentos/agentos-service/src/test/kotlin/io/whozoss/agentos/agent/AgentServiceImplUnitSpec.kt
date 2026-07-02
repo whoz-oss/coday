@@ -25,6 +25,9 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -59,6 +62,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
+    private val permissionService: PermissionService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -77,6 +81,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolMetricsService,
             caseEventService,
             exchangeStorageService,
+            permissionService,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -209,6 +214,34 @@ class AgentServiceImplUnitSpec : StringSpec() {
             cfg.captured.get("readOnly").asBoolean() shouldBe true
             // resolveDefinition carries no live case id → case exchange must NOT be granted
             verify(exactly = 0) { filePlugin.provideTools(any(), "case-exchange", any()) }
+
+            every { toolRegistryService.findPlugin(any()) } returns null
+        }
+
+        "namespace exchange is read/write when the invoking user holds Namespace WRITE" {
+            val tmp = Files.createTempDirectory("ns-exchange-rw-test")
+            val filePlugin = mockk<ToolPlugin>(relaxed = true)
+            val writerId = UUID.randomUUID()
+            every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
+            every { exchangeStorageService.namespaceRoot(namespaceId) } returns tmp
+            every {
+                permissionService.hasPermission(writerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+            } returns true
+
+            val config =
+                agentConfig(name = "ns-writer", modelName = "sonnet")
+                    .copy(integrations = mapOf("NAMESPACE_FILE_EXCHANGE" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            // A non-null userId drives the provider-reconciliation overlay; keep it returning a real provider.
+            every { aiProviderReconciliationService.resolve(any(), any(), any()) } returns providerConfig()
+
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = writerId)
+
+            val cfg = slot<JsonNode>()
+            verify { filePlugin.provideTools(capture(cfg), "namespace-exchange", any()) }
+            cfg.captured.get("readOnly").asBoolean() shouldBe false
 
             every { toolRegistryService.findPlugin(any()) } returns null
         }
@@ -410,6 +443,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolMetricsService,
                     caseEventService,
                     exchangeStorageService,
+                    permissionService,
                 )
             val configs =
                 listOf(
