@@ -168,27 +168,15 @@ class DelegationTool(
                 "from parent case $parentCaseId (timeout=${timeoutMs}ms)"
         }
 
-        // Run all delegations in parallel, bounded by the global wall-clock timeout.
+        // Run all delegations in parallel. Each delegation has its own timeout budget
+        // so a single slow sub-case does not cancel the others — successful results are
+        // preserved and only the timed-out ones are reported as failures.
         val results: List<DelegationResult> =
-            try {
-                withTimeout(timeoutMs) {
-                    coroutineScope {
-                        input.delegations
-                            .map { delegation ->
-                                async { runSingleDelegation(delegation, userId) }
-                            }.map { it.await() }
-                    }
-                }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                // The batch timeout fired before all sub-cases completed.
-                // Individual sub-cases that are still running need to be killed.
-                // We cannot know which ones finished vs. timed out here since the
-                // coroutineScope was cancelled, so we return a global timeout error.
-                logger.warn { "[DelegationTool] Batch timed out after ${timeoutMs}ms" }
-                return ToolExecutionResult.error(
-                    output = "Delegation batch timed out after ${timeoutMs / 1000}s. Not all sub-agents completed in time.",
-                    errorType = "TIMEOUT",
-                )
+            coroutineScope {
+                input.delegations
+                    .map { delegation ->
+                        async { runSingleDelegation(delegation, userId) }
+                    }.map { it.await() }
             }
 
         val anySuccess = results.any { it.success }
@@ -208,6 +196,9 @@ class DelegationTool(
      * Runs a single delegation: starts or resumes the sub-case, waits for completion,
      * loads events, and extracts the result. Never throws — errors are captured as
      * [DelegationResult.success] = false.
+     *
+     * The [timeoutMs] budget applies to this individual delegation. A timeout kills
+     * the sub-case and returns a failure result, leaving sibling delegations unaffected.
      */
     private suspend fun runSingleDelegation(
         delegation: Delegation,
@@ -251,16 +242,27 @@ class DelegationTool(
 
         val subCaseId = subRuntime.id
 
-        // Wait for the sub-case to reach IDLE or a terminal status.
+        // Wait for the sub-case to reach IDLE or a terminal status, bounded by the
+        // per-delegation timeout. On timeout the sub-case is killed and a failure
+        // result is returned — sibling delegations running in parallel are unaffected.
         val finalStatus =
             try {
-                subRuntime.statusFlow
-                    .filter { it == CaseStatus.IDLE || it.isTerminal() }
-                    .first()
+                withTimeout(timeoutMs) {
+                    subRuntime.statusFlow
+                        .filter { it == CaseStatus.IDLE || it.isTerminal() }
+                        .first()
+                }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                // Propagate up to the batch withTimeout handler.
+                logger.warn { "[DelegationTool] Sub-case $subCaseId timed out after ${timeoutMs}ms, killing" }
                 runCatching { subCaseManager.killCase(subCaseId) }
-                throw e
+                    .onFailure { err -> logger.warn(err) { "[DelegationTool] Failed to kill sub-case $subCaseId after timeout" } }
+                return DelegationResult(
+                    agentName = agentName,
+                    subCaseId = subCaseId,
+                    success = false,
+                    error = "Sub-case timed out after ${timeoutMs / 1000}s.",
+                    errorType = "TIMEOUT",
+                )
             }
 
         if (finalStatus.isTerminal()) {
