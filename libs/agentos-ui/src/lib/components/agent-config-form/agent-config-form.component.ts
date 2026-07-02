@@ -2,7 +2,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService, IntegrationConfig } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  AgentConfigControllerService,
+  DeploymentScope,
+  IntegrationConfig,
+} from '@whoz-oss/agentos-api-client'
 import { forkJoin, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 
@@ -101,6 +106,10 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
 
+  /** Deployment scopes for this agent config — only loaded in edit mode. */
+  protected readonly deployments = signal<DeploymentScope[]>([])
+  protected readonly isLoadingDeployments = signal(false)
+
   /** Route to the inspect view — only valid in edit mode (agentConfigId is present). */
   protected inspectRoute(): string[] {
     const agentConfigId = this.route.snapshot.paramMap.get('agentConfigId') ?? ''
@@ -121,9 +130,25 @@ export class AgentConfigFormComponent implements OnInit {
     if (agentConfigId) {
       this.isEditMode.set(true)
       this.loadConfigAndIntegrations(agentConfigId)
+      this.loadDeployments(agentConfigId)
     } else {
       this.loadIntegrations(undefined)
     }
+  }
+
+  /** Fetch deployment scopes for this agent config (edit mode only). */
+  private loadDeployments(agentConfigId: string): void {
+    this.isLoadingDeployments.set(true)
+    this.agentConfigController
+      .getDeploymentsAgentConfig(agentConfigId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (scopes) => {
+          this.deployments.set(scopes)
+          this.isLoadingDeployments.set(false)
+        },
+        error: () => this.isLoadingDeployments.set(false),
+      })
   }
 
   /**

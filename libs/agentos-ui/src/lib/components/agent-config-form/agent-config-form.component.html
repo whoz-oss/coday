@@ -116,6 +116,31 @@
         <p class="agent-config-form__toggle-hint">Disabled agents are excluded from namespace resolution.</p>
       </div>
 
+      @if (isEditMode()) {
+        <div class="agent-config-form__deployments">
+          <span class="agent-config-form__label">Deployments</span>
+          @if (isLoadingDeployments()) {
+            <p class="agent-config-form__deployments-empty">Loading&hellip;</p>
+          } @else if (deployments().length === 0) {
+            <p class="agent-config-form__deployments-empty">Not deployed anywhere yet.</p>
+          } @else {
+            <ul class="agent-config-form__deployments-list">
+              @for (scope of deployments(); track scope.id) {
+                <li class="agent-config-form__deployment-item">
+                  <span
+                    class="agent-config-form__deployment-badge agent-config-form__deployment-badge--{{
+                      scope.scopeType.toLowerCase()
+                    }}"
+                    >{{ scope.scopeType }}</span
+                  >
+                  <span class="agent-config-form__deployment-id">{{ scope.id }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      }
+
       <div class="agent-config-form__actions">
         <button
           class="agent-config-form__btn agent-config-form__btn--primary"

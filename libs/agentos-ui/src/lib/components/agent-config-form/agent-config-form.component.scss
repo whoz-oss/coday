@@ -203,6 +203,60 @@
     line-height: 1.4;
   }
 
+  &__deployments {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  &__deployments-empty {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
+  &__deployments-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  &__deployment-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+
+  &__deployment-badge {
+    display: inline-block;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+
+    &--namespace {
+      color: var(--color-info, #0071e3);
+      background: color-mix(in srgb, var(--color-info, #0071e3) 12%, transparent);
+    }
+
+    &--user_group {
+      color: var(--color-accent, #6e3ff3);
+      background: color-mix(in srgb, var(--color-accent, #6e3ff3) 12%, transparent);
+    }
+  }
+
+  &__deployment-id {
+    font-size: 0.8125rem;
+    font-family: monospace;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
   &__actions {
     display: flex;
     gap: 0.75rem;
