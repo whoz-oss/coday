@@ -309,6 +309,48 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
         }
 
+        // -------------------------------------------------------------------------
+        // GET /platform — @PreAuthorize("isAuthenticated()")
+        // -------------------------------------------------------------------------
+
+        "GET /platform returns 200 with platform prompts for any authenticated user" {
+            // Create a platform prompt as admin, then verify alice (non-admin) can list it.
+            every { userService.getCurrentUser() } returns admin
+            val name = "Platform-list-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    name = name,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            every { userService.getCurrentUser() } returns alice
+            mockMvc.perform(get("/api/prompts/platform"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+                .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
+        }
+
+        "GET /platform does not include namespace-scoped prompts" {
+            every { userService.getCurrentUser() } returns admin
+            val nsName = "NS-only-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = nsName,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            every { userService.getCurrentUser() } returns alice
+            mockMvc.perform(get("/api/prompts/platform"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$nsName')]").doesNotExist())
+        }
+
         "GET /by-parentId returns 200 for super-admin without explicit namespace membership" {
             every { userService.getCurrentUser() } returns admin
 

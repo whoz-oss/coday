@@ -138,6 +138,19 @@ class PromptController(
         @PathVariable parentId: UUID,
     ): List<PromptResource> = promptService.findByParent(parentId).map { toResource(it) }
 
+    /**
+     * GET /api/prompts/platform
+     *
+     * Lists all non-removed platform-level prompts (namespaceId = null).
+     *
+     * Readable by any authenticated user — consistent with `GET /{id}` which grants READ
+     * to every authenticated caller for platform-scoped prompts via [isPlatformScoped]
+     * in [Neo4jPermissionRepository].
+     */
+    @GetMapping("/platform")
+    @PreAuthorize("isAuthenticated()")
+    fun listPlatformPrompts(): List<PromptResource> = promptService.findPlatform().map { toResource(it) }
+
     // -------------------------------------------------------------------------
     // Write endpoints
     // -------------------------------------------------------------------------
