@@ -173,16 +173,22 @@ export class ExchangeStateService {
           this.refreshManifest()
           resolve({ success: true })
         },
-        error: (err: { status?: number; message?: string }) => {
+        error: (err: { status?: number; message?: string; error?: { message?: string } }) => {
           this.isUploading.set(false)
-          const conflict = err?.status === 409
-          resolve({
-            success: false,
-            error: conflict ? 'A file with this name already exists.' : (err?.message ?? 'Upload failed'),
-          })
+          resolve({ success: false, error: this.uploadErrorMessage(err) })
         },
       })
     })
+  }
+
+  /** Maps an upload error response to a user-facing message (disallowed type, conflict, too large). */
+  private uploadErrorMessage(err: { status?: number; message?: string; error?: { message?: string } }): string {
+    const byStatus: Record<number, string | undefined> = {
+      400: err?.error?.message ?? 'This file type is not allowed.',
+      409: 'A file with this name already exists.',
+      413: 'This file is too large.',
+    }
+    return (err?.status != null && byStatus[err.status]) || err?.message || 'Upload failed'
   }
 
   async deleteFile(path: string): Promise<{ success: boolean; error?: string }> {

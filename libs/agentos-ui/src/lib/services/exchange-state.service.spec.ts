@@ -150,6 +150,23 @@ describe('ExchangeStateService', () => {
       expect(result.error).toBe('A file with this name already exists.')
     })
 
+    it('upload 400 → surfaces the disallowed file type error from the backend', async () => {
+      init()
+      controller.uploadCaseFileExchange.mockReturnValue(
+        throwError(() => ({ status: 400, error: { message: "File type not allowed for upload: 'x.exe'" } }))
+      )
+      const result = await service.uploadFile(new File(['x'], 'x.exe'))
+      expect(result.success).toBe(false)
+      expect(result.error).toBe("File type not allowed for upload: 'x.exe'")
+    })
+
+    it('upload 400 without a body message falls back to a generic disallowed-type message', async () => {
+      init()
+      controller.uploadCaseFileExchange.mockReturnValue(throwError(() => ({ status: 400 })))
+      const result = await service.uploadFile(new File(['x'], 'x.exe'))
+      expect(result.error).toBe('This file type is not allowed.')
+    })
+
     it('delete success → reloads manifest', async () => {
       init()
       controller.deleteCaseFileExchange.mockReturnValue(of({ success: true, message: 'ok' }))
