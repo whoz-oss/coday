@@ -17,15 +17,16 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Generates a short title for a [Case] from its first user message(s).
+ * Generates a short title for a [Case] from its most recent user message(s).
  *
- * Called directly by [CaseServiceImpl] at two points in the case lifecycle:
- * - after the first user message is added
- * - after the first agent turn completes (IDLE transition)
+ * Called by [CaseServiceImpl] whenever [CaseServiceImpl.triggerNamingIfNeeded] decides
+ * a naming attempt is warranted. This service only generates and persists the title —
+ * it does not decide whether naming should happen.
  *
- * In both cases [CaseServiceImpl] is responsible for checking the naming window
- * conditions before calling this service. This service only generates and persists
- * the title — it does not decide whether naming should happen.
+ * The transcript fed to the LLM is built from the last [MAX_USER_MESSAGES_FOR_NAMING]
+ * user [MessageEvent]s. Using the last messages (rather than the first) ensures the
+ * title is always derived from the most contextually relevant content, including the
+ * blank-title recovery path where earlier messages may already be stale.
  */
 @Service
 class CaseNamingService(
@@ -134,7 +135,8 @@ class CaseNamingService(
     }
 
     companion object : KLogging() {
-        const val MAX_USER_MESSAGES_FOR_NAMING = 2
+        /** Number of recent user messages fed to the LLM for title generation. */
+        const val MAX_USER_MESSAGES_FOR_NAMING = 3
         private const val MAX_TITLE_LENGTH = 60
         private const val MAX_FALLBACK_TITLE_LENGTH = 50
     }

@@ -9,6 +9,8 @@ import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -677,27 +679,34 @@ class CaseServiceImpl(
     }
 
     /**
-     * Launches a fire-and-forget naming coroutine when the case is still in its
-     * auto-generated title state and within the two-user-message naming window.
+     * Launches a fire-and-forget naming coroutine when conditions warrant a (re)naming attempt.
      *
-     * The window covers two lifecycle moments:
-     * - after the first user message (quick first-pass title)
-     * - after the first agent turn completes (refined title with more context)
+     * Triggers when **any** of the following holds:
+     * - The case title is blank or null (defensive: the default is never blank, but guards
+     *   against future changes to [Case] defaults).
+     * - The case has the auto-generated default title (`"Case <uuid>"`) AND we are at the
+     *   first user message — quick first-pass title before the agent responds.
+     * - The case has the auto-generated default title AND we are on the first agent turn
+     *   completion — refined title with the full first exchange available.
      *
-     * Beyond [CaseNamingService.MAX_USER_MESSAGES_FOR_NAMING] user messages the title
-     * should already be set; further turns are skipped.
+     * Beyond the first agent turn the title is considered settled; further turns are skipped
+     * unless the title is blank.
      */
     private fun triggerNamingIfNeeded(
         case: Case,
-        events: List<io.whozoss.agentos.sdk.caseEvent.CaseEvent>,
-        emitEvent: (io.whozoss.agentos.sdk.caseEvent.CaseEvent) -> Unit,
+        events: List<CaseEvent>,
+        emitEvent: (CaseEvent) -> Unit,
     ) {
-        if (case.title != "Case ${case.id}") return
-        val userMessageCount = events.count {
-            it is io.whozoss.agentos.sdk.caseEvent.MessageEvent &&
-                it.actor.role == io.whozoss.agentos.sdk.actor.ActorRole.USER
-        }
-        if (userMessageCount !in 1..CaseNamingService.MAX_USER_MESSAGES_FOR_NAMING) return
+        val titleIsBlank = case.title.isBlank()
+        val titleIsGenerated = case.title == "Case ${case.id}"
+        if (!titleIsBlank && !titleIsGenerated) return
+
+        val userMessageCount = events.count { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val agentFinishedCount = events.count { it is AgentFinishedEvent }
+
+        val shouldTrigger = titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1
+        if (!shouldTrigger) return
+
         scope.launch {
             runCatching { caseNamingService.nameCase(case, events, emitEvent) }
                 .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }

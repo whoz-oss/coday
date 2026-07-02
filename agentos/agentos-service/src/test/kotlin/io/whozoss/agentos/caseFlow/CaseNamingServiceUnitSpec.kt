@@ -253,6 +253,59 @@ class CaseNamingServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
+        // Transcript: last N user messages are used
+        // -------------------------------------------------------------------------
+
+        "uses only the last MAX_USER_MESSAGES_FOR_NAMING user messages when more are present" {
+            // With MAX_USER_MESSAGES_FOR_NAMING = 3, only the last 3 user messages
+            // should be included in the transcript. Earlier messages are ignored.
+            val chatClientProvider = mockk<ChatClientProvider>()
+            var capturedPrompt = ""
+            val chatClient = mockk<ChatClient>()
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>()
+            val callSpec = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+            every { chatClient.prompt(any<org.springframework.ai.chat.prompt.Prompt>()) } answers {
+                capturedPrompt = (firstArg<org.springframework.ai.chat.prompt.Prompt>()).contents.first().text
+                reqSpec
+            }
+            every { reqSpec.call() } returns callSpec
+            every { callSpec.content() } returns "Generated Title"
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns chatClient
+
+            val saved = mutableListOf<Case>()
+            val service = buildService(chatClientProvider = chatClientProvider, savedCases = saved)
+
+            val case = makeCase()
+            val events: List<CaseEvent> = listOf(
+                messageEvent("first old message", case.id),
+                messageEvent("second old message", case.id),
+                messageEvent("third recent message", case.id),
+                messageEvent("fourth recent message", case.id),
+                messageEvent("fifth recent message", case.id),
+            )
+            service.nameCase(case, events) {}
+
+            capturedPrompt shouldBe capturedPrompt // compile guard
+            // The first old messages must not appear in the prompt
+            assert(!capturedPrompt.contains("first old message")) {
+                "Expected prompt to exclude 'first old message' but was: $capturedPrompt"
+            }
+            assert(!capturedPrompt.contains("second old message")) {
+                "Expected prompt to exclude 'second old message' but was: $capturedPrompt"
+            }
+            // The last 3 must be present
+            assert(capturedPrompt.contains("third recent message")) {
+                "Expected prompt to contain 'third recent message' but was: $capturedPrompt"
+            }
+            assert(capturedPrompt.contains("fourth recent message")) {
+                "Expected prompt to contain 'fourth recent message' but was: $capturedPrompt"
+            }
+            assert(capturedPrompt.contains("fifth recent message")) {
+                "Expected prompt to contain 'fifth recent message' but was: $capturedPrompt"
+            }
+        }
+
+        // -------------------------------------------------------------------------
         // Edge cases
         // -------------------------------------------------------------------------
 
