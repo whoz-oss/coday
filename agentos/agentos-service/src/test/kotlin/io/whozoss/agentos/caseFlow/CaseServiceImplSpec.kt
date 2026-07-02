@@ -1271,6 +1271,50 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
 
+        "eviction watcher coroutine is terminated after idle eviction" {
+            // Regression test for the coroutine-leak fix.
+            //
+            // Before the fix, the idle eviction path called watcherJobs.remove(caseId)
+            // without ?.cancel(). The comment claimed collect{} on the infinite
+            // combine(StateFlow, StateFlow) "ends naturally" — it does not. The remove
+            // cleared the map entry but left the coroutine suspended in collect forever,
+            // retaining the CaseRuntime in its closure — a memory leak.
+            //
+            // After the fix, watcherJobs.remove(caseId)?.cancel() is used, which is
+            // consistent with the terminal-status path in handleStatusChange and
+            // correctly terminates the coroutine.
+            //
+            // This test verifies that after eviction the service scope has no orphan
+            // coroutines left over from the watcher.
+
+            val service = buildService(idleEvictionGraceMs = 50L)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            // Subscribe, let the case reach IDLE, then unsubscribe.
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+            // awaiter job ends -> subscriptionCount drops to 0.
+            // Also wait for run() to fully exit so its coroutine is not counted.
+            awaitNotRunning(runtime)
+
+            // Wait for grace period + margin for the watcher to fire and cancel itself.
+            delay(200)
+
+            // Runtime was evicted.
+            service.findActiveRuntime(case.id) shouldBe null
+            // The watcher coroutine must have been cancelled — no orphan coroutines
+            // should remain in the service scope for this case.
+            service.activeCoroutineCount shouldBe 0
+        }
+
         "idle runtime is NOT evicted while SSE subscribers remain connected" {
             // The eviction watcher only fires when subscriptionCount == 0.
             // We keep a subscriber alive so subscriptionCount never reaches 0.
