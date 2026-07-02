@@ -320,6 +320,35 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/cases/{id}/star:
+    put:
+      tags:
+      - case-controller
+      operationId: starCase
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+      - case-controller
+      operationId: unstarCase
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/ai-providers/{id}:
     get:
       tags:
@@ -1996,7 +2025,10 @@ components:
           format: date-time
         removed:
           type: boolean
+        favorite:
+          type: boolean
       required:
+      - favorite
       - namespaceId
       - removed
       - status

@@ -15,6 +15,7 @@ export interface Case {
   title?: string
   created?: string
   removed: boolean
+  favorite: boolean
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',
