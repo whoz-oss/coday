@@ -206,6 +206,27 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAiModelsComponent
               ),
           },
+          // --- Prompts ---
+          {
+            path: ':namespaceId/prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: ':namespaceId/prompts/:promptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: ':namespaceId/prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-prompts/namespace-prompts.component').then(
+                (m) => m.NamespacePromptsComponent
+              ),
+          },
           // --- Agent Configs ---
           {
             path: ':namespaceId/agent-configs/new',

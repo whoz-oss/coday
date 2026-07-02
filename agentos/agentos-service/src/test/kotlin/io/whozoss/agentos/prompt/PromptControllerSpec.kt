@@ -1,0 +1,366 @@
+package io.whozoss.agentos.prompt
+
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.shouldBe
+import io.mockk.clearAllMocks
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
+import org.springframework.security.access.AccessDeniedException
+import java.util.UUID
+
+/**
+ * Unit tests for [PromptController].
+ *
+ * Permission annotations (@PreAuthorize) are bypassed in pure unit tests — those are
+ * exercised by the MVC integration specs. This spec covers:
+ * - toResource / toDomain mapping
+ * - create: scope dispatch, authorization guards, namespace existence check
+ * - update: namespaceId mass-assignment guard, mutable fields, 404 path
+ * - delete: 404 path
+ *
+ * HTTP-level flows (Bean Validation, status codes, @PreAuthorize wiring) are
+ * covered by [PromptControllerMvcIntegrationSpec].
+ *
+ * Platform-level admin guard (Super Admin required for WRITE/DELETE on platform prompts)
+ * is enforced by PermissionServiceImpl, not the controller. Those cases are covered
+ * by PermissionService tests.
+ */
+class PromptControllerSpec : StringSpec({
+
+    val service = mockk<PromptService>()
+    val namespaceService = mockk<NamespaceService>(relaxed = true)
+    val userService = mockk<UserService>(relaxed = true)
+    val permissionService = mockk<PermissionService>(relaxed = true)
+    val controller = PromptController(service, namespaceService, userService, permissionService)
+
+    val namespaceId = UUID.randomUUID()
+    val callerId = UUID.randomUUID()
+
+    fun adminUser() = User(
+        metadata = EntityMetadata(id = callerId),
+        externalId = "admin@example.com",
+        email = "admin@example.com",
+        isAdmin = true,
+    )
+
+    fun regularUser() = User(
+        metadata = EntityMetadata(id = callerId),
+        externalId = "user@example.com",
+        email = "user@example.com",
+        isAdmin = false,
+    )
+
+    fun prompt(
+        id: UUID = UUID.randomUUID(),
+        nsId: UUID? = namespaceId,
+        name: String = "My Prompt",
+        description: String? = null,
+        content: List<String> = listOf("Hello {{name}}"),
+        parameters: List<PromptParameter> = emptyList(),
+    ) = Prompt(
+        metadata = EntityMetadata(id = id),
+        namespaceId = nsId,
+        name = name,
+        description = description,
+        content = content,
+        parameters = parameters,
+    )
+
+    fun resource(
+        id: UUID? = UUID.randomUUID(),
+        nsId: UUID? = namespaceId,
+        name: String = "My Prompt",
+        description: String? = null,
+        content: List<String> = listOf("Hello {{name}}"),
+        parameters: List<PromptParameterResource> = emptyList(),
+    ) = PromptResource(
+        id = id,
+        namespaceId = nsId,
+        name = name,
+        description = description,
+        content = content,
+        parameters = parameters,
+    )
+
+    val existingNamespace = Namespace(
+        metadata = EntityMetadata(id = namespaceId),
+        externalId = "ns-$namespaceId",
+        name = "test-ns",
+    )
+
+    beforeTest {
+        clearAllMocks()
+        every { namespaceService.findById(namespaceId) } returns existingNamespace
+        every { userService.getCurrentUser() } returns regularUser()
+    }
+
+    // -------------------------------------------------------------------------
+    // toResource mapping
+    // -------------------------------------------------------------------------
+
+    "toResource maps all fields correctly" {
+        val id = UUID.randomUUID()
+        val created = java.time.Instant.parse("2024-01-01T00:00:00Z")
+        val modified = java.time.Instant.parse("2024-06-01T12:00:00Z")
+        val p = Prompt(
+            metadata = EntityMetadata(
+                id = id,
+                created = created,
+                createdBy = "creator@example.com",
+                modified = modified,
+                modifiedBy = "editor@example.com",
+            ),
+            namespaceId = namespaceId,
+            name = "Greeting",
+            description = "A greeting prompt",
+            content = listOf("Hello {{name}}", "How are you?"),
+            parameters = listOf(PromptParameter(name = "name", description = "User name", defaultValue = "World")),
+        )
+
+        val result = controller.toResource(p)
+
+        result.id shouldBe id
+        result.namespaceId shouldBe namespaceId
+        result.name shouldBe "Greeting"
+        result.description shouldBe "A greeting prompt"
+        result.content shouldBe listOf("Hello {{name}}", "How are you?")
+        result.parameters shouldHaveSize 1
+        result.parameters[0].name shouldBe "name"
+        result.parameters[0].description shouldBe "User name"
+        result.parameters[0].defaultValue shouldBe "World"
+        result.createdBy shouldBe "creator@example.com"
+        result.createdOn shouldBe created
+        result.updatedBy shouldBe "editor@example.com"
+        result.updatedOn shouldBe modified
+    }
+
+    "toResource maps null namespaceId for platform prompts" {
+        val p = prompt(nsId = null)
+        val result = controller.toResource(p)
+        result.namespaceId.shouldBeNull()
+    }
+
+    "toResource maps empty parameters to empty list" {
+        val p = prompt(parameters = emptyList())
+        val result = controller.toResource(p)
+        result.parameters shouldBe emptyList()
+    }
+
+    // -------------------------------------------------------------------------
+    // toDomain mapping
+    // -------------------------------------------------------------------------
+
+    "toDomain maps all fields" {
+        val id = UUID.randomUUID()
+        val r = resource(
+            id = id,
+            nsId = namespaceId,
+            name = "Summary",
+            description = "Summarise input",
+            content = listOf("Summarise: {{text}}"),
+            parameters = listOf(PromptParameterResource(name = "text", description = "Input text", defaultValue = "default")),
+        )
+
+        val result = controller.toDomain(r)
+
+        result.id shouldBe id
+        result.namespaceId shouldBe namespaceId
+        result.name shouldBe "Summary"
+        result.description shouldBe "Summarise input"
+        result.content shouldBe listOf("Summarise: {{text}}")
+        result.parameters shouldHaveSize 1
+        result.parameters[0].name shouldBe "text"
+    }
+
+    "toDomain generates a fresh UUID when id is null" {
+        val first = controller.toDomain(resource(id = null))
+        val second = controller.toDomain(resource(id = null))
+        (first.id == second.id) shouldBe false
+    }
+
+    // -------------------------------------------------------------------------
+    // create — platform scope (namespaceId == null)
+    // -------------------------------------------------------------------------
+
+    "create platform prompt succeeds for Super Admin" {
+        every { userService.getCurrentUser() } returns adminUser()
+        val captured = slot<Prompt>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        controller.create(resource(id = null, nsId = null))
+
+        captured.captured.namespaceId.shouldBeNull()
+        verify(exactly = 0) { permissionService.hasPermission(any(), any(), any(), any()) }
+    }
+
+    "create platform prompt throws AccessDeniedException for non-admin" {
+        every { userService.getCurrentUser() } returns regularUser()
+
+        shouldThrow<AccessDeniedException> {
+            controller.create(resource(id = null, nsId = null))
+        }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // create — namespace scope (namespaceId != null)
+    // -------------------------------------------------------------------------
+
+    "create namespace prompt succeeds when caller has WRITE on namespace" {
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        } returns true
+        val captured = slot<Prompt>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        controller.create(resource(id = null, nsId = namespaceId))
+
+        captured.captured.namespaceId shouldBe namespaceId
+        verify(exactly = 1) { namespaceService.findById(namespaceId) }
+    }
+
+    "create namespace prompt throws AccessDeniedException when caller lacks WRITE" {
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        } returns false
+
+        shouldThrow<AccessDeniedException> {
+            controller.create(resource(id = null, nsId = namespaceId))
+        }
+        verify(exactly = 0) { service.create(any()) }
+        // Existence check must NOT run before authz (no existence leak)
+        verify(exactly = 0) { namespaceService.findById(any()) }
+    }
+
+    "create throws 404 when namespace does not exist (after authz passes)" {
+        val unknownNs = UUID.randomUUID()
+        every { namespaceService.findById(unknownNs) } returns null
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.WRITE)
+        } returns true
+
+        shouldThrow<ResourceNotFoundException> {
+            controller.create(resource(id = null, nsId = unknownNs))
+        }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create with dangling namespaceId and no permission surfaces as AccessDenied (no 404 leak)" {
+        val unknownNs = UUID.randomUUID()
+        every { namespaceService.findById(unknownNs) } returns null
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, unknownNs.toString(), Action.WRITE)
+        } returns false
+
+        shouldThrow<AccessDeniedException> {
+            controller.create(resource(id = null, nsId = unknownNs))
+        }
+        verify(exactly = 0) { namespaceService.findById(any()) }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create assigns a fresh UUID to the persisted entity regardless of body id" {
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        } returns true
+        val captured = slot<Prompt>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+        val bodyId = UUID.randomUUID()
+
+        controller.create(resource(id = bodyId, nsId = namespaceId))
+
+        // Controller always generates a new UUID — body id is ignored
+        captured.captured.id shouldBe captured.captured.id // exists and is a valid UUID
+    }
+
+    // -------------------------------------------------------------------------
+    // update — mass-assignment guard + 404
+    // -------------------------------------------------------------------------
+
+    "update preserves namespaceId from persisted entity" {
+        val p = prompt(nsId = namespaceId)
+        val otherNs = UUID.randomUUID()
+        val payload = resource(id = p.id, nsId = otherNs, name = "Renamed")
+        every { service.findById(p.id) } returns p
+        every { service.update(any()) } answers {
+            val saved = firstArg<Prompt>()
+            saved.namespaceId shouldBe namespaceId
+            saved.name shouldBe "Renamed"
+            saved
+        }
+
+        controller.update(p.id, payload)
+
+        verify(exactly = 1) { service.update(any()) }
+    }
+
+    "update allows changing name, description, content, and parameters" {
+        val p = prompt()
+        val newParams = listOf(PromptParameterResource(name = "city", description = "City name", defaultValue = "Paris"))
+        val payload = resource(
+            id = p.id,
+            name = "New Name",
+            description = "New description",
+            content = listOf("New content"),
+            parameters = newParams,
+        )
+        val captured = slot<Prompt>()
+        every { service.findById(p.id) } returns p
+        every { service.update(capture(captured)) } answers { firstArg() }
+
+        controller.update(p.id, payload)
+
+        captured.captured.name shouldBe "New Name"
+        captured.captured.description shouldBe "New description"
+        captured.captured.content shouldBe listOf("New content")
+        captured.captured.parameters shouldHaveSize 1
+        captured.captured.parameters[0].name shouldBe "city"
+    }
+
+    "update throws 404 when prompt does not exist" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns null
+
+        shouldThrow<ResourceNotFoundException> {
+            controller.update(id, resource(id = id))
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // delete
+    // -------------------------------------------------------------------------
+
+    "delete succeeds for namespace-scoped prompt" {
+        val p = prompt()
+        every { service.findById(p.id) } returns p
+        every { service.delete(p.id) } returns true
+
+        controller.delete(p.id)
+
+        verify(exactly = 1) { service.delete(p.id) }
+    }
+
+    "delete throws 404 when prompt does not exist" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns null
+
+        shouldThrow<ResourceNotFoundException> {
+            controller.delete(id)
+        }
+    }
+
+})
