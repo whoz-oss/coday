@@ -22,7 +22,9 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -30,7 +32,6 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import mu.KLogging
-import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -47,8 +48,13 @@ class CaseServiceImpl(
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
     private val caseNamingService: CaseNamingService,
-    @Qualifier("caseCoroutineScope") private val scope: CoroutineScope,
 ) : CaseService {
+    /**
+     * Coroutine scope used to run case execution loops and fire-and-forget
+     * post-processing tasks (e.g. automatic naming) in the background.
+     * Each [run] call and naming trigger is launched here so HTTP threads are never blocked.
+     */
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
