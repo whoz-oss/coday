@@ -39,7 +39,7 @@ object ExchangeIntegrationTypes {
             IntegrationTypeDescriptor(
                 type = NAMESPACE,
                 displayName = "Namespace file exchange",
-                description = "Read-only access to the files shared across the namespace.",
+                description = "Read access to the namespace's shared files; read/write for namespace admins.",
                 configSchema = null,
                 builtIn = true,
             ),

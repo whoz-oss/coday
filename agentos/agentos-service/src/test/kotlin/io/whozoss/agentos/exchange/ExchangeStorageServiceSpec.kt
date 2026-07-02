@@ -101,6 +101,15 @@ class ExchangeStorageServiceSpec :
             }
         }
 
+        "a blank relative path is rejected (would otherwise resolve to the scope root)" {
+            val service = newService()
+            val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
+            service.writeNew(root, "ok.txt", "ok".toByteArray(), ExchangeScope.CASE)
+
+            shouldThrow<IllegalArgumentException> { service.delete(root, "") }
+            shouldThrow<IllegalArgumentException> { service.readContent(root, "   ") }
+        }
+
         "caseRoot is sharded by the case creation date (UTC YYYY/MM/DD)" {
             val service = newService()
             val caseId = UUID.randomUUID()

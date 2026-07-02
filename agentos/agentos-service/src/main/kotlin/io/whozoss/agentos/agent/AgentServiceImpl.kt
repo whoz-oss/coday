@@ -9,15 +9,14 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseLauncher
+import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
@@ -61,7 +60,7 @@ class AgentServiceImpl(
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
     private val exchangeStorageService: ExchangeStorageService,
-    private val permissionService: PermissionService,
+    private val exchangeCapabilityService: ExchangeCapabilityService,
 ) : AgentService {
     override suspend fun findAgentByName(
         namePart: String,
@@ -566,11 +565,10 @@ class AgentServiceImpl(
             // admin (Namespace WRITE, super-admin included), read-only for a plain member.
             val userCanWriteNamespace =
                 context.userId?.let {
-                    permissionService.hasPermission(
+                    exchangeCapabilityService.canWrite(
                         it.toString(),
                         EntityType.NAMESPACE,
                         context.namespaceId.toString(),
-                        Action.WRITE,
                     )
                 } ?: false
             tools += grant(

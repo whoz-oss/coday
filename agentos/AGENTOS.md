@@ -91,7 +91,7 @@ data/                                  # AGENTOS_PERSISTENCE_DATA_DIR (default: 
 
 data/exchange/                         # AGENTOS_EXCHANGE_MOUNT_ROOT (default: data/exchange/), see docs/file-exchange.md
   <namespaceId>/cases/<YYYY>/<MM>/<DD>/<caseId>/   # case-scoped file exchange (read/write)
-  <namespaceId>/shared/                            # namespace-shared file exchange (read-only)
+  <namespaceId>/shared/                            # namespace-shared file exchange (read; read/write for namespace admins)
 ```
 
 To switch to **in-memory** mode (data lost on restart):

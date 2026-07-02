@@ -20,14 +20,13 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -62,7 +61,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
-    private val permissionService: PermissionService = mockk(relaxed = true)
+    private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -81,7 +80,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolMetricsService,
             caseEventService,
             exchangeStorageService,
-            permissionService,
+            exchangeCapabilityService,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -225,7 +224,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
             every { exchangeStorageService.namespaceRoot(namespaceId) } returns tmp
             every {
-                permissionService.hasPermission(writerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                exchangeCapabilityService.canWrite(writerId.toString(), EntityType.NAMESPACE, namespaceId.toString())
             } returns true
 
             val config =
@@ -443,7 +442,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolMetricsService,
                     caseEventService,
                     exchangeStorageService,
-                    permissionService,
+                    exchangeCapabilityService,
                 )
             val configs =
                 listOf(

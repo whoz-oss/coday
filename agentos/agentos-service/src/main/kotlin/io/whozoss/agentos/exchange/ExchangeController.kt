@@ -8,9 +8,7 @@ import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -43,13 +41,13 @@ import java.util.UUID
  * Authorization is declared per method via `@PreAuthorize`, mirroring [io.whozoss.agentos.caseFlow.CaseController]
  * and [io.whozoss.agentos.namespace.NamespacePermissionEndpoints]:
  * - case reads gate on Case READ, case writes on Case WRITE
- * - namespace reads gate on Namespace READ (no namespace write in P0)
+ * - namespace reads gate on Namespace READ, namespace writes on Namespace WRITE (= namespace admin)
  *
  * Read (`GET`) endpoints carry [HideOnAccessDenied] so a denied check returns 404 (hide
  * existence) instead of 403, matching the read endpoints on the entity controllers.
  *
  * Every manifest embeds a server-computed [ExchangeCapability] (fail-closed). The caller
- * already holds READ (guaranteed by `@PreAuthorize`); the helper upgrades to `READ_WRITE`
+ * already holds READ (guaranteed by `@PreAuthorize`); the capability service upgrades to `READ_WRITE`
  * only when the permission model grants write. Clients must read `manifest.capability`
  * rather than infer it.
  */
@@ -57,7 +55,7 @@ import java.util.UUID
 class ExchangeController(
     private val exchangeStorageService: ExchangeStorageService,
     private val caseService: CaseService,
-    private val permissionService: PermissionService,
+    private val exchangeCapabilityService: ExchangeCapabilityService,
     private val userService: UserService,
 ) {
     // ========================================
@@ -72,7 +70,10 @@ class ExchangeController(
     ): ExchangeManifest {
         val root = caseRootFor(caseId)
         val files = exchangeStorageService.listManifest(root, ExchangeScope.CASE)
-        return ExchangeManifest(files, caseCapability(currentUserId(), caseId))
+        return ExchangeManifest(
+            files,
+            exchangeCapabilityService.capability(currentUserId(), EntityType.CASE, caseId.toString()),
+        )
     }
 
     @GetMapping("/api/cases/{caseId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -149,7 +150,10 @@ class ExchangeController(
     ): ExchangeManifest {
         val root = exchangeStorageService.namespaceRoot(namespaceId)
         val files = exchangeStorageService.listManifest(root, ExchangeScope.NAMESPACE)
-        return ExchangeManifest(files, namespaceCapability(currentUserId(), namespaceId))
+        return ExchangeManifest(
+            files,
+            exchangeCapabilityService.capability(currentUserId(), EntityType.NAMESPACE, namespaceId.toString()),
+        )
     }
 
     @GetMapping("/api/namespaces/{namespaceId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -230,34 +234,6 @@ class ExchangeController(
     }
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()
-
-    /**
-     * Case capability for the current user. READ is guaranteed by `@PreAuthorize`; upgrade
-     * to READ_WRITE when the user holds WRITE on the case (fail-closed otherwise).
-     */
-    private fun caseCapability(
-        userId: String,
-        caseId: UUID,
-    ): ExchangeCapability {
-        val id = caseId.toString()
-        val canWrite = permissionService.hasPermission(userId, EntityType.CASE, id, Action.WRITE)
-        return if (canWrite) ExchangeCapability.READ_WRITE else ExchangeCapability.READ
-    }
-
-    /**
-     * Namespace capability for the current user. READ is guaranteed by `@PreAuthorize`;
-     * upgrade to READ_WRITE when the user holds WRITE on the namespace (this already covers
-     * SUPER_ADMIN per the permission model).
-     */
-    private fun namespaceCapability(
-        userId: String,
-        namespaceId: UUID,
-    ): ExchangeCapability =
-        if (permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)) {
-            ExchangeCapability.READ_WRITE
-        } else {
-            ExchangeCapability.READ
-        }
 
     /** Relative path for an upload: the multipart filename (boundary resolution rejects traversal). */
     private fun uploadRelativePath(file: MultipartFile): String =

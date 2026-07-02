@@ -10,7 +10,7 @@ are **date-sharded** by the case creation date (UTC) to keep per-directory fan-o
 
 ```
 <mountRoot>/<namespaceId>/cases/<YYYY>/<MM>/<DD>/<caseId>/...   # case-scoped (read/write)
-<mountRoot>/<namespaceId>/shared/...                           # namespace-shared (read-only)
+<mountRoot>/<namespaceId>/shared/...                           # namespace-shared (read; write for namespace admins)
 ```
 
 The shard date is the case's immutable `created` timestamp (carried on `CaseRuntime.caseCreatedAt`),
@@ -51,9 +51,12 @@ sit under their owning resource:
 | `GET /api/namespaces/{namespaceId}/files/manifest` | namespace | Namespace `READ` |
 | `GET /api/namespaces/{namespaceId}/files/content?path=` | namespace | Namespace `READ` |
 | `GET /api/namespaces/{namespaceId}/files/download?path=` | namespace | Namespace `READ` |
+| `POST /api/namespaces/{namespaceId}/files` (multipart `file`) | namespace | Namespace `WRITE` |
+| `DELETE /api/namespaces/{namespaceId}/files?path=` | namespace | Namespace `WRITE` |
 
-The manifest reports the caller's capability: `NONE`, `READ`, or `READ_WRITE`. The namespace scope
-is read-only (no write endpoints in P0). Downloads emit a plain `filename="..."` for ASCII names and
+The manifest reports the caller's capability: `NONE`, `READ`, or `READ_WRITE`. Namespace writes
+(upload/delete) require Namespace `WRITE` (namespace admin / super-admin); plain members are read-only.
+Downloads emit a plain `filename="..."` for ASCII names and
 add RFC 5987 `filename*=UTF-8''...` only for non-ASCII names.
 
 ## Agent Tools
@@ -63,7 +66,7 @@ Case and namespace exchange are exposed as **built-in integration types** (`Exch
 | Type | Scope | Access |
 |---|---|---|
 | `CASE_FILE_EXCHANGE` | current case | read / write |
-| `NAMESPACE_FILE_EXCHANGE` | namespace shared | read-only |
+| `NAMESPACE_FILE_EXCHANGE` | namespace shared | read; read / write when the invoking user is a namespace admin |
 
 They appear in `GET /api/integration-types` with `builtIn = true`, but only when the `FILE_ACCESS`
 plugin is loaded. Enable them per agent through the agent's `integrations` map (no persisted boolean

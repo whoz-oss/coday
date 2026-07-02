@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service
 import java.net.URLConnection
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneOffset
@@ -30,6 +31,10 @@ class ExchangeStorageService(
     companion object : KLogging() {
         private val PID = ProcessHandle.current().pid()
         private const val MAX_SEGMENT_LENGTH = 255
+
+        // Cap manifest traversal depth (matches the file-plugin's SearchFilesTool) so a deeply
+        // nested exchange tree can't turn a manifest request into an unbounded walk.
+        private const val MANIFEST_MAX_DEPTH = 20
     }
 
     private val mountRoot: Path = Path.of(config.mountRoot)
@@ -80,9 +85,9 @@ class ExchangeStorageService(
         scope: ExchangeScope,
     ): List<ExchangeFileEntry> {
         if (!Files.exists(root)) return emptyList()
-        return Files.walk(root).use { stream ->
+        return Files.walk(root, MANIFEST_MAX_DEPTH).use { stream ->
             stream
-                .filter { Files.isRegularFile(it) }
+                .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
                 .map { toEntry(root, it, scope) }
                 .collect(Collectors.toList())
         }
@@ -188,6 +193,7 @@ class ExchangeStorageService(
         root: Path,
         relativePath: String,
     ): Path {
+        require(relativePath.isNotBlank()) { "Invalid path: path must not be blank" }
         require(relativePath.split('/', '\\').all { it.length <= MAX_SEGMENT_LENGTH }) {
             "Invalid path: path segment too long ($relativePath)"
         }
