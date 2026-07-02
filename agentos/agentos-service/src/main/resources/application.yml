@@ -131,6 +131,14 @@ agentos:
     # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
     # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
     # sse-heartbeat-interval-ms: 30000
+  exchange:
+    # Root directory for file-exchange files (relative to the working directory).
+    # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT
+    # mount-root: data/exchange/
+    # Comma-separated file extensions allowed for user uploads (lowercase, no dot). The default
+    # covers text/doc/data/image/code; empty allows any. Expected to differ per AgentOS instance.
+    # Override with env var: AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS
+    # allowed-upload-extensions: txt,md,pdf,png,csv,json
   defaults:
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
