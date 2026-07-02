@@ -118,6 +118,9 @@ class ExchangeController(
     ): ExchangeFileEntry {
         val root = caseRootFor(caseId)
         val relativePath = uploadRelativePath(file)
+        if (!exchangeStorageService.isUploadAllowed(relativePath)) {
+            throw BadRequestException("File type not allowed for upload: '$relativePath'")
+        }
         logger.info { "Uploading file '$relativePath' to case $caseId" }
         return mapStorageErrors { exchangeStorageService.writeNew(root, relativePath, file.bytes, ExchangeScope.CASE) }
     }
@@ -188,16 +191,14 @@ class ExchangeController(
 
     /**
      * Case capability for the current user. READ is guaranteed by `@PreAuthorize`; upgrade
-     * to READ_WRITE when the user holds WRITE or DELETE on the case (fail-closed otherwise).
+     * to READ_WRITE when the user holds WRITE on the case (fail-closed otherwise).
      */
     private fun caseCapability(
         userId: String,
         caseId: UUID,
     ): ExchangeCapability {
         val id = caseId.toString()
-        val canWrite =
-            permissionService.hasPermission(userId, EntityType.CASE, id, Action.WRITE) ||
-                permissionService.hasPermission(userId, EntityType.CASE, id, Action.DELETE)
+        val canWrite = permissionService.hasPermission(userId, EntityType.CASE, id, Action.WRITE)
         return if (canWrite) ExchangeCapability.READ_WRITE else ExchangeCapability.READ
     }
 

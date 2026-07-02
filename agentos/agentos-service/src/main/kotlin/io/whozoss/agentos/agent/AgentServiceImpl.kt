@@ -546,6 +546,8 @@ class AgentServiceImpl(
         val caseId = context.caseId
         val caseCreatedAt = context.caseCreatedAt
         if (integrations.containsKey(ExchangeIntegrationTypes.CASE) && caseId != null && caseCreatedAt != null) {
+            // The agent gets read/write on the case exchange by design (it produces files during a run).
+            // User-facing write is separately gated per case role by ExchangeController.caseCapability.
             tools += grant(
                 exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
                 readOnly = false,

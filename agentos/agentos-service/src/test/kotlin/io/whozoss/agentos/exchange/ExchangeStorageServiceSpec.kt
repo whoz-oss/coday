@@ -113,4 +113,25 @@ class ExchangeStorageServiceSpec :
             root.parent.parent.parent.fileName.toString() shouldBe "2025"
             root.parent.parent.parent.parent.fileName.toString() shouldBe "cases"
         }
+
+        "isUploadAllowed accepts a whitelisted extension and rejects others (case-insensitive)" {
+            val service = newService()
+
+            service.isUploadAllowed("report.txt") shouldBe true
+            service.isUploadAllowed("data/report.PDF") shouldBe true
+            service.isUploadAllowed("malware.exe") shouldBe false
+            service.isUploadAllowed("noextension") shouldBe false
+        }
+
+        "isUploadAllowed allows any extension when the allow-list is empty" {
+            val service =
+                ExchangeStorageService(
+                    ExchangeStorageConfigProperties(
+                        mountRoot = Files.createTempDirectory("exchange-test").toString(),
+                        allowedUploadExtensions = emptySet(),
+                    ),
+                )
+
+            service.isUploadAllowed("malware.exe") shouldBe true
+        }
     })

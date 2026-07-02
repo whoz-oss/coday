@@ -23,6 +23,7 @@ Mount root, bound from the `agentos.exchange` prefix (Spring relaxed binding):
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
 | `agentos.exchange.mount-root` | `AGENTOS_EXCHANGE_MOUNT_ROOT` | `data/exchange/` | Root directory for all exchange files. Relative paths resolve against the JVM working directory. |
+| `agentos.exchange.allowed-upload-extensions` | `AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS` | text / doc / data / image / code set | Extensions allowed for user uploads (lowercase, no dot; empty = allow any). A disallowed type is rejected with 400. |
 
 Upload size limits are global Spring multipart settings (they also bound plugin-jar uploads),
 raised from Spring's 1 MB default:
@@ -79,6 +80,8 @@ at the computed scope root and filters the tool set through the shared
   symlink escapes are rejected.
 - **No phantom directories**: reads and deletes on a never-written scope return 404 without
   materializing empty shard directories.
+- **Upload allow-list**: user uploads are restricted to a configurable set of file extensions
+  (`agentos.exchange.allowed-upload-extensions`); a disallowed type is rejected with 400.
 
 ## Related
 

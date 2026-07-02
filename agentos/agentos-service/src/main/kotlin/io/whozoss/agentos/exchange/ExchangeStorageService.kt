@@ -35,6 +35,16 @@ class ExchangeStorageService(
     private val mountRoot: Path = Path.of(config.mountRoot)
 
     /**
+     * Whether an upload with this leaf/relative path passes the configured extension allow-list.
+     * An empty [ExchangeStorageConfigProperties.allowedUploadExtensions] allows any extension.
+     */
+    fun isUploadAllowed(relativePath: String): Boolean {
+        val allowed = config.allowedUploadExtensions
+        val extension = relativePath.substringAfterLast('.', "").lowercase()
+        return allowed.isEmpty() || (extension.isNotEmpty() && extension in allowed)
+    }
+
+    /**
      * Root holding files private to [caseId] within [namespaceId].
      *
      * Sharded by the case's creation date (UTC) — `cases/<YYYY>/<MM>/<DD>/<caseId>` — to keep the

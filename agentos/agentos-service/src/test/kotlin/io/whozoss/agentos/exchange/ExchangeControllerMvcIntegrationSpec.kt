@@ -108,12 +108,11 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.files[0].scope").value("CASE"))
         }
 
-        "GET case manifest returns READ capability when caller lacks write and delete" {
+        "GET case manifest returns READ capability when caller lacks write" {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
-            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.DELETE) } returns false
             every { exchangeStorageService.listManifest(any(), ExchangeScope.CASE) } returns emptyList()
 
             mockMvc.perform(get("/api/cases/$caseId/files/manifest"))
@@ -189,6 +188,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns true
             every { exchangeStorageService.writeNew(any(), "report.txt", any(), ExchangeScope.CASE) } returns
                 entry("report.txt", ExchangeScope.CASE)
 
@@ -204,6 +204,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns true
             every { exchangeStorageService.writeNew(any(), "report.txt", any(), ExchangeScope.CASE) } throws
                 FileExistsException("File already exists: report.txt")
 
@@ -223,6 +224,18 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             // POST is not @HideOnAccessDenied, so a denied write surfaces as 403 (not 404).
             mockMvc.perform(multipart("/api/cases/$caseId/files").file(file))
                 .andExpect(status().isForbidden)
+        }
+
+        "POST case file returns 400 when the extension is not allowed" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns false
+
+            val file = MockMultipartFile("file", "malware.exe", "application/octet-stream", "data".toByteArray())
+
+            mockMvc.perform(multipart("/api/cases/$caseId/files").file(file))
+                .andExpect(status().isBadRequest)
         }
 
         // -------------------------------------------------------------------------
