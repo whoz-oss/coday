@@ -1,3 +1,13 @@
+## 0.189.2 (2026-07-02)
+
+### 🩹 Fixes
+
+- wz-33145 cancel eviction watcher coroutine on idle eviction to p… ([#1082](https://github.com/whoz-oss/coday/pull/1082), [#1079](https://github.com/whoz-oss/coday/issues/1079))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.189.1 (2026-06-25)
 
 ### 🩹 Fixes
