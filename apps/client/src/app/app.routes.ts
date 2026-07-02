@@ -1,6 +1,11 @@
+import { toSignal } from '@angular/core/rxjs-interop'
 import { Route } from '@angular/router'
+// Type-only import: erased at build time, so it adds no runtime dependency on the lazy
+// agentos-ui chunk and keeps the eager bundle free of agentos-ui code.
+import type { ThemePort } from '@whoz-oss/agentos-ui'
 import { projectStateGuard } from './core/guards/project-state.guard'
 import { threadStateGuard } from './core/guards/thread-state.guard'
+import { ThemeService } from './core/services/theme.service'
 
 export const appRoutes: Route[] = [
   {
@@ -65,7 +70,32 @@ export const appRoutes: Route[] = [
   },
   {
     path: 'agentos',
-    loadChildren: () => import('@whoz-oss/agentos-ui').then((m) => m.AGENTOS_ROUTES),
+    // Bridge the client ThemeService to agentos-ui's signal-based THEME_PORT via a small adapter,
+    // so a single service still owns document[data-theme] across the legacy client and the AgentOS
+    // UI. The adapter lives here (not on ThemeService) to keep that long-lived host service free of
+    // agentos-only API. agentos-ui is lazy — its runtime token comes from the dynamic import (a
+    // static import would bloat the eager bundle); ThemePort is a type-only import (erased at build).
+    loadChildren: async () => {
+      const { AGENTOS_ROUTES, THEME_PORT } = await import('@whoz-oss/agentos-ui')
+      return [
+        {
+          path: '',
+          providers: [
+            {
+              provide: THEME_PORT,
+              // Built lazily on entering /agentos — i.e. after app startup — so getCurrentTheme()
+              // already returns the resolved persisted theme (no initial flash).
+              useFactory: (theme: ThemeService): ThemePort => ({
+                theme: toSignal(theme.currentTheme$, { initialValue: theme.getCurrentTheme() }),
+                setTheme: (mode) => theme.setTheme(mode),
+              }),
+              deps: [ThemeService],
+            },
+          ],
+          children: AGENTOS_ROUTES,
+        },
+      ]
+    },
   },
   { path: '**', redirectTo: '' },
 ]

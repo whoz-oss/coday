@@ -55,7 +55,7 @@ interface AgentService {
      *
      * When [userId] is non-null, only agents accessible to that user
      * (via group or namespace membership) are considered — same semantics as
-     * [io.whozoss.agentos.agentConfig.AgentConfigService.findAvailableByNamespaceIdAndUserId].
+     * [io.whozoss.agentos.agentConfig.AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName].
      * When [userId] is null (system / anonymous call), falls back to a plain
      * namespace-wide name lookup.
      *
@@ -63,8 +63,7 @@ interface AgentService {
      */
     fun resolveAgentName(
         namePart: String,
-        namespaceId: UUID,
+        namespaceId: UUID?,
         userId: UUID? = null,
     ): String?
-
 }

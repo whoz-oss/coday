@@ -27,6 +27,11 @@ export const AGENTOS_ROUTES: Route[] = [
         path: '',
         loadComponent: () => import('./components/layout/layout.component').then((m) => m.LayoutComponent),
         children: [
+          // IMPORTANT: static-prefix routes (namespaces, admin, me) must come before
+          // parametric :namespaceId routes. Angular matches children in order — the
+          // first match wins, so "admin/agent-configs/new" would otherwise be swallowed
+          // by ":namespaceId/agent-configs/new" with namespaceId="admin".
+
           // --- Namespace CRUD ---
           {
             path: 'namespaces/new',
@@ -45,6 +50,94 @@ export const AGENTOS_ROUTES: Route[] = [
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
               import('./components/namespace-list/namespace-list.component').then((m) => m.NamespaceListComponent),
+          },
+          // --- Admin hub ---
+          {
+            path: 'admin',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/admin-home/admin-home.component').then((m) => m.AdminHomeComponent),
+          },
+          // --- Admin: Users ---
+          {
+            path: 'admin/users/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
+          },
+          {
+            path: 'admin/users/:userId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
+          },
+          {
+            path: 'admin/users',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () => import('./components/user-list/user-list.component').then((m) => m.UserListComponent),
+          },
+          // --- Admin: Platform Integration Configs ---
+          {
+            path: 'admin/integration-configs/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: 'admin/integration-configs/:integrationId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/integration-form/integration-form.component').then(
+                (m) => m.IntegrationFormComponent
+              ),
+          },
+          {
+            path: 'admin/integration-configs',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-integration-configs/platform-integration-configs.component').then(
+                (m) => m.PlatformIntegrationConfigsComponent
+              ),
+          },
+          // --- Admin: Platform Agent Configs ---
+          {
+            path: 'admin/agent-configs/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-form/agent-config-form.component').then(
+                (m) => m.AgentConfigFormComponent
+              ),
+          },
+          {
+            path: 'admin/agent-configs/:agentConfigId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-form/agent-config-form.component').then(
+                (m) => m.AgentConfigFormComponent
+              ),
+          },
+          {
+            path: 'admin/agent-configs/:agentConfigId/inspect',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-inspect/agent-config-inspect.component').then(
+                (m) => m.AgentConfigInspectComponent
+              ),
+          },
+          {
+            path: 'admin/agent-configs',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-agent-configs/platform-agent-configs.component').then(
+                (m) => m.PlatformAgentConfigsComponent
+              ),
+          },
+          // --- User profile ---
+          {
+            path: 'me',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
           },
           // --- Integrations ---
           {
@@ -166,29 +259,6 @@ export const AGENTOS_ROUTES: Route[] = [
               import('./components/namespace-agent-configs/namespace-agent-configs.component').then(
                 (m) => m.NamespaceAgentConfigsComponent
               ),
-          },
-          // --- Admin ---
-          {
-            path: 'admin/users/new',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
-          },
-          {
-            path: 'admin/users/:userId/edit',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/user-form/user-form.component').then((m) => m.UserFormComponent),
-          },
-          {
-            path: 'admin/users',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/user-list/user-list.component').then((m) => m.UserListComponent),
-          },
-          // --- User profile ---
-          {
-            path: 'me',
-            canActivate: [agentosReadyGuard],
-            loadComponent: () =>
-              import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
           },
           {
             path: '',
