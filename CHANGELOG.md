@@ -1,3 +1,33 @@
+## 0.194.1 (2026-07-02)
+
+### 🩹 Fixes
+
+- wz-33145 cancel eviction watcher coroutine on idle eviction to p… ([#1079](https://github.com/whoz-oss/coday/pull/1079))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.194.0 (2026-07-01)
+
+### 🚀 Features
+
+- add platform level for AgentConfig.namespaceId ([#1056](https://github.com/whoz-oss/coday/pull/1056))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.193.0 (2026-07-01)
+
+### 🚀 Features
+
+- user preference for ENTER key behavior in the chat composer ([#1077](https://github.com/whoz-oss/coday/pull/1077), [#1016](https://github.com/whoz-oss/coday/issues/1016))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.192.0 (2026-06-30)
 
 ### 🚀 Features

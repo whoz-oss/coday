@@ -25,9 +25,13 @@ class InMemoryEntityRepository<T : Entity, P>(
     private val parentIdExtractor: (T) -> P,
     private val comparator: Comparator<T>,
 ) : EntityRepository<T, P> {
-
     private val entitiesById = ConcurrentHashMap<UUID, T>()
-    private val entityIdsByParentId = ConcurrentHashMap<P, MutableList<UUID>>()
+
+    // ConcurrentHashMap does not support null keys. We use a sentinel object to represent
+    // null parent ids (e.g. platform-level AgentConfig with namespaceId = null).
+    private val entityIdsByParentId = ConcurrentHashMap<Any, MutableList<UUID>>()
+
+    private fun parentKey(parentId: P): Any = parentId ?: NULL_PARENT_KEY
 
     @Synchronized
     override fun save(entity: T): T {
@@ -37,32 +41,34 @@ class InMemoryEntityRepository<T : Entity, P>(
 
         if (existing != null) {
             val oldParentId = parentIdExtractor(existing)
-            entityIdsByParentId[oldParentId]?.remove(entityId)
+            entityIdsByParentId[parentKey(oldParentId)]?.remove(entityId)
         }
 
         entitiesById[entityId] = entity
 
-        val parentEntityIds = entityIdsByParentId.computeIfAbsent(parentId) { mutableListOf() }
-        val insertIndex = parentEntityIds.indexOfFirst { id ->
-            val existingEntity = entitiesById[id]
-            existingEntity != null && comparator.compare(entity, existingEntity) < 0
-        }
+        val parentEntityIds = entityIdsByParentId.computeIfAbsent(parentKey(parentId)) { mutableListOf() }
+        val insertIndex =
+            parentEntityIds.indexOfFirst { id ->
+                val existingEntity = entitiesById[id]
+                existingEntity != null && comparator.compare(entity, existingEntity) < 0
+            }
         if (insertIndex == -1) parentEntityIds.add(entityId) else parentEntityIds.add(insertIndex, entityId)
 
         return entity
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<T> =
-        ids.mapNotNull { entitiesById[it] }.filter { withRemoved || !it.metadata.removed }
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<T> = ids.mapNotNull { entitiesById[it] }.filter { withRemoved || !it.metadata.removed }
 
     override fun findByParent(parentId: P): List<T> =
-        (entityIdsByParentId[parentId] ?: return emptyList())
+        (entityIdsByParentId[parentKey(parentId)] ?: emptyList())
             .mapNotNull { entitiesById[it] }
             .filter { !it.metadata.removed }
 
     /** Returns all non-removed entities across all parents. Useful in tests. */
-    fun findAll(): List<T> =
-        entitiesById.values.filter { !it.metadata.removed }.sortedWith(comparator)
+    fun findAll(): List<T> = entitiesById.values.filter { !it.metadata.removed }.sortedWith(comparator)
 
     @Synchronized
     override fun delete(id: UUID): Boolean {
@@ -77,9 +83,13 @@ class InMemoryEntityRepository<T : Entity, P>(
 
     @Synchronized
     override fun deleteByParent(parentId: P): Int {
-        val entityIds = entityIdsByParentId[parentId] ?: return 0
+        val entityIds = entityIdsByParentId[parentKey(parentId)] ?: return 0
         var count = 0
         entityIds.forEach { id -> if (delete(id)) count++ }
         return count
+    }
+
+    companion object {
+        private val NULL_PARENT_KEY = Any()
     }
 }

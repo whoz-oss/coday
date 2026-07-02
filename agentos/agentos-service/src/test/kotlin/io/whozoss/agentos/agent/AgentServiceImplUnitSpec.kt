@@ -569,6 +569,88 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // User context injection into instructions
         // -------------------------------------------------------------------------
 
+        // -------------------------------------------------------------------------
+        // findAgentByName — platform vs namespace shadowing (userId path)
+        // -------------------------------------------------------------------------
+
+        "findAgentByName with userId prefers namespace-scoped agent over platform agent with same name" {
+            val userId = UUID.randomUUID()
+            val nsAgent = agentConfig(name = "my-agent", modelName = "sonnet")              // namespaceId set
+            val platformAgent = agentConfig(name = "my-agent", modelName = "sonnet").copy(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+            ).let { it.copy(metadata = it.metadata) }
+            // Simulate platform agent: create a copy with namespaceId = null
+            val platformAgentNullNs = AgentConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = null,
+                name = "my-agent",
+                modelName = "sonnet",
+            )
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            // Both namespace and platform agent returned by the query
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null)
+            } returns listOf(nsAgent, platformAgentNullNs)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            every { userService.findById(userId) } returns null
+
+            // Must resolve without error, and must pick the namespace-scoped agent
+            val agent = agentService.findAgentByName("my-agent", contextWithUser)
+            agent.name shouldBe "my-agent"
+        }
+
+        "findAgentByName with userId throws when two namespace-level agents match the name" {
+            val userId = UUID.randomUUID()
+            val ns1 = agentConfig(name = "my-agent", modelName = "sonnet")
+            val ns2 = agentConfig(name = "my-agent-extra", modelName = "sonnet")
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null)
+            } returns listOf(ns1, ns2)
+
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                agentService.findAgentByName("my-agent", contextWithUser)
+            }
+        }
+
+        "findAgentByName with userId resolves single platform agent when no namespace agent matches" {
+            val userId = UUID.randomUUID()
+            val platformAgent = AgentConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = null,
+                name = "platform-agent",
+                modelName = "sonnet",
+            )
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null)
+            } returns listOf(platformAgent)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            every { userService.findById(userId) } returns null
+
+            val agent = agentService.findAgentByName("platform-agent", contextWithUser)
+            agent.name shouldBe "platform-agent"
+        }
+
+        // -------------------------------------------------------------------------
+        // User context injection into instructions
+        // -------------------------------------------------------------------------
+
         "findAgentByName appends user fields to instructions when userId resolves a known user" {
             val userId = UUID.randomUUID()
             val user =
@@ -586,7 +668,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -622,7 +704,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -675,7 +757,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderReconciliationService.resolve(namespaceId, userId, "anthropic-prod") } returns provider
@@ -763,7 +845,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val userId = UUID.randomUUID()
             val config = agentConfig(name = "my-agent")
             every {
-                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "my-agent")
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent")
             } returns listOf(config)
 
             agentService.resolveAgentName("my-agent", namespaceId, userId) shouldBe "my-agent"
@@ -774,7 +856,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         "resolveAgentName with userId returns null when agent not accessible to user" {
             val userId = UUID.randomUUID()
             every {
-                agentConfigService.findAvailableByNamespaceIdAndUserId(namespaceId, userId, "restricted")
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "restricted")
             } returns emptyList()
 
             agentService.resolveAgentName("restricted", namespaceId, userId) shouldBe null

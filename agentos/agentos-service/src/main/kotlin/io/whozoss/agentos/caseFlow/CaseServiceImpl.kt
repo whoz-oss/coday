@@ -59,6 +59,15 @@ class CaseServiceImpl(
      */
     private val watcherJobs = ConcurrentHashMap<UUID, Job>()
 
+    /**
+     * Number of active coroutines running in the service scope.
+     * Counts all child jobs of the scope — watcher coroutines and any in-flight run() launches.
+     * Exposed for testing only: verifies that eviction watcher coroutines are properly
+     * cancelled after idle eviction and do not leak.
+     */
+    internal val activeCoroutineCount: Int
+        get() = scope.coroutineContext[Job]?.children?.count() ?: 0
+
     // ======================================================
     // EntityService
     // ======================================================
@@ -189,10 +198,11 @@ class CaseServiceImpl(
                             runtime.statusFlow.value == CaseStatus.IDLE
                         ) {
                             activeRuntimes.remove(caseId)
-                            // Remove from watcherJobs without cancelling: we are executing
-                            // inside this very coroutine, so cancel() would be a no-op and
-                            // is semantically misleading. The coroutine ends naturally here.
-                            watcherJobs.remove(caseId)
+                            // Cancel the watcher job: collect{} on the infinite
+                            // combine(StateFlow, StateFlow) never completes naturally.
+                            // Without cancel, the coroutine stays suspended forever,
+                            // retaining the CaseRuntime in its closure — a memory leak.
+                            watcherJobs.remove(caseId)?.cancel()
                             logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
                         } else {
                             logger.debug {
@@ -219,7 +229,7 @@ class CaseServiceImpl(
             isAgentAuthorized = { agentName, userId ->
                 userId == null ||
                     agentConfigService
-                        .findAvailableByNamespaceIdAndUserId(
+                        .findDeployedByNamespaceIdAndUserIdAndName(
                             namespaceId = case.namespaceId,
                             userId = userId,
                             agentName = agentName,

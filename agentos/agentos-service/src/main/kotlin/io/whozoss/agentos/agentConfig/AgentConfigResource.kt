@@ -3,7 +3,6 @@ package io.whozoss.agentos.agentConfig
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
 import java.time.Instant
 import java.util.UUID
 
@@ -24,8 +23,11 @@ import java.util.UUID
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class AgentConfigResource(
     val id: UUID? = null,
-    @field:NotNull(message = "namespaceId must not be null")
-    val namespaceId: UUID,
+    /**
+     * The namespace this agent belongs to. Null for platform-level agents.
+     * Platform agents are visible across all namespaces and require super-admin to manage.
+     */
+    val namespaceId: UUID? = null,
     @field:NotBlank(message = "name must not be blank")
     val name: String,
     val description: String? = null,

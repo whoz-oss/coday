@@ -37,6 +37,7 @@ import { IconButtonComponent } from '@whoz-oss/design-system'
 import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
+import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 
 export interface ToolCall {
   requestId: string
@@ -100,6 +101,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly domSanitizer = inject(DomSanitizer)
 
   private readonly config = inject(Configuration)
+  protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
 
   // Read from snapshot initially; updated reactively in ngOnInit via route.params
@@ -524,7 +526,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
     }
