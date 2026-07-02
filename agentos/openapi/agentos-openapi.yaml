@@ -1726,6 +1726,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Case"
+  /api/cases/by-parentId/{parentId}/mine:
+    get:
+      tags:
+      - case-controller
+      operationId: listMineByParentCase
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
   /api/case-events/{id}:
     get:
       tags:
