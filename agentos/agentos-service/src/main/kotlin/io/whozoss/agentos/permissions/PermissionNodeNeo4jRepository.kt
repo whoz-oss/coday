@@ -168,7 +168,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         $$"""
         MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e)
         WHERE $entityLabel IN labels(e) AND r.starred = true
-        RETURN e.id
+        RETURN DISTINCT e.id
     """,
     )
     fun findStarredEntityIds(

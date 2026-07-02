@@ -148,6 +148,57 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 ).shouldBeEmpty()
         }
 
+        "starred is per-user: it is scoped to the caller's own edge (ADMIN vs MEMBER) and never leaks across users" {
+            val userA = createUser("a@example.com")
+            val userB = createUser("b@example.com")
+            val namespace = createNamespace()
+            val case = createCase(namespace.id)
+            val caseId = case.id.toString()
+
+            // Two distinct users, each with their OWN direct edge to the same case:
+            // A via ADMIN, B via MEMBER (exercises the MEMBER branch of the star queries).
+            permissionNodeRepository.createAdminPermission(
+                userId = userA.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+            permissionNodeRepository.createMemberPermission(
+                userId = userB.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+
+            // A stars the case: only A sees it, B does not (per-user isolation on set).
+            permissionNodeRepository.setStarred(
+                userId = userA.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+                starred = true,
+            )
+            permissionNodeRepository.findStarredEntityIds(userA.id.toString(), "Case") shouldContain caseId
+            permissionNodeRepository.findStarredEntityIds(userB.id.toString(), "Case") shouldNotContain caseId
+
+            // B stars it via its MEMBER edge: B now sees it, and A is unaffected.
+            permissionNodeRepository.setStarred(
+                userId = userB.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+                starred = true,
+            )
+            permissionNodeRepository.findStarredEntityIds(userB.id.toString(), "Case") shouldContain caseId
+            permissionNodeRepository.findStarredEntityIds(userA.id.toString(), "Case") shouldContain caseId
+
+            // B un-stars: A's star survives (isolation holds on unset too).
+            permissionNodeRepository.setStarred(
+                userId = userB.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+                starred = false,
+            )
+            permissionNodeRepository.findStarredEntityIds(userB.id.toString(), "Case") shouldNotContain caseId
+            permissionNodeRepository.findStarredEntityIds(userA.id.toString(), "Case") shouldContain caseId
+        }
+
         "PermissionService.setStarred / listStarredEntityIds round-trip via the typed API" {
             val user = createUser()
             val namespace = createNamespace()
