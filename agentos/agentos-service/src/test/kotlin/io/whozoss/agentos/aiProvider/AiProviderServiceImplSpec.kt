@@ -7,15 +7,26 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.mockk
 import io.whozoss.agentos.exception.ConfigNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 class AiProviderServiceImplSpec : StringSpec() {
-    private fun newService() = AiProviderServiceImpl(InMemoryAiProviderRepository(), AiProviderMergeStrategy())
+    // PermissionService and UserService are only used by findFiltered, which is not
+    // exercised in this spec (tested via AiProviderControllerSpec + integration tests).
+    // Relaxed mocks satisfy the constructor without interfering with the tested methods.
+    private fun newService() = AiProviderServiceImpl(
+        InMemoryAiProviderRepository(),
+        AiProviderMergeStrategy(),
+        mockk<PermissionService>(relaxed = true),
+        mockk<UserService>(relaxed = true),
+    )
 
     private fun config(
         namespaceId: UUID? = UUID.randomUUID(),

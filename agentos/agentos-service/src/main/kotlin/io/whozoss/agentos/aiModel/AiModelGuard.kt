@@ -1,6 +1,7 @@
 package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -23,6 +24,10 @@ import java.util.UUID
  *
  * All checks delegate to [PermissionService.hasPermission] — no custom logic here.
  *
+ * When the referenced provider does not exist, [ResourceNotFoundException] is thrown so
+ * the caller receives a 404, not a misleading 403 (existence and permission are separate
+ * concerns).
+ *
  * Used in `@PreAuthorize` SpEL via the bean-reference syntax:
  * ```
  * @PreAuthorize("@aiModelGuard.canCreate(#resource)")
@@ -39,11 +44,13 @@ class AiModelGuard(
      * Returns true if the current user has WRITE access on the scope of the parent
      * [io.whozoss.agentos.aiProvider.AiProvider] referenced by [resource.aiProviderId].
      *
-     * Fail-closed when the provider is missing or user-scoped (deprecated).
+     * Throws [ResourceNotFoundException] when the referenced provider does not exist.
+     * Fail-closed (returns false) only for user-scoped providers (deprecated).
      */
     fun canCreate(resource: AiModelResource): Boolean {
         val providerId = resource.aiProviderId ?: return false
-        val provider = aiProviderService.findById(providerId) ?: return false
+        val provider = aiProviderService.findById(providerId)
+            ?: throw ResourceNotFoundException("AiProvider not found: $providerId")
         val nsId = provider.namespaceId
         val userId = provider.userId
         return when {
@@ -59,10 +66,12 @@ class AiModelGuard(
     /**
      * Returns true when the caller may invoke `listByParent(providerId)`.
      *
-     * Fail-closed when the provider is missing or user-scoped (deprecated).
+     * Throws [ResourceNotFoundException] when the provider does not exist.
+     * Fail-closed (returns false) only for user-scoped providers (deprecated).
      */
     fun canListByProvider(providerId: UUID): Boolean {
-        val provider = aiProviderService.findById(providerId) ?: return false
+        val provider = aiProviderService.findById(providerId)
+            ?: throw ResourceNotFoundException("AiProvider not found: $providerId")
         val nsId = provider.namespaceId
         val userId = provider.userId
         return when {

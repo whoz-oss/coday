@@ -4,14 +4,15 @@ import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.entity.GetByIdsRequest
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
@@ -19,7 +20,6 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
-import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -30,7 +30,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import io.whozoss.agentos.exception.BadRequestException
 import java.util.UUID
 
 /**
@@ -96,7 +95,6 @@ class AiProviderController(
     userService: UserService,
     permissionService: PermissionService,
 ) : EntityController<AiProvider, UUID, AiProviderResource>(aiProviderService, userService, permissionService) {
-
     override val entityType = EntityType.AI_PROVIDER
 
     override fun toResource(entity: AiProvider): AiProviderResource =
@@ -149,7 +147,9 @@ class AiProviderController(
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AiProvider', 'READ')")
     @HideOnAccessDenied
-    override fun getById(@PathVariable id: UUID): AiProviderResource = super.getById(id)
+    override fun getById(
+        @PathVariable id: UUID,
+    ): AiProviderResource = super.getById(id)
 
     /**
      * POST /by-ids — overridden to honor the ownership branch.
@@ -168,30 +168,35 @@ class AiProviderController(
         produces = [MediaType.APPLICATION_JSON_VALUE],
     )
     @PreAuthorize("isAuthenticated()")
-    override fun getByIds(@RequestBody request: GetByIdsRequest): List<AiProviderResource> {
+    override fun getByIds(
+        @RequestBody request: GetByIdsRequest,
+    ): List<AiProviderResource> {
         val ids = request.ids
         if (ids.isEmpty()) return emptyList()
 
         val currentUser = userService.getCurrentUser()
-        val membershipVisibleIds: Set<UUID> = if (currentUser.isAdmin) {
-            ids.toSet()
-        } else {
-            val rawVisible = permissionService.filterVisibleIds(
-                userId = currentUser.id.toString(),
-                entityType = entityType,
-                ids = ids.map(UUID::toString),
-                action = Action.READ,
-            )
-            rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet()
-        }
+        val membershipVisibleIds: Set<UUID> =
+            if (currentUser.isAdmin) {
+                ids.toSet()
+            } else {
+                val rawVisible =
+                    permissionService.filterVisibleIds(
+                        userId = currentUser.id.toString(),
+                        entityType = entityType,
+                        ids = ids.map(UUID::toString),
+                        action = Action.READ,
+                    )
+                rawVisible.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet()
+            }
 
         // Single DB fetch for all candidate rows ; filter for visibility via membership OR ownership.
         // Bounded by input size so the cost stays O(ids.size), not O(user's overlays).
         val callerId = currentUser.id
         val rows = aiProviderService.findByIds(ids, request.withRemoved)
-        val byId: Map<UUID, AiProvider> = rows
-            .filter { it.metadata.id in membershipVisibleIds || it.userId == callerId }
-            .associateBy { it.metadata.id }
+        val byId: Map<UUID, AiProvider> =
+            rows
+                .filter { it.metadata.id in membershipVisibleIds || it.userId == callerId }
+                .associateBy { it.metadata.id }
         return ids.mapNotNull { byId[it]?.let(::toResource) }
     }
 
@@ -205,64 +210,69 @@ class AiProviderController(
     @Hidden
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("isAuthenticated()")
-    override fun listByParent(@PathVariable parentId: UUID): List<AiProviderResource> =
+    override fun listByParent(
+        @PathVariable parentId: UUID,
+    ): List<AiProviderResource> =
         throw ResourceNotFoundException(
             "Endpoint removed; use GET /api/ai-providers?namespaceId=$parentId instead",
         )
 
     @Operation(
         summary = "List AiProviders by scope",
-        description = "Scope is inferred from the query params :\n\n" +
-            "| query                                              | mode             | required permission                            |\n" +
-            "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
-            "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
-            "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
-            "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
-            "| `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |\n" +
-            "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n\n" +
-            "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
-            "listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the " +
-            "sentinel for `namespaceId IS NULL`.",
+        description =
+            "Scope is inferred from the query params :\n\n" +
+                "| query                                              | mode             | required permission                            |\n" +
+                "|----------------------------------------------------|------------------|------------------------------------------------|\n" +
+                "| `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
+                "| `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |\n" +
+                "| `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |\n" +
+                "| `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |\n" +
+                "| `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |\n" +
+                "`userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user " +
+                "listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the " +
+                "sentinel for `namespaceId IS NULL`.",
     )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     fun list(
         @RequestParam(required = false) namespaceId: String?,
         @RequestParam(required = false) userId: String?,
-        auth: Authentication,
     ): List<AiProviderResource> {
         val resolvedNs = parseNamespaceParam(namespaceId)
         val me = userService.getCurrentUser().id
         validateUserParam(userId)
 
-        val all = aiProviderService.findFiltered(
-            namespaceId = resolvedNs,
-            namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
-            callerId = me,
-            userRequested = userId != null,
-            canReadNamespace = { nsId -> callerCanReadNamespace(nsId) },
-        )
+        val all =
+            aiProviderService.findFiltered(
+                namespaceId = resolvedNs,
+                namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
+                callerId = me,
+                userRequested = userId != null,
+            )
 
         return all.map { toResource(it) }
     }
 
     @Operation(
         summary = "Create an AiProvider",
-        description = "Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :\n\n" +
-            "| body.namespaceId | body.userId        | scope         | required permission                  |\n" +
-            "|------------------|--------------------|---------------|--------------------------------------|\n" +
-            "| null             | null               | platform      | super-admin only                     |\n" +
-            "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
-            "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
-            "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
-            "`body.userId` (when supplied) MUST equal the authenticated user's id — sending a different " +
-            "user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` " +
-            "that does not exist returns 404 (Decision 15 / AC7).",
+        description =
+            "Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :\n\n" +
+                "| body.namespaceId | body.userId        | scope         | required permission                  |\n" +
+                "|------------------|--------------------|---------------|--------------------------------------|\n" +
+                "| null             | null               | platform      | super-admin only                     |\n" +
+                "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
+                "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
+                "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
+                "`body.userId` (when supplied) MUST equal the authenticated user's id — sending a different " +
+                "user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` " +
+                "that does not exist returns 404 (Decision 15 / AC7).",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
-    override fun create(@Valid @RequestBody resource: AiProviderResource): AiProviderResource {
+    override fun create(
+        @Valid @RequestBody resource: AiProviderResource,
+    ): AiProviderResource {
         val me = userService.getCurrentUser().id
 
         // Phase 1 — mass-assignment guard
@@ -288,12 +298,13 @@ class AiProviderController(
         if (resolvedUser == null || resolvedNs != null) {
             // Namespace-touching scope (platform, NS-shared, or user×ns)
             val action = if (resolvedUser != null) Action.READ else Action.WRITE
-            val granted = permissionService.hasPermission(
-                userId = me.toString(),
-                entityType = EntityType.NAMESPACE,
-                entityId = resolvedNs?.toString(),
-                action = action,
-            )
+            val granted =
+                permissionService.hasPermission(
+                    userId = me.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = resolvedNs?.toString(),
+                    action = action,
+                )
             if (!granted) {
                 throw AccessDeniedException(
                     "Cannot create AiProvider: insufficient permission on namespace $resolvedNs (${action.name} required)",
@@ -310,17 +321,18 @@ class AiProviderController(
         }
 
         // Phase 4 — explicit domain build (never re-read the body for scope fields)
-        val target = AiProvider(
-            metadata = EntityMetadata(id = UUID.randomUUID()),
-            namespaceId = resolvedNs,
-            userId = resolvedUser,
-            name = resource.name,
-            description = resource.description,
-            apiType = resource.apiType!!,
-            baseUrl = resource.baseUrl,
-            apiKey = resource.apiKey,
-            headers = resource.headers ?: emptyMap(),
-        )
+        val target =
+            AiProvider(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = resolvedNs,
+                userId = resolvedUser,
+                name = resource.name,
+                description = resource.description,
+                apiType = resource.apiType!!,
+                baseUrl = resource.baseUrl,
+                apiKey = resource.apiKey,
+                headers = resource.headers ?: emptyMap(),
+            )
         return toResource(aiProviderService.create(target))
     }
 
@@ -331,15 +343,18 @@ class AiProviderController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: AiProviderResource,
     ): AiProviderResource {
-        val existing = aiProviderService.findById(id)
-            ?: throw ResourceNotFoundException("AiProvider not found: $id")
+        val existing =
+            aiProviderService.findById(id)
+                ?: throw ResourceNotFoundException("AiProvider not found: $id")
         return toResource(aiProviderService.update(toDomainForUpdate(resource, existing)))
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AiProvider', 'DELETE')")
     @HideOnAccessDenied
-    override fun delete(@PathVariable id: UUID) = super.delete(id)
+    override fun delete(
+        @PathVariable id: UUID,
+    ) = super.delete(id)
 
     /**
      * Three-way semantics for the `apiKey` field on update (FR25, NFR-SEC-1):
@@ -353,33 +368,36 @@ class AiProviderController(
      *   string in the body means the user deliberately wiped the field.
      * - Non-blank string → replace.
      */
-    private fun resolveApiKey(incoming: String?, current: String?): String? = when {
-        isMasked(incoming) -> current
-        incoming == null -> current
-        incoming.isBlank() -> null
-        else -> incoming
-    }
-
-    private fun callerCanReadNamespace(namespaceId: UUID): Boolean =
-        permissionService.hasPermission(
-            userId = userService.getCurrentUser().id.toString(),
-            entityType = EntityType.NAMESPACE,
-            entityId = namespaceId.toString(),
-            action = Action.READ,
-        )
-
-
+    private fun resolveApiKey(
+        incoming: String?,
+        current: String?,
+    ): String? =
+        when {
+            isMasked(incoming) -> current
+            incoming == null -> current
+            incoming.isBlank() -> null
+            else -> incoming
+        }
 
     /**
      * Parse the `namespaceId` query parameter. Returns `null` for absent or `none` sentinel,
      * a valid UUID otherwise.
      */
-    private fun parseNamespaceParam(raw: String?): UUID? = when {
-        raw == null -> null
-        raw.equals(NONE_SENTINEL, ignoreCase = true) -> null
-        else -> runCatching { UUID.fromString(raw) }
-            .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
-    }
+    private fun parseNamespaceParam(raw: String?): UUID? =
+        when {
+            raw == null -> {
+                null
+            }
+
+            raw.equals(NONE_SENTINEL, ignoreCase = true) -> {
+                null
+            }
+
+            else -> {
+                runCatching { UUID.fromString(raw) }
+                    .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
+            }
+        }
 
     /**
      * Validate the `userId` query parameter. Only `me` and absent are valid;

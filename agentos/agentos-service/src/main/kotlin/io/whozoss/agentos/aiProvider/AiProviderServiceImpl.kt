@@ -1,7 +1,11 @@
 package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.exception.ConfigNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
@@ -30,6 +34,8 @@ import java.util.UUID
 class AiProviderServiceImpl(
     private val repository: AiProviderRepository,
     private val mergeStrategy: AiProviderMergeStrategy,
+    private val permissionService: PermissionService,
+    private val userService: UserService,
 ) : AiProviderService {
     override fun create(entity: AiProvider): AiProvider {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -94,7 +100,6 @@ class AiProviderServiceImpl(
         namespaceIsNone: Boolean,
         callerId: UUID,
         userRequested: Boolean,
-        canReadNamespace: (UUID) -> Boolean,
     ): List<AiProvider> =
         when {
             // Platform level: namespaceId=none without userId — open to all authenticated users
@@ -104,7 +109,7 @@ class AiProviderServiceImpl(
 
             // NS-shared layer of a specific namespace (no userId param) : check READ permission
             namespaceId != null && !userRequested -> {
-                if (!canReadNamespace(namespaceId)) {
+                if (!callerCanReadNamespace(namespaceId)) {
                     emptyList()
                 } else {
                     findByNamespaceId(namespaceId).filter { it.userId == null }
@@ -127,6 +132,14 @@ class AiProviderServiceImpl(
                 findByUserId(callerId)
             }
         }
+
+    private fun callerCanReadNamespace(namespaceId: UUID): Boolean =
+        permissionService.hasPermission(
+            userId = userService.getCurrentUser().id.toString(),
+            entityType = EntityType.NAMESPACE,
+            entityId = namespaceId.toString(),
+            action = Action.READ,
+        )
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
