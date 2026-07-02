@@ -1991,6 +1991,9 @@ components:
           - ERROR
         title:
           type: string
+        parentCaseId:
+          type: string
+          format: uuid
         created:
           type: string
           format: date-time
@@ -2116,6 +2119,15 @@ components:
           format: date-time
         enabled:
           type: boolean
+        subAgents:
+          type: array
+          description: "Glob patterns controlling which agents this agent may delegate\
+            \ to. When null or empty, no delegation capability is provided. '*' matches\
+            \ any sequence of characters (anchored, case-insensitive). Examples: ['*']\
+            \ allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
+            \ matches FixerHelper/FixerV2."
+          items:
+            type: string
       required:
       - createdOn
       - name
