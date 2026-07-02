@@ -6,7 +6,6 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
-import io.whozoss.agentos.caseFlow.postprocessing.CasePostProcessingService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -47,7 +46,7 @@ class CaseServiceImpl(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
-    private val postProcessingService: CasePostProcessingService,
+    private val caseNamingService: CaseNamingService,
     @Qualifier("caseCoroutineScope") private val scope: CoroutineScope,
 ) : CaseService {
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
@@ -258,11 +257,7 @@ class CaseServiceImpl(
         // Trigger post-processing after each user message (e.g. automatic title generation).
         // Events are fetched fresh from the service so the newly stored MessageEvent is included.
         val case = findById(caseId) ?: return
-        postProcessingService.trigger(
-            case = case,
-            events = caseEventService.findByParent(caseId),
-            emitEvent = { event -> runtime.emitEvent(event) },
-        )
+        triggerNamingIfNeeded(case, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
     }
 
     // ======================================================
@@ -572,11 +567,7 @@ class CaseServiceImpl(
         if (newStatus == CaseStatus.IDLE) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
-                postProcessingService.trigger(
-                    case = updated,
-                    events = caseEventService.findByParent(caseId),
-                    emitEvent = { event -> runtime.emitEvent(event) },
-                )
+                triggerNamingIfNeeded(updated, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
             }
         }
 
@@ -667,6 +658,34 @@ class CaseServiceImpl(
         val lastSelectedIndex = events.indexOfLast { it is AgentSelectedEvent }
         val lastRunningIndex = events.indexOfLast { it is AgentRunningEvent }
         return lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
+    }
+
+    /**
+     * Launches a fire-and-forget naming coroutine when the case is still in its
+     * auto-generated title state and within the two-user-message naming window.
+     *
+     * The window covers two lifecycle moments:
+     * - after the first user message (quick first-pass title)
+     * - after the first agent turn completes (refined title with more context)
+     *
+     * Beyond [CaseNamingService.MAX_USER_MESSAGES_FOR_NAMING] user messages the title
+     * should already be set; further turns are skipped.
+     */
+    private fun triggerNamingIfNeeded(
+        case: Case,
+        events: List<io.whozoss.agentos.sdk.caseEvent.CaseEvent>,
+        emitEvent: (io.whozoss.agentos.sdk.caseEvent.CaseEvent) -> Unit,
+    ) {
+        if (case.title != "Case ${case.id}") return
+        val userMessageCount = events.count {
+            it is io.whozoss.agentos.sdk.caseEvent.MessageEvent &&
+                it.actor.role == io.whozoss.agentos.sdk.actor.ActorRole.USER
+        }
+        if (userMessageCount !in 1..CaseNamingService.MAX_USER_MESSAGES_FOR_NAMING) return
+        scope.launch {
+            runCatching { caseNamingService.nameCase(case, events, emitEvent) }
+                .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }
+        }
     }
 
     companion object : KLogging() {

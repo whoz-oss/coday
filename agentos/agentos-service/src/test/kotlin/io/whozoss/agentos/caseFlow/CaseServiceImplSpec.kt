@@ -16,7 +16,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
-import io.whozoss.agentos.caseFlow.postprocessing.CasePostProcessingService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -178,12 +177,8 @@ class CaseServiceImplSpec :
             clearMocks(allowAllAgentConfigService, answers = false)
         }
 
-        /** No-op post-processing service — tests do not exercise post-processors. */
-        val noOpPostProcessingService: CasePostProcessingService =
-            CasePostProcessingService(
-                processors = emptyList(),
-                scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-            )
+        /** No-op naming service — tests do not exercise automatic case naming. */
+        val noOpCaseNamingService: CaseNamingService = mockk(relaxed = true)
 
         /** Shared coroutine scope for all [CaseServiceImpl] instances under test. */
         val testScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -220,7 +215,7 @@ class CaseServiceImplSpec :
                 userService,
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
-                postProcessingService = noOpPostProcessingService,
+                caseNamingService = noOpCaseNamingService,
                 scope = testScope,
             )
         }
@@ -361,7 +356,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -585,7 +580,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -684,7 +679,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -756,7 +751,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -802,7 +797,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -872,7 +867,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -940,7 +935,7 @@ class CaseServiceImplSpec :
                     userServiceMock,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1046,7 +1041,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1142,7 +1137,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1386,7 +1381,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1539,7 +1534,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
-                    postProcessingService = noOpPostProcessingService,
+                    caseNamingService = noOpCaseNamingService,
                     scope = testScope,
                 )
 
