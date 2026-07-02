@@ -46,17 +46,6 @@ class CaseNamingService(
         events: List<CaseEvent>,
         emitEvent: (CaseEvent) -> Unit,
     ) {
-        val model = aiModelService.findAiModel(case.namespaceId)
-        if (model == null) {
-            logger.debug { "[CaseNaming] No default model in namespace ${case.namespaceId}, skipping case ${case.id}" }
-            return
-        }
-        val provider = runCatching { aiProviderService.getById(model.aiProviderId) }.getOrNull()
-        if (provider == null) {
-            logger.warn { "[CaseNaming] Provider ${model.aiProviderId} not found for model ${model.alias ?: model.apiModelName}, skipping case ${case.id}" }
-            return
-        }
-
         val transcript = events
             .filterIsInstance<MessageEvent>()
             .filter { it.actor.role == ActorRole.USER }
@@ -73,7 +62,25 @@ class CaseNamingService(
             return
         }
 
-        val title = generateTitle(transcript, case.id, model, provider) ?: return
+        val fallback = transcript.take(MAX_FALLBACK_TITLE_LENGTH)
+
+        val model = aiModelService.findAiModel(case.namespaceId)
+        val provider = model?.let { runCatching { aiProviderService.getById(it.aiProviderId) }.getOrNull() }
+
+        val title = when {
+            model == null -> {
+                logger.debug { "[CaseNaming] No default model in namespace ${case.namespaceId}, using fallback for case ${case.id}" }
+                fallback
+            }
+            provider == null -> {
+                logger.warn { "[CaseNaming] Provider ${model.aiProviderId} not found for model ${model.alias ?: model.apiModelName}, using fallback for case ${case.id}" }
+                fallback
+            }
+            else -> generateTitle(transcript, case.id, model, provider)
+                ?: fallback.also {
+                    logger.info { "[CaseNaming] LLM call returned nothing for case ${case.id}, using fallback: \"$it\"" }
+                }
+        }
 
         val updated = caseRepository.save(case.copy(title = title))
         logger.info { "[CaseNaming] Case ${case.id} titled: \"$title\"" }
@@ -129,5 +136,6 @@ class CaseNamingService(
     companion object : KLogging() {
         const val MAX_USER_MESSAGES_FOR_NAMING = 2
         private const val MAX_TITLE_LENGTH = 60
+        private const val MAX_FALLBACK_TITLE_LENGTH = 50
     }
 }
