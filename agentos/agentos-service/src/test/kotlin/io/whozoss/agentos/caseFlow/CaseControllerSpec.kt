@@ -301,6 +301,52 @@ class CaseControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // listMineByParent — GET /api/cases/by-parentId/{parentId}/mine
+    //   Direct-relation-only listing for the CURRENT user (no admin fast path,
+    //   no namespace-admin transitivity). Every returned case is starrable.
+    // -------------------------------------------------------------------------
+
+    "listMineByParent delegates to findConcerningUserInNamespace for the current user" {
+        val mine1 = caseEntity(title = "mine 1")
+        val mine2 = caseEntity(title = "mine 2")
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(mine1, mine2)
+
+        val result = controller.listMineByParent(namespaceId)
+
+        result.map { it.id } shouldBe listOf(mine1.metadata.id, mine2.metadata.id)
+        verify(exactly = 1) { caseService.findConcerningUserInNamespace(callerId, namespaceId) }
+        // Never uses the admin fast path, the transitive/permission-filtered listing, or a namespace-admin check.
+        verify(exactly = 0) { caseService.findByParent(any()) }
+        verify(exactly = 0) { caseService.findAccessibleByUserInNamespace(any(), any()) }
+        verify(exactly = 0) { permissionService.hasPermission(any(), EntityType.NAMESPACE, any(), any()) }
+    }
+
+    "listMineByParent sets favorite=true only for starred cases" {
+        val starred = caseEntity(title = "starred")
+        val plain = caseEntity(title = "plain")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE)
+        } returns setOf(starred.metadata.id.toString())
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starred, plain)
+
+        val result = controller.listMineByParent(namespaceId)
+
+        result.single { it.id == starred.metadata.id }.favorite shouldBe true
+        result.single { it.id == plain.metadata.id }.favorite shouldBe false
+    }
+
+    "listMineByParent returns empty list when the user has no directly-related case" {
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns emptyList()
+
+        controller.listMineByParent(namespaceId) shouldBe emptyList()
+    }
+
+    // -------------------------------------------------------------------------
     // listByUser — GET /api/cases/by-user/{userId}
     // -------------------------------------------------------------------------
 
