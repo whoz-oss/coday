@@ -14,8 +14,10 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 class DelegationToolUnitSpec :
@@ -359,7 +361,7 @@ class DelegationToolUnitSpec :
             result.success shouldBe false
         }
 
-        "returns failure and kills sub-case when batch timeout is reached" {
+        "returns failure and kills sub-case when per-delegation timeout is reached" {
             val launcher = mockk<SubCaseManager>()
             val runtime = mockk<CaseRuntime>()
             every { runtime.id } returns subCaseId
@@ -372,5 +374,129 @@ class DelegationToolUnitSpec :
             val result = tool.execute(singleDelegation(), toolContext)
 
             result.success shouldBe false
+            val tree = jacksonObjectMapper().readTree(result.output)
+            tree[0].get("errorType").asText() shouldBe "TIMEOUT"
+            // The timed-out sub-case must be killed so it does not run orphaned.
+            verify(exactly = 1) { launcher.killCase(subCaseId) }
+        }
+
+        "two concurrent delegations both suspend then complete independently without cancelling each other" {
+            // This test is the direct answer to the coroutine-state coherency question:
+            // coroutineScope { async { ... } async { ... } } must wait for BOTH branches
+            // to complete. A TimeoutCancellationException caught inside one async must NOT
+            // propagate as a CancellationException to the sibling — if it did, the sibling
+            // would be cancelled and its result lost.
+            //
+            // Both runtimes start as RUNNING and transition to IDLE after a real delay,
+            // so both coroutines are genuinely suspended at the same time before resolving.
+            val subCaseId2 = UUID.randomUUID()
+            val launcher = mockk<SubCaseManager>()
+
+            val flow1 = MutableStateFlow(CaseStatus.RUNNING)
+            val flow2 = MutableStateFlow(CaseStatus.RUNNING)
+            val runtime1 = mockk<CaseRuntime> {
+                every { id } returns subCaseId
+                every { statusFlow } returns flow1
+            }
+            val runtime2 = mockk<CaseRuntime> {
+                every { id } returns subCaseId2
+                every { statusFlow } returns flow2
+            }
+
+            every { launcher.startSubCase(parentCaseId, namespaceId, "sub-agent", "task 1", userId) } returns runtime1
+            every { launcher.startSubCase(parentCaseId, namespaceId, "researcher", "task 2", userId) } returns runtime2
+
+            val events1 = listOf(agentMessage("result from sub-agent"))
+            val events2 = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = subCaseId2,
+                    actor = Actor(id = UUID.randomUUID().toString(), displayName = "researcher", role = ActorRole.AGENT),
+                    content = listOf(MessageContent.Text("result from researcher")),
+                ),
+            )
+
+            val tool = DelegationTool(
+                subCaseManager = launcher,
+                parentCaseId = parentCaseId,
+                namespaceId = namespaceId,
+                allowedAgents = allowedAgents,
+                loadCaseEvents = { id -> if (id == subCaseId) events1 else events2 },
+                timeoutMs = 2_000,
+            )
+
+            // Transition both runtimes to IDLE after a short delay, simulating real
+            // concurrent suspension: both coroutines are suspended on statusFlow.first()
+            // at the same time before either resolves.
+            coroutineScope {
+                launch {
+                    delay(100)
+                    flow1.value = CaseStatus.IDLE
+                }
+                launch {
+                    delay(200)
+                    flow2.value = CaseStatus.IDLE
+                }
+
+                val args = DelegationTool.Args(
+                    delegations = listOf(
+                        DelegationTool.Delegation("sub-agent", "task 1"),
+                        DelegationTool.Delegation("researcher", "task 2"),
+                    ),
+                )
+
+                val result = tool.execute(args, toolContext)
+
+                result.success shouldBe true
+                val tree = jacksonObjectMapper().readTree(result.output)
+                tree.size() shouldBe 2
+                val byAgent = (0 until tree.size()).associate { tree[it].get("agentName").asText() to tree[it] }
+                byAgent["sub-agent"]!!.get("success").asBoolean() shouldBe true
+                byAgent["sub-agent"]!!.get("result").asText() shouldBe "result from sub-agent"
+                byAgent["researcher"]!!.get("success").asBoolean() shouldBe true
+                byAgent["researcher"]!!.get("result").asText() shouldBe "result from researcher"
+            }
+        }
+
+        "slow delegation does not cancel a sibling that already succeeded" {
+            val subCaseId2 = UUID.randomUUID()
+            val launcher = mockk<SubCaseManager>()
+            val fastRuntime = idleRuntime(subCaseId)
+            val slowRuntime = mockk<CaseRuntime>()
+            every { slowRuntime.id } returns subCaseId2
+            every { slowRuntime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING) // never completes
+            every { launcher.killCase(subCaseId2) } returns Unit
+
+            every { launcher.startSubCase(parentCaseId, namespaceId, "sub-agent", "fast task", userId) } returns fastRuntime
+            every { launcher.startSubCase(parentCaseId, namespaceId, "researcher", "slow task", userId) } returns slowRuntime
+
+            val tool = DelegationTool(
+                subCaseManager = launcher,
+                parentCaseId = parentCaseId,
+                namespaceId = namespaceId,
+                allowedAgents = allowedAgents,
+                loadCaseEvents = { listOf(agentMessage("fast result")) },
+                timeoutMs = 300,
+            )
+
+            val args = DelegationTool.Args(
+                delegations = listOf(
+                    DelegationTool.Delegation("sub-agent", "fast task"),
+                    DelegationTool.Delegation("researcher", "slow task"),
+                ),
+            )
+
+            val result = tool.execute(args, toolContext)
+
+            // Overall success because at least one delegation succeeded.
+            result.success shouldBe true
+            val tree = jacksonObjectMapper().readTree(result.output)
+            val byAgent = (0 until tree.size()).associate { tree[it].get("agentName").asText() to tree[it] }
+            byAgent["sub-agent"]!!.get("success").asBoolean() shouldBe true
+            byAgent["sub-agent"]!!.get("result").asText() shouldBe "fast result"
+            byAgent["researcher"]!!.get("success").asBoolean() shouldBe false
+            byAgent["researcher"]!!.get("errorType").asText() shouldBe "TIMEOUT"
+            // The slow sub-case must be killed.
+            verify(exactly = 1) { launcher.killCase(subCaseId2) }
         }
     })
