@@ -12,7 +12,7 @@ describe('CaseShellComponent', () => {
   let routerMock: { url: string; events: Observable<unknown>; navigate: jest.Mock }
   let routeMock: { snapshot: { params: Record<string, string> } }
   let caseControllerMock: {
-    listByParentCase: jest.Mock
+    listMineByParentCase: jest.Mock
     deleteCase: jest.Mock
     starCase: jest.Mock
     unstarCase: jest.Mock
@@ -22,7 +22,7 @@ describe('CaseShellComponent', () => {
     routerMock = { url, events: EMPTY, navigate: jest.fn() }
     routeMock = { snapshot: { params: { namespaceId: NS_ID } } }
     caseControllerMock = {
-      listByParentCase: jest.fn().mockReturnValue(of(cases)),
+      listMineByParentCase: jest.fn().mockReturnValue(of(cases)),
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
       starCase: jest.fn().mockReturnValue(of(undefined)),
       unstarCase: jest.fn().mockReturnValue(of(undefined)),
@@ -58,13 +58,13 @@ describe('CaseShellComponent', () => {
       jest.spyOn(window, 'confirm').mockReturnValue(true)
       const component = makeComponent(`/agentos/${NS_ID}/cases`)
       // Initial list load happens once at construction.
-      expect(caseControllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
 
       component['onDeleteRequested']('case-1')
 
       expect(caseControllerMock.deleteCase).toHaveBeenCalledWith('case-1')
       // The list is refreshed after a successful delete.
-      expect(caseControllerMock.listByParentCase).toHaveBeenCalledTimes(2)
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(2)
     })
 
     it('navigates back to the case section home when the deleted case is the active one', () => {
@@ -113,8 +113,8 @@ describe('CaseShellComponent', () => {
       component['onDeleteRequested']('active-1')
 
       expect(routerMock.navigate).not.toHaveBeenCalled()
-      // No refresh: listByParentCase stays at its single construction-time call.
-      expect(caseControllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+      // No refresh: listMineByParentCase stays at its single construction-time call.
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
       expect(errorSpy).toHaveBeenCalled()
     })
   })
@@ -122,13 +122,13 @@ describe('CaseShellComponent', () => {
   describe('star', () => {
     it('stars a case then refreshes the list', () => {
       const component = makeComponent(`/agentos/${NS_ID}/cases`)
-      expect(caseControllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
 
       component['onStarToggled']({ id: 'case-1', starred: true })
 
       expect(caseControllerMock.starCase).toHaveBeenCalledWith('case-1')
       expect(caseControllerMock.unstarCase).not.toHaveBeenCalled()
-      expect(caseControllerMock.listByParentCase).toHaveBeenCalledTimes(2)
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(2)
     })
 
     it('unstars a case when toggled off', () => {
@@ -148,8 +148,8 @@ describe('CaseShellComponent', () => {
       component['onStarToggled']({ id: 'case-1', starred: true })
 
       expect(errorSpy).toHaveBeenCalled()
-      // No refresh on failure: listByParentCase stays at its single construction-time call.
-      expect(caseControllerMock.listByParentCase).toHaveBeenCalledTimes(1)
+      // No refresh on failure: listMineByParentCase stays at its single construction-time call.
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
     })
   })
 })

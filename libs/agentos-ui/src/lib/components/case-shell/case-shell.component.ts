@@ -40,7 +40,9 @@ export class CaseShellComponent {
   /** Trigger to refresh the case list after mutations. */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  private readonly cases$ = this.refresh$.pipe(switchMap(() => this.caseController.listByParentCase(this.namespaceId)))
+  private readonly cases$ = this.refresh$.pipe(
+    switchMap(() => this.caseController.listMineByParentCase(this.namespaceId))
+  )
 
   protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
 
