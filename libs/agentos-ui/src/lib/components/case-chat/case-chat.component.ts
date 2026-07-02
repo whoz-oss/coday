@@ -452,10 +452,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             this.isRunning.set(false)
             // End-of-turn: reset streaming buffer.
             this.streamingText.set('')
-            // Safety net: refresh once at end-of-turn ONLY if a tool ran (covers a mutation the
+            // Safety net: refresh both scopes at end-of-turn ONLY if a tool ran (covers a mutation the
             // per-op regex may have missed); pure-conversation turns skip the manifest fetch.
             if (this.anyToolResponseThisTurn) {
-              this.exchangeState.refreshCase()
+              this.exchangeState.refreshManifest()
             }
             this.anyToolResponseThisTurn = false
             return
@@ -463,9 +463,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
           if (event.type === 'ToolResponseEvent') {
             this.anyToolResponseThisTurn = true
-            // The agent touched the exchange filesystem → refresh the drawer + badge live.
-            if (this.isExchangeMutationTool((event as ToolResponseEvent).toolName)) {
+            // The agent mutated the exchange filesystem → refresh the affected scope's drawer + badge live.
+            const mutatedScope = this.exchangeMutationScope((event as ToolResponseEvent).toolName)
+            if (mutatedScope === 'case') {
               this.exchangeState.refreshCase()
+            } else if (mutatedScope === 'namespace') {
+              this.exchangeState.refreshNamespace()
             }
             return
           }
@@ -536,9 +539,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
   private anyToolResponseThisTurn = false
 
-  /** True for the file-plugin exchange tools that mutate files (create/edit/remove/move). */
-  private isExchangeMutationTool(toolName?: string): boolean {
-    return /^(case|namespace)-exchange__(editFiles|remove|moveFile)$/.test(toolName ?? '')
+  /** The exchange scope a mutating file-plugin tool (create/edit/remove/move) acts on, or null. */
+  private exchangeMutationScope(toolName?: string): 'case' | 'namespace' | null {
+    const match = /^(case|namespace)-exchange__(editFiles|remove|moveFile)$/.exec(toolName ?? '')
+    return match ? (match[1] as 'case' | 'namespace') : null
   }
 
   protected onInput(event: Event): void {

@@ -146,9 +146,14 @@ export class ExchangeStateService {
     this.namespaceRefresh$.next()
   }
 
-  /** Refresh only the case manifest — the agent only mutates the case scope (namespace is read-only). */
+  /** Refresh only the case manifest — used when the agent mutates the case scope. */
   refreshCase(): void {
     this.caseRefresh$.next()
+  }
+
+  /** Refresh only the namespace manifest — used when the agent mutates the namespace scope. */
+  refreshNamespace(): void {
+    this.namespaceRefresh$.next()
   }
 
   // ── Reads ───────────────────────────────────────────────────────────────────

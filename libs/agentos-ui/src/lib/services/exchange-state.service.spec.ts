@@ -226,6 +226,17 @@ describe('ExchangeStateService', () => {
       expect(controller.getNamespaceFilesManifestExchange).not.toHaveBeenCalled()
     })
 
+    it('refreshNamespace refetches only the namespace manifest (agent namespace mutation)', () => {
+      init()
+      controller.getCaseFilesManifestExchange.mockClear()
+      controller.getNamespaceFilesManifestExchange.mockClear()
+
+      service.refreshNamespace()
+
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledWith('ns-1')
+      expect(controller.getCaseFilesManifestExchange).not.toHaveBeenCalled()
+    })
+
     it('refreshManifest still refetches both scopes', () => {
       init()
       controller.getCaseFilesManifestExchange.mockClear()
