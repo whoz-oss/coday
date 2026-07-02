@@ -7,7 +7,6 @@
   searchPlaceholder="Filter cases…"
   cardMinWidth="220px"
   contentMaxWidth="100%"
-  (itemSelected)="onItemSelected($event)"
   (createRequested)="onCreateRequested()"
 >
   <!-- Inject the close button into the toolbar-start slot, before the title -->
@@ -20,14 +19,18 @@
   />
 </ds-entity-list>
 
-<!-- Minimal case item template: single-line row, active highlight -->
+<!-- Minimal case item template: single-line row, active highlight, delete action -->
 <ng-template #caseItemTpl let-item>
-  <button
-    type="button"
-    class="case-drawer-item"
-    [class.case-drawer-item--active]="item.id === activeCaseId"
-    (click)="onItemSelected(item.id)"
-  >
-    <span class="case-drawer-item__name">{{ item.name }}</span>
-  </button>
+  <div class="case-drawer-item" [class.case-drawer-item--active]="item.id === activeCaseId">
+    <button type="button" class="case-drawer-item__select" (click)="onItemSelected(item.id)">
+      <span class="case-drawer-item__name">{{ item.name }}</span>
+    </button>
+    <ds-icon-button
+      class="case-drawer-item__delete"
+      icon="delete"
+      variant="danger"
+      title="Delete case"
+      (action)="onDeleteRequested(item.id)"
+    />
+  </div>
 </ng-template>

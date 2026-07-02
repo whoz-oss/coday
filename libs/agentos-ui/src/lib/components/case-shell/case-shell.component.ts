@@ -83,6 +83,30 @@ export class CaseShellComponent {
 
   protected onCreateRequested(): void {
     // Navigate to the home view where the user can start a new case
+    this.navigateToSectionHome()
+  }
+
+  protected onDeleteRequested(caseId: string): void {
+    const title = this.cases().find((c) => c.id === caseId)?.title
+    const label = title ? `case "${title}"` : 'this case'
+    if (!confirm(`Delete ${label}?`)) {
+      return
+    }
+    // Soft-delete (the backend flips a `removed` flag); refresh the list on success.
+    this.caseController.deleteCase(caseId).subscribe({
+      next: () => {
+        // If the active case was deleted, leave its (now removed) chat view.
+        if (caseId === this.activeCaseId()) {
+          this.navigateToSectionHome()
+        }
+        this.refreshCases()
+      },
+      error: (err) => console.error(`[CaseShell] Failed to delete case ${caseId}:`, err),
+    })
+  }
+
+  /** Navigate to the case section home (the list / create view). */
+  private navigateToSectionHome(): void {
     this.router.navigate(['.'], { relativeTo: this.route })
   }
 
