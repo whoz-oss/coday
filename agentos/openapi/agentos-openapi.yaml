@@ -1814,6 +1814,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AiModel"
+  /api/agent-configs/{id}/deployments:
+    get:
+      tags:
+      - agent-config-controller
+      operationId: getDeploymentsAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeploymentScope"
   /api/agent-configs/{id}/definition:
     get:
       tags:
@@ -3006,6 +3027,20 @@ components:
       - description
       - displayName
       - type
+    DeploymentScope:
+      type: object
+      properties:
+        scopeType:
+          type: string
+          enum:
+          - NAMESPACE
+          - USER_GROUP
+        id:
+          type: string
+          format: uuid
+      required:
+      - id
+      - scopeType
     AgentDefinition:
       type: object
       properties:

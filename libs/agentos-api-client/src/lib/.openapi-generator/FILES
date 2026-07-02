@@ -38,6 +38,7 @@ model/case-event.ts
 model/case-status-event.ts
 model/case.ts
 model/confirmation-resolved-event.ts
+model/deployment-scope.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
