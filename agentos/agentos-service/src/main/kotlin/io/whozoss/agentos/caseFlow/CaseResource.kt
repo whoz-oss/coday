@@ -21,4 +21,5 @@ data class CaseResource(
     val title: String? = null,
     val created: Instant? = null,
     val removed: Boolean = false,
+    val favorite: Boolean = false,
 )
