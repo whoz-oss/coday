@@ -26,6 +26,14 @@ export class CaseStateService {
   }
 
   /**
+   * Prepend a newly created case to the list.
+   * Called immediately after POST /api/cases so the drawer updates without a reload.
+   */
+  addCase(newCase: Case): void {
+    this.cases.update((list) => [newCase, ...list])
+  }
+
+  /**
    * Patch the title of a single case in-place.
    * Called when a CaseUpdatedEvent arrives via SSE.
    * No-op if the case is not in the current list.
