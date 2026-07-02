@@ -9,6 +9,8 @@ import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -47,14 +49,15 @@ class CaseServiceImpl(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
+    private val caseNamingService: CaseNamingService,
 ) : CaseService {
-    private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
-
     /**
-     * Coroutine scope used to run case execution loops in the background.
-     * Each [run] call is launched here so HTTP threads are never blocked.
+     * Coroutine scope used to run case execution loops and fire-and-forget
+     * post-processing tasks (e.g. automatic naming) in the background.
+     * Each [run] call and naming trigger is launched here so HTTP threads are never blocked.
      */
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
@@ -269,6 +272,10 @@ class CaseServiceImpl(
         runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
+        // Trigger post-processing after each user message (e.g. automatic title generation).
+        // Events are fetched fresh from the service so the newly stored MessageEvent is included.
+        val case = findById(caseId) ?: return
+        triggerNamingIfNeeded(case, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
     }
 
     // ======================================================
@@ -573,6 +580,15 @@ class CaseServiceImpl(
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
         }
 
+        // Trigger post-processing on turn completion so processors can refine their
+        // work with the full agent response available (e.g. naming refinement on 2nd turn).
+        if (newStatus == CaseStatus.IDLE) {
+            val runtime = activeRuntimes[caseId]
+            if (runtime != null) {
+                triggerNamingIfNeeded(updated, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
+            }
+        }
+
         val statusEvent =
             CaseStatusEvent(
                 metadata = EntityMetadata(),
@@ -660,6 +676,41 @@ class CaseServiceImpl(
         val lastSelectedIndex = events.indexOfLast { it is AgentSelectedEvent }
         val lastRunningIndex = events.indexOfLast { it is AgentRunningEvent }
         return lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
+    }
+
+    /**
+     * Launches a fire-and-forget naming coroutine when conditions warrant a (re)naming attempt.
+     *
+     * Triggers when **any** of the following holds:
+     * - The case title is blank or null (defensive: the default is never blank, but guards
+     *   against future changes to [Case] defaults).
+     * - The case has the auto-generated default title (`"Case <uuid>"`) AND we are at the
+     *   first user message — quick first-pass title before the agent responds.
+     * - The case has the auto-generated default title AND we are on the first agent turn
+     *   completion — refined title with the full first exchange available.
+     *
+     * Beyond the first agent turn the title is considered settled; further turns are skipped
+     * unless the title is blank.
+     */
+    private fun triggerNamingIfNeeded(
+        case: Case,
+        events: List<CaseEvent>,
+        emitEvent: (CaseEvent) -> Unit,
+    ) {
+        val titleIsBlank = case.title.isBlank()
+        val titleIsGenerated = case.title == "Case ${case.id}"
+        if (!titleIsBlank && !titleIsGenerated) return
+
+        val userMessageCount = events.count { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val agentFinishedCount = events.count { it is AgentFinishedEvent }
+
+        val shouldTrigger = titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1
+        if (!shouldTrigger) return
+
+        scope.launch {
+            runCatching { caseNamingService.nameCase(case, events, emitEvent) }
+                .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }
+        }
     }
 
     companion object : KLogging() {

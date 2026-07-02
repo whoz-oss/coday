@@ -15,6 +15,7 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
@@ -175,6 +176,9 @@ class CaseServiceImplSpec :
             clearMocks(allowAllAgentConfigService, answers = false)
         }
 
+        /** No-op naming service — tests do not exercise automatic case naming. */
+        val noOpCaseNamingService: CaseNamingService = mockk(relaxed = true)
+
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
             agent: Agent = finishingAgent(),
@@ -207,6 +211,7 @@ class CaseServiceImplSpec :
                 userService,
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
+                caseNamingService = noOpCaseNamingService,
             )
         }
 
@@ -346,6 +351,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -568,6 +574,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -665,6 +672,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -735,6 +743,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -779,6 +788,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -847,6 +857,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -913,6 +924,7 @@ class CaseServiceImplSpec :
                     userServiceMock,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1017,6 +1029,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1113,6 +1126,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1400,6 +1414,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1551,6 +1566,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    caseNamingService = noOpCaseNamingService,
                 )
 
             // Insert the case directly into the repository so no runtime is created in

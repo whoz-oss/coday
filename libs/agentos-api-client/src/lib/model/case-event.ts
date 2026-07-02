@@ -23,6 +23,7 @@ import { ToolSelectedEvent } from './tool-selected-event'
 import { AnswerEvent } from './answer-event'
 import { ErrorEvent } from './error-event'
 import { CaseStatusEvent } from './case-status-event'
+import { CaseUpdatedEvent } from './case-updated-event'
 import { ToolRequestEvent } from './tool-request-event'
 
 export type CaseEvent =
@@ -31,6 +32,7 @@ export type CaseEvent =
   | AgentSelectedEvent
   | AnswerEvent
   | CaseStatusEvent
+  | CaseUpdatedEvent
   | ConfirmationResolvedEvent
   | ErrorEvent
   | IntentionGeneratedEvent

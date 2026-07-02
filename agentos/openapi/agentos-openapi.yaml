@@ -1143,6 +1143,7 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/CaseUpdatedEvent"
                   - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                   - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
@@ -1721,6 +1722,7 @@ paths:
                 - $ref: "#/components/schemas/AgentSelectedEvent"
                 - $ref: "#/components/schemas/AnswerEvent"
                 - $ref: "#/components/schemas/CaseStatusEvent"
+                - $ref: "#/components/schemas/CaseUpdatedEvent"
                 - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                 - $ref: "#/components/schemas/ErrorEvent"
                 - $ref: "#/components/schemas/IntentionGeneratedEvent"
@@ -1759,6 +1761,7 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/CaseUpdatedEvent"
                   - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                   - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
@@ -2526,6 +2529,7 @@ components:
           - TextChunkEvent
           - PendingConfirmationEvent
           - ConfirmationResolvedEvent
+          - CaseUpdatedEvent
       required:
       - caseId
       - id
@@ -2552,6 +2556,20 @@ components:
       - metadata
       - namespaceId
       - status
+      - timestamp
+      - type
+    CaseUpdatedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          title:
+            type: string
+      required:
+      - caseId
+      - id
+      - metadata
+      - namespaceId
       - timestamp
       - type
     ConfirmationResolvedEvent:

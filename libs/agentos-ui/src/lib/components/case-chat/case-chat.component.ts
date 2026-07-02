@@ -23,6 +23,7 @@ import {
   AgentSelectedEvent,
   CaseEvent,
   CaseStatusEvent,
+  CaseUpdatedEvent,
   Configuration,
   EnrichmentPhaseTrace,
   ErrorEvent,
@@ -33,6 +34,7 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
@@ -100,6 +102,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
+  private readonly caseState = inject(CaseStateService)
 
   // Read from snapshot initially; updated reactively in ngOnInit via route.params
   private caseId = this.route.snapshot.params['caseId'] as string
@@ -413,6 +416,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
+          if (event.type === 'CaseUpdatedEvent') {
+            const updated = event as CaseUpdatedEvent
+            if (updated.title) {
+              this.caseState.updateCaseTitle(event.caseId, updated.title)
+            }
+            return
+          }
+
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
@@ -461,6 +472,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const eventNames = [
       'MessageEvent',
       'CaseStatusEvent',
+      'CaseUpdatedEvent',
       'AgentSelectedEvent',
       'AgentRunningEvent',
       'AgentFinishedEvent',
