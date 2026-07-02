@@ -52,7 +52,7 @@ export class CaseDrawerComponent implements OnChanges {
         const item = CaseItemComponent.toListItem(c)
         if (hasFavorites) {
           item.groupKey = c.favorite ? 'favorites' : 'cases'
-          item.groupLabel = c.favorite ? 'Favoris' : 'Cases'
+          item.groupLabel = c.favorite ? 'Favorites' : 'Others'
         }
         return item
       })
