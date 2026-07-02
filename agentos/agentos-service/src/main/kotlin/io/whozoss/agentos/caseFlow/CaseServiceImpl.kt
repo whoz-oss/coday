@@ -207,7 +207,7 @@ class CaseServiceImpl(
                             // combine(StateFlow, StateFlow) never completes naturally.
                             // Without cancel, the coroutine stays suspended forever,
                             // retaining the CaseRuntime in its closure — a memory leak.
-                            watcherJobs.remove(caseId)//?.cancel() <- the fix
+                            watcherJobs.remove(caseId)?.cancel()
                             logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
                         } else {
                             logger.debug {
