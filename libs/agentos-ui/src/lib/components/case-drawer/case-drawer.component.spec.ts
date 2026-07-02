@@ -23,6 +23,16 @@ describe('CaseDrawerComponent', () => {
     expect(emitted).toEqual([{ id: 'case-9', starred: true }])
   })
 
+  it('emits starToggled with starred=false when un-starring a favorited case', () => {
+    const c = new CaseDrawerComponent()
+    const emitted: Array<{ id: string; starred: boolean }> = []
+    c.starToggled.subscribe((e) => emitted.push(e))
+
+    c['onStarToggled']({ id: 'case-9', name: 'case-9', favorite: true })
+
+    expect(emitted).toEqual([{ id: 'case-9', starred: false }])
+  })
+
   it('orders favorites first and groups them when at least one case is starred', () => {
     const c = new CaseDrawerComponent()
     c.cases = [

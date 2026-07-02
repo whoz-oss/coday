@@ -27,8 +27,8 @@
     </button>
     <ds-icon-button
       class="case-drawer-item__star"
+      variant="default"
       [icon]="item.favorite ? 'star' : 'star_border'"
-      [variant]="item.favorite ? 'primary' : 'default'"
       [title]="item.favorite ? 'Unstar case' : 'Star case'"
       (action)="onStarToggled(item)"
     />
