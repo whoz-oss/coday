@@ -302,6 +302,28 @@ class Neo4jPermissionRepository(
         }
     }
 
+    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean) {
+        try {
+            permissionNodeRepository.setStarred(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType.label,
+                starred = starred,
+            )
+        } catch (e: Exception) {
+            logger.error(e) { "Error setting starred=$starred for user=$userId on $entityType:$entityId" }
+            throw e
+        }
+    }
+
+    override fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String> =
+        try {
+            permissionNodeRepository.findStarredEntityIds(userId, entityType.label).toSet()
+        } catch (e: Exception) {
+            logger.error(e) { "Error listing starred entities for user=$userId, type=$entityType" }
+            emptySet() // fail-closed
+        }
+
     /**
      * Checks if the entity type is a child of Namespace in the hierarchy.
      * These entities support transitive permissions through their parent namespace.

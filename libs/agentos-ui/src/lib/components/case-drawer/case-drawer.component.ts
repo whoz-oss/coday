@@ -38,6 +38,7 @@ export class CaseDrawerComponent implements OnChanges {
   @Output() createRequested = new EventEmitter<void>()
   @Output() closeRequested = new EventEmitter<void>()
   @Output() deleteRequested = new EventEmitter<string>()
+  @Output() starToggled = new EventEmitter<{ id: string; starred: boolean }>()
 
   @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: EntityListItem }>
 
@@ -45,7 +46,16 @@ export class CaseDrawerComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['cases']) {
-      this.caseItems = this.cases.map(CaseItemComponent.toListItem)
+      const sorted = [...this.cases].sort((a, b) => Number(b.favorite ?? false) - Number(a.favorite ?? false))
+      const hasFavorites = sorted.some((c) => c.favorite)
+      this.caseItems = sorted.map((c) => {
+        const item = CaseItemComponent.toListItem(c)
+        if (hasFavorites) {
+          item.groupKey = c.favorite ? 'favorites' : 'cases'
+          item.groupLabel = c.favorite ? 'Favorites' : 'Others'
+        }
+        return item
+      })
     }
   }
 
@@ -59,5 +69,9 @@ export class CaseDrawerComponent implements OnChanges {
 
   protected onDeleteRequested(id: string): void {
     this.deleteRequested.emit(id)
+  }
+
+  protected onStarToggled(item: EntityListItem): void {
+    this.starToggled.emit({ id: item.id, starred: !item.favorite })
   }
 }

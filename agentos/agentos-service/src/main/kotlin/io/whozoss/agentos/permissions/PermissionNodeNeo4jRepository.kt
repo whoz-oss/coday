@@ -148,6 +148,34 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("entityLabel") entityLabel: String,
     )
 
+    // Star / favorite — a per-user boolean property on the user↔entity relation.
+
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        SET r.starred = $starred
+    """,
+    )
+    fun setStarred(
+        @Param("userId") userId: String,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+        @Param("starred") starred: Boolean,
+    )
+
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e)
+        WHERE $entityLabel IN labels(e) AND r.starred = true
+        RETURN DISTINCT e.id
+    """,
+    )
+    fun findStarredEntityIds(
+        @Param("userId") userId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): List<String>
+
     // User listing queries
 
     @Query(

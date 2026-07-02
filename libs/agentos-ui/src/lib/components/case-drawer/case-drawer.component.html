@@ -26,6 +26,13 @@
       <span class="case-drawer-item__name">{{ item.name }}</span>
     </button>
     <ds-icon-button
+      class="case-drawer-item__star"
+      variant="default"
+      [icon]="item.favorite ? 'star' : 'star_border'"
+      [title]="item.favorite ? 'Unstar case' : 'Star case'"
+      (action)="onStarToggled(item)"
+    />
+    <ds-icon-button
       class="case-drawer-item__delete"
       icon="delete"
       variant="danger"

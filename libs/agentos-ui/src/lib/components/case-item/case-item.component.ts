@@ -24,6 +24,7 @@ export class CaseItemComponent {
       // Cases don't have a user-facing name yet — display the full id
       name: c.id ?? '—',
       description: undefined,
+      favorite: c.favorite,
     }
   }
 }

@@ -14,6 +14,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -121,13 +123,50 @@ class CaseController(
                 parentId.toString(),
                 Action.WRITE,
             )
-        return if (isNamespaceAdmin) {
-            logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
-            caseService.findByParent(parentId).map { toResource(it) }
-        } else {
-            logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
-            caseService.findAccessibleByUserInNamespace(user.id, parentId).map { toResource(it) }
-        }
+        val cases =
+            if (isNamespaceAdmin) {
+                logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
+                caseService.findByParent(parentId)
+            } else {
+                logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
+                caseService.findAccessibleByUserInNamespace(user.id, parentId)
+            }
+        return withFavorites(cases, userId)
+    }
+
+    /**
+     * GET /api/cases/by-parentId/{parentId}/mine — list ONLY the cases in [parentId]
+     * that the CURRENT user has a DIRECT [:ADMIN|MEMBER] relation with.
+     *
+     * Deliberately excludes the namespace-admin fast path AND namespace-admin
+     * transitivity used by [listByParent]: every returned case is one the user can
+     * star (star requires a direct user↔case edge). This powers the AgentOS drawer.
+     *
+     * Single-case access by URL is unchanged ([getById] gates on `hasPermission(#id,'Case','READ')`),
+     * so admins/super-admins can still open a case they don't own.
+     */
+    @GetMapping("/by-parentId/{parentId}/mine")
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    fun listMineByParent(
+        @PathVariable parentId: UUID,
+    ): List<CaseResource> {
+        val user = userService.getCurrentUser()
+        logger.debug { "Listing directly-related cases for user ${user.id} in namespace $parentId" }
+        val cases = caseService.findConcerningUserInNamespace(user.id, parentId)
+        return withFavorites(cases, user.id.toString())
+    }
+
+    /**
+     * Map domain [cases] to [CaseResource]s, setting the per-user `favorite` flag
+     * from the caller's starred set. Shared by [listByParent] and [listMineByParent]
+     * so the star-enrichment logic lives in one place.
+     */
+    private fun withFavorites(
+        cases: List<Case>,
+        userId: String,
+    ): List<CaseResource> {
+        val starredIds = permissionService.listStarredEntityIds(userId, EntityType.CASE)
+        return cases.map { toResource(it).copy(favorite = it.metadata.id.toString() in starredIds) }
     }
 
     /**
@@ -284,6 +323,30 @@ class CaseController(
         logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }
+    }
+
+    /** PUT /api/cases/{id}/star — mark the case as favorite for the current user. */
+    @PutMapping("/{id}/star")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
+    fun starCase(
+        @PathVariable id: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        permissionService.setStarred(userId, EntityType.CASE, id.toString(), true)
+        logger.info { "User $userId starred case $id" }
+    }
+
+    /** DELETE /api/cases/{id}/star — remove the case from the current user's favorites. */
+    @DeleteMapping("/{id}/star")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
+    fun unstarCase(
+        @PathVariable id: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        permissionService.setStarred(userId, EntityType.CASE, id.toString(), false)
+        logger.info { "User $userId unstarred case $id" }
     }
 
     companion object : KLogging()

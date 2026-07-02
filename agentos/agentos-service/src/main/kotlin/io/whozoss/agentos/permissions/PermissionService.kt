@@ -128,6 +128,12 @@ interface PermissionService {
         action: Action,
     ): Set<String>
 
+    /** Sets the caller's per-user favorite flag on their direct relation to an entity. */
+    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean)
+
+    /** Ids of entities of the given type the user has starred. */
+    fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String>
+
     /**
      * Clears the permission cache for a specific user.
      * Should be called when user permissions change.

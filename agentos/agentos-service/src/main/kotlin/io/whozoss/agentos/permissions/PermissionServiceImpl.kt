@@ -195,6 +195,12 @@ class PermissionServiceImpl(
         }
     }
 
+    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean) =
+        permissionRepository.setStarred(userId, entityType, entityId, starred)
+
+    override fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String> =
+        permissionRepository.listStarredEntityIds(userId, entityType)
+
     override fun clearUserCache(userId: String) {
         try {
             permissionCache.invalidateUser(userId)

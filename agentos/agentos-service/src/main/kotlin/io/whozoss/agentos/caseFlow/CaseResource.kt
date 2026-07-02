@@ -21,4 +21,9 @@ data class CaseResource(
     val title: String? = null,
     val created: Instant? = null,
     val removed: Boolean = false,
+    /**
+     * Per-user favorite flag. Populated only by the case-list endpoint (`listByParent`);
+     * single-case fetches (get/create/update) return the default `false`.
+     */
+    val favorite: Boolean = false,
 )

@@ -177,6 +177,7 @@ class CaseControllerSpec : StringSpec({
         val case2 = caseEntity(title = "b")
         val case3 = caseEntity(title = "c")
         every { userService.getCurrentUser() } returns caller
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true
@@ -195,6 +196,7 @@ class CaseControllerSpec : StringSpec({
     "listByParent uses findAccessibleByUserInNamespace when caller is not namespace ADMIN" {
         val ownCase = caseEntity(title = "mine")
         every { userService.getCurrentUser() } returns caller
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
@@ -217,6 +219,7 @@ class CaseControllerSpec : StringSpec({
 
     "listByParent non-admin path returns empty list when the user has no accessible case" {
         every { userService.getCurrentUser() } returns caller
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
@@ -225,6 +228,122 @@ class CaseControllerSpec : StringSpec({
         } returns emptyList()
 
         controller.listByParent(namespaceId) shouldBe emptyList()
+    }
+
+    // -------------------------------------------------------------------------
+    // listByParent — favorite enrichment (per-user starred flag)
+    // -------------------------------------------------------------------------
+
+    "listByParent (namespace-admin branch) sets favorite=true only for starred cases" {
+        val starred = caseEntity(title = "starred")
+        val plain = caseEntity(title = "plain")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE)
+        } returns setOf(starred.metadata.id.toString())
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        } returns true
+        every { caseService.findByParent(namespaceId) } returns listOf(starred, plain)
+
+        val result = controller.listByParent(namespaceId)
+
+        result.single { it.id == starred.metadata.id }.favorite shouldBe true
+        result.single { it.id == plain.metadata.id }.favorite shouldBe false
+    }
+
+    "listByParent (permission-filtered branch) sets favorite=true only for starred cases" {
+        val starred = caseEntity(title = "starred")
+        val plain = caseEntity(title = "plain")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE)
+        } returns setOf(starred.metadata.id.toString())
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+        } returns false
+        every {
+            caseService.findAccessibleByUserInNamespace(callerId, namespaceId)
+        } returns listOf(starred, plain)
+
+        val result = controller.listByParent(namespaceId)
+
+        result.single { it.id == starred.metadata.id }.favorite shouldBe true
+        result.single { it.id == plain.metadata.id }.favorite shouldBe false
+    }
+
+    // -------------------------------------------------------------------------
+    // starCase / unstarCase — per-user favorite toggling (PUT/DELETE /{id}/star)
+    // -------------------------------------------------------------------------
+
+    "starCase delegates to permissionService.setStarred with starred=true for the current user" {
+        val caseId = UUID.randomUUID()
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true) } just Runs
+
+        controller.starCase(caseId)
+
+        verify(exactly = 1) {
+            permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true)
+        }
+    }
+
+    "unstarCase delegates to permissionService.setStarred with starred=false for the current user" {
+        val caseId = UUID.randomUUID()
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false) } just Runs
+
+        controller.unstarCase(caseId)
+
+        verify(exactly = 1) {
+            permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // listMineByParent — GET /api/cases/by-parentId/{parentId}/mine
+    //   Direct-relation-only listing for the CURRENT user (no admin fast path,
+    //   no namespace-admin transitivity). Every returned case is starrable.
+    // -------------------------------------------------------------------------
+
+    "listMineByParent delegates to findConcerningUserInNamespace for the current user" {
+        val mine1 = caseEntity(title = "mine 1")
+        val mine2 = caseEntity(title = "mine 2")
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(mine1, mine2)
+
+        val result = controller.listMineByParent(namespaceId)
+
+        result.map { it.id } shouldBe listOf(mine1.metadata.id, mine2.metadata.id)
+        verify(exactly = 1) { caseService.findConcerningUserInNamespace(callerId, namespaceId) }
+        // Never uses the admin fast path, the transitive/permission-filtered listing, or a namespace-admin check.
+        verify(exactly = 0) { caseService.findByParent(any()) }
+        verify(exactly = 0) { caseService.findAccessibleByUserInNamespace(any(), any()) }
+        verify(exactly = 0) { permissionService.hasPermission(any(), EntityType.NAMESPACE, any(), any()) }
+    }
+
+    "listMineByParent sets favorite=true only for starred cases" {
+        val starred = caseEntity(title = "starred")
+        val plain = caseEntity(title = "plain")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE)
+        } returns setOf(starred.metadata.id.toString())
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starred, plain)
+
+        val result = controller.listMineByParent(namespaceId)
+
+        result.single { it.id == starred.metadata.id }.favorite shouldBe true
+        result.single { it.id == plain.metadata.id }.favorite shouldBe false
+    }
+
+    "listMineByParent returns empty list when the user has no directly-related case" {
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns emptyList()
+
+        controller.listMineByParent(namespaceId) shouldBe emptyList()
     }
 
     // -------------------------------------------------------------------------
@@ -347,6 +466,7 @@ class CaseControllerSpec : StringSpec({
         val superAdmin = caller.copy(isAdmin = true)
         val case1 = caseEntity()
         every { userService.getCurrentUser() } returns superAdmin
+        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true

@@ -40,7 +40,9 @@ export class CaseShellComponent {
   /** Trigger to refresh the case list after mutations. */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  private readonly cases$ = this.refresh$.pipe(switchMap(() => this.caseController.listByParentCase(this.namespaceId)))
+  private readonly cases$ = this.refresh$.pipe(
+    switchMap(() => this.caseController.listMineByParentCase(this.namespaceId))
+  )
 
   protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
 
@@ -102,6 +104,14 @@ export class CaseShellComponent {
         this.refreshCases()
       },
       error: (err) => console.error(`[CaseShell] Failed to delete case ${caseId}:`, err),
+    })
+  }
+
+  protected onStarToggled(event: { id: string; starred: boolean }): void {
+    const request = event.starred ? this.caseController.starCase(event.id) : this.caseController.unstarCase(event.id)
+    request.subscribe({
+      next: () => this.refreshCases(),
+      error: (err) => console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err),
     })
   }
 
