@@ -105,6 +105,14 @@ export class CaseShellComponent {
     })
   }
 
+  protected onStarToggled(event: { id: string; starred: boolean }): void {
+    const request = event.starred ? this.caseController.starCase(event.id) : this.caseController.unstarCase(event.id)
+    request.subscribe({
+      next: () => this.refreshCases(),
+      error: (err) => console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err),
+    })
+  }
+
   /** Navigate to the case section home (the list / create view). */
   private navigateToSectionHome(): void {
     this.router.navigate(['.'], { relativeTo: this.route })
