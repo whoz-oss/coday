@@ -138,7 +138,7 @@ class ExchangeController(
     }
 
     // ========================================
-    // Namespace scope (no write in P0)
+    // Namespace scope (reads for any member; writes gated on Namespace WRITE = namespace admin / super-admin)
     // ========================================
 
     @GetMapping("/api/namespaces/{namespaceId}/files/manifest", produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -172,6 +172,48 @@ class ExchangeController(
     ): ResponseEntity<ByteArray> {
         val root = exchangeStorageService.namespaceRoot(namespaceId)
         return downloadResponse(mapStorageErrors { exchangeStorageService.readBytes(root, path) }, path)
+    }
+
+    @SwaggerRequestBody(
+        content = [
+            Content(
+                mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                schema = Schema(type = "object", requiredProperties = ["file"]),
+                schemaProperties = [SchemaProperty(name = "file", schema = Schema(type = "string", format = "binary"))],
+            ),
+        ],
+    )
+    @PostMapping(
+        "/api/namespaces/{namespaceId}/files",
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun uploadNamespaceFile(
+        @PathVariable namespaceId: UUID,
+        @RequestParam("file") file: MultipartFile,
+    ): ExchangeFileEntry {
+        val root = exchangeStorageService.namespaceRoot(namespaceId)
+        val relativePath = uploadRelativePath(file)
+        if (!exchangeStorageService.isUploadAllowed(relativePath)) {
+            throw BadRequestException("File type not allowed for upload: '$relativePath'")
+        }
+        logger.info { "Uploading file '$relativePath' to namespace $namespaceId" }
+        return mapStorageErrors {
+            exchangeStorageService.writeNew(root, relativePath, file.bytes, ExchangeScope.NAMESPACE)
+        }
+    }
+
+    @DeleteMapping("/api/namespaces/{namespaceId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun deleteNamespaceFile(
+        @PathVariable namespaceId: UUID,
+        @RequestParam path: String,
+    ): ExchangeDeleteResponse {
+        val root = exchangeStorageService.namespaceRoot(namespaceId)
+        mapStorageErrors { exchangeStorageService.delete(root, path) }
+        logger.info { "Deleted file '$path' from namespace $namespaceId" }
+        return ExchangeDeleteResponse(true, "Deleted $path")
     }
 
     // ========================================

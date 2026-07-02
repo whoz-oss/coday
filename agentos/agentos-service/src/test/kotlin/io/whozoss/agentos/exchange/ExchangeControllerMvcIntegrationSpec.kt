@@ -312,5 +312,82 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"shared.txt\""))
         }
+
+        // -------------------------------------------------------------------------
+        // Namespace upload / delete — WRITE (= namespace admin); a member is read-only → 403
+        // -------------------------------------------------------------------------
+
+        "POST namespace file (multipart) creates and returns the entry for an admin" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns true
+            every { exchangeStorageService.writeNew(any(), "doc.md", any(), ExchangeScope.NAMESPACE) } returns
+                entry("doc.md", ExchangeScope.NAMESPACE)
+
+            val file = MockMultipartFile("file", "doc.md", "text/markdown", "data".toByteArray())
+
+            mockMvc.perform(multipart("/api/namespaces/$namespaceId/files").file(file))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.path").value("doc.md"))
+                .andExpect(jsonPath("$.scope").value("NAMESPACE"))
+        }
+
+        "POST namespace file returns 403 for a namespace member (WRITE denied)" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
+
+            val file = MockMultipartFile("file", "doc.md", "text/markdown", "data".toByteArray())
+
+            mockMvc.perform(multipart("/api/namespaces/$namespaceId/files").file(file))
+                .andExpect(status().isForbidden)
+        }
+
+        "POST namespace file returns 409 when the target already exists" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns true
+            every { exchangeStorageService.writeNew(any(), "doc.md", any(), ExchangeScope.NAMESPACE) } throws
+                FileExistsException("File already exists: doc.md")
+
+            val file = MockMultipartFile("file", "doc.md", "text/markdown", "data".toByteArray())
+
+            mockMvc.perform(multipart("/api/namespaces/$namespaceId/files").file(file))
+                .andExpect(status().isConflict)
+        }
+
+        "POST namespace file returns 400 when the extension is not allowed" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns false
+
+            val file = MockMultipartFile("file", "malware.exe", "application/octet-stream", "data".toByteArray())
+
+            mockMvc.perform(multipart("/api/namespaces/$namespaceId/files").file(file))
+                .andExpect(status().isBadRequest)
+        }
+
+        "DELETE namespace file returns a success body for an admin" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.delete(any(), "shared.md") } returns Unit
+
+            mockMvc.perform(delete("/api/namespaces/$namespaceId/files").param("path", "shared.md"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.success").value(true))
+        }
+
+        "DELETE namespace file returns 403 for a namespace member (WRITE denied)" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
+
+            mockMvc.perform(delete("/api/namespaces/$namespaceId/files").param("path", "shared.md"))
+                .andExpect(status().isForbidden)
+        }
     }
 }

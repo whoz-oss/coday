@@ -818,6 +818,59 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/namespaces/{namespaceId}/files:
+    post:
+      tags:
+      - exchange-controller
+      operationId: uploadNamespaceFileExchange
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileEntry"
+    delete:
+      tags:
+      - exchange-controller
+      operationId: deleteNamespaceFileExchange
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDeleteResponse"
   /api/namespaces/{namespaceId}/deploy-agents:
     post:
       tags:
@@ -2455,6 +2508,43 @@ components:
             format: uuid
       required:
       - agentIds
+    ExchangeFileEntry:
+      type: object
+      description: Metadata for a single file in an exchange scope.
+      properties:
+        path:
+          type: string
+          description: "Path of the file relative to its exchange root, using forward\
+            \ slashes."
+        filename:
+          type: string
+          description: File name (last path segment).
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes.
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp.
+        mimeType:
+          type: string
+          description: "Detected MIME type, or null if it could not be determined."
+        scope:
+          type: string
+          description: Scope the file belongs to.
+          enum:
+          - CASE
+          - NAMESPACE
+        etag:
+          type: string
+          description: Opaque entity tag derived from size and last-modified time.
+      required:
+      - filename
+      - lastModified
+      - path
+      - scope
+      - size
     NamespaceRoleEntry:
       type: object
       properties:
@@ -2549,43 +2639,6 @@ components:
           additionalProperties: {}
       required:
       - content
-    ExchangeFileEntry:
-      type: object
-      description: Metadata for a single file in an exchange scope.
-      properties:
-        path:
-          type: string
-          description: "Path of the file relative to its exchange root, using forward\
-            \ slashes."
-        filename:
-          type: string
-          description: File name (last path segment).
-        size:
-          type: integer
-          format: int64
-          description: File size in bytes.
-        lastModified:
-          type: string
-          format: date-time
-          description: Last modification timestamp.
-        mimeType:
-          type: string
-          description: "Detected MIME type, or null if it could not be determined."
-        scope:
-          type: string
-          description: Scope the file belongs to.
-          enum:
-          - CASE
-          - NAMESPACE
-        etag:
-          type: string
-          description: Opaque entity tag derived from size and last-modified time.
-      required:
-      - filename
-      - lastModified
-      - path
-      - scope
-      - size
     ListByUserInNamespaceRequest:
       type: object
       properties:
