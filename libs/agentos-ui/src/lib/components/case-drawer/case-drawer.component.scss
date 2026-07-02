@@ -53,6 +53,10 @@
     font-size: 0.8rem;
   }
 
+  &__star {
+    flex: none;
+  }
+
   &__delete {
     flex: none;
     margin-inline-end: 0.25rem;

@@ -28,6 +28,7 @@ export interface EntityListItem {
   badges?: EntityCardBadge[]
   groupKey?: string
   groupLabel?: string
+  favorite?: boolean
 }
 
 export interface GroupedItems {
