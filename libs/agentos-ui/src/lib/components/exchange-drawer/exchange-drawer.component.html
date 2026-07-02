@@ -26,7 +26,7 @@
                   variant="primary"
                   title="Upload a file"
                   [disabled]="isUploading()"
-                  (action)="triggerUpload()"
+                  (action)="triggerUpload(CASE)"
                 />
               } @else {
                 <span class="exchange-drawer__readonly-badge">read-only</span>
@@ -84,7 +84,17 @@
           <div class="exchange-drawer__section-header">
             <h3 class="exchange-drawer__section-title">Namespace files</h3>
             <div class="exchange-drawer__section-actions">
-              <span class="exchange-drawer__readonly-badge">read-only</span>
+              @if (canWriteNamespace()) {
+                <ds-icon-button
+                  icon="upload_file"
+                  variant="primary"
+                  title="Upload a file"
+                  [disabled]="isUploading()"
+                  (action)="triggerUpload(NAMESPACE)"
+                />
+              } @else {
+                <span class="exchange-drawer__readonly-badge">read-only</span>
+              }
               @if (namespaceFiles().length > 0) {
                 <ds-icon-button
                   icon="download"
@@ -108,15 +118,20 @@
             }
             @default {
               @if (namespaceFiles().length === 0) {
-                <ds-empty-state icon="folder_shared" title="No namespace files" />
+                <ds-empty-state
+                  icon="folder_shared"
+                  title="No namespace files"
+                  [hint]="canWriteNamespace() ? 'Upload a file to share it across this namespace.' : undefined"
+                />
               } @else {
                 <agentos-exchange-file-list
                   [rows]="namespaceRows()"
                   [scope]="NAMESPACE"
-                  [canWrite]="false"
+                  [canWrite]="canWriteNamespace()"
                   [activeFile]="activeFile()"
                   (fileSelected)="onFileSelected($event)"
                   (downloadRequested)="downloadRequested.emit($event)"
+                  (deleteRequested)="deleteRequested.emit($event)"
                 />
               }
             }

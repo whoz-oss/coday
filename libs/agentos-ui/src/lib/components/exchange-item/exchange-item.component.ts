@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
-import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeFileEntry } from '@whoz-oss/agentos-api-client'
 import { EntityCardBadge, IconButtonComponent } from '@whoz-oss/design-system'
 import { formatDate, formatSize, getFileIcon } from '../../services/exchange-content.utils'
 
@@ -16,7 +16,7 @@ export interface ExchangeFileRow {
  * ExchangeItemComponent — presentational dense row for one exchange file.
  *
  * Selecting the row (click / Enter / Space) requests a preview. Download is always offered;
- * delete is only rendered when `canWrite` is true (namespace rows never pass canWrite=true).
+ * delete is only rendered when `canWrite` is true (per the scope's server-computed capability).
  *
  * I/O in signals (decision #8), aligned on `ai-provider-item`.
  */
@@ -44,8 +44,6 @@ export class ExchangeItemComponent {
       filename: file.filename,
       meta: `${formatSize(file.size)} · ${formatDate(file.lastModified)}`,
       icon: getFileIcon(file.filename),
-      badges:
-        file.scope === ExchangeFileEntryScopeEnum.NAMESPACE ? [{ label: 'read-only', variant: 'info' }] : undefined,
     }
   }
 }

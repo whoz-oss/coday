@@ -123,11 +123,11 @@ export class ExchangeShellComponent implements OnInit, OnDestroy {
       })
   }
 
-  // ── Upload (always CASE) ──────────────────────────────────────────────────────
-  protected async onUpload(files: File[]): Promise<void> {
+  // ── Upload (case or namespace, per the drawer section's scope) ────────────────
+  protected async onUpload(payload: { scope: ExchangeScope; files: File[] }): Promise<void> {
     this.actionError.set(null)
-    for (const file of files) {
-      const result = await this.state.uploadFile(file)
+    for (const file of payload.files) {
+      const result = await this.state.uploadFile(payload.scope, file)
       if (!result.success) {
         this.actionError.set(result.error ?? 'Upload failed')
         break
@@ -144,7 +144,7 @@ export class ExchangeShellComponent implements OnInit, OnDestroy {
     this.state.downloadAll(scope)
   }
 
-  // ── Delete (confirmed, CASE only) ──────────────────────────────────────────────
+  // ── Delete (confirmed, case or namespace) ──────────────────────────────────────
   protected onDeleteRequest(ref: ExchangeFileRef): void {
     this.pendingDelete.set(ref)
   }
@@ -153,7 +153,7 @@ export class ExchangeShellComponent implements OnInit, OnDestroy {
     const ref = this.pendingDelete()
     this.pendingDelete.set(null)
     if (ref) {
-      const result = await this.state.deleteFile(ref.path)
+      const result = await this.state.deleteFile(ref.scope, ref.path)
       if (result.success) {
         // Close the viewer if the file being previewed is the one just deleted.
         if (this.isStillSelected(ref)) this.clearSelection()

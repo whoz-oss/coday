@@ -121,6 +121,87 @@ export class ExchangeControllerService extends BaseService {
   }
 
   /**
+   * @param namespaceId
+   * @param path
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<ExchangeDeleteResponse>
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<ExchangeDeleteResponse>>
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<ExchangeDeleteResponse>>
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling deleteNamespaceFileExchange.')
+    }
+    if (path === null || path === undefined) {
+      throw new Error('Required parameter path was null or undefined when calling deleteNamespaceFileExchange.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>path, 'path')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<ExchangeDeleteResponse>('delete', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
    * @param caseId
    * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
@@ -674,6 +755,105 @@ export class ExchangeControllerService extends BaseService {
     }
 
     let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<ExchangeFileEntry>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: localVarConvertFormParamsToString ? localVarFormParams.toString() : localVarFormParams,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param namespaceId
+   * @param file
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<ExchangeFileEntry>
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<ExchangeFileEntry>>
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<ExchangeFileEntry>>
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling uploadNamespaceFileExchange.')
+    }
+    if (file === null || file === undefined) {
+      throw new Error('Required parameter file was null or undefined when calling uploadNamespaceFileExchange.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['multipart/form-data']
+
+    const canConsumeForm = this.canConsumeForm(consumes)
+
+    let localVarFormParams: { append(param: string, value: any): any }
+    let localVarUseForm = false
+    let localVarConvertFormParamsToString = false
+    // use FormData to transmit files using content-type "multipart/form-data"
+    // see https://stackoverflow.com/questions/4007969/application-x-www-form-urlencoded-or-multipart-form-data
+    localVarUseForm = canConsumeForm
+    if (localVarUseForm) {
+      localVarFormParams = new FormData()
+    } else {
+      localVarFormParams = new HttpParams({ encoder: this.encoder })
+    }
+
+    if (file !== undefined) {
+      localVarFormParams = (localVarFormParams.append('file', <any>file) as any) || localVarFormParams
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<ExchangeFileEntry>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,

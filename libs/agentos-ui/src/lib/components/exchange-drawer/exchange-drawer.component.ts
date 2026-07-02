@@ -11,7 +11,7 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
  *
  * Two scopes are rendered as sections:
  *   - Case files      — read + (when canWriteCase) upload / delete.
- *   - Namespace files — read-only by construction (no write affordance, decision #7).
+ *   - Namespace files — read + (when canWriteNamespace, i.e. namespace admin) upload / delete.
  *
  * Selecting a file swaps the list for the content viewer (narrow drawer); the viewer's back
  * button returns to the lists. A section is hidden entirely when not visible (forbidden →
@@ -42,10 +42,11 @@ export class ExchangeDrawerComponent {
   readonly canWriteCase = input<boolean>(false)
   readonly isUploading = input<boolean>(false)
 
-  // ── Namespace scope (read-only) ──────────────────────────────────────────────
+  // ── Namespace scope ──────────────────────────────────────────────────────────
   readonly namespaceFiles = input<ExchangeFileEntry[]>([])
   readonly namespaceStatus = input.required<ExchangeScopeStatus>()
   readonly namespaceSectionVisible = input<boolean>(false)
+  readonly canWriteNamespace = input<boolean>(false)
 
   // ── Current selection / viewer ────────────────────────────────────────────────
   readonly activeFile = input<ExchangeFileRef | null>(null)
@@ -54,7 +55,7 @@ export class ExchangeDrawerComponent {
   readonly canViewSelected = input<boolean>(true)
 
   readonly fileSelected = output<ExchangeFileRef>()
-  readonly uploadRequested = output<File[]>()
+  readonly uploadRequested = output<{ scope: ExchangeScope; files: File[] }>()
   readonly downloadRequested = output<ExchangeFileRef>()
   readonly downloadAllRequested = output<ExchangeScope>()
   readonly deleteRequested = output<ExchangeFileRef>()
@@ -87,7 +88,11 @@ export class ExchangeDrawerComponent {
     queueMicrotask(() => target?.focus())
   }
 
-  protected triggerUpload(): void {
+  /** Scope of the section whose upload button was last clicked (one hidden input is shared). */
+  private pendingUploadScope: ExchangeScope = ExchangeFileEntryScopeEnum.CASE
+
+  protected triggerUpload(scope: ExchangeScope): void {
+    this.pendingUploadScope = scope
     this.fileInput()?.nativeElement.click()
   }
 
@@ -95,7 +100,7 @@ export class ExchangeDrawerComponent {
     const input = event.target as HTMLInputElement
     const files = input.files ? Array.from(input.files) : []
     if (files.length > 0) {
-      this.uploadRequested.emit(files)
+      this.uploadRequested.emit({ scope: this.pendingUploadScope, files })
     }
     // Reset so re-selecting the same file fires (change) again.
     input.value = ''

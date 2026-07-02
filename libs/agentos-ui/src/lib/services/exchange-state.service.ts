@@ -161,13 +161,17 @@ export class ExchangeStateService {
       : this.controller.getNamespaceFileContentExchange(id, path)
   }
 
-  // ── Writes (case only) ────────────────────────────────────────────────────────
-  async uploadFile(file: File): Promise<{ success: boolean; error?: string }> {
-    const caseId = this.caseId
-    if (!caseId) return { success: false, error: 'No active case' }
+  // ── Writes (case + namespace, gated per scope by the server-computed capability) ──
+  async uploadFile(scope: ExchangeScope, file: File): Promise<{ success: boolean; error?: string }> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return { success: false, error: 'No active scope' }
     this.isUploading.set(true)
+    const upload$ = isCase
+      ? this.controller.uploadCaseFileExchange(id, file)
+      : this.controller.uploadNamespaceFileExchange(id, file)
     return new Promise((resolve) => {
-      this.controller.uploadCaseFileExchange(caseId, file).subscribe({
+      upload$.subscribe({
         next: () => {
           this.isUploading.set(false)
           this.refreshManifest()
@@ -191,11 +195,15 @@ export class ExchangeStateService {
     return (err?.status != null && byStatus[err.status]) || err?.message || 'Upload failed'
   }
 
-  async deleteFile(path: string): Promise<{ success: boolean; error?: string }> {
-    const caseId = this.caseId
-    if (!caseId) return { success: false, error: 'No active case' }
+  async deleteFile(scope: ExchangeScope, path: string): Promise<{ success: boolean; error?: string }> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return { success: false, error: 'No active scope' }
+    const delete$ = isCase
+      ? this.controller.deleteCaseFileExchange(id, path)
+      : this.controller.deleteNamespaceFileExchange(id, path)
     return new Promise((resolve) => {
-      this.controller.deleteCaseFileExchange(caseId, path).subscribe({
+      delete$.subscribe({
         next: () => {
           this.refreshManifest()
           resolve({ success: true })

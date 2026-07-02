@@ -15,6 +15,8 @@ describe('ExchangeStateService', () => {
     getNamespaceFilesManifestExchange: jest.Mock
     uploadCaseFileExchange: jest.Mock
     deleteCaseFileExchange: jest.Mock
+    uploadNamespaceFileExchange: jest.Mock
+    deleteNamespaceFileExchange: jest.Mock
   }
   let service: ExchangeStateService
 
@@ -47,6 +49,8 @@ describe('ExchangeStateService', () => {
       getNamespaceFilesManifestExchange: jest.fn().mockReturnValue(of(manifest(ExchangeManifestCapabilityEnum.NONE))),
       uploadCaseFileExchange: jest.fn(),
       deleteCaseFileExchange: jest.fn(),
+      uploadNamespaceFileExchange: jest.fn(),
+      deleteNamespaceFileExchange: jest.fn(),
     }
     TestBed.configureTestingModule({
       providers: [ExchangeStateService, { provide: ExchangeControllerService, useValue: controller }],
@@ -103,8 +107,8 @@ describe('ExchangeStateService', () => {
     })
   })
 
-  describe('namespace scope (read-only for a simple user)', () => {
-    it('READ → visible, never writable', () => {
+  describe('namespace scope capability', () => {
+    it('READ (simple member) → visible, not writable', () => {
       controller.getNamespaceFilesManifestExchange.mockReturnValue(
         of(manifest(ExchangeManifestCapabilityEnum.READ, [nsFile]))
       )
@@ -112,6 +116,16 @@ describe('ExchangeStateService', () => {
       expect(service.namespaceStatus()).toBe('ready')
       expect(service.namespaceFiles()).toEqual([nsFile])
       expect(service.canWriteNamespace()).toBe(false)
+    })
+
+    it('READ_WRITE (namespace admin) → writable, section visible', () => {
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(
+        of(manifest(ExchangeManifestCapabilityEnum.READ_WRITE, [nsFile]))
+      )
+      init()
+      expect(service.namespaceStatus()).toBe('ready')
+      expect(service.canWriteNamespace()).toBe(true)
+      expect(service.namespaceSectionVisible()).toBe(true)
     })
   })
 
@@ -135,7 +149,7 @@ describe('ExchangeStateService', () => {
       init()
       controller.uploadCaseFileExchange.mockReturnValue(of(caseFile))
       controller.getCaseFilesManifestExchange.mockClear()
-      const result = await service.uploadFile(new File(['x'], 'a.txt'))
+      const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
       expect(result.success).toBe(true)
       expect(controller.uploadCaseFileExchange).toHaveBeenCalledWith('c-1', expect.any(File))
       expect(controller.getCaseFilesManifestExchange).toHaveBeenCalledWith('c-1')
@@ -145,7 +159,7 @@ describe('ExchangeStateService', () => {
     it('upload 409 → returns a friendly conflict error', async () => {
       init()
       controller.uploadCaseFileExchange.mockReturnValue(throwError(() => ({ status: 409 })))
-      const result = await service.uploadFile(new File(['x'], 'a.txt'))
+      const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
       expect(result.success).toBe(false)
       expect(result.error).toBe('A file with this name already exists.')
     })
@@ -155,7 +169,7 @@ describe('ExchangeStateService', () => {
       controller.uploadCaseFileExchange.mockReturnValue(
         throwError(() => ({ status: 400, error: { message: "File type not allowed for upload: 'x.exe'" } }))
       )
-      const result = await service.uploadFile(new File(['x'], 'x.exe'))
+      const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'x.exe'))
       expect(result.success).toBe(false)
       expect(result.error).toBe("File type not allowed for upload: 'x.exe'")
     })
@@ -163,7 +177,7 @@ describe('ExchangeStateService', () => {
     it('upload 400 without a body message falls back to a generic disallowed-type message', async () => {
       init()
       controller.uploadCaseFileExchange.mockReturnValue(throwError(() => ({ status: 400 })))
-      const result = await service.uploadFile(new File(['x'], 'x.exe'))
+      const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'x.exe'))
       expect(result.error).toBe('This file type is not allowed.')
     })
 
@@ -171,10 +185,32 @@ describe('ExchangeStateService', () => {
       init()
       controller.deleteCaseFileExchange.mockReturnValue(of({ success: true, message: 'ok' }))
       controller.getCaseFilesManifestExchange.mockClear()
-      const result = await service.deleteFile('a.txt')
+      const result = await service.deleteFile(ExchangeFileEntryScopeEnum.CASE, 'a.txt')
       expect(result.success).toBe(true)
       expect(controller.deleteCaseFileExchange).toHaveBeenCalledWith('c-1', 'a.txt')
       expect(controller.getCaseFilesManifestExchange).toHaveBeenCalledWith('c-1')
+    })
+  })
+
+  describe('namespace writes (admin)', () => {
+    it('upload success → calls the namespace endpoint and reloads', async () => {
+      init()
+      controller.uploadNamespaceFileExchange.mockReturnValue(of(nsFile))
+      controller.getNamespaceFilesManifestExchange.mockClear()
+      const result = await service.uploadFile(ExchangeFileEntryScopeEnum.NAMESPACE, new File(['x'], 'shared.md'))
+      expect(result.success).toBe(true)
+      expect(controller.uploadNamespaceFileExchange).toHaveBeenCalledWith('ns-1', expect.any(File))
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledWith('ns-1')
+    })
+
+    it('delete success → calls the namespace endpoint and reloads', async () => {
+      init()
+      controller.deleteNamespaceFileExchange.mockReturnValue(of({ success: true, message: 'ok' }))
+      controller.getNamespaceFilesManifestExchange.mockClear()
+      const result = await service.deleteFile(ExchangeFileEntryScopeEnum.NAMESPACE, 'shared.md')
+      expect(result.success).toBe(true)
+      expect(controller.deleteNamespaceFileExchange).toHaveBeenCalledWith('ns-1', 'shared.md')
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledWith('ns-1')
     })
   })
 
