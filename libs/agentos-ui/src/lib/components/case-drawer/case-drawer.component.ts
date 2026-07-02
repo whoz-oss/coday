@@ -37,6 +37,7 @@ export class CaseDrawerComponent implements OnChanges {
   @Output() caseSelected = new EventEmitter<string>()
   @Output() createRequested = new EventEmitter<void>()
   @Output() closeRequested = new EventEmitter<void>()
+  @Output() deleteRequested = new EventEmitter<string>()
 
   @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: EntityListItem }>
 
@@ -54,5 +55,9 @@ export class CaseDrawerComponent implements OnChanges {
 
   protected onCreateRequested(): void {
     this.createRequested.emit()
+  }
+
+  protected onDeleteRequested(id: string): void {
+    this.deleteRequested.emit(id)
   }
 }
