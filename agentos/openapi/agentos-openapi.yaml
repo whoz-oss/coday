@@ -1170,7 +1170,6 @@ paths:
         | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
         | `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |
         | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
-
         `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
       operationId: listAiProvider
       parameters:
