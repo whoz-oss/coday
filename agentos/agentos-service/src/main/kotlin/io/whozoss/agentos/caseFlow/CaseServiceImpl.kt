@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -670,6 +671,7 @@ class CaseServiceImpl(
         return runtime
     }
 
+    @Transactional
     override fun startSubCase(
         parentCaseId: UUID,
         namespaceId: UUID,
@@ -710,9 +712,17 @@ class CaseServiceImpl(
                 ),
             )
 
-        // Grant the delegating user ADMIN on the sub-case so they can list,
-        // open, and stream it — same grant that CaseController.create applies
-        // for user-created cases.
+        // Create the [:PARENT_OF] graph edge so countAncestorDepth can traverse the chain.
+        // This runs inside the same @Transactional boundary as create() above: if the
+        // link fails, the sub-case node is rolled back too — no orphaned cases.
+        caseRepository.linkParentToChild(parentCaseId, subCase.id)
+
+        // Grant the delegating user ADMIN on the sub-case so they can list, open, and
+        // stream it — same grant that CaseController.create applies for user-created cases.
+        // This runs outside the Neo4j transaction boundary (permission edges are written
+        // via a separate Cypher MERGE that commits immediately). A failure here does NOT
+        // roll back the sub-case: the case exists and is usable, but the user may need a
+        // manual permission grant from a namespace ADMIN.
         runCatching {
             permissionService.grantPermission(
                 userId.toString(),
@@ -725,13 +735,6 @@ class CaseServiceImpl(
                 "Auto-ADMIN grant failed for sub-case ${subCase.id} (user $userId) — sub-case persisted. " +
                     "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
             }
-        }
-
-        // Create the [:PARENT_OF] graph edge so countAncestorDepth can traverse the chain.
-        runCatching {
-            caseRepository.linkParentToChild(parentCaseId, subCase.id)
-        }.onFailure { e ->
-            logger.warn(e) { "Failed to link parent $parentCaseId -> child ${subCase.id} in Neo4j" }
         }
 
         val runtime = activeRuntimes[subCase.id]!!

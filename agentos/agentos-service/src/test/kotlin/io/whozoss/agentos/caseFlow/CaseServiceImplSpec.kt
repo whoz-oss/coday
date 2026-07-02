@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.shouldBe
@@ -1331,6 +1332,91 @@ class CaseServiceImplSpec :
         // -------------------------------------------------------------------------
         // Kill propagation to sub-cases
         // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // startSubCase: delegation depth and linkParentToChild atomicity
+        // -------------------------------------------------------------------------
+
+        "startSubCase creates a sub-case and links it to the parent" {
+            val service = buildService()
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+
+            val runtime = service.startSubCase(
+                parentCaseId = parentCase.id,
+                namespaceId = namespaceId,
+                agentName = agentName,
+                task = "do something",
+                userId = userId,
+            )
+
+            // A runtime was returned — the sub-case exists and is active
+            val subCaseId = runtime.id
+            val subCase = service.getById(subCaseId)
+            subCase.namespaceId shouldBe namespaceId
+            subCase.parentCaseId shouldBe parentCase.id
+        }
+
+        "startSubCase propagates exception when linkParentToChild fails" {
+            // Uses a mockk CaseRepository that delegates all operations to InMemoryCaseRepository
+            // but throws on linkParentToChild.
+            // Before the refacto, this exception was swallowed by runCatching — the sub-case
+            // would be created and the error silently logged.
+            // After the refacto, the exception propagates to the caller.
+            val delegate = InMemoryCaseRepository()
+            val throwingRepo = mockk<CaseRepository> {
+                every { save(any()) } answers { delegate.save(firstArg()) }
+                every { findByIds(any(), any()) } answers { delegate.findByIds(firstArg(), secondArg()) }
+                every { findByParent(any()) } answers { delegate.findByParent(firstArg()) }
+                every { delete(any()) } answers { delegate.delete(firstArg()) }
+                every { deleteByParent(any()) } answers { delegate.deleteByParent(firstArg()) }
+                every { findAccessibleByUserInNamespace(any(), any()) } answers {
+                    delegate.findAccessibleByUserInNamespace(firstArg(), secondArg())
+                }
+                every { findConcerningUser(any()) } answers { delegate.findConcerningUser(firstArg()) }
+                every { findConcerningUserInNamespace(any(), any()) } answers {
+                    delegate.findConcerningUserInNamespace(firstArg(), secondArg())
+                }
+                every { findActiveByParentCaseId(any()) } answers { delegate.findActiveByParentCaseId(firstArg()) }
+                every { findActiveDescendants(any()) } answers { delegate.findActiveDescendants(firstArg()) }
+                every { countAncestorDepth(any()) } answers { delegate.countAncestorDepth(firstArg()) }
+                every { linkParentToChild(any(), any()) } throws RuntimeException("simulated Neo4j link failure")
+            }
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+            }
+            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                throwingRepo,
+                CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                userService,
+                namespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+            )
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+
+            shouldThrow<RuntimeException> {
+                service.startSubCase(
+                    parentCaseId = parentCase.id,
+                    namespaceId = namespaceId,
+                    agentName = agentName,
+                    task = "do something",
+                    userId = userId,
+                )
+            }
+        }
 
         "killing a parent case also kills its active sub-cases" {
             // Verifies that killCase propagates depth-first to sub-cases created by
