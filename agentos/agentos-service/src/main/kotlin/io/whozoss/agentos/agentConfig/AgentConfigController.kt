@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.entity.DeploymentScope
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
@@ -252,6 +253,12 @@ class AgentConfigController(
         agentConfigService
             .findAvailableByUserExternalId(agentConfigSearchRequest.namespaceId, agentConfigSearchRequest.userExternalId)
             .map { toResource(it) }
+
+    @GetMapping("/{id}/deployments")
+    @PreAuthorize("hasPermission(#id,'AgentConfig', 'WRITE')")
+    fun getDeployments(
+        @PathVariable id: UUID,
+    ): List<DeploymentScope> = agentConfigService.findDeployments(id)
 
     /**
      * GET /api/agent-configs/{id}/definition

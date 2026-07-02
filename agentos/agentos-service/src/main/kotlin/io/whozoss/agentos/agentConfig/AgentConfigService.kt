@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.entity.DeploymentScope
 import io.whozoss.agentos.entity.EntityService
 import java.util.UUID
 
@@ -71,4 +72,6 @@ interface AgentConfigService : EntityService<AgentConfig, UUID?> {
      * @throws ResourceNotFoundException if the agent config does not exist
      */
     fun disable(id: UUID): AgentConfig
+
+    fun findDeployments(id: UUID): List<DeploymentScope>
 }

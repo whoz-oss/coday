@@ -9,6 +9,7 @@ import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.entity.ScopeType
 import io.whozoss.agentos.config.TestAuditConfiguration
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
@@ -663,6 +664,67 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             updated.metadata.createdBy shouldBe TestAuditConfiguration.TEST_AUDITOR_ID
             // modifiedBy MUST be auditor B
             updated.metadata.modifiedBy shouldBe TestAuditConfiguration.SECOND_AUDITOR_ID
+        }
+
+        // -------------------------------------------------------------------------
+        // findDeployments
+        // -------------------------------------------------------------------------
+
+        "findDeployments returns empty list when agent has no DEPLOYED_TO relationships" {
+            val ns = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "undeployed-agent"))
+
+            agentConfigRepo.findDeployments(agent.id).shouldBeEmpty()
+        }
+
+        "findDeployments returns Namespace scope when agent is deployed on a namespace" {
+            val ns = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "ns-deployed-agent"))
+            namespaceRepo.deployAgents(ns.id, listOf(agent.id))
+
+            val result = agentConfigRepo.findDeployments(agent.id)
+
+            result shouldHaveSize 1
+            result.first().scopeType shouldBe ScopeType.NAMESPACE
+            result.first().id shouldBe ns.id
+        }
+
+        "findDeployments returns UserGroup scope when agent is deployed on a user group" {
+            val ns = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "group-deployed-agent"))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            userGroupRepo.addAgents(group.id, listOf(agent.id))
+
+            val result = agentConfigRepo.findDeployments(agent.id)
+
+            result shouldHaveSize 1
+            result.first().scopeType shouldBe ScopeType.USER_GROUP
+            result.first().id shouldBe group.id
+        }
+
+        "findDeployments returns all scopes when agent is deployed on both a namespace and a user group" {
+            val ns = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(ns.id, "multi-deployed-agent"))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            namespaceRepo.deployAgents(ns.id, listOf(agent.id))
+            userGroupRepo.addAgents(group.id, listOf(agent.id))
+
+            val result = agentConfigRepo.findDeployments(agent.id)
+
+            result shouldHaveSize 2
+            result.map { it.scopeType } shouldContainExactlyInAnyOrder listOf(ScopeType.NAMESPACE, ScopeType.USER_GROUP)
+            result.first { it.scopeType == ScopeType.NAMESPACE }.id shouldBe ns.id
+            result.first { it.scopeType == ScopeType.USER_GROUP }.id shouldBe group.id
+        }
+
+        "findDeployments returns deployments only for the queried agent" {
+            val ns = namespaceRepo.save(namespace())
+            val agentA = agentConfigRepo.save(agentConfig(ns.id, "agent-a"))
+            val agentB = agentConfigRepo.save(agentConfig(ns.id, "agent-b"))
+            namespaceRepo.deployAgents(ns.id, listOf(agentA.id))
+            // agentB is intentionally not deployed
+
+            agentConfigRepo.findDeployments(agentB.id).shouldBeEmpty()
         }
 
         "soft delete stamps lastModifiedDate" {

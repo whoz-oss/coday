@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.entity.DeploymentScope
 import io.whozoss.agentos.entity.EntityRepository
 import java.util.UUID
 
@@ -37,4 +38,6 @@ interface AgentConfigRepository : EntityRepository<AgentConfig, UUID?> {
         parentId: UUID?,
         withDisabled: Boolean,
     ): List<AgentConfig>
+
+    fun findDeployments(id: UUID): List<DeploymentScope>
 }

@@ -2,6 +2,8 @@ package io.whozoss.agentos.agentConfig
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
@@ -40,6 +42,7 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
     @Autowired lateinit var mockMvc: MockMvc
 
     @Autowired lateinit var agentConfigService: AgentConfigService
+    @Autowired lateinit var namespaceService: NamespaceService
 
     private val namespaceId = UUID.randomUUID()
 
@@ -283,6 +286,52 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                         .content("""{ "ids": ["${a.id}", "${b.id}"] }"""),
                 ).andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/agent-configs/{id}/deployments
+        // -------------------------------------------------------------------------
+
+        "GET /api/agent-configs/{id}/deployments returns 200 with empty list when agent has no deployments" {
+            val agent =
+                agentConfigService.create(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = namespaceId,
+                        name = "undeployed-agent-${UUID.randomUUID()}",
+                    ),
+                )
+
+            mockMvc
+                .perform(get("/api/agent-configs/${agent.id}/deployments"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
+
+        "GET /api/agent-configs/{id}/deployments returns 200 with namespace scope after deploy" {
+            val ns =
+                namespaceService.create(
+                    Namespace(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        name = "deploy-test-ns-${UUID.randomUUID()}",
+                    ),
+                )
+            val agent =
+                agentConfigService.create(
+                    AgentConfig(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        namespaceId = ns.id,
+                        name = "deployed-agent-${UUID.randomUUID()}",
+                    ),
+                )
+            namespaceService.deployAgents(ns.id, listOf(agent.id))
+
+            mockMvc
+                .perform(get("/api/agent-configs/${agent.id}/deployments"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(1)))
+                .andExpect(jsonPath("$[0].scopeType").value("NAMESPACE"))
+                .andExpect(jsonPath("$[0].id").value(ns.id.toString()))
         }
 
         "POST /api/agent-configs/by-ids with empty array returns 200 with empty list" {

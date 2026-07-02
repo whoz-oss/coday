@@ -89,11 +89,12 @@ class Neo4jPersistenceConfiguration {
     fun neo4jAgentConfigRepository(
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
+        neo4jClient: Neo4jClient,
         namespaceRepository: NamespaceRepository,
     ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemAgentConfigRepository(
-            delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
+            delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService, neo4jClient),
             namespaceRepository = namespaceRepository,
         )
     }

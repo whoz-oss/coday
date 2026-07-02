@@ -1,7 +1,10 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.entity.DeploymentScope
+import io.whozoss.agentos.entity.ScopeType
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
+import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -14,6 +17,7 @@ import java.util.UUID
 open class Neo4jAgentConfigRepository(
     private val neo4jRepository: AgentConfigNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
+    private val neo4jClient: Neo4jClient,
 ) : AgentConfigRepository {
     override fun save(entity: AgentConfig): AgentConfig =
         neo4jRepository
@@ -44,6 +48,34 @@ open class Neo4jAgentConfigRepository(
         withDisabled: Boolean,
     ): List<AgentConfig> = findByNamespaceId(parentId, withDisabled).map { it.toDomain() }
 
+    /**
+     * Returns the deployment scopes for the given agent.
+     *
+     * SDN cannot map scalar-only @Query results to a non-entity projection type when the
+     * repository is typed as Neo4jRepository<AgentConfigNode, String> — it always tries to
+     * instantiate AgentConfigNode, which fails because the record only carries {id, scopeLabel}.
+     * We therefore execute the query directly via Neo4jClient and map the rows ourselves.
+     */
+    override fun findDeployments(id: UUID): List<DeploymentScope> =
+        neo4jClient
+            .query(
+                """
+                MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(scope)
+                WHERE a.id = ${'$'}id
+                WITH scope, [l IN labels(scope) WHERE l IN ['Namespace', 'UserGroup']] AS matchedLabels
+                WHERE size(matchedLabels) > 0
+                RETURN scope.id AS id, matchedLabels[0] AS scopeLabel
+                """.trimIndent(),
+            ).bind(id.toString()).to("id")
+            .fetch()
+            .all()
+            .map { row ->
+                DeploymentScope(
+                    scopeType = ScopeType.entries.first { it.label == row["scopeLabel"] as String },
+                    id = UUID.fromString(row["id"] as String),
+                )
+            }
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
@@ -62,7 +94,7 @@ open class Neo4jAgentConfigRepository(
     ): List<AgentConfig> =
         neo4jRepository
             .findDeployedByNamespaceIdAndUserId(
-                namespaceId = namespaceId.toString(),
+                namespaceId = namespaceId?.toString(),
                 userId = userId?.toString(),
                 agentName = agentName,
                 withDisabled = withDisabled,

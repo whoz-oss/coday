@@ -98,4 +98,6 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
             """,
     )
     fun findPlatformAgents(withDisabled: Boolean = false): List<AgentConfigNode>
+
+
 }

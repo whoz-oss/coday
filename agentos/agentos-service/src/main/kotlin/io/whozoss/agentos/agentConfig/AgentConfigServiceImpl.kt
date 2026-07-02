@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
+import io.whozoss.agentos.entity.DeploymentScope
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -91,6 +92,9 @@ class AgentConfigServiceImpl(
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
         return agentConfigRepository.save(existing.copy(enabled = false))
     }
+
+    override fun findDeployments(id: UUID): List<DeploymentScope> =
+        agentConfigRepository.findDeployments(id)
 
     /**
      * Throws [IllegalArgumentException] if an active [AgentConfig] with the same [name]

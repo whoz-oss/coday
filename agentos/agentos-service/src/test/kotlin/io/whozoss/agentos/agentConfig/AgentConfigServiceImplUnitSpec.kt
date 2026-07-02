@@ -7,8 +7,11 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import io.whozoss.agentos.entity.DeploymentScope
 import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
+import io.whozoss.agentos.entity.ScopeType
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
@@ -33,6 +36,10 @@ class AgentConfigServiceImplUnitSpec :
                     agentName: String?,
                     withDisabled: Boolean,
                 ): List<AgentConfig> = throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
+
+                // findDeployments is a Neo4j-only query; not exercised in unit tests.
+                override fun findDeployments(id: UUID): List<DeploymentScope> =
+                    throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
 
                 // ConcurrentHashMap does not support null keys, so platform agents (namespaceId=null)
                 // are retrieved by scanning all stored entities rather than calling findByParent(null).
@@ -268,5 +275,34 @@ class AgentConfigServiceImplUnitSpec :
 
             val result = svc.findByNamespace(namespaceId)
             result shouldHaveSize 2
+        }
+
+        // -------------------------------------------------------------------------
+        // findDeployments — delegates to repository
+        // -------------------------------------------------------------------------
+
+        "findDeployments delegates to repository and returns its result" {
+            val repo = mockk<AgentConfigRepository>()
+            val svc = service(repo)
+            val id = UUID.randomUUID()
+            val expected = listOf(
+                DeploymentScope(scopeType = ScopeType.NAMESPACE, id = UUID.randomUUID()),
+                DeploymentScope(scopeType = ScopeType.USER_GROUP, id = UUID.randomUUID()),
+            )
+            every { repo.findDeployments(id) } returns expected
+
+            val result = svc.findDeployments(id)
+
+            result shouldBe expected
+            verify(exactly = 1) { repo.findDeployments(id) }
+        }
+
+        "findDeployments returns empty list when repository returns none" {
+            val repo = mockk<AgentConfigRepository>()
+            val svc = service(repo)
+            val id = UUID.randomUUID()
+            every { repo.findDeployments(id) } returns emptyList()
+
+            svc.findDeployments(id) shouldBe emptyList()
         }
     })
