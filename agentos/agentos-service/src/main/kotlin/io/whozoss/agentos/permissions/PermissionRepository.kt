@@ -123,4 +123,13 @@ interface PermissionRepository {
         ids: Collection<String>,
         relation: PermissionRelation,
     ): Set<String>
+
+    /**
+     * Sets the per-user "starred" (favorite) flag on the user's direct relation to an entity.
+     * No-op if the user has no direct ADMIN/MEMBER relation on the entity.
+     */
+    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean)
+
+    /** Ids of entities of the given type that the user has starred (favorited). */
+    fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String>
 }
