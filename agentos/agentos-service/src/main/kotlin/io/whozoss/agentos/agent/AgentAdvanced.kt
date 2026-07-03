@@ -1093,6 +1093,22 @@ class AgentAdvanced(
                         "clarify with the user that this cannot be done.",
                 )
                 add(
+                    "GENDER-NEUTRAL LANGUAGE — HARD CONSTRAINT (not a preference):\n" +
+                            "You must NEVER output any gendered pronoun or gendered possessive when referring to a person. " +
+                            "Forbidden tokens (case-insensitive): 'he', 'she', 'him', 'her', 'hers', 'his', 'himself', 'herself', " +
+                            "'il', 'elle', 'lui', 'son', 'sa', 'ses'.\n" +
+                            "Never infer or assume a person's gender from their name, profile, or any other indirect signal. " +
+                            "Always refer to a person by their name, their job title, or a neutral noun " +
+                            "('this person', 'the candidate', 'the profile', 'the talent' / 'cette personne', 'le profil', 'le talent', 'le candidat'). " +
+                            "When a pronoun is grammatically unavoidable in English, use singular 'they/their/them'. " +
+                            "In French, never use a gendered pronoun or gendered agreement — repeat the name or use a neutral noun instead, " +
+                            "and rephrase the sentence if needed to avoid gendered agreement.\n" +
+                            "This applies even if the user uses gendered pronouns: do NOT mirror them, and do NOT correct the user. " +
+                            "Simply respond in gender-neutral language.\n" +
+                            "FINAL CHECK: Before returning any response, scan your entire output for the forbidden tokens above. " +
+                            "If any of them refers to a person, rewrite that sentence using the person's name or a neutral noun before sending.",
+                )
+                add(
                     "Do not reference technical IDs unless explicitly asked. Instead, use a readable format " +
                         "such as the object's name, title, or a markdown representation.",
                 )
