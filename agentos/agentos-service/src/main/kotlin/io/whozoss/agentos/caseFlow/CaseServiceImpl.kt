@@ -630,8 +630,7 @@ class CaseServiceImpl(
      */
     private fun resolveActor(userId: UUID): Actor {
         val user =
-            userService.findById(userId)
-                ?: throw ResourceNotFoundException("User not found: $userId")
+            userService.getById(userId)
         return Actor(
             id = userId.toString(),
             displayName = user.displayName(),
