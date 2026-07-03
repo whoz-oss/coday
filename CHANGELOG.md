@@ -1,3 +1,15 @@
+## 0.196.1 (2026-07-03)
+
+### 🩹 Fixes
+
+- prevent thread data loss on tab close + server shutdown ([c8a3ffbb](https://github.com/whoz-oss/coday/commit/c8a3ffbb))
+- prevent thread data loss on tab close + server shutdown ([#1086](https://github.com/whoz-oss/coday/pull/1086))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.196.0 (2026-07-03)
 
 ### 🚀 Features
