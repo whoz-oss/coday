@@ -6,53 +6,80 @@ import {
   OnChanges,
   Output,
   SimpleChanges,
-  TemplateRef,
-  ViewChild,
 } from '@angular/core'
-import { Case } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { CaseItemComponent } from '../case-item/case-item.component'
+import { NgTemplateOutlet } from '@angular/common'
+import { IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseNode } from './case-node'
 
 /**
- * CaseDrawerComponent — presentational drawer content for the case list.
+ * CaseDrawerComponent — presentational drawer content for the case tree.
  *
- * Receives cases as @Input, maps them to EntityListItem[], and renders
- * ds-entity-list with a minimal itemTemplate. Navigation is delegated
- * upward via (caseSelected).
+ * Receives a pre-built CaseNode tree as @Input and renders it as a
+ * collapsible tree (roots collapsed by default).
+ * The active case and all its ancestors are auto-expanded on input change.
  *
  * Kept presentational: no Router, no HTTP, no state services.
  */
 @Component({
   selector: 'agentos-case-drawer',
   standalone: true,
-  imports: [EntityListComponent, IconButtonComponent],
+  imports: [NgTemplateOutlet, IconButtonComponent],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CaseDrawerComponent implements OnChanges {
-  @Input() cases: Case[] = []
+  @Input() caseTree: CaseNode[] = []
   @Input() activeCaseId: string | null = null
 
   @Output() caseSelected = new EventEmitter<string>()
   @Output() createRequested = new EventEmitter<void>()
   @Output() closeRequested = new EventEmitter<void>()
 
-  @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: EntityListItem }>
-
-  protected caseItems: EntityListItem[] = []
+  /** Set of node ids whose children are currently visible. */
+  protected expandedIds = new Set<string>()
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['cases']) {
-      this.caseItems = this.cases.map(CaseItemComponent.toListItem)
+    if (changes['activeCaseId'] || changes['caseTree']) {
+      this.autoExpandAncestors()
     }
   }
 
-  protected onItemSelected(id: string): void {
-    this.caseSelected.emit(id)
+  /**
+   * Walk the tree to find the active case and expand all its ancestors.
+   * Called whenever the tree or the active id changes.
+   */
+  private autoExpandAncestors(): void {
+    if (!this.activeCaseId || !this.caseTree.length) return
+
+    const findAndExpand = (nodes: CaseNode[], targetId: string): boolean => {
+      for (const node of nodes) {
+        if (node.id === targetId) return true
+        if (node.children.length && findAndExpand(node.children, targetId)) {
+          this.expandedIds.add(node.id)
+          return true
+        }
+      }
+      return false
+    }
+
+    findAndExpand(this.caseTree, this.activeCaseId)
   }
 
-  protected onCreateRequested(): void {
-    this.createRequested.emit()
+  protected isExpanded(nodeId: string): boolean {
+    return this.expandedIds.has(nodeId)
+  }
+
+  protected toggleExpand(event: Event, nodeId: string): void {
+    event.stopPropagation()
+    if (this.expandedIds.has(nodeId)) {
+      this.expandedIds.delete(nodeId)
+    } else {
+      this.expandedIds.add(nodeId)
+    }
+  }
+
+  protected onCaseSelected(caseId: string): void {
+    this.caseSelected.emit(caseId)
   }
 }

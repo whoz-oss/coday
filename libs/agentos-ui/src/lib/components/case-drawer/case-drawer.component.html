@@ -1,33 +1,53 @@
-<ds-entity-list
-  title="Cases"
-  [items]="caseItems"
-  [itemTemplate]="caseItemTpl"
-  [showCreate]="true"
-  emptyMessage="No cases yet. Start one below."
-  searchPlaceholder="Filter cases…"
-  cardMinWidth="220px"
-  contentMaxWidth="100%"
-  (itemSelected)="onItemSelected($event)"
-  (createRequested)="onCreateRequested()"
->
-  <!-- Inject the close button into the toolbar-start slot, before the title -->
-  <ds-icon-button
-    toolbar-start
-    icon="chevron_left"
-    variant="default"
-    title="Close drawer"
-    (action)="closeRequested.emit()"
-  />
-</ds-entity-list>
+<div class="case-drawer">
+  <div class="case-drawer__header">
+    <ds-icon-button icon="chevron_left" variant="default" title="Close drawer" (action)="closeRequested.emit()" />
+    <span class="case-drawer__title">Cases</span>
+    <ds-icon-button icon="add" variant="default" title="New case" (action)="createRequested.emit()" />
+  </div>
 
-<!-- Minimal case item template: single-line row, active highlight -->
-<ng-template #caseItemTpl let-item>
-  <button
-    type="button"
-    class="case-drawer-item"
-    [class.case-drawer-item--active]="item.id === activeCaseId"
-    (click)="onItemSelected(item.id)"
-  >
-    <span class="case-drawer-item__name">{{ item.name }}</span>
-  </button>
-</ng-template>
+  <div class="case-drawer__list">
+    <!-- Recursive template: renders a list of CaseNode at a given depth -->
+    <ng-template #caseNodeTpl let-nodes="nodes" let-depth="depth">
+      @for (node of nodes; track node.id) {
+        <div class="case-node" [style.--depth]="depth">
+          <!-- Row -->
+          <button
+            type="button"
+            class="case-node__row"
+            [class.case-node__row--active]="node.id === activeCaseId"
+            (click)="onCaseSelected(node.id)"
+          >
+            <!-- Expand / collapse toggle (only when children exist) -->
+            <span class="case-node__expand-slot">
+              @if (node.children.length) {
+                <button
+                  type="button"
+                  class="case-node__toggle"
+                  [title]="isExpanded(node.id) ? 'Collapse' : 'Expand'"
+                  (click)="toggleExpand($event, node.id)"
+                >
+                  <span class="case-node__toggle-icon" [class.case-node__toggle-icon--open]="isExpanded(node.id)">
+                    ›
+                  </span>
+                </button>
+              }
+            </span>
+
+            <span class="case-node__title">{{ node.title }}</span>
+          </button>
+
+          <!-- Children (visible only when expanded) -->
+          @if (isExpanded(node.id) && node.children.length) {
+            <ng-container *ngTemplateOutlet="caseNodeTpl; context: { nodes: node.children, depth: depth + 1 }" />
+          }
+        </div>
+      }
+    </ng-template>
+
+    @if (caseTree.length === 0) {
+      <p class="case-drawer__empty">No cases yet.</p>
+    } @else {
+      <ng-container *ngTemplateOutlet="caseNodeTpl; context: { nodes: caseTree, depth: 0 }" />
+    }
+  </div>
+</div>
