@@ -1,3 +1,13 @@
+## 0.196.0 (2026-07-03)
+
+### 🚀 Features
+
+- agent delegation via sub-cases ([#1051](https://github.com/whoz-oss/coday/pull/1051))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.195.0 (2026-07-03)
 
 ### 🚀 Features
