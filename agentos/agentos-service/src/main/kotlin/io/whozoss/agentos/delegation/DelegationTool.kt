@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -155,7 +156,9 @@ class DelegationTool(
         if (invalidAgents.isNotEmpty()) {
             return ToolExecutionResult.error(
                 output =
-                    "Agent(s) ${invalidAgents.joinToString(", ") { "'$it'" }} are not in the delegation allowlist. " +
+                    "${invalidAgents.size} Agent(s) (${
+                        invalidAgents.take(10).joinToString(", ") { "'$it'" }
+                    }) are not in the delegation allowlist. " +
                         "Allowed agents: ${allowedAgents.joinToString(", ")}.",
                 errorType = "UNAUTHORIZED_AGENT",
             )
@@ -181,7 +184,7 @@ class DelegationTool(
                 input.delegations
                     .map { delegation ->
                         async { runSingleDelegation(delegation, userId) }
-                    }.map { it.await() }
+                    }.awaitAll()
             }
 
         val anySuccess = results.any { it.success }
@@ -212,7 +215,7 @@ class DelegationTool(
         val agentName = delegation.agentName
         val subRuntime =
             runCatching {
-                when (val resumeId = delegation.subCaseId) {
+                when (val subCaseId = delegation.subCaseId) {
                     null -> {
                         logger.info { "[DelegationTool] Starting sub-case for '$agentName'" }
                         subCaseManager.startSubCase(
@@ -225,9 +228,9 @@ class DelegationTool(
                     }
 
                     else -> {
-                        logger.info { "[DelegationTool] Resuming sub-case $resumeId for '$agentName'" }
+                        logger.info { "[DelegationTool] Resuming sub-case $subCaseId for '$agentName'" }
                         subCaseManager.resumeSubCase(
-                            subCaseId = resumeId,
+                            subCaseId = subCaseId,
                             agentName = agentName,
                             task = delegation.task,
                             userId = userId,
