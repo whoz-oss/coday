@@ -1,37 +1,23 @@
 <div class="case-drawer">
-  <!-- Toolbar: mirrors ds-entity-list layout (close · title · search · add) -->
-  <div class="case-drawer__toolbar">
+  <div class="case-drawer__header">
     <ds-icon-button icon="chevron_left" variant="default" title="Close drawer" (action)="closeRequested.emit()" />
     <span class="case-drawer__title">Cases</span>
-    <div class="case-drawer__search">
-      <span class="case-drawer__search-icon">&#x1F50D;</span>
-      <input
-        class="case-drawer__search-input"
-        type="search"
-        placeholder="Filter cases…"
-        autocomplete="off"
-        [ngModel]="searchQuery()"
-        (ngModelChange)="searchQuery.set($event)"
-        (keydown.escape)="clearSearch()"
-      />
-      @if (isSearchActive()) {
-        <button type="button" class="case-drawer__search-clear" title="Clear" (click)="clearSearch()">×</button>
-      }
-    </div>
     <ds-icon-button icon="add" variant="default" title="New case" (action)="createRequested.emit()" />
   </div>
 
-  <!-- Tree list -->
   <div class="case-drawer__list">
+    <!-- Recursive template: renders a list of CaseNode at a given depth -->
     <ng-template #caseNodeTpl let-nodes="nodes" let-depth="depth">
       @for (node of nodes; track node.id) {
         <div class="case-node" [style.--depth]="depth">
+          <!-- Row -->
           <button
             type="button"
             class="case-node__row"
             [class.case-node__row--active]="node.id === activeCaseId"
             (click)="onCaseSelected(node.id)"
           >
+            <!-- Expand / collapse toggle (only when children exist) -->
             <span class="case-node__expand-slot">
               @if (node.children.length) {
                 <button
@@ -41,14 +27,16 @@
                   (click)="toggleExpand($event, node.id)"
                 >
                   <span class="case-node__toggle-icon" [class.case-node__toggle-icon--open]="isExpanded(node.id)">
-                    &rsaquo;
+                    ›
                   </span>
                 </button>
               }
             </span>
+
             <span class="case-node__title">{{ node.title }}</span>
           </button>
 
+          <!-- Children (visible only when expanded) -->
           @if (isExpanded(node.id) && node.children.length) {
             <ng-container *ngTemplateOutlet="caseNodeTpl; context: { nodes: node.children, depth: depth + 1 }" />
           }
@@ -56,16 +44,10 @@
       }
     </ng-template>
 
-    @if (filteredTree().length === 0) {
-      <p class="case-drawer__empty">
-        @if (isSearchActive()) {
-          No cases matching “{{ searchQuery() }}”
-        } @else {
-          No cases yet.
-        }
-      </p>
+    @if (caseTree.length === 0) {
+      <p class="case-drawer__empty">No cases yet.</p>
     } @else {
-      <ng-container *ngTemplateOutlet="caseNodeTpl; context: { nodes: filteredTree(), depth: 0 }" />
+      <ng-container *ngTemplateOutlet="caseNodeTpl; context: { nodes: caseTree, depth: 0 }" />
     }
   </div>
 </div>
