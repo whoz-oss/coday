@@ -1,6 +1,7 @@
 package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
@@ -30,7 +31,7 @@ open class Neo4jPromptRepository(
             .save(PromptNode.fromDomain(entity, objectMapper))
             .also { savedNode ->
                 entity.namespaceId?.let { nsId ->
-                    childLinkService.link("Prompt", savedNode.id, "Namespace", nsId.toString())
+                    childLinkService.link(EntityType.PROMPT.label, savedNode.id, EntityType.NAMESPACE.label, nsId.toString())
                 }
             }.toDomain(objectMapper)
             .also {
