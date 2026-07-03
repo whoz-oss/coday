@@ -31,6 +31,7 @@ data class CaseDto(
     val namespaceId: UUID,
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String? = null,
+    val parentCaseId: UUID? = null,
     val created: Instant? = null,
     val removed: Boolean = false,
 )
