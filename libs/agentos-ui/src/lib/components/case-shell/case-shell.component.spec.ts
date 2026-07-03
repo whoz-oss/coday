@@ -79,27 +79,31 @@ describe('CaseShellComponent', () => {
       expect(routerMock.navigate).not.toHaveBeenCalled()
     })
 
-    it('names the case in the confirmation prompt when it has a title', () => {
+    it('confirms with the same label the drawer row shows (the case id, not the title)', () => {
+      // The drawer renders CaseItemComponent.toListItem(c).name, which is c.id today
+      // (titles are not user-facing yet). The confirm must use that same label so the
+      // dialog identifies the row the user clicked.
       const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
       const component = makeComponent(`/agentos/${NS_ID}/cases`, [caseWith('case-1', 'My Case')])
 
       component['onDeleteRequested']('case-1')
 
-      expect(confirmSpy).toHaveBeenCalledWith('Delete case "My Case"?')
+      expect(confirmSpy).toHaveBeenCalledWith('Delete "case-1"?')
     })
 
-    it('falls back to a generic prompt when the case has no title', () => {
+    it('confirms with the case id when the case is not in the current list', () => {
       const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent(`/agentos/${NS_ID}/cases`, [caseWith('case-1')])
+      const component = makeComponent(`/agentos/${NS_ID}/cases`, [])
 
-      component['onDeleteRequested']('case-1')
+      component['onDeleteRequested']('gone-9')
 
-      expect(confirmSpy).toHaveBeenCalledWith('Delete this case?')
+      expect(confirmSpy).toHaveBeenCalledWith('Delete "gone-9"?')
     })
 
-    it('does not navigate or refresh, and logs, when the delete request fails', () => {
+    it('logs and alerts the user, and does not navigate or refresh, when the delete request fails', () => {
       jest.spyOn(window, 'confirm').mockReturnValue(true)
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
       const component = makeComponent(`/agentos/${NS_ID}/cases/active-1`)
       caseControllerMock.deleteCase.mockReturnValue(throwError(() => new Error('boom')))
 
@@ -109,6 +113,8 @@ describe('CaseShellComponent', () => {
       // No refresh: listByParentCase stays at its single construction-time call.
       expect(caseControllerMock.listByParentCase).toHaveBeenCalledTimes(1)
       expect(errorSpy).toHaveBeenCalled()
+      // The failure is surfaced to the user, not just the console.
+      expect(alertSpy).toHaveBeenCalled()
     })
   })
 })
