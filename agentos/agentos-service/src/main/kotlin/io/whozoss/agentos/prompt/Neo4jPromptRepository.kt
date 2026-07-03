@@ -30,9 +30,9 @@ open class Neo4jPromptRepository(
         neo4jRepository
             .save(PromptNode.fromDomain(entity, objectMapper))
             .also { savedNode ->
-                // Link is created only on first save (version == null means new entity).
+                // Link is created only on first save — SDN sets @Version to 0 on initial persist.
                 // namespaceId is immutable post-create so the edge never needs updating.
-                if (entity.metadata.version == null) {
+                if (savedNode.version == 0L) {
                     entity.namespaceId?.let { nsId ->
                         childLinkService.link(EntityType.PROMPT.label, savedNode.id, EntityType.NAMESPACE.label, nsId.toString())
                     }
