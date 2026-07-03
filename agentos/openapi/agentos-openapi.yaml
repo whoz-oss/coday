@@ -1515,6 +1515,20 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/prompts/platform:
+    get:
+      tags:
+      - prompt-controller
+      operationId: listPlatformPrompts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
   /api/prompts/by-parentId/{parentId}:
     get:
       tags:
