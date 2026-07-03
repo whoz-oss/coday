@@ -4,7 +4,6 @@ import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/ro
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, filter, map, merge, of, switchMap } from 'rxjs'
-import { buildCaseTree, CaseNode } from '../case-drawer/case-node'
 import { CaseDrawerComponent } from '../case-drawer/case-drawer.component'
 import { HeaderComponent } from '../header/header.component'
 
@@ -13,8 +12,8 @@ import { HeaderComponent } from '../header/header.component'
  *
  * Responsibilities:
  * - Owns the ds-drawer layout: header + collapsible sidenav + routed content
- * - Loads a flat list of cases for the current namespace and builds the CaseNode tree
- * - Passes the tree to CaseDrawerComponent (presentational)
+ * - Loads and refreshes the case list for the current namespace
+ * - Passes cases to CaseDrawerComponent (presentational)
  * - Handles drawer toggle state
  * - Navigates on case selection / create
  *
@@ -41,23 +40,15 @@ export class CaseShellComponent {
   /** Trigger to refresh the case list after mutations. */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  /**
-   * Flat list of all cases for this namespace, re-fetched on each refresh trigger.
-   * The tree is built client-side from this flat list.
-   */
   private readonly cases$ = this.refresh$.pipe(switchMap(() => this.caseController.listByParentCase(this.namespaceId)))
 
-  /** Recursive tree built from the flat API response. */
-  protected readonly caseTree = toSignal(
-    this.cases$.pipe(map((cases: Case[]) => buildCaseTree(cases, this.namespaceId))),
-    { initialValue: [] as CaseNode[] }
-  )
+  protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
 
   /**
    * Active case id — derived reactively from router NavigationEnd events.
    *
    * `computed()` on `route.firstChild?.snapshot` does not work because the snapshot
-   * is not a signal and won’t trigger re-evaluation on navigation.
+   * is not a signal and won't trigger re-evaluation on navigation.
    * Instead we listen to Router events and extract the caseId from the URL.
    */
   protected readonly activeCaseId = toSignal(

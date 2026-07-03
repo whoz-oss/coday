@@ -6,7 +6,7 @@
       <!-- Sidenav: case list with close button injected into ds-entity-list toolbar -->
       <div dsDrawerSide class="case-shell__sidenav">
         <agentos-case-drawer
-          [caseTree]="caseTree()"
+          [cases]="cases()"
           [activeCaseId]="activeCaseId()"
           (caseSelected)="onCaseSelected($event)"
           (createRequested)="onCreateRequested()"
