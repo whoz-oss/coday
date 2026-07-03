@@ -1,3 +1,13 @@
+## 0.195.0 (2026-07-03)
+
+### 🚀 Features
+
+- #31851 platform-level AiProvider and AiModel ([#1064](https://github.com/whoz-oss/coday/pull/1064), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.194.1 (2026-07-02)
 
 ### 🩹 Fixes

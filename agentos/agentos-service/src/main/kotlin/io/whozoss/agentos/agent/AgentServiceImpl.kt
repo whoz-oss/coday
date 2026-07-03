@@ -13,7 +13,6 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -44,7 +43,6 @@ class AgentServiceImpl(
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
-    private val aiProviderReconciliationService: ConfigMergeService<AiProvider>,
     private val agentConfigService: AgentConfigService,
     private val intentionGenerator: AgentIntentionGenerator,
     private val confirmationManager: ConfirmationManager,
@@ -273,9 +271,11 @@ class AgentServiceImpl(
     }
 
     /**
-     * Resolve the [AiProvider] for a pre-resolved [baseModel]. When [userId] is non-null,
-     * applies 3-tier reconciliation on the provider. When null, falls back to direct
-     * repository lookup — preserves Epic 4 behaviour exactly.
+     * Resolve the [AiProvider] for a pre-resolved [baseModel].
+     *
+     * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
+     * fetches all four overlay layers in a single query and folds them by precedence.
+     * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -285,7 +285,7 @@ class AgentServiceImpl(
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
         val providerConfig =
             if (userId != null) {
-                aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+                aiProviderService.resolveProvider(namespaceId, userId, baseProvider.name)
             } else {
                 baseProvider
             }
