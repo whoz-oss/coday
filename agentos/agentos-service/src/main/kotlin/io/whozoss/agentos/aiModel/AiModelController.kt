@@ -133,7 +133,7 @@ class AiModelController(
     @GetMapping("/platform")
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("isAuthenticated()")
-    fun listPlatformLevel(): List<AiModelResource> = aiModelService.findPlatformLevel().map { toResource(it) }
+    fun listPlatformLevel(): List<AiModelDto> = aiModelService.findPlatformLevel().map { toDto(it) }
 
     companion object : KLogging()
 }

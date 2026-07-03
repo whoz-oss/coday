@@ -48,7 +48,7 @@ class UserController(
     private val userGroupService: UserGroupService,
 ) : UserApi {
     private val crud =
-        EntityCrudDelegate<UserDto>(
+        EntityCrudDelegate(
             service = userService,
             userService = userService,
             permissions = permissionService,
@@ -101,7 +101,8 @@ class UserController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: UserDto,
     ): UserDto {
-        val existing = userService.findById(id) ?: throw ResourceNotFoundException("Entity not found: $id")
+        val existing = userService.findByIds(listOf(id), false).firstOrNull()
+            ?: throw ResourceNotFoundException("Entity not found: $id")
         val callerName = SecurityContextHolder.getContext().authentication?.name
         val isSelfEdit = callerName != null && id.toString() == callerName
         return userService

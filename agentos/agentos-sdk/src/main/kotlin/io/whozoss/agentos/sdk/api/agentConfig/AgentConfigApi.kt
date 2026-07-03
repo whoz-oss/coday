@@ -43,5 +43,5 @@ interface AgentConfigApi : EntityCrudApi<AgentConfigDto> {
      * Note: the service implementation may resolve the definition asynchronously internally,
      * but the HTTP interface is synchronous (blocking until the result is ready).
      */
-    fun getDefinition(id: UUID, withUserOverlay: Boolean = false): AgentDefinitionDto
+    suspend fun getDefinition(id: UUID, withUserOverlay: Boolean = false, namespaceId: UUID? = null): AgentDefinitionDto
 }

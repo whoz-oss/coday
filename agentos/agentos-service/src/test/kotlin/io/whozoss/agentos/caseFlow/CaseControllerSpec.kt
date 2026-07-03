@@ -76,7 +76,7 @@ class CaseControllerSpec : StringSpec({
     "toDto maps all case fields including namespaceId and status" {
         val entity = caseEntity(title = "engineering case")
 
-        val result = entity.toDto()
+        val result = toDto(entity)
 
         result.id shouldBe entity.metadata.id
         result.namespaceId shouldBe namespaceId
