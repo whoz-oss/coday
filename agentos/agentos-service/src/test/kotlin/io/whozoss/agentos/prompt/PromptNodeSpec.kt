@@ -2,7 +2,6 @@ package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -110,14 +109,13 @@ class PromptNodeSpec : StringSpec() {
             parsed[0].get("defaultValue").asText() shouldBe "World"
         }
 
-        "fromDomain throws when entity is already removed" {
+        "fromDomain accepts a removed entity and maps removed=true to the node" {
             val id = UUID.randomUUID()
             val p = prompt(id = id).copy(metadata = EntityMetadata(id = id, removed = true))
 
-            val ex = shouldThrow<IllegalArgumentException> {
-                PromptNode.fromDomain(p, objectMapper)
-            }
-            ex.message shouldContain id.toString()
+            val node = PromptNode.fromDomain(p, objectMapper)
+
+            node.removed shouldBe true
         }
 
         "fromDomain maps removed=false to null (omit false from Neo4j storage)" {
