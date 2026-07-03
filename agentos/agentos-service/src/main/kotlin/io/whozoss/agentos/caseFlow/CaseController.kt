@@ -1,6 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -10,7 +11,6 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
@@ -59,6 +59,7 @@ class CaseController(
             namespaceId = entity.namespaceId,
             status = entity.status,
             title = entity.title,
+            parentCaseId = entity.parentCaseId,
             created = entity.metadata.created,
             removed = entity.metadata.removed,
         )

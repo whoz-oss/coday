@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.shouldBe
@@ -18,6 +19,7 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -179,10 +181,15 @@ class CaseServiceImplSpec :
         /** No-op naming service — tests do not exercise automatic case naming. */
         val noOpCaseNamingService: CaseNamingService = mockk(relaxed = true)
 
+        val permissionService: PermissionService = mockk(relaxed = true)
+
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
             agent: Agent = finishingAgent(),
-            userService: UserService = mockk { every { findById(userId) } returns activeUser },
+            userService: UserService = mockk {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            },
             defaultAgentName: String? = agentName,
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
@@ -198,7 +205,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns agent
+                    coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -211,6 +218,7 @@ class CaseServiceImplSpec :
                 userService,
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
+                permissionService = permissionService,
                 caseNamingService = noOpCaseNamingService,
             )
         }
@@ -338,7 +346,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
+                    coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -351,6 +359,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -561,7 +570,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns chunkingAgent
+                    coEvery { findAgentByName(agentName, any(), any()) } returns chunkingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -574,6 +583,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -659,7 +669,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns finishingAgent()
+                    coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -672,6 +682,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -730,7 +741,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(namespaceDefaultName, namespaceId, any()) } returns namespaceDefaultName
-                    coEvery { findAgentByName(namespaceDefaultName, any()) } returns namespaceAgent
+                    coEvery { findAgentByName(namespaceDefaultName, any(), any()) } returns namespaceAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -743,6 +754,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -788,6 +800,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -857,6 +870,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -911,7 +925,7 @@ class CaseServiceImplSpec :
                         }
                     }
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
-                    coEvery { findAgentByName(any(), any()) } returns finishingAgent()
+                    coEvery { findAgentByName(any(), any(), any()) } returns finishingAgent()
                 }
             val userServiceMock = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -924,6 +938,7 @@ class CaseServiceImplSpec :
                     userServiceMock,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1014,7 +1029,7 @@ class CaseServiceImplSpec :
                     // @selected-agent resolves to selectedAgentName
                     every { resolveAgentName(selectedAgentName, any(), any()) } returns selectedAgentName
                     // no other mention resolution needed
-                    coEvery { findAgentByName(selectedAgentName, any()) } returns selectedAgent
+                    coEvery { findAgentByName(selectedAgentName, any(), any()) } returns selectedAgent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -1029,6 +1044,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1113,7 +1129,7 @@ class CaseServiceImplSpec :
                 mockk<AgentService> {
                     // Only `inspector` resolves — the full string with URL must NOT be passed here
                     coEvery { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
-                    coEvery { findAgentByName(inspectorName, any()) } returns inspectorAgent
+                    coEvery { findAgentByName(inspectorName, any(), any()) } returns inspectorAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -1126,6 +1142,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1329,6 +1346,131 @@ class CaseServiceImplSpec :
             service.activeCoroutineCount shouldBe 0
         }
 
+        // -------------------------------------------------------------------------
+        // Kill propagation to sub-cases
+        // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // startSubCase: delegation depth and linkParentToChild atomicity
+        // -------------------------------------------------------------------------
+
+        "startSubCase creates a sub-case and links it to the parent" {
+            val service = buildService()
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+
+            val runtime = service.startSubCase(
+                parentCaseId = parentCase.id,
+                namespaceId = namespaceId,
+                agentName = agentName,
+                task = "do something",
+                userId = userId,
+            )
+
+            // A runtime was returned — the sub-case exists and is active
+            val subCaseId = runtime.id
+            val subCase = service.getById(subCaseId)
+            subCase.namespaceId shouldBe namespaceId
+            subCase.parentCaseId shouldBe parentCase.id
+        }
+
+        "startSubCase propagates exception when linkParentToChild fails" {
+            // Uses a mockk CaseRepository that delegates all operations to InMemoryCaseRepository
+            // but throws on linkParentToChild.
+            // Before the refacto, this exception was swallowed by runCatching — the sub-case
+            // would be created and the error silently logged.
+            // After the refacto, the exception propagates to the caller.
+            val delegate = InMemoryCaseRepository()
+            val throwingRepo = mockk<CaseRepository> {
+                every { save(any()) } answers { delegate.save(firstArg()) }
+                every { findByIds(any(), any()) } answers { delegate.findByIds(firstArg(), secondArg()) }
+                every { findByParent(any()) } answers { delegate.findByParent(firstArg()) }
+                every { delete(any()) } answers { delegate.delete(firstArg()) }
+                every { deleteByParent(any()) } answers { delegate.deleteByParent(firstArg()) }
+                every { findAccessibleByUserInNamespace(any(), any()) } answers {
+                    delegate.findAccessibleByUserInNamespace(firstArg(), secondArg())
+                }
+                every { findConcerningUser(any()) } answers { delegate.findConcerningUser(firstArg()) }
+                every { findConcerningUserInNamespace(any(), any()) } answers {
+                    delegate.findConcerningUserInNamespace(firstArg(), secondArg())
+                }
+                every { findActiveByParentCaseId(any()) } answers { delegate.findActiveByParentCaseId(firstArg()) }
+                every { findActiveDescendants(any()) } answers { delegate.findActiveDescendants(firstArg()) }
+                every { countAncestorDepth(any()) } answers { delegate.countAncestorDepth(firstArg()) }
+                every { linkParentToChild(any(), any()) } throws RuntimeException("simulated Neo4j link failure")
+            }
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+            }
+            val userService = mockk<UserService> {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            }
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                throwingRepo,
+                CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                userService,
+                namespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+            )
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+
+            shouldThrow<RuntimeException> {
+                service.startSubCase(
+                    parentCaseId = parentCase.id,
+                    namespaceId = namespaceId,
+                    agentName = agentName,
+                    task = "do something",
+                    userId = userId,
+                )
+            }
+        }
+
+        "killing a parent case also kills its active sub-cases" {
+            // Verifies that killCase propagates depth-first to sub-cases created by
+            // delegation. The parent is killed; both sub-cases must reach KILLED status
+            // even though only the parent was explicitly killed.
+
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Create two sub-cases linked to the parent via parentCaseId
+            val subCase1 = service.create(Case(namespaceId = namespaceId, parentCaseId = parentCase.id))
+            val subCase2 = service.create(Case(namespaceId = namespaceId, parentCaseId = parentCase.id))
+
+            service.killCase(parentCase.id)
+
+            service.getById(parentCase.id).status shouldBe CaseStatus.KILLED
+            service.getById(subCase1.id).status shouldBe CaseStatus.KILLED
+            service.getById(subCase2.id).status shouldBe CaseStatus.KILLED
+        }
+
+        "killing a parent case kills nested sub-sub-cases recursively" {
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            val subCase = service.create(Case(namespaceId = namespaceId, parentCaseId = parentCase.id))
+            val subSubCase = service.create(Case(namespaceId = namespaceId, parentCaseId = subCase.id))
+
+            service.killCase(parentCase.id)
+
+            service.getById(parentCase.id).status shouldBe CaseStatus.KILLED
+            service.getById(subCase.id).status shouldBe CaseStatus.KILLED
+            service.getById(subSubCase.id).status shouldBe CaseStatus.KILLED
+        }
+
         "idle runtime is NOT evicted while SSE subscribers remain connected" {
             // The eviction watcher only fires when subscriptionCount == 0.
             // We keep a subscriber alive so subscriptionCount never reaches 0.
@@ -1401,7 +1543,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     coEvery { resolveAgentName(inspectorName, namespaceId, any()) } returns inspectorName
-                    coEvery { findAgentByName(inspectorName, any()) } returns inspectorAgent
+                    coEvery { findAgentByName(inspectorName, any(), any()) } returns inspectorAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -1414,6 +1556,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1553,7 +1696,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any()) } returns countingAgent
+                    coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
                 }
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -1566,6 +1709,7 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
                     caseNamingService = noOpCaseNamingService,
                 )
 

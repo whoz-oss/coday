@@ -469,15 +469,26 @@ PORT_PROMISE.catch((error) => {
 })
 
 // Graceful shutdown with proper cleanup
-let isShuttingDown = false
+// Counter-based guard: 1st signal starts shutdown, 2nd is tolerated (MCP child cascading),
+// 3rd force-exits. This prevents data loss from SIGINT propagating to child processes
+// in the same process group (e.g. MCP FETCH via uvx) which cascades back as a second signal.
+let shutdownSignalCount = 0
 
 async function gracefulShutdown(signal: string) {
-  if (isShuttingDown) {
-    console.log(`Received ${signal} during shutdown, forcing exit...`)
+  shutdownSignalCount++
+
+  if (shutdownSignalCount === 2) {
+    console.log(
+      `Received ${signal} during shutdown (likely from child process cascade) — shutdown in progress, press Ctrl+C again to force exit`
+    )
+    return
+  }
+
+  if (shutdownSignalCount >= 3) {
+    console.log(`Received ${signal} — forcing exit`)
     process.exit(1)
   }
 
-  isShuttingDown = true
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
@@ -520,7 +531,7 @@ process.on('uncaughtException', (error) => {
     return // Don't shutdown for this specific error
   }
 
-  if (!isShuttingDown) {
+  if (shutdownSignalCount === 0) {
     gracefulShutdown('uncaughtException')
   }
 })
@@ -551,7 +562,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
   // Only shutdown for critical unhandled rejections
   console.error('Critical unhandled rejection detected')
-  if (!isShuttingDown) {
+  if (shutdownSignalCount === 0) {
     gracefulShutdown('unhandledRejection')
   }
 })
