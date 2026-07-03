@@ -339,6 +339,90 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             integrations["FILES"] shouldBe null
         }
 
+        // -------------------------------------------------------------------------
+        // subAgents field
+        // -------------------------------------------------------------------------
+
+        "findByParent maps subAgents list from YAML" {
+            val root = tempDir()
+            writeYaml(
+                agentsDir(root),
+                "orchestrator.yaml",
+                """
+                name: Orchestrator
+                subAgents:
+                  - "*Fixer"
+                  - Dev
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.subAgents shouldBe listOf("*Fixer", "Dev")
+        }
+
+        "findByParent sets subAgents to null when YAML has no subAgents field" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "simple.yaml", agentYaml("Simple Agent"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.subAgents shouldBe null
+        }
+
+        "findByParent filters blank entries from subAgents list" {
+            val root = tempDir()
+            writeYaml(
+                agentsDir(root),
+                "orchestrator.yaml",
+                """
+                name: Orchestrator
+                subAgents:
+                  - "*Fixer"
+                  - ""
+                  - Dev
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.subAgents shouldBe listOf("*Fixer", "Dev")
+        }
+
+        "findByParent sets subAgents to null when all entries are blank" {
+            val root = tempDir()
+            writeYaml(
+                agentsDir(root),
+                "orchestrator.yaml",
+                """
+                name: Orchestrator
+                subAgents:
+                  - ""
+                  - "   "
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.subAgents shouldBe null
+        }
+
         "findByParent sets integrations to null when YAML has no integrations field" {
             val root = tempDir()
             writeYaml(agentsDir(root), "simple.yaml", agentYaml("Simple Agent"))

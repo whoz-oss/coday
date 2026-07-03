@@ -53,3 +53,11 @@ mandatoryDocs:
   - ./docs/to-rework/DEV_WORKFLOW.md
   - ./docs/to-rework/HANDLER_DESIGN.md
   - ./docs/to-rework/RELEASE_PIPELINE.md
+
+subAgents:
+  - Sway
+  - Octopuss
+  - Nxay
+  - Daemonay
+  - Searchay
+  - Reviewer
