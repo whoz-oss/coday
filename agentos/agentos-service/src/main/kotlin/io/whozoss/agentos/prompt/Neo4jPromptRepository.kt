@@ -30,8 +30,12 @@ open class Neo4jPromptRepository(
         neo4jRepository
             .save(PromptNode.fromDomain(entity, objectMapper))
             .also { savedNode ->
-                entity.namespaceId?.let { nsId ->
-                    childLinkService.link(EntityType.PROMPT.label, savedNode.id, EntityType.NAMESPACE.label, nsId.toString())
+                // Link is created only on first save (version == null means new entity).
+                // namespaceId is immutable post-create so the edge never needs updating.
+                if (entity.metadata.version == null) {
+                    entity.namespaceId?.let { nsId ->
+                        childLinkService.link(EntityType.PROMPT.label, savedNode.id, EntityType.NAMESPACE.label, nsId.toString())
+                    }
                 }
             }.toDomain(objectMapper)
             .also {

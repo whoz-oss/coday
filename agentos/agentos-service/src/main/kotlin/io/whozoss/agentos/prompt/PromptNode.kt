@@ -2,7 +2,6 @@ package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy
@@ -12,8 +11,6 @@ import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
-import org.springframework.data.neo4j.core.schema.Relationship
-import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 import java.util.UUID
 
@@ -34,8 +31,9 @@ import java.util.UUID
  * can be persisted via [save] to support frontend sync scenarios (e.g. cache
  * invalidation based on last-modified/removed state).
  *
- * [namespace] is a nullable var so SDN can call the primary constructor before
- * injecting the @Relationship field via property injection.
+ * Note: there is no `@Relationship` field for the parent Namespace. The edge is
+ * managed explicitly by [Neo4jChildLinkService] via a raw Cypher MERGE, avoiding
+ * SDN's eager hydration on read and accidental edge deletion on save.
  *
  * [tripleKey] is a denormalised discriminator for the unique business triple
  * `(namespaceId, userId, name)`, backed by a UNIQUE CONSTRAINT. Computed via
@@ -61,8 +59,6 @@ data class PromptNode(
     @LastModifiedDate val modified: Instant = Instant.now(),
     @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
-    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
-    var namespace: NamespaceNode? = null,
 ) {
     fun toDomain(objectMapper: ObjectMapper): Prompt =
         Prompt(
