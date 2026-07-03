@@ -579,6 +579,7 @@ export class ThreadCodayManager {
   private readonly instances: Map<string, ThreadCodayInstance> = new Map()
   private readonly heartbeatInterval: NodeJS.Timeout
   readonly projectEventManager = new ProjectEventManager()
+  private isShuttingDown = false
 
   /** In-memory registry of threads with a pending (unanswered) InviteEvent or ChoiceEvent. */
   private readonly pendingInvites = new Set<string>()
@@ -678,6 +679,10 @@ export class ThreadCodayManager {
     await this.cleanup(threadId)
   }
 
+  setShuttingDown(): void {
+    this.isShuttingDown = true
+  }
+
   /**
    * Get or create a Coday instance for a specific thread
    * @param threadId Thread identifier
@@ -693,7 +698,10 @@ export class ThreadCodayManager {
     username: string,
     options: CodayOptions,
     response: Response
-  ): ThreadCodayInstance {
+  ): ThreadCodayInstance | null {
+    if (!this.isShuttingDown) {
+      return null
+    }
     let instance = this.instances.get(threadId)
 
     if (!instance) {
