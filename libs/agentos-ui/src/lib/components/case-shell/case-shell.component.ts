@@ -5,6 +5,7 @@ import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, filter, map, merge, of, switchMap } from 'rxjs'
 import { CaseDrawerComponent } from '../case-drawer/case-drawer.component'
+import { CaseItemComponent } from '../case-item/case-item.component'
 import { HeaderComponent } from '../header/header.component'
 
 /**
@@ -89,9 +90,11 @@ export class CaseShellComponent {
   }
 
   protected onDeleteRequested(caseId: string): void {
-    const title = this.cases().find((c) => c.id === caseId)?.title
-    const label = title ? `case "${title}"` : 'this case'
-    if (!confirm(`Delete ${label}?`)) {
+    // Confirm with the same label the drawer row shows (CaseItemComponent.toListItem),
+    // so the dialog identifies the exact case the user clicked.
+    const target = this.cases().find((c) => c.id === caseId)
+    const label = target ? CaseItemComponent.toListItem(target).name : caseId
+    if (!confirm(`Delete "${label}"?`)) {
       return
     }
     // Soft-delete (the backend flips a `removed` flag); refresh the list on success.
@@ -103,7 +106,10 @@ export class CaseShellComponent {
         }
         this.refreshCases()
       },
-      error: (err) => console.error(`[CaseShell] Failed to delete case ${caseId}:`, err),
+      error: (err) => {
+        console.error(`[CaseShell] Failed to delete case ${caseId}:`, err)
+        alert('Could not delete the case. Please try again.')
+      },
     })
   }
 
