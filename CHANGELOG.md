@@ -1,3 +1,13 @@
+## 0.199.0 (2026-07-03)
+
+### 🚀 Features
+
+- read subAgents on file-stored agents ([#1087](https://github.com/whoz-oss/coday/pull/1087))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.198.0 (2026-07-03)
 
 ### 🚀 Features
