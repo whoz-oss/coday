@@ -100,9 +100,10 @@ export class CaseDrawerComponent implements OnChanges {
   }
 }
 
-/** Build a tree of CaseTreeItem from a flat Case list. */
+/** Build a tree of CaseTreeItem from a flat Case list, sorted newest first at every level. */
 function buildTree(cases: Case[]): CaseTreeItem[] {
   const allIds = new Set(cases.map((c) => c.id ?? ''))
+  const createdAt = new Map(cases.map((c) => [c.id ?? '', c.created ?? '']))
 
   const toNode = (c: Case): CaseTreeItem => ({
     id: c.id ?? '',
@@ -126,5 +127,11 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
     }
   }
 
-  return roots
+  // Sort newest first at every level of the tree
+  const sortDesc = (items: CaseTreeItem[]): CaseTreeItem[] =>
+    items
+      .sort((a, b) => ((createdAt.get(b.id) ?? '') > (createdAt.get(a.id) ?? '') ? 1 : -1))
+      .map((item) => ({ ...item, children: sortDesc(item.children) }))
+
+  return sortDesc(roots)
 }
