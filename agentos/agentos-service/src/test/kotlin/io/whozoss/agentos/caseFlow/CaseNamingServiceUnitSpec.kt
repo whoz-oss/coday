@@ -75,6 +75,8 @@ class CaseNamingServiceUnitSpec :
         ): CaseNamingService {
             val caseRepository =
                 mockk<CaseRepository> {
+                    // reload-before-save: return empty so the ?: case fallback kicks in
+                    every { findByIds(any(), any()) } returns emptyList()
                     every { save(any()) } answers {
                         val c = firstArg<Case>()
                         savedCases.add(c)
