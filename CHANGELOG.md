@@ -1,3 +1,14 @@
+## 0.198.0 (2026-07-03)
+
+### 🚀 Features
+
+- wz-32509 define gender neutral into prompt guidelines ([b28d978c](https://github.com/whoz-oss/coday/commit/b28d978c))
+- wz-32509 define gender neutral into prompt guidelines ([#1085](https://github.com/whoz-oss/coday/pull/1085))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
 ## 0.197.0 (2026-07-03)
 
 ### 🚀 Features
