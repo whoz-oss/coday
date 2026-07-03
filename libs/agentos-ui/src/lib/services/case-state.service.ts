@@ -1,5 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
+import { Subscription } from 'rxjs'
 
 /**
  * CaseStateService — reactive state for the case list within a namespace.
@@ -18,10 +19,15 @@ export class CaseStateService {
   /** Reactive case list. Empty until loadCases() completes. */
   readonly cases = signal<Case[]>([])
 
+  /** Tracks the in-flight load subscription so a newer call can cancel a stale one. */
+  private loadSubscription: Subscription | null = null
+
   /** Load (or reload) all cases for a given namespace. */
   loadCases(namespaceId: string): void {
-    this.caseController.listByParentCase(namespaceId).subscribe((cases) => {
+    this.loadSubscription?.unsubscribe()
+    this.loadSubscription = this.caseController.listByParentCase(namespaceId).subscribe((cases) => {
       this.cases.set(cases)
+      this.loadSubscription = null
     })
   }
 

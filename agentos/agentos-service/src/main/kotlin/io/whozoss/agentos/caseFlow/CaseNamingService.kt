@@ -83,7 +83,10 @@ class CaseNamingService(
                 }
         }
 
-        val updated = caseRepository.save(case.copy(title = title))
+        // Reload the case immediately before saving to avoid overwriting fields that may
+        // have changed while the LLM call was in flight (status updates, concurrent writes, etc.).
+        val fresh = caseRepository.findByIds(setOf(case.id)).firstOrNull() ?: case
+        val updated = caseRepository.save(fresh.copy(title = title))
         logger.info { "[CaseNaming] Case ${case.id} titled: \"$title\"" }
 
         emitEvent(
