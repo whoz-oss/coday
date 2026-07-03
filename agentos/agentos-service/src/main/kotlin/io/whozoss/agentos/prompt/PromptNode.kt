@@ -3,6 +3,7 @@ package io.whozoss.agentos.prompt
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy
 import org.springframework.data.annotation.CreatedDate
@@ -32,6 +33,11 @@ import java.util.UUID
  * [namespace] is a nullable var so SDN can call the primary constructor before
  * injecting the @Relationship field via property injection.
  *
+ * [tripleKey] is a denormalised discriminator for the unique business triple
+ * `(namespaceId, userId, name)`, backed by a UNIQUE CONSTRAINT. Computed via
+ * [OverlayKeyEncoding.activeKey]; rewritten to a tombstone on soft-delete so the
+ * unique slot is freed immediately for re-creation.
+ *
  * [version] backs Spring Data Neo4j optimistic locking. A null version means the
  * entity has never been persisted (new entity); SDN sets it to 0 on first save.
  */
@@ -39,11 +45,12 @@ import java.util.UUID
 data class PromptNode(
     @Id val id: String,
     val namespaceId: String? = null,
+    val userId: String? = null,
     val name: String,
     val description: String? = null,
     val contentJson: String,
     val parametersJson: String? = null,
-    val scopeKey: String,
+    val tripleKey: String,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
@@ -66,6 +73,7 @@ data class PromptNode(
                     version = version,
                 ),
             namespaceId = namespaceId?.let { UUID.fromString(it) },
+            userId = userId?.let { UUID.fromString(it) },
             name = name,
             description = description,
             content = objectMapper.readValue(contentJson, CONTENT_TYPE),
@@ -76,19 +84,10 @@ data class PromptNode(
         private val CONTENT_TYPE = object : TypeReference<List<String>>() {}
         private val PARAMETERS_TYPE = object : TypeReference<List<PromptParameter>>() {}
 
-        /**
-         * Compute the active scope key for a prompt.
-         * Format: `<namespaceId|_>:<name>` — uses `_` sentinel for null namespaceId (platform).
-         */
-        fun computeScopeKey(namespaceId: UUID?, name: String): String =
-            (namespaceId?.toString() ?: "_") + ":" + name
+        fun computeTripleKey(namespaceId: UUID?, userId: UUID?, name: String): String =
+            OverlayKeyEncoding.activeKey(namespaceId, userId, name)
 
-        /**
-         * Compute the scope key written on soft-delete, freeing the unique slot
-         * so the same (namespaceId, name) pair can be recreated immediately.
-         * Format: `tombstone:<entityId>` — unique by construction.
-         */
-        fun softRemovedScopeKey(id: String): String = "tombstone:$id"
+        fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
 
         fun fromDomain(
             prompt: Prompt,
@@ -98,15 +97,16 @@ data class PromptNode(
                 "fromDomain must not be called with a removed entity (id=${prompt.id}). " +
                     "Use Neo4jPromptRepository.delete / deleteByParent to soft-delete."
             }
+            val idString = prompt.id.toString()
             return PromptNode(
-                id = prompt.id.toString(),
+                id = idString,
                 namespaceId = prompt.namespaceId?.toString(),
+                userId = prompt.userId?.toString(),
                 name = prompt.name,
                 description = prompt.description,
                 contentJson = objectMapper.writeValueAsString(prompt.content),
                 parametersJson = prompt.parameters.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
-                // prompt.metadata.removed is guaranteed false by the require() above.
-                scopeKey = computeScopeKey(prompt.namespaceId, prompt.name),
+                tripleKey = computeTripleKey(prompt.namespaceId, prompt.userId, prompt.name),
                 version = prompt.metadata.version,
                 created = prompt.metadata.created,
                 createdBy = prompt.metadata.createdBy,

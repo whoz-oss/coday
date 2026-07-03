@@ -11,8 +11,11 @@ import java.util.UUID
  * Each element may contain {{paramName}} placeholders resolved at render time
  * using entries from [parameters].
  *
- * [namespaceId] is null for platform-level prompts (visible to all) and
- * non-null for namespace-scoped prompts.
+ * Scope is determined by the `(namespaceId, userId)` pair:
+ * - `(null, null)`   -> platform-level (visible to all, Super Admin write only)
+ * - `(ns, null)`     -> namespace-scoped
+ * - `(null, user)`   -> user-global overlay
+ * - `(ns, user)`     -> user x namespace overlay
  *
  * [PromptParameter.defaultValue] is required (non-nullable) — every parameter
  * must declare a default so the prompt can be rendered without caller-supplied
@@ -27,6 +30,7 @@ data class PromptParameter(
 data class Prompt(
     override val metadata: EntityMetadata = EntityMetadata(),
     val namespaceId: UUID? = null,
+    val userId: UUID? = null,
     val name: String,
     val description: String? = null,
     val content: List<String>,

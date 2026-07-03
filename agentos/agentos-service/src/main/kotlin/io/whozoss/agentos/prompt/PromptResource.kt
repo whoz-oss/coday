@@ -33,6 +33,8 @@ data class PromptResource(
     // SpringDoc 2.x workaround: explicit schema types for nullable UUID.
     @field:Schema(types = ["string", "null"], format = "uuid")
     val namespaceId: UUID? = null,
+    @field:Schema(types = ["string", "null"], format = "uuid")
+    val userId: UUID? = null,
     @field:NotBlank val name: String,
     val description: String? = null,
     @field:NotEmpty val content: List<@NotBlank String>,

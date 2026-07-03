@@ -16,7 +16,8 @@ import java.util.UUID
  *
  * Platform-level prompts (namespaceId == null) skip the link step.
  *
- * [findByParent] returns only non-removed prompts scoped to the given namespace.
+ * [findByParent] returns only non-removed namespace-shared prompts (userId IS NULL)
+ * for the given namespace.
  */
 open class Neo4jPromptRepository(
     private val neo4jRepository: PromptNodeNeo4jRepository,
@@ -35,7 +36,7 @@ open class Neo4jPromptRepository(
             .also {
                 logger.debug {
                     "[Neo4jPromptRepository] Saved prompt ${it.id} ('${entity.name}') " +
-                        "scope=(namespaceId=${entity.namespaceId})"
+                        "scope=(namespaceId=${entity.namespaceId}, userId=${entity.userId})"
                 }
             }
 
@@ -58,6 +59,16 @@ open class Neo4jPromptRepository(
             .findActivePlatform()
             .map { it.toDomain(objectMapper) }
 
+    override fun findByUserId(userId: UUID): List<Prompt> =
+        neo4jRepository
+            .findActiveByUserId(userId.toString())
+            .map { it.toDomain(objectMapper) }
+
+    override fun findByTriple(namespaceId: UUID?, userId: UUID?, name: String): Prompt? =
+        neo4jRepository
+            .findActiveByTripleKey(PromptNode.computeTripleKey(namespaceId, userId, name))
+            ?.toDomain(objectMapper)
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
@@ -66,7 +77,7 @@ open class Neo4jPromptRepository(
                 neo4jRepository.save(
                     node.copy(
                         removed = true,
-                        scopeKey = PromptNode.softRemovedScopeKey(node.id),
+                        tripleKey = PromptNode.tombstoneTripleKey(node.id),
                     ),
                 )
                 logger.debug { "[Neo4jPromptRepository] Soft-deleted prompt $id" }
@@ -80,7 +91,7 @@ open class Neo4jPromptRepository(
             active.map {
                 it.copy(
                     removed = true,
-                    scopeKey = PromptNode.softRemovedScopeKey(it.id),
+                    tripleKey = PromptNode.tombstoneTripleKey(it.id),
                 )
             },
         )

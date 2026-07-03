@@ -60,6 +60,7 @@ class PromptController(
         PromptResource(
             id = entity.metadata.id,
             namespaceId = entity.namespaceId,
+            userId = entity.userId,
             name = entity.name,
             description = entity.description,
             content = entity.content,
@@ -81,6 +82,7 @@ class PromptController(
         Prompt(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
             namespaceId = resource.namespaceId,
+            userId = resource.userId,
             name = resource.name,
             description = resource.description,
             content = resource.content,
@@ -202,6 +204,7 @@ class PromptController(
             Prompt(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
                 namespaceId = resolvedNs,
+                userId = null, // user-scoped prompt support to be added in a follow-up
                 name = resource.name,
                 description = resource.description,
                 content = resource.content,

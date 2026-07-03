@@ -26,6 +26,7 @@ class PromptNodeSpec : StringSpec() {
     private fun prompt(
         id: UUID = UUID.randomUUID(),
         namespaceId: UUID? = UUID.randomUUID(),
+        userId: UUID? = null,
         name: String = "My Prompt",
         description: String? = null,
         content: List<String> = listOf("Hello {{name}}"),
@@ -39,6 +40,7 @@ class PromptNodeSpec : StringSpec() {
             modifiedBy = "editor@example.com",
         ),
         namespaceId = namespaceId,
+        userId = userId,
         name = name,
         description = description,
         content = content,
@@ -147,24 +149,34 @@ class PromptNodeSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         // -------------------------------------------------------------------------
-        // scopeKey
+        // tripleKey
         // -------------------------------------------------------------------------
 
-        "fromDomain computes scopeKey as namespaceId:name for namespace-scoped prompt" {
+        "fromDomain computes tripleKey as namespaceId:_:name for namespace-scoped prompt" {
             val nsId = UUID.randomUUID()
             val p = prompt(namespaceId = nsId, name = "deploy")
 
             val node = PromptNode.fromDomain(p, objectMapper)
 
-            node.scopeKey shouldBe "$nsId:deploy"
+            node.tripleKey shouldBe "$nsId:_:deploy"
         }
 
-        "fromDomain computes scopeKey with _ sentinel for platform prompt" {
+        "fromDomain computes tripleKey with _ sentinel for platform prompt" {
             val p = prompt(namespaceId = null, name = "global-helper")
 
             val node = PromptNode.fromDomain(p, objectMapper)
 
-            node.scopeKey shouldBe "_:global-helper"
+            node.tripleKey shouldBe "_:_:global-helper"
+        }
+
+        "fromDomain computes tripleKey with userId for user-scoped prompt" {
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            val p = prompt(namespaceId = nsId, name = "my-prompt").copy(userId = userId)
+
+            val node = PromptNode.fromDomain(p, objectMapper)
+
+            node.tripleKey shouldBe "$nsId:$userId:my-prompt"
         }
 
         "toDomain maps id, namespaceId, name, description from node" {
@@ -176,7 +188,7 @@ class PromptNodeSpec : StringSpec() {
                 name = "Greeting",
                 description = "A greeting",
                 contentJson = objectMapper.writeValueAsString(listOf("Hi {{name}}")),
-                scopeKey = "$nsId:Greeting",
+                tripleKey = "$nsId:_:Greeting",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -193,7 +205,7 @@ class PromptNodeSpec : StringSpec() {
                 namespaceId = null,
                 name = "Platform",
                 contentJson = objectMapper.writeValueAsString(listOf("Platform prompt")),
-                scopeKey = "_:Platform",
+                tripleKey = "_:_:Platform",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -207,7 +219,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(content),
-                scopeKey = "_:Test",
+                tripleKey = "_:_:Test",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -221,7 +233,7 @@ class PromptNodeSpec : StringSpec() {
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
                 parametersJson = null,
-                scopeKey = "_:Test",
+                tripleKey = "_:_:Test",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -238,7 +250,7 @@ class PromptNodeSpec : StringSpec() {
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hi {{name}}")),
                 parametersJson = objectMapper.writeValueAsString(params),
-                scopeKey = "_:Test",
+                tripleKey = "_:_:Test",
             )
 
             val domain = node.toDomain(objectMapper)
@@ -254,7 +266,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
-                scopeKey = "tombstone:test",
+                tripleKey = "tombstone:test",
                 removed = true,
             )
 
@@ -268,7 +280,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
-                scopeKey = "_:Test",
+                tripleKey = "_:_:Test",
                 removed = null,
             )
 
@@ -282,7 +294,7 @@ class PromptNodeSpec : StringSpec() {
                 id = UUID.randomUUID().toString(),
                 name = "Test",
                 contentJson = objectMapper.writeValueAsString(listOf("Hello")),
-                scopeKey = "_:Test",
+                tripleKey = "_:_:Test",
                 version = 5L,
             )
 

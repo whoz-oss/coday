@@ -16,7 +16,7 @@ import java.util.UUID
  * - Every element of [Prompt.content] must be non-blank.
  * - The names of [Prompt.parameters] must be unique within the list.
  *
- * Name uniqueness per scope is enforced by the `scopeKey` UNIQUE constraint in Neo4j.
+ * Name uniqueness per scope is enforced by the `tripleKey` UNIQUE constraint in Neo4j.
  * An applicative pre-check gives a descriptive 409 message; the catch on
  * [DataIntegrityViolationException] handles concurrent inserts that race past the
  * pre-check (mirrors the IntegrationConfigServiceImpl pattern).
@@ -27,11 +27,17 @@ class PromptServiceImpl(
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
+        repository.findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
+            throw ConflictException(conflictMessage(entity))
+        }
         return saveOrConflict(entity)
     }
 
     override fun update(entity: Prompt): Prompt {
         validate(entity)
+        repository.findByTriple(entity.namespaceId, entity.userId, entity.name)
+            ?.takeIf { it.id != entity.id }
+            ?.let { throw ConflictException(conflictMessage(entity)) }
         return saveOrConflict(entity)
     }
 
@@ -46,6 +52,8 @@ class PromptServiceImpl(
     override fun findByParent(parentId: UUID): List<Prompt> = repository.findByParent(parentId)
 
     override fun findPlatform(): List<Prompt> = repository.findPlatform()
+
+    override fun findByUserId(userId: UUID): List<Prompt> = repository.findByUserId(userId)
 
     override fun delete(id: UUID): Boolean = repository.delete(id)
 
@@ -73,30 +81,30 @@ class PromptServiceImpl(
         try {
             repository.save(entity)
         } catch (e: DataIntegrityViolationException) {
-            if (!isScopeKeyConflict(e)) {
+            if (!isTripleKeyConflict(e)) {
                 throw e
             }
             logger.warn {
-                "[PromptService] scopeKey unique-constraint violation on save " +
-                    "(namespaceId=${entity.namespaceId}, name='${entity.name}')"
+                "[PromptService] tripleKey unique-constraint violation on save " +
+                    "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
             }
             throw ConflictException(conflictMessage(entity), e)
         }
 
-    private fun isScopeKeyConflict(e: DataIntegrityViolationException): Boolean {
+    private fun isTripleKeyConflict(e: DataIntegrityViolationException): Boolean {
         val haystack =
             generateSequence<Throwable>(e) { it.cause }
                 .mapNotNull { it.message }
                 .joinToString(separator = " | ")
-        return SCOPE_KEY_CONSTRAINT_NAME in haystack || SCOPE_KEY_PROPERTY in haystack
+        return TRIPLE_KEY_CONSTRAINT_NAME in haystack || TRIPLE_KEY_PROPERTY in haystack
     }
 
     private fun conflictMessage(entity: Prompt): String =
         "A prompt named '${entity.name}' already exists in this scope " +
-            "(namespaceId=${entity.namespaceId ?: "platform"})"
+            "(namespaceId=${entity.namespaceId ?: "platform"}, userId=${entity.userId})"
 
     companion object : KLogging() {
-        private const val SCOPE_KEY_CONSTRAINT_NAME = "prompt_scope_key_unique"
-        private const val SCOPE_KEY_PROPERTY = "scopeKey"
+        private const val TRIPLE_KEY_CONSTRAINT_NAME = "prompt_triple_key_unique"
+        private const val TRIPLE_KEY_PROPERTY = "tripleKey"
     }
 }

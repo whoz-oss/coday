@@ -39,8 +39,17 @@ class Neo4jPermissionRepository(
          * Platform-scoped instances of these types carry no BELONGS_TO edge; the
          * absence of that edge is the signal used by the Cypher query
          * [PermissionNodeNeo4jRepository.isPlatformScoped].
+         *
+         * Covers: [EntityType.PROMPT], [EntityType.AGENT_CONFIG],
+         * [EntityType.INTEGRATION_CONFIG], [EntityType.AI_PROVIDER], [EntityType.AI_MODEL].
          */
-        private val PLATFORM_SCOPABLE_ENTITY_TYPES: Set<EntityType> = setOf(EntityType.PROMPT)
+        private val PLATFORM_SCOPABLE_ENTITY_TYPES: Set<EntityType> = setOf(
+                EntityType.PROMPT,
+                EntityType.AGENT_CONFIG,
+                EntityType.INTEGRATION_CONFIG,
+                EntityType.AI_PROVIDER,
+                EntityType.AI_MODEL,
+            )
     }
 
     override fun hasDirectPermission(
