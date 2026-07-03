@@ -554,7 +554,7 @@ class CaseServiceImpl(
      * Called by the runtime's [CaseRuntime.storeEvent] callback —
      * the runtime itself handles adding to its list and emitting on the SSE flow.
      *
-     * [TextChunkEvent]s are streaming-only: they carry incremental text fragments
+     * [io.whozoss.agentos.sdk.caseEvent.TextChunkEvent]s are streaming-only: they carry incremental text fragments
      * that are superseded by the final [io.whozoss.agentos.sdk.caseEvent.MessageEvent].
      * Persisting them would bloat the event store without adding any replay value,
      * so they are returned as-is without being written to the repository.
@@ -819,17 +819,18 @@ class CaseServiceImpl(
     ) {
         val titleIsBlank = case.title.isBlank()
         val titleIsGenerated = case.title == "Case ${case.id}"
-        if (!titleIsBlank && !titleIsGenerated) return
-
         val userMessageCount = events.count { it is MessageEvent && it.actor.role == ActorRole.USER }
         val agentFinishedCount = events.count { it is AgentFinishedEvent }
 
-        val shouldTrigger = titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1
-        if (!shouldTrigger) return
+        val shouldTrigger =
+            (titleIsBlank || titleIsGenerated) &&
+                (titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1)
 
-        scope.launch {
-            runCatching { caseNamingService.nameCase(case, events, emitEvent) }
-                .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }
+        if (shouldTrigger) {
+            scope.launch {
+                runCatching { caseNamingService.nameCase(case, events, emitEvent) }
+                    .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }
+            }
         }
     }
 

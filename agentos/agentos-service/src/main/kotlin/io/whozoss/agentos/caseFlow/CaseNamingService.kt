@@ -63,7 +63,7 @@ class CaseNamingService(
             return
         }
 
-        val fallback = transcript.take(MAX_FALLBACK_TITLE_LENGTH)
+        val fallbackTitle = transcript.take(MAX_FALLBACK_TITLE_LENGTH)
 
         val model = aiModelService.findAiModel(case.namespaceId)
         val provider = model?.let { runCatching { aiProviderService.getById(it.aiProviderId) }.getOrNull() }
@@ -71,14 +71,14 @@ class CaseNamingService(
         val title = when {
             model == null -> {
                 logger.debug { "[CaseNaming] No default model in namespace ${case.namespaceId}, using fallback for case ${case.id}" }
-                fallback
+                fallbackTitle
             }
             provider == null -> {
                 logger.warn { "[CaseNaming] Provider ${model.aiProviderId} not found for model ${model.alias ?: model.apiModelName}, using fallback for case ${case.id}" }
-                fallback
+                fallbackTitle
             }
             else -> generateTitle(transcript, case.id, model, provider)
-                ?: fallback.also {
+                ?: fallbackTitle.also {
                     logger.info { "[CaseNaming] LLM call returned nothing for case ${case.id}, using fallback: \"$it\"" }
                 }
         }
@@ -110,7 +110,9 @@ class CaseNamingService(
             The title must be in the same language as the message(s).
 
             Message(s):
+            <usermessage>
             $transcript
+            </usermessage>
 
             Title:
         """.trimIndent()
