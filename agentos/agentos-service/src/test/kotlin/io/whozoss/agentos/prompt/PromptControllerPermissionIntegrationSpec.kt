@@ -749,6 +749,25 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
                 .andExpect(status().isNoContent)
         }
 
+        "GET /{id} returns 404 for a non-owner on a user-global prompt (not platform-readable)" {
+            // alice's user-global prompt (namespaceId=null, userId=alice) must NOT be
+            // readable by bob — isPlatformScoped must return false because userId IS NOT NULL.
+            val userPrompt = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = alice.id,
+                    name = "User-global-not-platform-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            every { userService.getCurrentUser() } returns bob
+
+            mockMvc.perform(get("/api/prompts/${userPrompt.id}"))
+                .andExpect(status().isNotFound)
+        }
+
         "PUT returns 404 for a non-owner on a user-scoped prompt" {
             val userPrompt = promptService.create(
                 Prompt(
