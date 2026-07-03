@@ -38,11 +38,33 @@ export class AiModelFormComponent implements OnInit {
   private readonly aiModelController = inject(AiModelControllerService)
   private readonly aiProviderController = inject(AiProviderControllerService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  /**
+   * Namespace scoping this form. `undefined` when loaded from an admin route
+   * (`admin/ai-models/new`, `admin/ai-models/:id/edit`) — platform context.
+   * A concrete UUID when loaded from `/:namespaceId/ai-models/*`.
+   */
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
 
-  /** All providers for this namespace — used to populate the provider select. */
+  /**
+   * Whether this form is operating in platform-admin context.
+   * True when there is no `:namespaceId` param in the route (admin/* routes).
+   * In platform mode:
+   * - providers are loaded from the platform scope (namespaceId IS NULL)
+   * - create payload has namespaceId: undefined (omitted → backend infers platform scope)
+   * - navigateBack() returns to /agentos/admin/ai-models
+   */
+  protected readonly isPlatformMode = this.namespaceId === undefined
+
+  /**
+   * All providers for the current scope — used to populate the provider select.
+   * In platform mode, loads platform-level providers (listAiProvider with namespaceId='none'
+   * sentinel — the only place where the sentinel is used, at the API boundary).
+   * In namespace mode, loads namespace-scoped providers.
+   */
   protected readonly providers = toSignal(
-    this.aiProviderController.listByParentAiProvider(this.namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
+    this.aiProviderController
+      .listAiProvider(this.isPlatformMode ? 'none' : this.namespaceId)
+      .pipe(catchError(() => of([] as AiProvider[]))),
     { initialValue: [] as AiProvider[] }
   )
 
@@ -153,6 +175,10 @@ export class AiModelFormComponent implements OnInit {
     const payload: AiModel = {
       ...(this.existingModel ?? {}),
       aiProviderId: raw.aiProviderId,
+      // In platform mode, namespaceId is omitted (undefined) so the backend infers
+      // platform scope (namespaceId IS NULL). In namespace mode, the existing model's
+      // namespaceId is preserved via the spread above.
+      namespaceId: this.isPlatformMode ? undefined : (this.existingModel?.namespaceId ?? this.namespaceId),
       apiModelName: raw.apiModelName.trim(),
       description: raw.description?.trim() || undefined,
       alias: raw.alias.trim() || undefined,
@@ -176,7 +202,11 @@ export class AiModelFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'ai-models'])
+    if (this.isPlatformMode) {
+      this.router.navigate(['/agentos', 'admin', 'ai-models'])
+    } else {
+      this.router.navigate(['/agentos', this.namespaceId!, 'ai-models'])
+    }
   }
 
   protected trackByProvider(_index: number, provider: AiProvider): string {

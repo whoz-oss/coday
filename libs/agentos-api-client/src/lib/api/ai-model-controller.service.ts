@@ -15,6 +15,8 @@ import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { AiModel } from '../model/ai-model'
+// @ts-ignore
+import { GetByIdsRequest } from '../model/get-by-ids-request'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -249,36 +251,36 @@ export class AiModelControllerService extends BaseService {
   }
 
   /**
-   * @param requestBody
+   * @param getByIdsRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public getByIdsAiModel(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<AiModel>>
   public getByIdsAiModel(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<AiModel>>>
   public getByIdsAiModel(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<AiModel>>>
   public getByIdsAiModel(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIdsAiModel.')
+    if (getByIdsRequest === null || getByIdsRequest === undefined) {
+      throw new Error('Required parameter getByIdsRequest was null or undefined when calling getByIdsAiModel.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -315,7 +317,7 @@ export class AiModelControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<AiModel>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: requestBody,
+      body: getByIdsRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -451,6 +453,66 @@ export class AiModelControllerService extends BaseService {
     }
 
     let localVarPath = `/api/ai-models/by-parentId/${this.configuration.encodeParam({ name: 'parentId', value: parentId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Array<AiModel>>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public listPlatformLevelAiModel(
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Array<AiModel>>
+  public listPlatformLevelAiModel(
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Array<AiModel>>>
+  public listPlatformLevelAiModel(
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Array<AiModel>>>
+  public listPlatformLevelAiModel(
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/ai-models/platform`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<AiModel>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,

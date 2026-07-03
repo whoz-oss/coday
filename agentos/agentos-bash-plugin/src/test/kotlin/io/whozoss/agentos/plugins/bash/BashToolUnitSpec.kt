@@ -100,7 +100,8 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(), ctx)
-        result shouldContain "hello"
+        result.success shouldBe true
+        result.output shouldContain "hello"
     }
 
     "fixed command with non-zero exit code should include exit code in output" {
@@ -109,7 +110,9 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(), ctx)
-        result shouldContain "42"
+        result.success shouldBe false
+        result.errorType shouldBe "NONZERO_EXIT"
+        result.output shouldContain "42"
     }
 
     "fixed command producing no output should return (no output)" {
@@ -118,7 +121,8 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(), ctx)
-        result shouldBe "(no output)"
+        result.success shouldBe true
+        result.output shouldBe "(no output)"
     }
 
     // --- execute: parameterised command ---
@@ -134,7 +138,8 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(parameters = "world"), ctx)
-        result shouldContain "world"
+        result.success shouldBe true
+        result.output shouldContain "world"
     }
 
     "parameterised tool with null parameters should return error" {
@@ -148,8 +153,10 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(parameters = null), ctx)
-        result shouldContain "Error"
-        result shouldContain "parameters"
+        result.success shouldBe false
+        result.errorType shouldBe "INVALID_INPUT"
+        result.output shouldContain "Error"
+        result.output shouldContain "parameters"
     }
 
     "parameterised tool with blank parameters should return error" {
@@ -163,7 +170,9 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(parameters = "   "), ctx)
-        result shouldContain "Error"
+        result.success shouldBe false
+        result.errorType shouldBe "INVALID_INPUT"
+        result.output shouldContain "Error"
     }
 
     "raw bash tool (command IS PARAMETERS) should execute supplied command" {
@@ -177,7 +186,8 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(parameters = "echo raw_output"), ctx)
-        result shouldContain "raw_output"
+        result.success shouldBe true
+        result.output shouldContain "raw_output"
     }
 
     // --- timeout resolution ---
@@ -189,7 +199,7 @@ class BashToolUnitSpec : StringSpec({
             toolConfig = BashToolConfig(name = "fast", description = "Fast", command = "echo ok"),
             integrationConfig = baseConfig.copy(defaultTimeoutSeconds = 10L),
         )
-        tool.execute(BashTool.Input(), ctx) shouldContain "ok"
+        tool.execute(BashTool.Input(), ctx).output shouldContain "ok"
     }
 
     "tool with per-tool timeout should use it instead of default" {
@@ -203,7 +213,7 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig.copy(defaultTimeoutSeconds = 60L),
         )
         // The per-tool timeout is 5s, the command finishes instantly — should succeed.
-        tool.execute(BashTool.Input(), ctx) shouldContain "ok"
+        tool.execute(BashTool.Input(), ctx).output shouldContain "ok"
     }
 
     "command that exceeds timeout should return timeout error" {
@@ -217,8 +227,10 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(), ctx)
-        result shouldContain "timed out"
-        result shouldContain "1"
+        result.success shouldBe false
+        result.errorType shouldBe "TIMEOUT"
+        result.output shouldContain "timed out"
+        result.output shouldContain "1"
     }
 
     // --- working directory resolution ---
@@ -231,7 +243,7 @@ class BashToolUnitSpec : StringSpec({
         val result = tool.execute(BashTool.Input(), ctx)
         // The output should be the resolved real path of java.io.tmpdir
         val expectedDir = java.io.File(System.getProperty("java.io.tmpdir")).canonicalPath
-        result.trim() shouldBe expectedDir
+        result.output.trim() shouldBe expectedDir
     }
 
     "tool with relative path should run in workingDirectory/path" {
@@ -249,7 +261,7 @@ class BashToolUnitSpec : StringSpec({
                 integrationConfig = baseConfig,
             )
             val result = tool.execute(BashTool.Input(), ctx)
-            result.trim() shouldContain subDir.name
+            result.output.trim() shouldContain subDir.name
         } finally {
             subDir.delete()
         }
@@ -267,8 +279,10 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(), ctx)
-        result shouldContain "error_message"
-        result shouldContain "Stderr"
+        // stderr alone produces a non-zero exit? No — stderr write doesn't affect exit code.
+        // exit code is 0, so success=true. The output still contains stderr content.
+        result.output shouldContain "error_message"
+        result.output shouldContain "Stderr"
     }
 
     "command writing to both stdout and stderr should include both" {
@@ -281,7 +295,7 @@ class BashToolUnitSpec : StringSpec({
             integrationConfig = baseConfig,
         )
         val result = tool.execute(BashTool.Input(), ctx)
-        result shouldContain "out_line"
-        result shouldContain "err_line"
+        result.output shouldContain "out_line"
+        result.output shouldContain "err_line"
     }
 })

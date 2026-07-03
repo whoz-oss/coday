@@ -42,6 +42,29 @@
     letter-spacing: -0.02em;
   }
 
+  &__sibling-link {
+    font-size: 0.8125rem;
+    color: var(--color-primary, #007aff);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__platform-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-secondary, #6e6e73);
+    background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    border-radius: 4px;
+    padding: 0.125rem 0.5rem;
+    letter-spacing: 0.02em;
+    align-self: flex-start;
+  }
+
   &__loading {
     color: var(--color-text-secondary, #6e6e73);
     font-size: 0.9rem;
@@ -149,6 +172,35 @@
   &__integration-tools {
     margin-left: 1.5rem;
     font-size: 0.875rem;
+  }
+
+  &__toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  &__toggle-checkbox {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    accent-color: var(--color-primary, #007aff);
+    cursor: pointer;
+  }
+
+  &__toggle-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text, #1d1d1f);
+  }
+
+  &__toggle-hint {
+    margin: 0.25rem 0 0 1.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+    line-height: 1.4;
   }
 
   &__actions {

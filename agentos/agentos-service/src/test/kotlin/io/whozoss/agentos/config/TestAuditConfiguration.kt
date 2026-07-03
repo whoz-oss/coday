@@ -1,0 +1,36 @@
+package io.whozoss.agentos.config
+
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
+import org.springframework.data.domain.AuditorAware
+import java.util.Optional
+
+/**
+ * Overrides [AgentOsAuditorAware] in test context.
+ *
+ * The production [AgentOsAuditorAware] relies on [org.springframework.web.context.request.RequestContextHolder]
+ * which is unavailable in persistence tests (no HTTP request). This bean provides a
+ * deterministic auditor UUID so that @CreatedBy / @LastModifiedBy annotations are exercised.
+ *
+ * [currentAuditorId] is mutable so that individual tests can simulate an auditor switch
+ * between create and update operations. Always reset it in `afterEach` / `beforeEach`.
+ */
+@TestConfiguration
+class TestAuditConfiguration {
+    @Bean
+    @Primary
+    fun testAuditorAware(): AuditorAware<String> =
+        AuditorAware { Optional.of(currentAuditorId) }
+
+    companion object {
+        const val TEST_AUDITOR_ID = "00000000-0000-0000-0000-000000000042"
+        const val SECOND_AUDITOR_ID = "00000000-0000-0000-0000-000000000099"
+
+        /**
+         * Mutable auditor identity for tests that need to simulate a user switch
+         * between create and update operations. Reset to [TEST_AUDITOR_ID] in beforeEach.
+         */
+        var currentAuditorId: String = TEST_AUDITOR_ID
+    }
+}

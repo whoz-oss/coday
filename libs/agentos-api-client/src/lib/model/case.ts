@@ -13,6 +13,8 @@ export interface Case {
   namespaceId: string
   status: CaseStatusEnum
   title?: string
+  created?: string
+  removed: boolean
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',

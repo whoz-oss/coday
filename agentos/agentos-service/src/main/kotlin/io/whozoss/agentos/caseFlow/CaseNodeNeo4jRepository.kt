@@ -27,13 +27,13 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * Find cases in a namespace that a specific user is allowed to see.
      *
      * Access rule for Case (owner-private, FR15):
-     * - Direct relation on the case: ADMIN or MEMBER → user can see it
-     * - Transitive via namespace: only ADMIN on namespace → user can see all cases
+     * - Direct relation on the case: ADMIN or MEMBER -> user can see it
+     * - Transitive via namespace: only ADMIN on namespace -> user can see all cases
      *   (namespace MEMBER does NOT gain transitive READ on cases)
      *
      * Soft-deleted cases are filtered out. Returns cases in creation order.
      *
-     * Super-admins do not use this query — the controller short-circuits them
+     * Super-admins do not use this query -- the controller short-circuits them
      * upstream via [io.whozoss.agentos.permissions.PermissionService.hasPermission]
      * on the parent namespace.
      */
@@ -51,4 +51,35 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
         userId: String,
         namespaceId: String,
     ): List<CaseNode>
+
+    /**
+     * Find all non-removed cases concerning a user across all namespaces.
+     *
+     * A case concerns a user when they have a direct ADMIN or MEMBER relation on it.
+     * Namespace-level ADMIN is intentionally excluded: a namespace admin should only
+     * see their own threads here, not every case in the namespace.
+     */
+    @Query(
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace)
+            WHERE (c.removed IS NULL OR c.removed = false)
+              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
+            RETURN c, r, ns ORDER BY c.created ASC
+            """,
+    )
+    fun findConcerningUser(userId: String): List<CaseNode>
+
+    /**
+     * Find all non-removed cases concerning a user scoped to a single namespace.
+     *
+     * Same permission rule as [findConcerningUser] (direct ADMIN or MEMBER on the case),
+     * but restricted to the given namespace.
+     */
+    @Query(
+        $$"""MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+            WHERE (c.removed IS NULL OR c.removed = false)
+              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
+            RETURN c, r, ns ORDER BY c.created ASC
+            """,
+    )
+    fun findConcerningUserInNamespace(userId: String, namespaceId: String): List<CaseNode>
 }

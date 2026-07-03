@@ -28,7 +28,8 @@ java {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            from(components["java"])
+            artifact(tasks.named("bootJar"))
+            artifact(tasks.named("sourcesJar"))
 
             pom {
                 name.set("AgentOS Service")
@@ -83,6 +84,11 @@ dependencies {
         exclude(group = "org.slf4j", module = "slf4j-reload4j")
         exclude(group = "org.slf4j", module = "slf4j-log4j12")
     }
+    // OkHttp — HTTP client + logging interceptor.
+    // Declared as a direct dependency so plugins (e.g. copilot) that depend on OkHttp
+    // are guaranteed to find it on the classpath regardless of which AI providers are enabled.
+    // Also used by Feign when the whoz profile activates feign.okhttp.enabled=true.
+    implementation(libs.bundles.okhttp)
 
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
@@ -96,30 +102,25 @@ dependencies {
     // spring-cloud-starter-eureka-client registers the service on Eureka.
     // All three are always on the classpath but disabled by default via
     // application-test.yml (tests) and absent of 'whoz' profile (standalone).
-    // Spring Cloud BOM — imported via platform() so Gradle's native dependency resolution
-    // picks up the managed versions. The spring-dependency-management plugin's
-    // dependencyManagement {} block does not reliably propagate BOM versions for
+    // Spring Cloud BOM (Northfields 2025.0.x) — imported via platform() so Gradle's native
+    // dependency resolution picks up the managed versions. The spring-dependency-management
+    // plugin's dependencyManagement {} block does not reliably propagate BOM versions for
     // artifacts without an explicit version in composite builds.
     implementation(platform(libs.spring.cloud.bom))
     implementation(libs.spring.cloud.starter.config)
     // Eureka client.
-    // Spring Cloud 2024.0.x uses eureka-client 2.0.x which ships eureka-client-jersey3
-    // as its sole HTTP transport. EurekaClientAutoConfiguration requires a
-    // TransportClientFactories bean which is provided exclusively by that module.
-    // Jersey3 in turn needs the Jakarta EE 10 JAX-RS API and a Jersey runtime;
-    // we pull in jersey-client + jersey-hk2 (the DI bridge) so the factory can
-    // instantiate its internal components without a full JAX-RS server on the classpath.
     implementation(libs.spring.cloud.starter.eureka.client)
-    // eureka-client-jersey3 provides the TransportClientFactories bean required by
-    // EurekaClientAutoConfiguration. Spring Cloud 2024.0.x does not pull it in
-    // automatically — it must be declared explicitly.
-    implementation(libs.eureka.client.jersey3)
-    implementation(libs.jersey.client)
-    implementation(libs.jersey.hk2)
 
     // OpenAPI / Swagger UI
     implementation(libs.springdoc.openapi.starter)
     implementation(libs.klogger)
+
+    // Logstash Logback Encoder — JSON structured logging (used by logback-spring.xml docker profile)
+    runtimeOnly(libs.logstash.logback.encoder)
+
+    // Micrometer Datadog registry — exports tool-call metrics to Datadog.
+    // Disabled by default (requires DATADOG_API_KEY + management.datadog.metrics.export.enabled=true).
+    implementation(libs.micrometer.registry.statsd)
 
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)
@@ -218,8 +219,8 @@ dependencyManagement {
                 .get()
                 .toString(),
         )
-        // Spring Cloud BOM (Moore / 2024.0.x) — manages all spring-cloud-* dependency versions.
-        // Moore is the release train compatible with Spring Boot 3.4.x / 3.5.x.
+        // Spring Cloud BOM (Northfields / 2025.0.x) — manages all spring-cloud-* dependency versions.
+        // Northfields is the release train compatible with Spring Boot 3.5.x.
         // Must come after spring-ai-bom so that Spring Cloud wins for shared
         // artifacts (e.g. spring-cloud-commons) over any Spring AI transitive pulls.
         mavenBom(
@@ -247,6 +248,9 @@ tasks.withType<Test> {
     // rejected with HTTP 400. Force a supported version until Testcontainers
     // is upgraded to 2.x (which ships docker-java 3.7+ defaulting to 1.44).
     systemProperty("api.version", "1.44")
+    // Disable JVM fast-throw optimisation so MockK can read the ClassCastException
+    // message and auto-hint the correct type for mocked calls.
+    jvmArgs("-XX:-OmitStackTraceInFastThrow")
 }
 
 // Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
@@ -303,13 +307,6 @@ configurations.all {
     }
 }
 
-// Disable the plain JAR — agentos-service is a runnable service, not a library.
-// Disabling jar() makes components["java"] use the bootJar as the sole published variant,
-// so Maven publish sends the correct executable JAR to GitHub Packages.
-tasks.named<Jar>("jar") {
-    enabled = false
-}
-
 // Configure the bootJar task
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("agentos-service.jar")
@@ -352,7 +349,7 @@ openApi {
     waitTimeInSeconds.set(60)
     // Activate the openapi profile so the app starts without real AI API keys
     customBootRun {
-        args.set(listOf("--spring.profiles.active=openapi", "--server.port=$agentosPort"))
+        args.set(listOf("--spring.profiles.active=openapi,embedded-neo4j", "--server.port=$agentosPort"))
     }
 }
 

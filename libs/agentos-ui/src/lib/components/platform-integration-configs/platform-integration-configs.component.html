@@ -1,0 +1,25 @@
+<ds-entity-list
+  title="Platform Integration Configs"
+  [items]="(configItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No platform integration configs defined yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="integrationConfigItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="platform-integration-configs__back" type="button" (click)="goBack()">
+    &#8592; Admin
+  </button>
+</ds-entity-list>
+
+<!-- Item template: renders IntegrationConfigItemComponent for each entity-list card slot -->
+<ng-template #integrationConfigItemTpl let-item>
+  @if (resolveConfig(item.id); as config) {
+    <agentos-integration-config-item
+      [config]="config"
+      scope="platform"
+      (editRequested)="onEdit($event)"
+      (deleteRequested)="deleteConfig($event)"
+    />
+  }
+</ng-template>

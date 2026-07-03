@@ -1,3 +1,1631 @@
+## 0.195.0 (2026-07-03)
+
+### 🚀 Features
+
+- #31851 platform-level AiProvider and AiModel ([#1064](https://github.com/whoz-oss/coday/pull/1064), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.194.1 (2026-07-02)
+
+### 🩹 Fixes
+
+- wz-33145 cancel eviction watcher coroutine on idle eviction to p… ([#1079](https://github.com/whoz-oss/coday/pull/1079))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.194.0 (2026-07-01)
+
+### 🚀 Features
+
+- add platform level for AgentConfig.namespaceId ([#1056](https://github.com/whoz-oss/coday/pull/1056))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.193.0 (2026-07-01)
+
+### 🚀 Features
+
+- user preference for ENTER key behavior in the chat composer ([#1077](https://github.com/whoz-oss/coday/pull/1077), [#1016](https://github.com/whoz-oss/coday/issues/1016))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.192.0 (2026-06-30)
+
+### 🚀 Features
+
+- #1009 add dark mode to AgentOS UI ([#1066](https://github.com/whoz-oss/coday/pull/1066), [#1009](https://github.com/whoz-oss/coday/issues/1009))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.191.0 (2026-06-30)
+
+### 🚀 Features
+
+- wz-32804: clear conf for agentos datadog custom metrics ([#1074](https://github.com/whoz-oss/coday/pull/1074))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.190.3 (2026-06-30)
+
+### 🩹 Fixes
+
+- #1067 switch Anthropic completions to streaming for large token limits ([#1067](https://github.com/whoz-oss/coday/issues/1067))
+- #1067 switch Anthropic completions to streaming for large token … ([#1072](https://github.com/whoz-oss/coday/pull/1072), [#1067](https://github.com/whoz-oss/coday/issues/1067))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.190.2 (2026-06-30)
+
+### 🩹 Fixes
+
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([4cb204c6](https://github.com/whoz-oss/coday/commit/4cb204c6))
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([#1071](https://github.com/whoz-oss/coday/pull/1071))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.190.1 (2026-06-29)
+
+### 🩹 Fixes
+
+- suppress Neo4j ClientNotification warnings in logs ([#1065](https://github.com/whoz-oss/coday/pull/1065))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.190.0 (2026-06-26)
+
+### 🚀 Features
+
+- #31851 add platform-level scope to IntegrationConfig ([#1006](https://github.com/whoz-oss/coday/pull/1006), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.189.1 (2026-06-25)
+
+### 🩹 Fixes
+
+- #1057 improve ripgrep error logging and Windows PATH support ([#1058](https://github.com/whoz-oss/coday/pull/1058), [#1057](https://github.com/whoz-oss/coday/issues/1057))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.189.0 (2026-06-24)
+
+### 🚀 Features
+
+- wz-32484 unify confirmationMode into single getConfirmationMode() entry point ([#1031](https://github.com/whoz-oss/coday/pull/1031))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.188.0 (2026-06-24)
+
+### 🚀 Features
+
+- WZ-31851 prepare permission platform level ([#1036](https://github.com/whoz-oss/coday/pull/1036))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.187.2 (2026-06-23)
+
+### 🩹 Fixes
+
+- #WZ-31424 Add missing indices ([#1046](https://github.com/whoz-oss/coday/pull/1046))
+
+### ❤️ Thank You
+
+- AlanMenantWhoz @AlanMenantWhoz
+- thomas.martin @thomasmartin-whoz
+
+## 0.187.1 (2026-06-23)
+
+### 🩹 Fixes
+
+- #WZ-31424 Improve performances on user group update ([3e1d99ed](https://github.com/whoz-oss/coday/commit/3e1d99ed))
+- #WZ-31424 Improve performances on user group update ([#1047](https://github.com/whoz-oss/coday/pull/1047))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.187.0 (2026-06-23)
+
+### 🚀 Features
+
+- #WZ-32858 evict idle CaseRuntime when no SSE subscribers ([#1039](https://github.com/whoz-oss/coday/pull/1039))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.186.0 (2026-06-23)
+
+### 🚀 Features
+
+- wz-32804: datadog custom metrics on tool calls ([#1040](https://github.com/whoz-oss/coday/pull/1040))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.185.0 (2026-06-23)
+
+### 🚀 Features
+
+- #32839 #32841 improve redirect tool description for no-agent and relevance cases ([#1038](https://github.com/whoz-oss/coday/pull/1038), [#32839](https://github.com/whoz-oss/coday/issues/32839), [#32841](https://github.com/whoz-oss/coday/issues/32841))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.184.0 (2026-06-22)
+
+### 🚀 Features
+
+- **ci:** add hotfix/* branch support to validate and release workflows ([174e325e](https://github.com/whoz-oss/coday/commit/174e325e))
+- **ci:** add hotfix/* branch support to validate and release workflows ([#1043](https://github.com/whoz-oss/coday/pull/1043))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.183.4 (2026-06-18)
+
+### 🩹 Fixes
+
+- wz-32642 use max character count to filter ToolResponse in context ([#1035](https://github.com/whoz-oss/coday/pull/1035))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
+## 0.183.3 (2026-06-18)
+
+### 🩹 Fixes
+
+- wz-32810 clarify what FindXXX tools do in intention ([3ec1c28f](https://github.com/whoz-oss/coday/commit/3ec1c28f))
+- wz-32810 clarify what FindXXX tools do in intention ([#1034](https://github.com/whoz-oss/coday/pull/1034))
+
+### ❤️ Thank You
+
+- Ivan Sfeir @ivan-sfeir-whoz
+- IvanSfeir @ivan-sfeir-whoz
+
+## 0.183.2 (2026-06-18)
+
+### 🩹 Fixes
+
+- WZ-32794 include link to created object in agent final response ([6a882308](https://github.com/whoz-oss/coday/commit/6a882308))
+- WZ-32794 include link to created object in agent final response ([#1033](https://github.com/whoz-oss/coday/pull/1033))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
+## 0.183.1 (2026-06-17)
+
+### 🩹 Fixes
+
+- wz-32561 add force stop intention to avoid execution hallucination ([#1029](https://github.com/whoz-oss/coday/pull/1029))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
+## 0.183.0 (2026-06-17)
+
+### 🚀 Features
+
+- admin users bypass DEPLOYED_TO filtering for agent access ([#984](https://github.com/whoz-oss/coday/pull/984))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.182.0 (2026-06-17)
+
+### 🚀 Features
+
+- #WZ-32677 use textarea for namespace description field ([#1005](https://github.com/whoz-oss/coday/pull/1005))
+
+### 🩹 Fixes
+
+- wz-31546 enrich AgentRunningEvent with llmProvider and llmModel ([#1007](https://github.com/whoz-oss/coday/pull/1007))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- vincent-audibert-whoz
+
+## 0.181.0 (2026-06-16)
+
+### 🚀 Features
+
+- #WZ-31935 enable agent config runtime filter ([#992](https://github.com/whoz-oss/coday/pull/992))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.180.2 (2026-06-12)
+
+### 🚀 Features
+
+- **agentos:** add ollama ai provider to allow offline tests #32370 ([#1003](https://github.com/whoz-oss/coday/pull/1003), [#32370](https://github.com/whoz-oss/coday/issues/32370))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.180.1 (2026-06-12)
+
+### 🚀 Features
+
+- **wz-32370:** save intermediate steps parameter generation results ([#988](https://github.com/whoz-oss/coday/pull/988))
+
+### ❤️ Thank You
+
+- vincent.couturier @vincent-couturier-whoz
+- Yannick Bridé @yannick-bride-whoz
+
+## 0.180.0 (2026-06-11)
+
+### 🚀 Features
+
+- wz-31566 Add dynamic namespace description via integration plugin ([#999](https://github.com/whoz-oss/coday/pull/999))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
+## 0.179.0 (2026-06-11)
+
+### 🚀 Features
+
+- wz-31856: Store and get feedbacks on events ([#1000](https://github.com/whoz-oss/coday/pull/1000))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.178.0 (2026-06-10)
+
+### 🚀 Features
+
+- update groups-by-external-ids endpoint to accept optional namespaceId ([03765ef2](https://github.com/whoz-oss/coday/commit/03765ef2))
+- updated openapi spec & applied PR review recommendations (Vincent A.) ([272c1e45](https://github.com/whoz-oss/coday/commit/272c1e45))
+- update groups-by-external-ids endpoint to accept optional namespaceId ([#1001](https://github.com/whoz-oss/coday/pull/1001))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.177.0 (2026-06-10)
+
+### 🚀 Features
+
+- #995 add Excel integration tools to agent toolbox ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 replace xlsx with exceljs for Excel tool ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 remove excel integration from agent package ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 replace xlsx with exceljs and remove agent excel dependency ([#995](https://github.com/whoz-oss/coday/issues/995))
+- #995 add Excel integration tools to agent toolbox ([#996](https://github.com/whoz-oss/coday/pull/996), [#995](https://github.com/whoz-oss/coday/issues/995))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.176.2 (2026-06-10)
+
+### 🩹 Fixes
+
+- **agentos:** repetition detection scoped to current turn only ([1504d20a](https://github.com/whoz-oss/coday/commit/1504d20a))
+- **agentos:** repetition detection scoped to current turn only ([#998](https://github.com/whoz-oss/coday/pull/998))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
+## 0.176.1 (2026-06-10)
+
+### 🩹 Fixes
+
+- refine agent name extraction regex to cover a corner case ([#1002](https://github.com/whoz-oss/coday/pull/1002))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.176.0 (2026-06-10)
+
+### 🚀 Features
+
+- #WZ-31935 add enabled field to AgentConfig and honor enabledOnl… ([#909](https://github.com/whoz-oss/coday/pull/909))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.175.0 (2026-06-09)
+
+### 🚀 Features
+
+- #WZ-32424 enrich redirect tool description with agent integrations and exclude calling agent ([#991](https://github.com/whoz-oss/coday/pull/991))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.174.2 (2026-06-09)
+
+### 🚀 Features
+
+- **wz-32516:** focus intention a bit more towards the session context ([5d14b539](https://github.com/whoz-oss/coday/commit/5d14b539))
+- **wz-32516:** adjust sentence ([dc9b217d](https://github.com/whoz-oss/coday/commit/dc9b217d))
+- **wz-32516:** focus intention a bit more towards the session context ([#997](https://github.com/whoz-oss/coday/pull/997))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.174.1 (2026-06-09)
+
+### 🩹 Fixes
+
+- wz-32496 streamline analyzeConfirmation prompt ([#993](https://github.com/whoz-oss/coday/pull/993))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.174.0 (2026-06-09)
+
+### 🚀 Features
+
+- persist case-chat debug toggle in localStorage ([#994](https://github.com/whoz-oss/coday/pull/994))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.20 (2026-06-09)
+
+### 🩹 Fixes
+
+- #WZ-32236 remove mandatory apiKey validation in ChatModelFactory ([#973](https://github.com/whoz-oss/coday/pull/973))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.19 (2026-06-08)
+
+### 🩹 Fixes
+
+- **agentos:** improve error handling in case of maxTokens response from llm #32496 ([#990](https://github.com/whoz-oss/coday/pull/990), [#32496](https://github.com/whoz-oss/coday/issues/32496))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.173.18 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32491 force-stop loop on second repetition warning ([#979](https://github.com/whoz-oss/coday/pull/979))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.17 (2026-06-08)
+
+### 🩹 Fixes
+
+- wz-32496 prevent formulateQuestion past-tense + drop sanitizeQuestion take(300) ([#987](https://github.com/whoz-oss/coday/pull/987))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.173.16 (2026-06-08)
+
+### 🩹 Fixes
+
+- restore matrix strategy for jvm publish to avoid github packages 409 conflicts ([ca18112b](https://github.com/whoz-oss/coday/commit/ca18112b))
+- restore matrix strategy for jvm publish to avoid github packages 409 conflicts ([#989](https://github.com/whoz-oss/coday/pull/989))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.173.15 (2026-06-08)
+
+### 🩹 Fixes
+
+- release summary job ([46734fb6](https://github.com/whoz-oss/coday/commit/46734fb6))
+- release summary job ([#986](https://github.com/whoz-oss/coday/pull/986))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.173.14 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32500 dedicated LLM language detection to prevent language contamination ([#985](https://github.com/whoz-oss/coday/pull/985))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.13 (2026-06-08)
+
+### 🩹 Fixes
+
+- #WZ-32024 prevent `@CreatedBy` from being overridden on updates ([#983](https://github.com/whoz-oss/coday/pull/983))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.173.12 (2026-06-08)
+
+### 🩹 Fixes
+
+- wz-32443 update intention prompt to avoid technical details ([#980](https://github.com/whoz-oss/coday/pull/980))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
+## 0.173.11 (2026-06-08)
+
+### 🩹 Fixes
+
+- #942 anchor scheduler nextRun to startTimestamp phase ([#942](https://github.com/whoz-oss/coday/issues/942))
+- #942 anchor scheduler nextRun to startTimestamp phase ([#974](https://github.com/whoz-oss/coday/pull/974), [#942](https://github.com/whoz-oss/coday/issues/942))
+
+### ❤️ Thank You
+
+- David Palita
+
+## 0.173.10 (2026-06-08)
+
+### 🚀 Features
+
+- improve release CI pipeline ([#982](https://github.com/whoz-oss/coday/pull/982), [#981](https://github.com/whoz-oss/coday/issues/981))
+
+### 🩹 Fixes
+
+- improve release CI pipeline ([1ec3ec02](https://github.com/whoz-oss/coday/commit/1ec3ec02))
+- revert unwanted changes ([0955a7d0](https://github.com/whoz-oss/coday/commit/0955a7d0))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.173.9 (2026-06-05)
+
+### 🩹 Fixes
+
+- remove redundant build dependsOn from JVM nx-release-publish no-op target ([2a23cb15](https://github.com/whoz-oss/coday/commit/2a23cb15))
+- remove redundant build dependsOn from JVM nx-release-publish no-op target ([#977](https://github.com/whoz-oss/coday/pull/977))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.173.8 (2026-06-05)
+
+### 🚀 Features
+
+- **agentos:** inject tool guidance in shouldConfirm prompt ([#32284](https://github.com/whoz-oss/coday/pull/32284), [#945](https://github.com/whoz-oss/coday/pull/945), [#943](https://github.com/whoz-oss/coday/issues/943), [#939](https://github.com/whoz-oss/coday/issues/939), [#5076](https://github.com/whoz-oss/coday/issues/5076))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.173.7 (2026-06-05)
+
+### 🩹 Fixes
+
+- #WZ-32024 expose createdBy/updatedBy/createdOn/updatedOn in Agen… ([#946](https://github.com/whoz-oss/coday/pull/946))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.173.6 (2026-06-05)
+
+### 🩹 Fixes
+
+- #WZ-32472 Fail Intention Generation if the LLM produces two tools in one pass ([5109aa15](https://github.com/whoz-oss/coday/commit/5109aa15))
+- #WZ-32472 Fail Intention Generation if the LLM produces two tool… ([#976](https://github.com/whoz-oss/coday/pull/976))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.173.5 (2026-06-04)
+
+### 🚀 Features
+
+- **wz-32291:** improve answer so it doesn't greet to often ([67d51247](https://github.com/whoz-oss/coday/commit/67d51247))
+- **wz-32291:** improve answer so it doesn't greet to often ([#975](https://github.com/whoz-oss/coday/pull/975))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.173.4 (2026-06-04)
+
+### 🩹 Fixes
+
+- #WZ-32428 Avoid the LLM lying to the user in case of intention generation failure ([d29e7db0](https://github.com/whoz-oss/coday/commit/d29e7db0))
+- #WZ-32428 Avoid the LLM lying to the user in case of intention g… ([#972](https://github.com/whoz-oss/coday/pull/972))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.173.3 (2026-06-04)
+
+### 🩹 Fixes
+
+- remove hardcoded integration types ([#964](https://github.com/whoz-oss/coday/pull/964))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([0828d491](https://github.com/whoz-oss/coday/commit/0828d491))
+- **ci:** use assemble instead of build for JVM publish targets to skip flaky tests ([#971](https://github.com/whoz-oss/coday/pull/971), [#969](https://github.com/whoz-oss/coday/issues/969))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.173.2 (2026-06-04)
+
+### 🩹 Fixes
+
+- search files with fileContent + fileTypes now correctly filters by extension ([#970](https://github.com/whoz-oss/coday/pull/970))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.1 (2026-06-04)
+
+### 🩹 Fixes
+
+- flaky test tentative fix for CI ([#968](https://github.com/whoz-oss/coday/pull/968))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.173.0 (2026-06-04)
+
+### 🚀 Features
+
+- add case plugin with ReadCaseTool ([#966](https://github.com/whoz-oss/coday/pull/966))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.172.6 (2026-06-04)
+
+### 🩹 Fixes
+
+- wz-32399: add logs to debug tool execution errors ([#965](https://github.com/whoz-oss/coday/pull/965))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.172.5 (2026-06-03)
+
+### 🩹 Fixes
+
+- update api-client ([#962](https://github.com/whoz-oss/coday/pull/962))
+- move tool description into expandable body in agent-config-inspect ([#957](https://github.com/whoz-oss/coday/pull/957))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.172.4 (2026-06-03)
+
+### 🚀 Features
+
+- **entity:** expose withRemoved on POST /by-ids and removed field on CaseResource ([#960](https://github.com/whoz-oss/coday/pull/960), [#959](https://github.com/whoz-oss/coday/issues/959))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.172.3 (2026-06-03)
+
+### 🩹 Fixes
+
+- tentative fix for CI release workflow exit code 130 ([#961](https://github.com/whoz-oss/coday/pull/961))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.172.2 (2026-06-03)
+
+### 🚀 Features
+
+- **wz-32291:** improve answer prompt to respond to correct user, not discriminate and not use id ([0cb9debb](https://github.com/whoz-oss/coday/commit/0cb9debb))
+- **wz-32291:** improve answer prompt to respond to correct user, not… ([#958](https://github.com/whoz-oss/coday/pull/958))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.172.1 (2026-06-03)
+
+### 🩹 Fixes
+
+- #wz-32400 tool parameter generation output in XML ([#956](https://github.com/whoz-oss/coday/pull/956))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.172.0 (2026-06-03)
+
+### 🚀 Features
+
+- #930 add home scheduler dialogs and support agent instruction execution ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 refactor background thread execution and add scheduler fallback logging ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 centralize oneshot prompt execution in thread manager ([#930](https://github.com/whoz-oss/coday/issues/930))
+- #930 add home scheduler dialogs and support agent instruction e… ([#931](https://github.com/whoz-oss/coday/pull/931), [#930](https://github.com/whoz-oss/coday/issues/930))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.171.2 (2026-06-02)
+
+### 🩹 Fixes
+
+- attempt to avoid flaky tests in publish ([#955](https://github.com/whoz-oss/coday/pull/955))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.171.1 (2026-06-02)
+
+### 🩹 Fixes
+
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([b3d10903](https://github.com/whoz-oss/coday/commit/b3d10903))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([f6bfa3f3](https://github.com/whoz-oss/coday/commit/f6bfa3f3))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([b6ec9167](https://github.com/whoz-oss/coday/commit/b6ec9167))
+- **agentos-service:** fix MockK ClassCastException by passing withRemoved=false in findById stubs ([#954](https://github.com/whoz-oss/coday/pull/954))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.171.0 (2026-06-02)
+
+### 🚀 Features
+
+- lower the neo4j log level to stop being flooded ([#953](https://github.com/whoz-oss/coday/pull/953))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.170.0 (2026-06-02)
+
+### 🚀 Features
+
+- add userId to AgentConfigSearchRequest.kt ([#952](https://github.com/whoz-oss/coday/pull/952))
+
+### 🩹 Fixes
+
+- remove some outdated docs and trigger the release after a fix ([#951](https://github.com/whoz-oss/coday/pull/951))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.168.3 (2026-06-02)
+
+### 🩹 Fixes
+
+- wz-32164: introduce withRemoved ([2db3cadd](https://github.com/whoz-oss/coday/commit/2db3cadd))
+- wz-32164: open api ([6cb3077e](https://github.com/whoz-oss/coday/commit/6cb3077e))
+- wz-32164: open api ([2ad23229](https://github.com/whoz-oss/coday/commit/2ad23229))
+- wz-32164: introduce withRemoved ([#940](https://github.com/whoz-oss/coday/pull/940))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- thomas.martin @thomasmartin-whoz
+
+## 0.168.2 (2026-06-02)
+
+### 🚀 Features
+
+- **wz-32319:** put namespace description into systemprompt in advanced mode ([3ed44622](https://github.com/whoz-oss/coday/commit/3ed44622))
+- **wz-32319:** merge user messages and improve intention prompt ([8e9960bc](https://github.com/whoz-oss/coday/commit/8e9960bc))
+- **wz-32319:** fix tests ([dfbe15b1](https://github.com/whoz-oss/coday/commit/dfbe15b1))
+- **wz-32319:** use retryWithFallback ([bcb8d595](https://github.com/whoz-oss/coday/commit/bcb8d595))
+- **wz-32319:** put namespace description into systemprompt in advanc… ([#944](https://github.com/whoz-oss/coday/pull/944))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.168.1 (2026-06-02)
+
+### 🩹 Fixes
+
+- #WZ-32242 inject language hint in final response prompt ([#941](https://github.com/whoz-oss/coday/pull/941))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.168.0 (2026-06-02)
+
+### 🚀 Features
+
+- bump gemini and gpt models ([#938](https://github.com/whoz-oss/coday/pull/938))
+
+### ❤️ Thank You
+
+- David Palita
+
+## 0.167.3 (2026-06-02)
+
+### 🚀 Features
+
+- **wz-32328:** realign intention prompt ([49bbd187](https://github.com/whoz-oss/coday/commit/49bbd187))
+- **wz-32328:** add execution state ([df238df6](https://github.com/whoz-oss/coday/commit/df238df6))
+- **wz-32328:** realign intention prompt ([#935](https://github.com/whoz-oss/coday/pull/935))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.167.2 (2026-06-01)
+
+### 🩹 Fixes
+
+- remove duplicated agent running event ([#936](https://github.com/whoz-oss/coday/pull/936))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.167.1 (2026-06-01)
+
+### 🚀 Features
+
+- **agentos:** implement multi-phase parameter enrichment for tools ([#31964](https://github.com/whoz-oss/coday/pull/31964), [#934](https://github.com/whoz-oss/coday/pull/934))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.167.0 (2026-06-01)
+
+### 🚀 Features
+
+- agent-config-inspect component with definition view and cross-links ([#933](https://github.com/whoz-oss/coday/pull/933))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.166.9 (2026-06-01)
+
+### 🩹 Fixes
+
+- #WZ-32275 Retry if the LLM produces invalid JSON ([6eccc3e6](https://github.com/whoz-oss/coday/commit/6eccc3e6))
+- #WZ-32275 Retry if the LLM produces invalid JSON ([#927](https://github.com/whoz-oss/coday/pull/927))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.166.8 (2026-06-01)
+
+### 🩹 Fixes
+
+- #WZ-32274 stop agent loop on 4xx LLM provider error ([#928](https://github.com/whoz-oss/coday/pull/928))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.166.7 (2026-06-01)
+
+### 🩹 Fixes
+
+- align agent resolution and find mechanism ([#929](https://github.com/whoz-oss/coday/pull/929))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.166.6 (2026-05-29)
+
+### 🩹 Fixes
+
+- #32262 tool repetition detection now compares args alongside tool name ([#926](https://github.com/whoz-oss/coday/pull/926), [#32262](https://github.com/whoz-oss/coday/issues/32262))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.166.5 (2026-05-29)
+
+### 🩹 Fixes
+
+- #WZ-32275 Improve the success rate of parameter generation to json ([e88d326d](https://github.com/whoz-oss/coday/commit/e88d326d))
+- #WZ-32275 Improve the success rate of parameter generation to json ([#925](https://github.com/whoz-oss/coday/pull/925))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.166.4 (2026-05-29)
+
+### 🩹 Fixes
+
+- wz-31596: add logs and streamline confirm mechanism ([#924](https://github.com/whoz-oss/coday/pull/924))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.166.3 (2026-05-29)
+
+### 🩹 Fixes
+
+- #WZ-32233 Use spring cloud eureka client implementation instead … ([#923](https://github.com/whoz-oss/coday/pull/923))
+
+### ❤️ Thank You
+
+- adrien-ogor-whoz
+
+## 0.166.2 (2026-05-29)
+
+### 🚀 Features
+
+- **cases:** add namespace-scoped endpoint for listing cases by user ([#919](https://github.com/whoz-oss/coday/pull/919))
+
+### 🩹 Fixes
+
+- **cases:** add namespace-scoped endpoint for listing cases by user ([5ee68b28](https://github.com/whoz-oss/coday/commit/5ee68b28))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.166.1 (2026-05-29)
+
+### 🩹 Fixes
+
+- remove complex masking logic causing partial updates ([#922](https://github.com/whoz-oss/coday/pull/922))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.166.0 (2026-05-28)
+
+### 🚀 Features
+
+- #WZ-32223 leaner user context — omit UUID from prompt, skip block when no readable data ([#921](https://github.com/whoz-oss/coday/pull/921))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.165.4 (2026-05-28)
+
+### 🚀 Features
+
+- **agentos:** port IN-CHANNEL confirmation flow to AgentAdvanced (WZ-31596) ([#885](https://github.com/whoz-oss/coday/pull/885), [#862](https://github.com/whoz-oss/coday/issues/862), [#865](https://github.com/whoz-oss/coday/issues/865))
+
+### ❤️ Thank You
+
+- mathieu_dearmey @mathieu-dearmey
+- selim-bensenouci-ep-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.165.3 (2026-05-28)
+
+### 🩹 Fixes
+
+- #WZ-31424 Remove wrong constraint on user group creation ([3dc63e30](https://github.com/whoz-oss/coday/commit/3dc63e30))
+- #WZ-31424 Regenerate open api documentation ([86beaa80](https://github.com/whoz-oss/coday/commit/86beaa80))
+- #WZ-31424 Remove wrong constraint on user group creation ([#918](https://github.com/whoz-oss/coday/pull/918))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.165.2 (2026-05-28)
+
+### 🩹 Fixes
+
+- #WZ-31424 Change permission for group ids per users ([fd3e645e](https://github.com/whoz-oss/coday/commit/fd3e645e))
+- #WZ-31424 Code review ([f66e4b4a](https://github.com/whoz-oss/coday/commit/f66e4b4a))
+- #WZ-31424 Change permission for group ids per users ([#916](https://github.com/whoz-oss/coday/pull/916))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.165.1 (2026-05-27)
+
+### 🩹 Fixes
+
+- wz-32167: endpoint to get cases concerning a user by external id ([#915](https://github.com/whoz-oss/coday/pull/915))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.165.0 (2026-05-27)
+
+### 🚀 Features
+
+- #32144 add sessionContext to MessageEvent for application context injection ([#913](https://github.com/whoz-oss/coday/pull/913), [#32144](https://github.com/whoz-oss/coday/issues/32144))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
+## 0.164.1 (2026-05-27)
+
+### 🩹 Fixes
+
+- #WZ-31424 Add user group to permission transitive dependency check ([6aa61452](https://github.com/whoz-oss/coday/commit/6aa61452))
+- #WZ-31424 Add user group to namespace child entity ([#914](https://github.com/whoz-oss/coday/pull/914))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.164.0 (2026-05-27)
+
+### 🚀 Features
+
+- WZ-32157 context improvements ([#912](https://github.com/whoz-oss/coday/pull/912))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.163.0 (2026-05-26)
+
+### 🚀 Features
+
+- #WZ-31597 ToolExecutionResult with metadata propagated to ToolResponseEvent ([#910](https://github.com/whoz-oss/coday/pull/910))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.162.2 (2026-05-25)
+
+### 🩹 Fixes
+
+- **agentos:** fix redirect tools in advanced mode (WZ-32112) ([#908](https://github.com/whoz-oss/coday/pull/908))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.162.1 (2026-05-22)
+
+### 🩹 Fixes
+
+- **agentos:** fix issue on parameters generation and tools output (WZ-31964) ([#907](https://github.com/whoz-oss/coday/pull/907))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.162.0 (2026-05-22)
+
+### 🚀 Features
+
+- #WZ-31982: enforce agent availability at runtime ([#893](https://github.com/whoz-oss/coday/pull/893))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.161.0 (2026-05-22)
+
+### 🚀 Features
+
+- #WZ-31894 return human-readable error instead of throwing on unknown agent ([#903](https://github.com/whoz-oss/coday/pull/903))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.160.3 (2026-05-22)
+
+### 🩹 Fixes
+
+- use npm trusted publishing ([f50403a4](https://github.com/whoz-oss/coday/commit/f50403a4))
+- use npm trusted publishing ([#906](https://github.com/whoz-oss/coday/pull/906))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.160.2 (2026-05-22)
+
+### 🩹 Fixes
+
+- wz-31608: avoid error on role provisioning on unknown namespaces ([#897](https://github.com/whoz-oss/coday/pull/897))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.160.1 (2026-05-22)
+
+### 🚀 Features
+
+- **agentos:** add okhttp logging interceptor to enhance copilot plugin logs (WZ-31607) ([#905](https://github.com/whoz-oss/coday/pull/905))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.160.0 (2026-05-21)
+
+### 🚀 Features
+
+- #wz-32045 add headers editing to ai-provider form ([#895](https://github.com/whoz-oss/coday/pull/895))
+- markdown rendering and technical events toggle in case-chat ([#902](https://github.com/whoz-oss/coday/pull/902))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- vincent-audibert-whoz
+- vincent.audibert
+
+## 0.159.8 (2026-05-21)
+
+### 🩹 Fixes
+
+- install latest npm for trusted publishing ([c53680cd](https://github.com/whoz-oss/coday/commit/c53680cd))
+- bump node 24 everywhere ([0cf89ef0](https://github.com/whoz-oss/coday/commit/0cf89ef0))
+- bump node 24 everywhere ([1a8e3c44](https://github.com/whoz-oss/coday/commit/1a8e3c44))
+- install latest npm for trusted publishing ([#901](https://github.com/whoz-oss/coday/pull/901))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.159.7 (2026-05-21)
+
+### 🩹 Fixes
+
+- add NPM_TOKEN to release.yml (Run nx release) ([be4c0f59](https://github.com/whoz-oss/coday/commit/be4c0f59))
+- add NPM_TOKEN to release.yml (Run nx release) ([#900](https://github.com/whoz-oss/coday/pull/900))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.159.6 (2026-05-21)
+
+### 🩹 Fixes
+
+- restore registry url in release.yml and add public access arg to releasePublish ([bbe935dc](https://github.com/whoz-oss/coday/commit/bbe935dc))
+- restore registry url in release.yml and add public access arg to releasePublish ([#899](https://github.com/whoz-oss/coday/pull/899))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.159.5 (2026-05-21)
+
+### 🩹 Fixes
+
+- remove registry-url from release.yml ([c8889f27](https://github.com/whoz-oss/coday/commit/c8889f27))
+- remove registry-url from release.yml ([#898](https://github.com/whoz-oss/coday/pull/898))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.159.4 (2026-05-21)
+
+### 🚀 Features
+
+- **agentos:** extract AgentIntentionGenerator.kt from AgentAdvanced (WZ-31597) ([#862](https://github.com/whoz-oss/coday/pull/862))
+
+### 🩹 Fixes
+
+- remove NPM_CONFIG_PROVENANCE ([b5c4503a](https://github.com/whoz-oss/coday/commit/b5c4503a))
+- remove NPM_CONFIG_PROVENANCE ([#896](https://github.com/whoz-oss/coday/pull/896))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.159.3 (2026-05-21)
+
+### 🩹 Fixes
+
+- #WZ-32044 pass ToolContext with namespaceId to provideTools in ToolResolverService ([#894](https://github.com/whoz-oss/coday/pull/894))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.159.2 (2026-05-21)
+
+### 🩹 Fixes
+
+- wz-32042: fix mapping of defaultAgent in namespace resource to d… ([#892](https://github.com/whoz-oss/coday/pull/892))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.159.1 (2026-05-21)
+
+### 🩹 Fixes
+
+- #WZ-31424 Register UserGroup in permissions ([2573acf2](https://github.com/whoz-oss/coday/commit/2573acf2))
+- #WZ-31424 Register UserGroup in permissions ([#891](https://github.com/whoz-oss/coday/pull/891))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.159.0 (2026-05-21)
+
+### 🚀 Features
+
+- wz-31608: add endpoints for role provisioning ([#890](https://github.com/whoz-oss/coday/pull/890))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.158.0 (2026-05-21)
+
+### 🚀 Features
+
+- #31898 tag agent and user messages with XML in LLM context ([#883](https://github.com/whoz-oss/coday/pull/883), [#31898](https://github.com/whoz-oss/coday/issues/31898))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.157.0 (2026-05-21)
+
+### 🚀 Features
+
+- #31607 make StandardTool.execute and executeWithJson suspend ([#882](https://github.com/whoz-oss/coday/pull/882), [#31607](https://github.com/whoz-oss/coday/issues/31607))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.156.0 (2026-05-21)
+
+### 🚀 Features
+
+- #31893 environment-level default agent fallback ([#874](https://github.com/whoz-oss/coday/pull/874), [#31893](https://github.com/whoz-oss/coday/issues/31893))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.155.1 (2026-05-20)
+
+### 🩹 Fixes
+
+- #WZ-31424 Fix user group unique indices creation ([1356dc40](https://github.com/whoz-oss/coday/commit/1356dc40))
+- #WZ-31424 Fix user group unique indices creation ([#888](https://github.com/whoz-oss/coday/pull/888))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.155.0 (2026-05-20)
+
+### 🚀 Features
+
+- #wz-31644 implement permission in user group apis ([17e9d14c](https://github.com/whoz-oss/coday/commit/17e9d14c))
+- #wz-31644 implement permission in user group apis ([#884](https://github.com/whoz-oss/coday/pull/884))
+
+### ❤️ Thank You
+
+- AlanMenantWhoz @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+
+## 0.154.0 (2026-05-20)
+
+### 🚀 Features
+
+- wz-31610: change param name of live ([#886](https://github.com/whoz-oss/coday/pull/886))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.153.1 (2026-05-20)
+
+### 🚀 Features
+
+- **agentos:** enhance security filter (WZ-31881) ([#881](https://github.com/whoz-oss/coday/pull/881))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.153.0 (2026-05-19)
+
+### 🚀 Features
+
+- user-level overlays for Tools + LLM (#wz-31189) ([#837](https://github.com/whoz-oss/coday/pull/837), [#811](https://github.com/whoz-oss/coday/issues/811))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.152.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31611 add agent config external metadata ([17274bab](https://github.com/whoz-oss/coday/commit/17274bab))
+- #WZ-31611 add externalMetadataJson to AgentConfigNode ([cb67abb6](https://github.com/whoz-oss/coday/commit/cb67abb6))
+- #WZ-31611 update openapi to add externalMetadata to AgentConfig ([0d5de149](https://github.com/whoz-oss/coday/commit/0d5de149))
+- #WZ-31611 add agent config external metadata ([#879](https://github.com/whoz-oss/coday/pull/879))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.151.0 (2026-05-19)
+
+### 🚀 Features
+
+- #WZ-31607 smarter cleanup of deployed plugins ([#873](https://github.com/whoz-oss/coday/pull/873))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.150.0 (2026-05-19)
+
+### 🚀 Features
+
+- #wz-31876 list available agents for user external id ([8b5bd437](https://github.com/whoz-oss/coday/commit/8b5bd437))
+- #wz-31876 list available agents for user external id ([ce0d1084](https://github.com/whoz-oss/coday/commit/ce0d1084))
+- #wz-31876 update openapi spec ([1c536505](https://github.com/whoz-oss/coday/commit/1c536505))
+
+### ❤️ Thank You
+
+- mbarroux @mickael-barroux-whoz
+
+## 0.149.0 (2026-05-19)
+
+### 🚀 Features
+
+- #wz-31875 endpoints to deploy and undeploy agents ([4a3d323d](https://github.com/whoz-oss/coday/commit/4a3d323d))
+- #31875 Add tests ([#31875](https://github.com/whoz-oss/coday/issues/31875))
+- #WZ-31424 Update openapi ([f5c4bb39](https://github.com/whoz-oss/coday/commit/f5c4bb39))
+- #WZ-31875 Code review ([9859547d](https://github.com/whoz-oss/coday/commit/9859547d))
+- #WZ-31875 remove unused import ([9d2bf0b2](https://github.com/whoz-oss/coday/commit/9d2bf0b2))
+- #WZ-31875: Deploy agent into namespace ([#878](https://github.com/whoz-oss/coday/pull/878))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+
+## 0.148.0 (2026-05-18)
+
+### 🚀 Features
+
+- #WZ-31424 Rename user group API fields ([1895af0b](https://github.com/whoz-oss/coday/commit/1895af0b))
+- #WZ-31424 Fix http file ([6477704c](https://github.com/whoz-oss/coday/commit/6477704c))
+- #WZ-31424 Rename user group API fields ([#877](https://github.com/whoz-oss/coday/pull/877))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.147.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31609 add support of vllm with headers ([2bcd23fb](https://github.com/whoz-oss/coday/commit/2bcd23fb))
+- npx ops ([25c23bde](https://github.com/whoz-oss/coday/commit/25c23bde))
+- wz-31609 add support of vllm with headers ([#876](https://github.com/whoz-oss/coday/pull/876))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.146.0 (2026-05-18)
+
+### 🚀 Features
+
+- wz-31610: namespace id to federation id bridge ([#870](https://github.com/whoz-oss/coday/pull/870))
+
+### ❤️ Thank You
+
+- mathieu_dearmey @mathieu-dearmey
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.145.1 (2026-05-15)
+
+### 🚀 Features
+
+- **agentos:** enhance spring cloud config and ensure correct log format (WZ-31881) ([#872](https://github.com/whoz-oss/coday/pull/872))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.145.0 (2026-05-13)
+
+### 🚀 Features
+
+- add PWA support for mobile installation ([0ca77e34](https://github.com/whoz-oss/coday/commit/0ca77e34))
+- return pr ([08e2578a](https://github.com/whoz-oss/coday/commit/08e2578a))
+- update pnpm-lock ([0651bd35](https://github.com/whoz-oss/coday/commit/0651bd35))
+
+### 🩹 Fixes
+
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+- #603 make mission and task controls mobile-friendly ([#603](https://github.com/whoz-oss/coday/issues/603))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.144.2 (2026-05-13)
+
+### 🩹 Fixes
+
+- #31424 Fix autocomplete query ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Fix autocomplete query ([#871](https://github.com/whoz-oss/coday/pull/871), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.144.1 (2026-05-13)
+
+### 🚀 Features
+
+- **agentos:** add repetition detection mechanism on AgentAdvanced (WZ-31597) ([#861](https://github.com/whoz-oss/coday/pull/861))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.144.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31783 call default agent - namespace defaultAgentName + routing fallback ([#854](https://github.com/whoz-oss/coday/pull/854), [#31783](https://github.com/whoz-oss/coday/issues/31783))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.143.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Rename user groups relations ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Rename user groups relations ([#864](https://github.com/whoz-oss/coday/pull/864), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.142.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31424 Implement search users with user groups by external id ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Code review ([#31424](https://github.com/whoz-oss/coday/issues/31424))
+- #31424 Implement search users with user groups by external id ([#863](https://github.com/whoz-oss/coday/pull/863), [#31424](https://github.com/whoz-oss/coday/issues/31424))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.141.0 (2026-05-12)
+
+### 🚀 Features
+
+- #31681 REDIRECT internal integration tool ([#852](https://github.com/whoz-oss/coday/pull/852), [#31681](https://github.com/whoz-oss/coday/issues/31681))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.140.1 (2026-05-11)
+
+### 🚀 Features
+
+- **agentos:** add retry mechanism on resolveIntentionAndTool (WZ-31597) ([4708dfc2](https://github.com/whoz-oss/coday/commit/4708dfc2))
+
+### ❤️ Thank You
+
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.140.0 (2026-05-11)
+
+### 🚀 Features
+
+- #31644 Implement DELETE user group endpoint ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix unique indices in case of soft deletion ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Add missing transactions ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Fix after coday review ([#31644](https://github.com/whoz-oss/coday/issues/31644))
+- #31644 Implement DELETE user group endpoint ([#851](https://github.com/whoz-oss/coday/pull/851), [#31644](https://github.com/whoz-oss/coday/issues/31644))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- AlanMenantWhoz @AlanMenantWhoz
+
+## 0.139.0 (2026-05-11)
+
+### 🚀 Features
+
+- #858 Add button "open in full view" on the card ([#858](https://github.com/whoz-oss/coday/issues/858))
+- #858 Add button "open in full view" on the card ([#859](https://github.com/whoz-oss/coday/pull/859), [#858](https://github.com/whoz-oss/coday/issues/858))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.138.0 (2026-05-11)
+
+### 🚀 Features
+
+- #855 Add a drawer to quickly display and answer threads in the global task control ([#855](https://github.com/whoz-oss/coday/issues/855))
+- #855 Merge master ([#855](https://github.com/whoz-oss/coday/issues/855))
+- #855 Add a drawer to quickly display and answer threads in the … ([#856](https://github.com/whoz-oss/coday/pull/856), [#855](https://github.com/whoz-oss/coday/issues/855))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.137.5 (2026-05-11)
+
+### 🩹 Fixes
+
+- **agentos-api-client:** fix missed user group generated client files (WZ-31597) ([#857](https://github.com/whoz-oss/coday/pull/857))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.137.4 (2026-05-10)
+
+### 🩹 Fixes
+
+- allow voice in desktop apps + temporary fix user-group-controller build ([c670cf36](https://github.com/whoz-oss/coday/commit/c670cf36))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.137.3 (2026-05-07)
+
+### 🚀 Features
+
+- wz-31595: add run configuration for whoz registered agentos ([#849](https://github.com/whoz-oss/coday/pull/849))
+- **agentos:** agent advanced execution mode part 1  (WZ-31597) ([#846](https://github.com/whoz-oss/coday/pull/846))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.137.2 (2026-05-07)
+
+### 🩹 Fixes
+
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([28e60d4d](https://github.com/whoz-oss/coday/commit/28e60d4d))
+- **agentos-service:** explicitly publish bootJar artifact to maven repository ([#850](https://github.com/whoz-oss/coday/pull/850))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.137.1 (2026-05-07)
 
 ### 🩹 Fixes

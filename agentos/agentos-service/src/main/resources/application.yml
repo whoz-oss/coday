@@ -1,6 +1,6 @@
 spring:
   application:
-    name: agentos-service
+    name: agentos
   cloud:
     # Spring Cloud 2024.0.x (Moore) targets Spring Boot 3.4.x officially.
     # AgentOS runs Spring Boot 3.5.x which is functionally compatible but
@@ -11,8 +11,6 @@ spring:
     config:
       # Disable Cloud Config by default. Enabled only with the 'whoz' profile.
       enabled: false
-      import-check:
-        enabled: false
     discovery:
       # Disable service discovery (Eureka) by default. Enabled only with the
       # 'whoz' profile. Without this, EurekaClientAutoConfiguration fires and
@@ -22,6 +20,11 @@ spring:
     chat:
       client:
         enabled: false
+      observations:
+        include-error-logging: true
+    tools:
+      observations:
+        include-content: false
     model:
       chat: none
       audio:
@@ -44,12 +47,17 @@ spring:
           model: claude-3-5-sonnet-20241022
           temperature: 0.7
     
+    ollama:
+      init:
+        # Prevent the Ollama starter from pulling models at startup.
+        # Model creation is managed exclusively by ChatModelFactory.
+        pull-model-strategy: never
     mcp:
       client:
         enabled: ${MCP_ENABLED:false}
 
 server:
-  port: 8123
+  port: 8124
   compression:
     enabled: false
   error:
@@ -69,8 +77,28 @@ management:
       # 'always' so that Eureka can read the health status without credentials.
       # The health endpoint itself does not expose sensitive data.
       show-details: always
+# cmd line to run datadog container
+# docker run -d \
+# -e DD_API_KEY=xxxxxx \
+# -e DD_SITE=datadoghq.eu \
+# -e DD_HOSTNAME=thomas.martin \
+# -e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true \
+# -p 8126:8126 -p 8127:8125/udp \
+# datadog/agent:latest
 
 agentos:
+  case:
+  # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
+  # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
+  # idle-eviction-grace-ms: 300000
+  # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
+  # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
+  # sse-heartbeat-interval-ms: 30000
+  defaults:
+  # Environment-level fallback agent name. Consulted when a namespace has no
+  # defaultAgentName configured. The named agent must exist in the case's namespace.
+  # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
+  # agent-name: copilot
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
   security:
@@ -96,15 +124,10 @@ agentos:
     # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
     data-dir: data/
     # Persistence mode:
-    #   filesystem      - JSON files under data-dir, no external dependency
-    #   in-memory                - no persistence across restarts, useful for tests
-    #   embedded-neo4j           - embedded Neo4j engine, no Docker required;
+    #   embedded-neo4j (default) - embedded Neo4j engine, no Docker required;
     #                              database stored under data-dir/neo4j/
     #   neo4j                    - standalone Neo4j server (requires spring.neo4j.* config)
     # Override with env var: AGENTOS_PERSISTENCE_MODE
-    # Default is embedded-neo4j: filesystem and in-memory modes are deprecated
-    # and will be removed in a future neo4j is the only supported
-    # production mode going forward.
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
 
 logging:
@@ -113,6 +136,16 @@ logging:
     io.whozoss.agentos.service: DEBUG
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
+    # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning,
+    # UnknownRelationshipTypeWarning) for optional node properties or relationship types
+    # that are absent on some nodes. These are harmless — SDN queries all declared fields
+    # regardless of whether every node has them, and BELONGS_TO edges are absent until the
+    # first entity of each type is written — but they flood the logs on a fresh database.
+    # SDN routes these notifications through org.springframework.data.neo4j.cypher.*
+    # (ResultSummaries.logNotifications guards on cypherLog.isWarnEnabled). Setting the
+    # parent logger to ERROR suppresses all notification categories at once.
+    org.neo4j.driver: ERROR
+    org.springframework.data.neo4j.cypher: ERROR
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

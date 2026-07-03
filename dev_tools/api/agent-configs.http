@@ -1,4 +1,5 @@
-@namespaceId=c0d100c0-1012-44dd-9c32-e813d7c4f4d8
+@namespaceId=f6f63f36-206f-47de-9cb1-296540970bbd
+@userExternalId=6a01e6ae263fdf6cf112af50
 
 ### Create a agent config
 POST {{apiBaseUrl}}/api/agent-configs
@@ -6,9 +7,24 @@ Content-Type: application/json
 
 {
   "namespaceId": "{{namespaceId}}",
-  "name": "Agent 2"
+  "name": "Agent 1"
 }
 
 ### List agents by namespace id
 GET {{apiBaseUrl}}/api/agent-configs/by-parentId/{{namespaceId}}
 Content-Type: application/json
+
+
+### List agents by user external id
+POST {{apiBaseUrl}}/api/agent-configs/search
+Content-Type: application/json
+
+{
+  "userExternalId": "{{userExternalId}}",
+  "namespaceId": "{{namespaceId}}"
+}
+
+### Get agent definition
+GET {{apiBaseUrl}}/api/agent-configs/c4dcb657-a0f6-4b5a-a2e7-1fb333f00f74/definition?withUserOverlay=true
+Content-Type: application/json
+X-External-User-Id: {{userExternalId}}

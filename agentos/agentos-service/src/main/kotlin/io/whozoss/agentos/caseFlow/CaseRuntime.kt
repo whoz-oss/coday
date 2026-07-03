@@ -12,7 +12,11 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import mu.KLogging
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Owns only execution state: the event list, the SSE flow, and the kill flag.
  * All business logic is delegated back to [CaseService] through four callbacks:
  *
- * @param updateStatus called whenever the runtime transitions to a new [CaseStatus].
+ * @param updateStatusCallback called whenever the runtime transitions to a new [CaseStatus].
  * @param storeEvent called for every event produced by this runtime.
  *   The service persists the event and returns the saved copy (with stable id).
  *   The runtime then adds it to its list and emits it on the SSE flow itself —
@@ -34,19 +38,33 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an [AgentSelectedEvent],
  *   or just an [AgentSelectedEvent] for the default agent).
  *   Returns an empty list when no agent is configured and the loop should stop.
+ * @param isAgentAuthorized defensive check called when [processNextStep] encounters an
+ *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
+ *   is accessible to the current user. Called at redirect time — not pre-computed.
  * @param runAgent fetches the named agent, runs it against the current event history,
- *   and pipes each produced event through [storeEvent]. Error handling is the
- *   responsibility of the service implementation.
+ *   and pipes each produced event through [storeEvent]. The implementation is responsible
+ *   for deciding whether to emit [AgentRunningEvent] by inspecting the event history
+ *   (e.g. skip if already the most recent orchestration event, to avoid duplicates on
+ *   rehydration). Error handling is the responsibility of the service implementation.
  */
 class CaseRuntime(
     val id: UUID,
     val namespaceId: UUID,
-    private val updateStatus: (UUID, CaseStatus) -> Unit,
+    private val updateStatusCallback: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, eventsProvider: () -> List<CaseEvent>, userId: UUID?, shouldContinue: () -> Boolean) -> Unit,
+    private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
+    private val runAgent: suspend (
+        agentName: String,
+        events: List<CaseEvent>,
+        eventsProvider: () -> List<CaseEvent>,
+        userId: UUID?,
+        shouldContinue: () -> Boolean,
+    ) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
-) : CaseEventEmitter by DefaultCaseEventEmitter() {
+    initialStatus: CaseStatus = CaseStatus.PENDING,
+    private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
+) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
     /**
@@ -76,9 +94,21 @@ class CaseRuntime(
     private val maxIterations = 100
     private var iterationCount = 0
 
+    private val _statusFlow = MutableStateFlow(initialStatus)
+
     // -------------------------------------------------------------------------
     // Public state
     // -------------------------------------------------------------------------
+
+    /**
+     * Reactive view of the current [CaseStatus].
+     * Updated synchronously inside [run] before and after each transition.
+     * Initialised to [initialStatus] so rehydrated runtimes start with the
+     * correct persisted status rather than always [CaseStatus.PENDING].
+     * Consumers can combine this with [subscriptionCount] to react to the
+     * conjunction of "case is idle" and "no SSE subscribers".
+     */
+    val statusFlow: StateFlow<CaseStatus> = _statusFlow.asStateFlow()
 
     /**
      * Interrupt the current agent turn and return to [CaseStatus.IDLE].
@@ -107,6 +137,9 @@ class CaseRuntime(
     }
 
     fun isRunning(): Boolean = runInFlight.get()
+
+    /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
+    val subscriptionCount get() = emitter.subscriptionCount
 
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
@@ -142,11 +175,15 @@ class CaseRuntime(
      * Store a user message and emit the agent-selection events.
      * Does NOT start the execution loop — the caller ([CaseService]) is responsible
      * for launching [run] in a background coroutine.
+     *
+     * When [sessionContext] is non-null, it is embedded directly in the [MessageEvent]
+     * as [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext].
      */
     fun addUserMessage(
         actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
+        sessionContext: Map<String, Any?>? = null,
     ) {
         logger.info {
             "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
@@ -181,7 +218,9 @@ class CaseRuntime(
             }
         }
 
-        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
+        storeAndEmitEvent(
+            MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content, sessionContext = sessionContext),
+        )
         selectAgent(content, eventList.getAll()).forEach { storeAndEmitEvent(it) }
     }
 
@@ -213,7 +252,7 @@ class CaseRuntime(
         logger.info { "[CaseRuntime $id] run() started" }
         interruptRequested.set(false)
         killRequested.set(false)
-        updateStatus(id, CaseStatus.RUNNING)
+        updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 
         try {
@@ -229,26 +268,32 @@ class CaseRuntime(
             when {
                 iterationCount >= maxIterations -> {
                     logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
-                    updateStatus(id, CaseStatus.ERROR)
+                    updateStatus(CaseStatus.ERROR)
                 }
 
                 killRequested.get() -> {
-                    // Explicit kill: permanent termination. Service will evict the runtime.
-                    updateStatus(id, CaseStatus.KILLED)
+                    updateStatus(CaseStatus.KILLED)
                 }
 
                 else -> {
                     // Normal turn-end: agent finished, waiting for next user message.
                     // Non-terminal — runtime stays alive, SSE flow stays open.
-                    updateStatus(id, CaseStatus.IDLE)
+                    updateStatus(CaseStatus.IDLE)
                 }
             }
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Error during execution" }
-            updateStatus(id, CaseStatus.ERROR)
+            updateStatus(CaseStatus.ERROR)
         } finally {
             runInFlight.set(false)
         }
+    }
+
+    private fun updateStatus(caseStatus: CaseStatus) {
+        // _statusFlow is updated first so reactive watchers (e.g. eviction watcher)
+        // see the new status immediately, before the persistence round-trip completes.
+        _statusFlow.value = caseStatus
+        updateStatusCallback(id, caseStatus)
     }
 
     private suspend fun processNextStep() {
@@ -282,24 +327,45 @@ class CaseRuntime(
                 }
 
                 is AgentRunningEvent -> {
-                    logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), { eventList.getAll() }, resolveUserId(events)) { !interruptRequested.get() }
+                    // Rehydration: agent was running when the case crashed.
+                    // Delegate to runAgent which inspects the event history
+                    // and skips the duplicate AgentRunningEvent emission.
+                    logger.info { "[CaseRuntime $id] Rehydrating from AgentRunningEvent for agent: ${event.agentName}" }
+                    runAgent(
+                        event.agentName,
+                        eventList.getAll(),
+                        { eventList.getAll() },
+                        resolveUserId(events),
+                    ) { !interruptRequested.get() }
                     return
                 }
 
                 is AgentSelectedEvent -> {
                     logger.info {
-                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, " +
-                            "transitioning to running"
+                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}"
                     }
-                    storeAndEmitEvent(
-                        AgentRunningEvent(
-                            namespaceId = namespaceId,
-                            caseId = id,
-                            agentId = event.agentId,
-                            agentName = event.agentName,
-                        ),
-                    )
+                    val userId = resolveUserId(events)
+                    if (!isAgentAuthorized(event.agentName, userId)) {
+                        logger.warn {
+                            "[CaseRuntime $id] Agent '${event.agentName}' is not accessible " +
+                                "to user $userId — redirect blocked"
+                        }
+                        storeAndEmitEvent(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = id,
+                                message = "Agent '${event.agentName}' is not accessible to the current user",
+                            ),
+                        )
+                        interruptRequested.set(true)
+                        return
+                    }
+                    runAgent(
+                        event.agentName,
+                        eventList.getAll(),
+                        { eventList.getAll() },
+                        userId,
+                    ) { !interruptRequested.get() }
                     return
                 }
 

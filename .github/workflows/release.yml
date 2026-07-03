@@ -4,7 +4,22 @@ on:
   push:
     branches:
       - master
+      - 'hotfix/*'
   workflow_dispatch:
+    inputs:
+      specifier:
+        description: 'Force a version bump — bypasses conventional commits. Use to advance master past a hotfix line before cutting a hotfix branch.'
+        required: false
+        type: choice
+        options:
+          - ''
+          - minor
+          - major
+          - patch
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   NPM_CONFIG_PROVENANCE: true
@@ -15,81 +30,33 @@ defaults:
     shell: bash
 
 jobs:
-  # Job 1: Setup and determine if release is needed
-  check-release:
-    runs-on: ubuntu-latest
-    # Skip if this push was made by github-actions (prevents infinite loop)
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && github.actor != 'github-actions[bot]'"
-    outputs:
-      should_release: ${{ steps.check.outputs.should_release }}
-      previous_tag: ${{ steps.previous_tag.outputs.previous_tag }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Get previous tag
-        id: previous_tag
-        run: |
-          # Get the latest release tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
-          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "Previous tag: $PREVIOUS_TAG"
-          else
-            echo "No previous tag found"
-          fi
-
-      - name: Check if release needed
-        id: check
-        run: |
-          # Check if there are releasable commits since last tag
-          if [ -n "${{ steps.previous_tag.outputs.previous_tag }}" ]; then
-            COMMITS=$(git log ${{ steps.previous_tag.outputs.previous_tag }}..HEAD --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
-          else
-            COMMITS=$(git log --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
-          fi
-
-          if [ -n "$COMMITS" ]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "Found releasable commits"
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "No releasable commits found"
-          fi
-
-  # Job 2: Release (version, build, changelog, GitHub release, and npm publish)
+  # Job 1: Release (version, build, changelog, GitHub release, and npm publish)
   release:
     runs-on: ubuntu-latest
-    needs: check-release
-    if: needs.check-release.outputs.should_release == 'true'
-    permissions:
-      contents: write
-      id-token: write
     outputs:
       new_version: ${{ steps.release.outputs.new_version }}
       release_sha: ${{ steps.release_sha.outputs.sha }}
+    permissions:
+      contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'pnpm'
           registry-url: 'https://${{ vars.NPM_REGISTRY }}'
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -109,52 +76,62 @@ jobs:
         env:
           HUSKY: 0
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
         run: |
-          npx tsx scripts/release.ts
-          # Capture new version only if a release commit was just made
-          LATEST_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
-          LATEST_TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
-          HEAD_COMMIT=$(git rev-parse HEAD)
-          if [ "$LATEST_TAG_COMMIT" = "$HEAD_COMMIT" ]; then
-            NEW_VERSION=${LATEST_TAG#release/}
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "new_version=" >> $GITHUB_OUTPUT
+          ARGS=""
+          if [ -n "${{ inputs.specifier }}" ]; then
+            ARGS="--specifier ${{ inputs.specifier }}"
           fi
+          npx tsx scripts/release.ts $ARGS
 
       - name: Capture release commit SHA
         id: release_sha
         run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-  # Job 3: Build and upload desktop apps (Coday + Coday Twin)
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -n "${{ steps.release.outputs.new_version }}" ]; then
+            echo "## 🏷️ Release v${{ steps.release.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⏭️ No release needed" >> $GITHUB_STEP_SUMMARY
+            echo "No releasable commits (\`feat:\`, \`fix:\`, \`feat!:\` / \`fix!:\`, or \`BREAKING CHANGE:\` in commit body) touching files of a releasable project (\`tag:platform:npm\` or \`tag:platform:jvm\`) found since the last release tag." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  # Job 2: Build and upload desktop apps (Coday + Coday Twin)
   desktop-release:
     runs-on: macos-latest
     needs: release
-    if: needs.release.outputs.new_version != ''
+    if: needs.release.outputs.new_version
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.release.outputs.release_sha }}
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'temurin'
-          cache: 'gradle'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -242,25 +219,25 @@ jobs:
             echo "Warning: Coday Twin PKG not found"
           fi
 
-  # Job 4: Resolve the list of JVM projects to publish from the platform:jvm tag
+  # Job 3: Resolve the list of JVM projects to publish from the platform:jvm tag
   compute-jvm-projects:
     runs-on: ubuntu-latest
     needs: release
-    if: needs.release.outputs.new_version != ''
+    if: needs.release.outputs.new_version
     outputs:
       projects: ${{ steps.resolve.outputs.projects }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.release.outputs.release_sha }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -273,40 +250,42 @@ jobs:
           PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.' || echo '[]')
           echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
 
+  # Job 4: Publish all JVM artifacts to GitHub Packages
   publish-agentos-artifacts:
     name: publish ${{ matrix.project }} to github packages
     runs-on: ubuntu-latest
     needs: [release, compute-jvm-projects]
-    if: needs.release.outputs.new_version != ''
+    if: needs.release.outputs.new_version
 
     permissions:
       contents: read
       packages: write
 
     strategy:
+      fail-fast: false
       matrix:
         project: ${{ fromJson(needs.compute-jvm-projects.outputs.projects) }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.release.outputs.release_sha }}
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: 'gradle'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -317,7 +296,6 @@ jobs:
         run: chmod +x gradlew
 
       - name: Publish to GitHub Packages
-        working-directory: agentos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}

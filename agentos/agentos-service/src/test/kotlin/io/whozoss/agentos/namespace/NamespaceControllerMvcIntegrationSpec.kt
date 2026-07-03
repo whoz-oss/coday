@@ -2,10 +2,12 @@ package io.whozoss.agentos.namespace
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
@@ -29,7 +31,8 @@ import java.util.UUID
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles("test", "embedded-neo4j")
+@Import(EmbeddedNeo4jTestConfiguration::class)
 class NamespaceControllerMvcIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
@@ -149,6 +152,49 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // POST /api/namespaces/by-external-ids — bulk lookup by external ids
+        // -------------------------------------------------------------------------
+
+        "POST /api/namespaces/by-external-ids returns matching namespaces" {
+            val externalId1 = "fed-${UUID.randomUUID()}"
+            val externalId2 = "fed-${UUID.randomUUID()}"
+            namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "ext-a", externalId = externalId1)
+            )
+            namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "ext-b", externalId = externalId2)
+            )
+
+            mockMvc.perform(
+                post("/api/namespaces/by-external-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("[\"$externalId1\", \"$externalId2\"]"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
+        }
+
+        "POST /api/namespaces/by-external-ids with empty list returns 200 with empty result" {
+            mockMvc.perform(
+                post("/api/namespaces/by-external-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("[]"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
+
+        "POST /api/namespaces/by-external-ids silently omits unknown external ids" {
+            mockMvc.perform(
+                post("/api/namespaces/by-external-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("[\"does-not-exist\"]"),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))
+        }
+
+        // -------------------------------------------------------------------------
         // POST /api/namespaces/by-ids — batch authorization (story 5-3)
         // -------------------------------------------------------------------------
 
@@ -168,7 +214,7 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/namespaces/by-ids")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""["${a.id}", "${b.id}"]"""),
+                    .content("""{ "ids": ["${a.id}", "${b.id}"] }"""),
             )
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(2)))
@@ -178,7 +224,7 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/namespaces/by-ids")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""[]"""),
+                    .content("""{ "ids": [] }"""),
             )
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize<Any>(0)))

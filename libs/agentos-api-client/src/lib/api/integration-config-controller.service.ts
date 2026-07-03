@@ -10,9 +10,11 @@
 /* tslint:disable:no-unused-variable member-ordering */
 
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
+// @ts-ignore
+import { GetByIdsRequest } from '../model/get-by-ids-request'
 // @ts-ignore
 import { IntegrationConfig } from '../model/integration-config'
 
@@ -34,6 +36,8 @@ export class IntegrationConfigControllerService extends BaseService {
   }
 
   /**
+   * Create an IntegrationConfig
+   * Scope is inferred implicitly from the body\&#39;s &#x60;(namespaceId, userId)&#x60; pair :  | body.namespaceId | body.userId        | scope         | required permission                  | |------------------|--------------------|---------------|--------------------------------------| | null             | null               | platform      | Super Admin only                     | | present          | null               | NS-shared     | WRITE on the namespace               | | null             | &lt;currentUser.id&gt;   | user-global   | authenticated only                   | | present          | &lt;currentUser.id&gt;   | user×namespace| READ on the namespace                |  &#x60;body.userId&#x60; (when supplied) MUST equal the authenticated user\&#39;s id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15). A &#x60;namespaceId&#x60; that does not exist returns 404.
    * @param integrationConfig
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
@@ -251,36 +255,38 @@ export class IntegrationConfigControllerService extends BaseService {
   }
 
   /**
-   * @param requestBody
+   * @param getByIdsRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public getByIdsIntegrationConfig(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<IntegrationConfig>>
   public getByIdsIntegrationConfig(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<IntegrationConfig>>>
   public getByIdsIntegrationConfig(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<IntegrationConfig>>>
   public getByIdsIntegrationConfig(
-    requestBody: Array<string>,
+    getByIdsRequest: GetByIdsRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getByIdsIntegrationConfig.')
+    if (getByIdsRequest === null || getByIdsRequest === undefined) {
+      throw new Error(
+        'Required parameter getByIdsRequest was null or undefined when calling getByIdsIntegrationConfig.'
+      )
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -317,7 +323,7 @@ export class IntegrationConfigControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<IntegrationConfig>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: requestBody,
+      body: getByIdsRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -328,37 +334,44 @@ export class IntegrationConfigControllerService extends BaseService {
   }
 
   /**
-   * @param parentId Parent entity ID
+   * List IntegrationConfigs by scope
+   * Scope is inferred from the query params :  | query                            | mode             | required permission                            | |----------------------------------|------------------|------------------------------------------------| | (no params)                      | platform         | authenticated                                  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&#x60;            | NS-shared        | READ on the namespace (empty list if missing)  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&amp;userId&#x3D;me&#x60;  | user × namespace | authenticated                                  | | &#x60;?namespaceId&#x3D;none&amp;userId&#x3D;me&#x60;    | user-global      | authenticated                                  | | &#x60;?userId&#x3D;me&#x60; (no namespace)      | all caller\&#39;s     | authenticated                                  |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400 (cross-user listing is not exposed). &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;.  When called with no params, returns platform-level configs.
+   * @param namespaceId
+   * @param userId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByParentIntegrationConfig(
-    parentId: string,
+  public listIntegrationConfig(
+    namespaceId?: string,
+    userId?: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<IntegrationConfig>>
-  public listByParentIntegrationConfig(
-    parentId: string,
+  public listIntegrationConfig(
+    namespaceId?: string,
+    userId?: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<IntegrationConfig>>>
-  public listByParentIntegrationConfig(
-    parentId: string,
+  public listIntegrationConfig(
+    namespaceId?: string,
+    userId?: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<IntegrationConfig>>>
-  public listByParentIntegrationConfig(
-    parentId: string,
+  public listIntegrationConfig(
+    namespaceId?: string,
+    userId?: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParentIntegrationConfig.')
-    }
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>userId, 'userId')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -383,10 +396,11 @@ export class IntegrationConfigControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/integration-configs/by-parentId/${this.configuration.encodeParam({ name: 'parentId', value: parentId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
+    let localVarPath = `/api/integration-configs`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<IntegrationConfig>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

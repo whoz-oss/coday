@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -20,11 +21,16 @@ class UserServiceImpl(
     private val userRepository: UserRepository,
     private val securityService: SecurityService,
 ) : UserService {
+    @Transactional
     override fun create(entity: User): User = userRepository.save(entity)
 
+    @Transactional
     override fun update(entity: User): User = userRepository.save(entity)
 
-    override fun findByIds(ids: Collection<UUID>): List<User> = userRepository.findByIds(ids)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<User> = userRepository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: String): List<User> = userRepository.findByParent(parentId)
 
@@ -50,17 +56,32 @@ class UserServiceImpl(
                         metadata = EntityMetadata(),
                         externalId = externalId,
                         email = extractEmailFromExternalId(externalId),
-                        isAdmin = isFirstUser  // First user = super-admin
-                    )
+                        isAdmin = isFirstUser, // First user = super-admin
+                    ),
                 )
             }
         }
 
-    override fun getCurrentUser(): User =
-        resolveOrCreateByExternalId(securityService.resolveCurrentIdentity())
+    override fun createByExternalIds(externalIds: Set<String>): List<User> {
+        logger.info { "[UserService] Auto-creating users for ${externalIds.size}" }
+        return externalIds.map { externalId ->
+            create(
+                User(
+                    metadata = EntityMetadata(),
+                    externalId = externalId,
+                    email = extractEmailFromExternalId(externalId),
+                    isAdmin = false,
+                ),
+            )
+        }
+    }
 
+    override fun getCurrentUser(): User = resolveOrCreateByExternalId(securityService.resolveCurrentIdentity())
+
+    @Transactional
     override fun delete(id: UUID): Boolean = userRepository.delete(id)
 
+    @Transactional
     override fun deleteByParent(parentId: String): Int = userRepository.deleteByParent(parentId)
 
     /**

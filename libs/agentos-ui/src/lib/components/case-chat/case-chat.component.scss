@@ -100,7 +100,7 @@
     font-size: 0.8rem;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.04);
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
     }
   }
 
@@ -167,6 +167,73 @@
     color: var(--color-text-secondary, #6e6e73);
   }
 
+  // Enrichment phase traces (debug-only, gated behind showTechnical)
+  &__enrichment-section {
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.02));
+  }
+
+  &__enrichment-phase {
+    margin-top: 0.35rem;
+    border-radius: 4px;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    background: var(--glass-bg, rgba(255, 255, 255, 0.6));
+    overflow: hidden;
+
+    &--failed {
+      border-color: var(--color-error, #ff3b30);
+      background: rgba(255, 59, 48, 0.04);
+    }
+  }
+
+  &__enrichment-phase-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.2rem 0.5rem;
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
+    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.06));
+  }
+
+  &__enrichment-phase-index {
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
+  &__enrichment-phase-status {
+    font-size: 0.7rem;
+  }
+
+  &__enrichment-phase-row {
+    padding: 0.25rem 0.5rem;
+
+    & + & {
+      border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.04));
+    }
+
+    pre {
+      margin: 0.15rem 0 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+      font-size: 0.7rem;
+      color: var(--color-text, #1d1d1f);
+      max-height: 150px;
+      overflow-y: auto;
+    }
+  }
+
+  &__enrichment-phase-label {
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
   &__tool-call-pending,
   &__tool-call-empty {
     display: block;
@@ -174,6 +241,109 @@
     color: var(--color-text-secondary, #6e6e73);
     font-style: italic;
     font-size: 0.75rem;
+  }
+
+  // Technical event row (WarnEvent, CaseStatusEvent, AgentRunningEvent, etc.)
+  &__technical {
+    flex-shrink: 0;
+    border-radius: 6px;
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
+    border-left: 3px solid var(--color-border, rgba(0, 0, 0, 0.12));
+    font-size: 0.78rem;
+    color: var(--color-text-secondary, #6e6e73);
+    overflow: hidden;
+
+    &--warn {
+      border-left-color: var(--color-warning, #f5a623);
+      background: rgba(245, 166, 35, 0.06);
+      color: var(--color-text, #1d1d1f);
+    }
+
+    &--error {
+      border-left-color: var(--color-error, #ff3b30);
+      background: rgba(255, 59, 48, 0.06);
+      color: var(--color-text, #1d1d1f);
+    }
+  }
+
+  &__technical-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.2rem 0.75rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+
+    &:hover {
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    }
+  }
+
+  &__technical-label {
+    font-weight: 500;
+    white-space: nowrap;
+    // When used as a standalone span (no detail), add its own padding
+    &:only-child {
+      display: block;
+      padding: 0.2rem 0.75rem;
+    }
+  }
+
+  &__technical-chevron {
+    flex-shrink: 0;
+    font-size: 0.6rem;
+    color: var(--color-text-secondary, #6e6e73);
+    margin-left: auto;
+  }
+
+  &__technical-body {
+    padding: 0.3rem 0.75rem 0.5rem;
+    border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--color-text, #1d1d1f);
+  }
+
+  // Session context debug block — shown above a MessageEvent when debug toggle is active
+  &__session-context {
+    flex-shrink: 0;
+    border-radius: 6px;
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
+    border-left: 3px solid var(--color-primary, #0071e3);
+    padding: 0.25rem 0.75rem 0.4rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary, #6e6e73);
+    overflow: hidden;
+  }
+
+  &__session-context-label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-primary, #0071e3);
+    margin-bottom: 0.2rem;
+  }
+
+  &__session-context-body {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+    font-size: 0.75rem;
+    color: var(--color-text, #1d1d1f);
+    max-height: 160px;
+    overflow-y: auto;
   }
 
   // Thinking indicator (three bouncing dots)
@@ -189,6 +359,77 @@
     gap: 0.3rem;
     padding: 0.75rem 1rem;
     align-self: flex-start;
+  }
+
+  // Markdown-rendered message body
+  &__message-text--markdown {
+    // Reset prose styles so markdown renders cleanly inside the bubble.
+    p {
+      margin: 0 0 0.5em;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    ul,
+    ol {
+      margin: 0.25em 0 0.5em;
+      padding-left: 1.4em;
+    }
+
+    li {
+      margin-bottom: 0.2em;
+    }
+
+    code {
+      font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+      font-size: 0.85em;
+      background: var(--color-code-bg, rgba(0, 0, 0, 0.06));
+      border-radius: 3px;
+      padding: 0.1em 0.35em;
+    }
+
+    pre {
+      background: var(--color-code-bg, rgba(0, 0, 0, 0.06));
+      border-radius: 6px;
+      padding: 0.6em 0.8em;
+      overflow-x: auto;
+      margin: 0.4em 0;
+
+      code {
+        background: none;
+        padding: 0;
+        font-size: 0.8rem;
+      }
+    }
+
+    blockquote {
+      margin: 0.4em 0;
+      padding-left: 0.8em;
+      border-left: 3px solid var(--color-border, rgba(0, 0, 0, 0.15));
+      color: var(--color-text-secondary, #6e6e73);
+    }
+
+    a {
+      color: var(--color-primary, #0071e3);
+      text-decoration: underline;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+      margin: 0.5em 0 0.25em;
+      font-size: 1em;
+      font-weight: 600;
+    }
+
+    .external-link-icon {
+      font-size: 0.75em;
+      margin-left: 0.15em;
+      vertical-align: super;
+    }
   }
 
   // Streaming assistant message (TextChunkEvent aggregation)
@@ -210,7 +451,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-radius: 50%;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 2px 12px var(--color-shadow, rgba(0, 0, 0, 0.12));
     // Fade in/out animation handled by @if in the template.
     animation: scroll-anchor-in 0.15s ease;
   }

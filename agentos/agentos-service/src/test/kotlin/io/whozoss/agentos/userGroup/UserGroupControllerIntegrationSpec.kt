@@ -3,6 +3,8 @@ package io.whozoss.agentos.userGroup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import org.springframework.context.annotation.Import
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.hamcrest.Matchers.hasSize
@@ -18,12 +20,13 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.*
 
-// Note: findByNamespaceExternalId returns emptyList() in in-memory mode (no Cypher join).
+// Note: findBynamespaceId returns emptyList() in in-memory mode (no Cypher join).
 // The GET endpoint and response shape are verified here; the Cypher query is covered
 // by Neo4j persistence tests.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles("test", "embedded-neo4j")
+@Import(EmbeddedNeo4jTestConfiguration::class)
 class UserGroupControllerIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
@@ -35,15 +38,15 @@ class UserGroupControllerIntegrationSpec : StringSpec() {
 
     init {
 
-        "GET /api/user-groups without namespaceExternalId returns 400" {
+        "GET /api/user-groups without namespaceId returns 400" {
             mockMvc
                 .perform(get("/api/user-groups"))
                 .andExpect(status().isBadRequest)
         }
 
-        "GET /api/user-groups?namespaceExternalId=unknown returns empty list" {
+        "GET /api/user-groups?namespaceId=unknownUUID returns empty list" {
             mockMvc
-                .perform(get("/api/user-groups").param("namespaceExternalId", "unknown-external-id"))
+                .perform(get("/api/user-groups").param("namespaceId", UUID.randomUUID().toString()))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$", hasSize<Any>(0)))
         }
@@ -57,7 +60,7 @@ class UserGroupControllerIntegrationSpec : StringSpec() {
                 .perform(
                     post("/api/user-groups")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "namespaceExternalId": "ext-1", "name": "Group A", "agentIds": ["not-a-uuid"] }"""),
+                        .content("""{ "namespaceId": "ext-1", "name": "Group A", "agentIds": ["not-a-uuid"] }"""),
                 ).andExpect(status().isBadRequest)
         }
 
@@ -65,7 +68,7 @@ class UserGroupControllerIntegrationSpec : StringSpec() {
         // GET /api/user-groups
         // -------------------------------------------------------------------------
 
-        "GET /api/user-groups?namespaceExternalId= returns groups for the matching namespace" {
+        "GET /api/user-groups?namespaceId= returns groups for the matching namespace" {
             val externalId = "federation-${UUID.randomUUID()}"
             val namespace =
                 namespaceService.create(
@@ -90,11 +93,11 @@ class UserGroupControllerIntegrationSpec : StringSpec() {
                 ),
             )
 
-            // In-memory mode: findByNamespaceExternalId returns emptyList().
+            // In-memory mode: findByNamespaceId returns emptyList().
             // This test verifies the endpoint wiring and response shape.
             // The actual Cypher join is tested against Neo4j in persistence tests.
             mockMvc
-                .perform(get("/api/user-groups").param("namespaceExternalId", externalId))
+                .perform(get("/api/user-groups").param("namespaceId", namespace.id.toString()))
                 .andExpect(status().isOk)
         }
     }

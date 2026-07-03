@@ -9,6 +9,7 @@ import io.whozoss.agentos.plugins.file.tools.ReadFileTool
 import io.whozoss.agentos.plugins.file.tools.RemoveFileTool
 import io.whozoss.agentos.plugins.file.tools.SearchFilesTool
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.pf4j.Extension
@@ -32,7 +33,7 @@ class FileToolProvider : ToolPlugin {
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
-    override fun provideTools(config: JsonNode?, configName: String?): List<StandardTool<*>> {
+    override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
         if (config == null) return emptyList()
 
         val rootPath = Path.of(config.get("rootPath")?.asText() ?: error("rootPath is required"))

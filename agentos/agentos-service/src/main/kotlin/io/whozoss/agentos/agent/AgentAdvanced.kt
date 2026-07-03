@@ -1,52 +1,61 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.agent.AgentAdvanced.Companion.REPETITION_WINDOW
+import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
+import io.whozoss.agentos.metrics.ToolMetricsService
+import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.util.AttemptFailure
+import io.whozoss.agentos.util.AttemptResult
+import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.mapWhile
+import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
-import org.springframework.ai.chat.client.ChatClient
-import org.springframework.ai.chat.messages.AssistantMessage
-import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
 
-/**
- * Advanced agent implementation with multi-step orchestration loop.
- *
- * This agent follows an explicit reasoning loop:
- * 1. Generate intention (what to do next)
- * 2. Select appropriate tool
- * 3. Generate parameters for the tool
- * 4. Execute the tool
- * 5. Repeat until Answer tool is called
- *
- * Each step emits events for observability and potential resumption.
- */
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
-    private val chatClient: ChatClient,
-    private val tools: List<StandardTool<*>>,
-    private val agentService: AgentService,
+    private val context: AgentAdvancedContext,
+    private val intentionGenerator: AgentIntentionGenerator,
+    private val objectMapper: ObjectMapper,
+    private val userId: UUID? = null,
+    private val userExternalId: String? = null,
+    private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     private val maxIterations: Int = 20,
+    override val llmProvider: String,
+    override val llmModel: String,
+    /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
+    private val toolMetricsService: ToolMetricsService? = null,
 ) : Agent {
-
     override fun run(
         events: List<CaseEvent>,
         shouldContinue: () -> Boolean,
@@ -55,71 +64,194 @@ class AgentAdvanced(
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
 
-            emit(
-                AgentRunningEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    agentId = id,
-                    agentName = name,
-                ),
-            )
+            val accumulatedEvents = events.toMutableList()
+
+            // WZ-31596 IN-CHANNEL pre-flight: resolve unresolved PendingConfirmationEvent
+            // before entering the intention loop. Mirrors Copilote.handlePendingConfirmation.
+            val unresolvedPending = findUnresolvedPendingConfirmation(accumulatedEvents)
+            if (unresolvedPending != null) {
+                val resolution =
+                    handleConfirmationResolution(
+                        events = accumulatedEvents,
+                        pending = unresolvedPending,
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        shouldContinue = shouldContinue,
+                        emitEvent = { event -> emit(event) },
+                        appendTo = accumulatedEvents,
+                    )
+                when (resolution) {
+                    // Unresolved: no reply yet / AMBIGUOUS re-ask in flight / run cancelled.
+                    // Aborted:    tool threw post-confirm or orphan-closed pending.
+                    // Both cases: no actionable continuation — close the turn cleanly.
+                    ConfirmationResolution.Unresolved,
+                    ConfirmationResolution.Aborted,
+                    -> {
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = id,
+                                agentName = name,
+                                llmProvider = llmProvider,
+                                llmModel = llmModel,
+                            ),
+                        )
+                        return@flow
+                    }
+
+                    // Applied / Rejected: fall through to the intention loop so the LLM can
+                    // comment naturally on the outcome ("OK, deleted") or produce a follow-up
+                    // ("alors quel fichier veux-tu supprimer ?").
+                    ConfirmationResolution.Applied,
+                    ConfirmationResolution.Rejected,
+                    -> {
+                        Unit
+                    }
+                }
+            }
 
             var iteration = 0
             var continueLoop = true
+            var hasUnresolvedConfirmation = false
+            var lastIntention: IntentionGeneratedEvent? = null
 
             try {
                 while (continueLoop && iteration < maxIterations && shouldContinue()) {
                     iteration++
 
-                    // 1. Generate intention
-                    // Guard before each blocking LLM call so an interrupt/kill that
-                    // arrives mid-iteration is honoured without waiting for the full
-                    // iteration to complete.
-                    if (!shouldContinue()) break
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
-                    val intention = generateIntention(events, namespaceId, caseId)
-                    emit(intention)
 
-                    // 2. Select tool
-                    if (!shouldContinue()) break
-                    val toolSelected = selectTool(events, intention, namespaceId, caseId)
-                    emit(toolSelected)
-
-                    // Check if we should stop (Answer tool = done)
-                    if (toolSelected.toolName == "Answer") {
-                        continueLoop = false
-                        continue
+                    val repetitionOutcome =
+                        handleRepetition(
+                            repetition = detectToolRepetition(accumulatedEvents),
+                        )
+                    if (repetitionOutcome != null) {
+                        val warnEvent =
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = repetitionOutcome.message,
+                            )
+                        emit(warnEvent)
+                        // Accumulate so the next iteration sees the prior warning
+                        // and can escalate to ForceStop if the loop persists.
+                        accumulatedEvents.add(warnEvent)
+                    }
+                    if (repetitionOutcome is RepetitionOutcome.ForceStop) {
+                        val forceStopIntention =
+                            IntentionGeneratedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = context.agentId,
+                                intention = "Previous tool execution was stopped due to too many repetitions, the operation is not completed.",
+                                toolName = ANSWER_TOOL,
+                                isFailedIntention = false,
+                            )
+                        emit(
+                            forceStopIntention,
+                        )
+                        lastIntention = forceStopIntention
+                        break
                     }
 
-                    // 3. Generate parameters
-                    if (!shouldContinue()) break
-                    val toolRequestId = UUID.randomUUID().toString()
-                    val parameters =
-                        generateParameters(events, intention, toolSelected, namespaceId, caseId, toolRequestId)
-                    emit(parameters)
-
-                    // 4. Execute tool
-                    if (!shouldContinue()) break
-                    val response = executeTool(parameters, namespaceId, caseId)
-                    emit(response)
-                }
-
-                if (iteration >= maxIterations) {
-                    emit(
-                        WarnEvent(
+                    val intention =
+                        intentionGenerator.generate(
+                            context = context,
+                            events = accumulatedEvents,
                             namespaceId = namespaceId,
                             caseId = caseId,
-                            message = "Agent reached maximum iterations ($maxIterations) without completing",
+                            repetitionWarning = (repetitionOutcome as? RepetitionOutcome.Warned)?.message,
+                        )
+                    emit(intention)
+                    accumulatedEvents.add(intention)
+                    lastIntention = intention
+
+                    logger.debug {
+                        "[$name] iteration $iteration/${maxIterations}\n\nintention='${intention.intention}\n\n'tool='${intention.toolName}\n\n'"
+                    }
+
+                    when {
+                        intention.toolName == AgentIntentionGenerator.ANSWER_TOOL -> {
+                            continueLoop = false
+                        }
+
+                        else -> {
+                            val gateOutcome =
+                                handleToolExecution(
+                                    accumulatedEvents = accumulatedEvents,
+                                    intention = intention,
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    shouldContinue = shouldContinue,
+                                    emitEvent = { event -> emit(event) },
+                                )
+                            if (gateOutcome == GateOutcome.AwaitingConfirmation) {
+                                continueLoop = false
+                                hasUnresolvedConfirmation = true
+                            }
+                        }
+                    }
+                }
+
+                if (!hasUnresolvedConfirmation) {
+                    if (iteration >= maxIterations) {
+                        emit(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                message = "Agent reached maximum iterations ($maxIterations) without completing",
+                            ),
+                        )
+                    }
+                    if (shouldContinue()) {
+                        generateFinalResponse(
+                            accumulatedEvents = accumulatedEvents,
+                            lastIntention = lastIntention,
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            shouldContinue = shouldContinue,
+                            emitEvent = { event -> emit(event) },
+                        )
+                    }
+                    emit(
+                        AgentFinishedEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            agentId = id,
+                            agentName = name,
+                            llmProvider = llmProvider,
+                            llmModel = llmModel,
                         ),
                     )
                 }
-
+            } catch (e: AgentInterrupt) {
+                // Not an error: a tool requested a structured interruption of this agent run.
+                emitInterruptAndFinishEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+            } catch (e: NonTransientAiException) {
+                emitProviderErrorAndFinishEvents(this@AgentAdvanced, e, namespaceId, caseId, logger)
+            } catch (e: ConfirmationConfigurationException) {
+                // DI wiring bug — surface loudly so prod logs catch it. Still emit a WarnEvent
+                // so the per-case lifecycle terminates cleanly, but the operator-facing signal
+                // is the error log, not the per-run warning.
+                logger.error(e) { "AgentAdvanced confirmation flow misconfigured for case $caseId" }
                 emit(
-                    AgentFinishedEvent(
+                    WarnEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
-                        agentId = id,
-                        agentName = name,
+                        message = "Confirmation flow misconfigured: ${e.message}",
+                    ),
+                )
+            } catch (e: ToolNotFoundException) {
+                // Tool registry desync OR LLM hallucinated a tool name — ops-relevant signal,
+                // log at error level so it surfaces in production monitoring. Still emit a
+                // WarnEvent so the per-case lifecycle terminates cleanly.
+                logger.error(e) { "AgentAdvanced received an intention referencing an unknown tool for case $caseId" }
+                emit(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "Unknown tool referenced: ${e.message}",
                     ),
                 )
             } catch (e: Exception) {
@@ -135,152 +267,1242 @@ class AgentAdvanced(
         }
 
     /**
-     * Generate the intention for the next step based on conversation history.
+     * Counts the maximum repetition of any (toolName, args) pair within the last
+     * [REPETITION_WINDOW] tool responses **of the current turn**.
+     *
+     * "Current turn" means events strictly after the last user [MessageEvent] in the
+     * history. This prevents tool calls from previous conversation turns from being
+     * mistaken for an ongoing loop when the agent is reloaded with full case history.
+     *
+     * Returns `null` when the current-turn window is not yet full or when it contains
+     * a synthetic [ToolResponseEvent] from a confirmation resolution (user-validated,
+     * not a loop). No threshold comparison is done here — that is [handleRepetition]'s job.
      */
-    private fun generateIntention(
-        events: List<CaseEvent>,
-        namespaceId: UUID,
-        caseId: UUID,
-    ): IntentionGeneratedEvent {
-        val messages = convertEventsToMessages(events)
-        val toolsDescription = tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
+    internal fun detectToolRepetition(events: List<CaseEvent>): ToolRepetition? {
+        // Scope detection to the current turn only: events after the last user message.
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val currentTurnEvents = if (lastUserMessageIndex >= 0) events.drop(lastUserMessageIndex + 1) else events
 
-        val lastUserMessage =
-            events
-                .filterIsInstance<MessageEvent>()
-                .lastOrNull { it.actor.role == ActorRole.USER }
-                ?.content
-                ?.filterIsInstance<MessageContent.Text>()
-                ?.joinToString(" ") { it.content }
-                ?: "No user message found"
+        val resolvedPendingIds =
+            currentTurnEvents
+                .filterIsInstance<ConfirmationResolvedEvent>()
+                .mapTo(mutableSetOf()) { it.pendingEventId }
+        val syntheticToolRequestIds =
+            currentTurnEvents
+                .filterIsInstance<PendingConfirmationEvent>()
+                .filter { it.metadata.id in resolvedPendingIds }
+                .mapTo(mutableSetOf()) { it.toolRequestId }
 
-        val intentionPrompt =
-            if (events.none { it is ToolRequestEvent }) {
-                // First iteration
-                """
-Knowing the following available tools:
-$toolsDescription
+        val argsByRequestId =
+            currentTurnEvents
+                .filterIsInstance<ToolRequestEvent>()
+                .associate { it.toolRequestId to (it.args?.trim() ?: "") }
 
-Here is the user's query:
-<request>
-$lastUserMessage
-</request>
+        val window =
+            currentTurnEvents
+                .filterIsInstance<ToolResponseEvent>()
+                .takeLast(REPETITION_WINDOW)
 
-Make a concise explanation of what is the next logical step to take (which tool to call now to complete the step to achieve a satisfactory answer to the request).
-                """.trimIndent()
-            } else {
-                // Subsequent iterations
-                """
-Knowing the following available tools:
-$toolsDescription
+        if (window.size < REPETITION_WINDOW || window.any { it.toolRequestId in syntheticToolRequestIds }) return null
 
-Based on all previous steps, make a concise explanation of what is the next logical step to take (which tool to call now to complete the step to achieve a satisfactory answer to the request).
-                """.trimIndent()
+        return window
+            .groupingBy { e -> e.toolName to (argsByRequestId[e.toolRequestId] ?: "") }
+            .eachCount()
+            .entries
+            .filter { it.value >= REPETITION_THRESHOLD }
+            .maxByOrNull { it.value }
+            ?.let { (key, count) -> ToolRepetition(toolName = key.first, count = count) }
+    }
+
+    /**
+     * Applies the repetition policy to a [ToolRepetition].
+     *
+     * - `null` repetition → `null` outcome.
+     * - First detection (no prior repetition [WarnEvent] in [accumulatedEvents]) →
+     *   [RepetitionOutcome.Warned]: the caller should warn the LLM so it can self-correct.
+     * - Subsequent detection (a prior repetition [WarnEvent] already present) →
+     *   [RepetitionOutcome.ForceStop]: the LLM ignored the warning; the caller must break the loop.
+     *
+     * This method does **not** emit events — the caller is responsible for emitting a [WarnEvent]
+     * from [RepetitionOutcome.message] when the outcome is non-null.
+     */
+    internal fun handleRepetition(repetition: ToolRepetition?): RepetitionOutcome? =
+        when {
+            repetition == null -> {
+                null
             }
 
-        val intention =
-            chatClient
-                .prompt(Prompt(messages + UserMessage(intentionPrompt)))
-                .call()
-                .content() ?: "Unable to generate intention"
+            repetition.count < REPETITION_THRESHOLD -> {
+                null
+            }
 
-        return IntentionGeneratedEvent(
-            namespaceId = namespaceId,
-            caseId = caseId,
-            agentId = id,
-            intention = intention,
-        )
-    }
+            repetition.count > REPETITION_THRESHOLD -> {
+                val msg =
+                    "Agent is stuck in a repetition loop on tool '${repetition.toolName}' " +
+                        "(${repetition.count} calls) and did not stop after warning. " +
+                        "Forcing loop termination."
+                logger.warn {
+                    "[$name] Repetition loop persists after warning for tool '${repetition.toolName}' — forcing stop"
+                }
+                RepetitionOutcome.ForceStop(msg)
+            }
+
+            repetition.count >= REPETITION_THRESHOLD -> {
+                val msg =
+                    "Calling a tool with the same parameters will produce the same results.\n" +
+                        "You have called the tool ${repetition.toolName} ${repetition.count} times " +
+                        "within the last $REPETITION_WINDOW tool calls. " +
+                        "If the tool has not added meaningful information to the conversation, " +
+                        "stop calling it and consider the next step toward achieving the user's goal. " +
+                        "If you do not have enough information to proceed, use ${AgentIntentionGenerator.ANSWER_TOOL} " +
+                        "to ask the user for further instructions."
+                logger.warn {
+                    "Repetition loop detected: ${repetition.toolName} called ${repetition.count} times " +
+                        "within the last $REPETITION_WINDOW tool calls"
+                }
+                RepetitionOutcome.Warned(msg)
+            }
+
+            else -> {
+                null
+            }
+        }
 
     /**
-     * Select the appropriate tool based on the intention.
+     * Executes the tool for the given [intention], handling the confirmation gate when the
+     * tool's [getConfirmationMode] is not [ConfirmationMode.NONE].
+     *
+     * @return [GateOutcome.AwaitingConfirmation] if a [PendingConfirmationEvent] was emitted
+     *   and the agent must exit the loop; [GateOutcome.ContinueLoop] if the tool was executed
+     *   normally or skipped because [shouldContinue] returned `false`.
      */
-    private fun selectTool(
-        events: List<CaseEvent>,
-        intentionEvent: IntentionGeneratedEvent,
+    private suspend fun handleToolExecution(
+        accumulatedEvents: MutableList<CaseEvent>,
+        intention: IntentionGeneratedEvent,
         namespaceId: UUID,
         caseId: UUID,
-    ): ToolSelectedEvent {
-        val messages = convertEventsToMessages(events)
-        val toolNames = tools.map { it.name }
+        shouldContinue: () -> Boolean,
+        emitEvent: suspend (CaseEvent) -> Unit,
+    ): GateOutcome {
+        if (!shouldContinue()) return GateOutcome.ContinueLoop
 
-        val selectionPrompt =
-            """
-Based on this intention: "${intentionEvent.intention}"
+        val toolRequestId = UUID.randomUUID().toString()
+        val parameters =
+            generateParameters(
+                accumulatedEvents = accumulatedEvents,
+                intentionEvent = intention,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = toolRequestId,
+                emitEvent = emitEvent,
+            )
+        emitEvent(parameters)
+        accumulatedEvents.add(parameters)
 
-Which tool should be used from: $toolNames
+        if (!shouldContinue()) return GateOutcome.ContinueLoop
 
-Respond with just the tool name.
-            """.trimIndent()
+        val tool = context.tools.firstOrNull { it.name == intention.toolName }
+        val toolCtx = tool?.let { buildToolContext(it.name, namespaceId) }
+        val confirmationMode =
+            tool?.getConfirmationMode(parameters.args, toolCtx) ?: ConfirmationMode.NONE
+        return when {
+            tool != null && toolCtx != null && confirmationMode != ConfirmationMode.NONE -> {
+                handleConfirmationGate(
+                    tool = tool,
+                    mode = confirmationMode,
+                    argsJson = parameters.args,
+                    toolRequestId = toolRequestId,
+                    parameters = parameters,
+                    toolCtx = toolCtx,
+                    accumulatedEvents = accumulatedEvents,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    emitEvent = emitEvent,
+                )
+            }
 
-        val toolName =
-            chatClient
-                .prompt(Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(selectionPrompt)))
-                .call()
-                .content()
-                ?.trim() ?: "Answer"
+            else -> {
+                // Standard path — tool doesn't require confirmation (or tool not found).
+                if (!shouldContinue()) {
+                    GateOutcome.ContinueLoop
+                } else {
+                    // executeTool always returns a ToolResponseEvent, even on AgentInterrupt.
+                    // We must emit and accumulate the response before re-throwing so the event
+                    // history stays well-formed (every ToolRequestEvent has a matching response).
+                    var interrupt: AgentInterrupt? = null
+                    val response =
+                        try {
+                            executeTool(parameters, namespaceId, caseId)
+                        } catch (e: AgentInterrupt) {
+                            interrupt = e
+                            ToolResponseEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                toolRequestId = parameters.toolRequestId,
+                                toolName = parameters.toolName,
+                                output =
+                                    MessageContent.Text(
+                                        when (e) {
+                                            is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                                        },
+                                    ),
+                                success = true,
+                            )
+                        }
+                    emitEvent(response)
+                    accumulatedEvents.add(response)
+                    interrupt?.let { throw it }
+                    GateOutcome.ContinueLoop
+                }
+            }
+        }
+    }
 
-        return ToolSelectedEvent(
-            namespaceId = namespaceId,
-            caseId = caseId,
-            agentId = id,
-            toolName = toolName,
+    /**
+     * Handles the confirmation gate for a tool whose resolved mode is not [NONE].
+     * The mode is resolved by the caller via [StandardTool.getConfirmationMode] and
+     * passed in as [mode], allowing the tool to return a dynamic mode based on args
+     * and case events (e.g. bypass when an in-session create makes a follow-up update
+     * implicit).
+     *
+     * - [ConfirmationMode.EVERY_TIME]: always emits a [PendingConfirmationEvent] +
+     *   IN-CHANNEL [MessageEvent] and returns [GateOutcome.AwaitingConfirmation].
+     * - [ConfirmationMode.INFER]: delegates to [ConfirmationManager.shouldConfirm];
+     *   if implicit consent is detected, executes the tool directly and returns
+     *   [GateOutcome.ContinueLoop]; otherwise behaves like [EVERY_TIME].
+     */
+    private suspend fun handleConfirmationGate(
+        tool: StandardTool<*>,
+        mode: ConfirmationMode,
+        argsJson: String?,
+        toolRequestId: String,
+        parameters: ToolRequestEvent,
+        toolCtx: ToolContext,
+        accumulatedEvents: MutableList<CaseEvent>,
+        namespaceId: UUID,
+        caseId: UUID,
+        emitEvent: suspend (CaseEvent) -> Unit,
+    ): GateOutcome {
+        val firstLevelHistory = context.buildMessages(accumulatedEvents.filter { it.type.isFirstLevel() })
+        val needsExplicit =
+            when (mode) {
+                ConfirmationMode.EVERY_TIME -> {
+                    true
+                }
+
+                ConfirmationMode.INFER -> {
+                    context.confirmationManager.shouldConfirm(
+                        chatClient = context.chatClient,
+                        firstLevelHistory = firstLevelHistory,
+                        actionLabel = "Tool ${tool.name}",
+                        proposedData = argsJson ?: "{}",
+                        toolInstructions = tool.getConfirmationInstructions(),
+                    )
+                }
+
+                ConfirmationMode.NONE -> {
+                    false
+                }
+            }
+
+        return when {
+            !needsExplicit -> {
+                // User already implicitly confirmed — execute directly.
+                executeUnderImplicitConsent(
+                    tool = tool,
+                    argsJson = argsJson,
+                    toolRequestId = toolRequestId,
+                    parameters = parameters,
+                    toolCtx = toolCtx,
+                    accumulatedEvents = accumulatedEvents,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    emitEvent = emitEvent,
+                )
+            }
+
+            else -> {
+                // Explicit confirmation required — emit PendingConfirmationEvent + IN-CHANNEL question.
+                val question =
+                    context.confirmationManager.formulateQuestion(
+                        context = context,
+                        chatClient = context.chatClient,
+                        accumulatedEvents = accumulatedEvents,
+                        fallbackLabel = tool.name,
+                        pendingData = argsJson ?: "{}",
+                        guidelines = buildUserFacingGuidelines(accumulatedEvents),
+                    )
+                emitEvent(
+                    PendingConfirmationEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequestId,
+                        toolName = parameters.toolName,
+                        inputJson = argsJson ?: "{}",
+                        toolConfirmationInstructions = tool.getConfirmationInstructions(),
+                    ),
+                )
+                // IN-CHANNEL: emit a MessageEvent so the LLM sees the pause naturally
+                // in the conversation context, and the user sees the question in the chat
+                // UI as a regular agent message (no typed button — free-form reply).
+                emitEvent(
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor(id.toString(), name, ActorRole.AGENT),
+                        content = listOf(MessageContent.Text(question)),
+                    ),
+                )
+                emitEvent(
+                    AgentFinishedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = id,
+                        agentName = name,
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
+                    ),
+                )
+                GateOutcome.AwaitingConfirmation
+            }
+        }
+    }
+
+    /**
+     * Executes the tool directly when implicit consent was detected by [ConfirmationManager.shouldConfirm].
+     * Emits a [ToolResponseEvent] reflecting the actual outcome (success or failure).
+     *
+     * @return always [GateOutcome.ContinueLoop] — the caller continues the intention loop normally.
+     */
+    private suspend fun executeUnderImplicitConsent(
+        tool: StandardTool<*>,
+        argsJson: String?,
+        toolRequestId: String,
+        parameters: ToolRequestEvent,
+        toolCtx: ToolContext,
+        accumulatedEvents: MutableList<CaseEvent>,
+        namespaceId: UUID,
+        caseId: UUID,
+        emitEvent: suspend (CaseEvent) -> Unit,
+    ): GateOutcome {
+        val sample = toolMetricsService?.startTimer()
+        val response =
+            try {
+                val result = tool.executeWithJson(argsJson, toolCtx)
+                val durationMs =
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = parameters.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = result.success,
+                    )
+                ToolResponseEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = parameters.toolName,
+                    output = MessageContent.Text(result.output),
+                    success = result.success,
+                    durationMs = durationMs,
+                    toolMetadata = result.metadata,
+                )
+            } catch (e: Exception) {
+                logger.warn(e) {
+                    "[AgentAdvanced] implicit-consent tool execution failed for ${tool.name}"
+                }
+                val durationMs =
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = parameters.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = false,
+                    )
+                ToolResponseEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = parameters.toolName,
+                    output = MessageContent.Text("Error executing tool: ${e.message}"),
+                    success = false,
+                    durationMs = durationMs,
+                )
+            }
+        emitEvent(response)
+        accumulatedEvents.add(response)
+        return GateOutcome.ContinueLoop
+    }
+
+    private fun findUnresolvedPendingConfirmation(events: List<CaseEvent>): PendingConfirmationEvent? {
+        val resolvedIds =
+            events
+                .filterIsInstance<ConfirmationResolvedEvent>()
+                .mapTo(mutableSetOf()) { it.pendingEventId }
+        return events
+            .filterIsInstance<PendingConfirmationEvent>()
+            .lastOrNull { it.metadata.id !in resolvedIds }
+    }
+
+    /**
+     * Closes an orphan [PendingConfirmationEvent] durably so it is not re-detected on
+     * every subsequent run when the tool is missing or input is malformed.
+     *
+     * Emits three events: a [ConfirmationResolvedEvent] (confirmed=false), an IN-CHANNEL
+     * [MessageEvent] so the LLM stops re-questioning, and a [WarnEvent] for ops.
+     *
+     * @return the accumulated events produced (caller must emit and append them).
+     */
+    private fun buildOrphanCloseEvents(
+        pending: PendingConfirmationEvent,
+        reason: String,
+        namespaceId: UUID,
+        caseId: UUID,
+    ): List<CaseEvent> {
+        logger.warn { "[AgentAdvanced] closing orphan pending '${pending.toolName}': $reason" }
+        val errorText = "Cannot resolve confirmation: $reason"
+        return listOf(
+            ConfirmationResolvedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                pendingEventId = pending.metadata.id,
+                confirmed = false,
+                resultText = errorText,
+            ),
+            MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor(id.toString(), name, ActorRole.AGENT),
+                content = listOf(MessageContent.Text(errorText)),
+            ),
+            WarnEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                message = "Cannot resolve pending confirmation: $reason",
+            ),
         )
     }
 
     /**
-     * Generate parameters for the selected tool.
+     * Resolves an unresolved [PendingConfirmationEvent].
+     *
+     * @return one of the [ConfirmationResolution] sealed cases — see the type's KDoc for
+     *   the routing semantics. The caller closes the turn on [Unresolved]/[Aborted] and
+     *   falls through to the normal intention loop on [Applied]/[Rejected].
      */
-    private fun generateParameters(
+    private suspend fun handleConfirmationResolution(
         events: List<CaseEvent>,
+        pending: PendingConfirmationEvent,
+        namespaceId: UUID,
+        caseId: UUID,
+        shouldContinue: () -> Boolean,
+        emitEvent: suspend (CaseEvent) -> Unit,
+        appendTo: MutableList<CaseEvent>,
+    ): ConfirmationResolution {
+        val tool = context.tools.firstOrNull { it.name == pending.toolName }
+        return when {
+            tool == null -> {
+                val orphanEvents =
+                    buildOrphanCloseEvents(
+                        pending = pending,
+                        reason = "tool '${pending.toolName}' not available in this agent.",
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                    )
+                orphanEvents.forEach { emitEvent(it) }
+                appendTo += orphanEvents
+                ConfirmationResolution.Aborted
+            }
+
+            else -> {
+                // CRITICAL (AC7): only events strictly AFTER the pending count as a reply.
+                // Use index comparison (deterministic regardless of timestamp ordering).
+                val pendingIndex = events.indexOfFirst { it.metadata.id == pending.metadata.id }
+                val eventsAfterPending =
+                    if (pendingIndex >= 0) events.subList(pendingIndex + 1, events.size) else emptyList()
+
+                val freeFormText =
+                    eventsAfterPending
+                        .filterIsInstance<MessageEvent>()
+                        .lastOrNull { it.actor.role == ActorRole.USER }
+                        ?.content
+                        ?.filterIsInstance<MessageContent.Text>()
+                        ?.joinToString(" ") { it.content }
+
+                when {
+                    freeFormText.isNullOrBlank() -> {
+                        // AC7: reload session without user reply. No reply yet.
+                        ConfirmationResolution.Unresolved
+                    }
+
+                    else -> {
+                        // Slice the history shown to analyzeConfirmation to events at-or-after the pending.
+                        // Prevents the LLM judge from picking up a "yes" from an unrelated earlier turn
+                        // (defense-in-depth for tools with confirmationMode=EVERY_TIME).
+                        val caseEventsAtOrAfterPending =
+                            events.subList(
+                                pendingIndex,
+                                events.size,
+                            )
+                        val firstLevelCaseEventsAtOrAfterPending =
+                            caseEventsAtOrAfterPending.filter { it.type.isFirstLevel() }
+                        val firstLevelHistoryFromPending = context.buildMessages(firstLevelCaseEventsAtOrAfterPending)
+                        val decision =
+                            context.confirmationManager.analyzeConfirmation(
+                                chatClient = context.chatClient,
+                                firstLevelHistory = firstLevelHistoryFromPending,
+                                pendingPayload = pending.inputJson,
+                                toolInstructions = pending.toolConfirmationInstructions,
+                            )
+                        when (decision) {
+                            ConfirmationDecision.AMBIGUOUS -> {
+                                // LLM-generated re-ask in the conversation's language, IN-CHANNEL — same
+                                // mechanism as the initial confirmation prompt. Pending stays open so the
+                                // next user reply re-runs analyzeConfirmation against this new clarification.
+                                val clarificationQuestion =
+                                    context.confirmationManager.formulateQuestion(
+                                        context = context,
+                                        chatClient = context.chatClient,
+                                        accumulatedEvents = caseEventsAtOrAfterPending,
+                                        fallbackLabel = pending.toolName,
+                                        pendingData = pending.inputJson,
+                                        guidelines = buildUserFacingGuidelines(events),
+                                    )
+                                val clarification =
+                                    MessageEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = caseId,
+                                        actor = Actor(id.toString(), name, ActorRole.AGENT),
+                                        content = listOf(MessageContent.Text(clarificationQuestion)),
+                                    )
+                                emitEvent(clarification)
+                                appendTo += clarification
+                                ConfirmationResolution.Unresolved
+                            }
+
+                            else -> {
+                                val confirmed = decision == ConfirmationDecision.CONFIRMED
+                                // Guard before destructive call — mitigate cancel mid-execution.
+                                if (!shouldContinue()) {
+                                    ConfirmationResolution.Unresolved
+                                } else {
+                                    executePostConfirmation(
+                                        tool = tool,
+                                        confirmed = confirmed,
+                                        pending = pending,
+                                        toolCtx = buildToolContext(pending.toolName, namespaceId),
+                                        namespaceId = namespaceId,
+                                        caseId = caseId,
+                                        emitEvent = emitEvent,
+                                        appendTo = appendTo,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Executes the tool (or [onRejected]) after the user's confirmation decision is known,
+     * then emits the resolution events.
+     *
+     * @return [ConfirmationResolution.Applied] when the user confirmed AND the tool ran
+     *   without throwing; [ConfirmationResolution.Rejected] when the user declined;
+     *   [ConfirmationResolution.Aborted] when the tool threw post-confirmation.
+     */
+    private suspend fun executePostConfirmation(
+        tool: StandardTool<*>,
+        confirmed: Boolean,
+        pending: PendingConfirmationEvent,
+        toolCtx: ToolContext,
+        namespaceId: UUID,
+        caseId: UUID,
+        emitEvent: suspend (CaseEvent) -> Unit,
+        appendTo: MutableList<CaseEvent>,
+    ): ConfirmationResolution {
+        val resultText: String
+        val toolResult: ToolExecutionResult?
+        val executionFailed: Boolean
+
+        if (confirmed) {
+            var failed = false
+            var result: ToolExecutionResult? = null
+            val sample = toolMetricsService?.startTimer()
+            val output =
+                try {
+                    result = tool.executeWithJson(pending.inputJson, toolCtx)
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = pending.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = result.success,
+                    )
+                    result.output
+                } catch (e: Exception) {
+                    logger.warn(e) {
+                        "[AgentAdvanced] tool execution failed during confirmation resolution for ${pending.toolName}"
+                    }
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = pending.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = false,
+                    )
+                    failed = true
+                    "Error during tool execution: ${e.message}"
+                }
+            resultText = output
+            toolResult = result
+            executionFailed = failed
+        } else {
+            resultText = tool.onRejected()
+            toolResult = null
+            executionFailed = false
+        }
+
+        // Authoritative outcome: the action took effect only if the user confirmed AND the
+        // tool ran without throwing AND the tool itself reported success.
+        val effectiveSuccess = confirmed && !executionFailed && (toolResult?.success ?: false)
+
+        val resolved =
+            ConfirmationResolvedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                pendingEventId = pending.metadata.id,
+                confirmed = effectiveSuccess,
+                resultText = resultText,
+            )
+        emitEvent(resolved)
+        appendTo += resolved
+
+        // IN-CHANNEL: prefix decision explicitly so the LLM disambiguates the resolution.
+        // "User confirmed." only when the action actually applied; otherwise "User declined."
+        // (covers both explicit rejection and confirmed-but-failed execution).
+        val decisionPrefix = if (effectiveSuccess) "User confirmed. " else "User declined. "
+        val resolutionMessage =
+            MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor(id.toString(), name, ActorRole.AGENT),
+                content = listOf(MessageContent.Text("$decisionPrefix$resultText")),
+            )
+        emitEvent(resolutionMessage)
+        appendTo += resolutionMessage
+
+        // Synthetic ToolResponseEvent paired on the original toolRequestId so the next
+        // intention turn sees a coherent lastToolResponse. success = action actually applied.
+        val syntheticResponse =
+            ToolResponseEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                toolRequestId = pending.toolRequestId,
+                toolName = pending.toolName,
+                output = MessageContent.Text(resultText),
+                success = effectiveSuccess,
+                toolMetadata = toolResult?.metadata ?: emptyMap(),
+            )
+        emitEvent(syntheticResponse)
+        appendTo += syntheticResponse
+
+        return when {
+            // User confirmed AND tool ran successfully → fall through, LLM can comment.
+            confirmed && !executionFailed -> ConfirmationResolution.Applied
+
+            // User explicitly refused → fall through, LLM can produce a natural follow-up.
+            !confirmed -> ConfirmationResolution.Rejected
+
+            // Confirmed but the tool threw (executionFailed=true) → no useful continuation;
+            // the user just got bitten by a real failure, don't push the LLM to retry.
+            else -> ConfirmationResolution.Aborted
+        }.also { confirmationResolution ->
+
+            toolMetricsService?.recordConfirmation(
+                toolName = pending.toolName,
+                agentName = name,
+                namespaceId = namespaceId,
+                outcome = confirmationResolution.stringRepresentation,
+            )
+        }
+    }
+
+    private fun buildToolContext(
+        toolName: String,
+        namespaceId: UUID,
+    ): ToolContext =
+        ToolContext(
+            namespaceId = namespaceId,
+            userId = userId,
+            userExternalId = userExternalId,
+            caseEvents = filterEventsByIntegration(toolName, caseEventsProvider()),
+        )
+
+    private fun filterEventsByIntegration(
+        toolName: String,
+        all: List<CaseEvent>,
+    ): List<CaseEvent> {
+        val integrationPrefix = toolName.substringBefore("__", missingDelimiterValue = "")
+        return if (integrationPrefix.isEmpty()) {
+            all
+        } else {
+            all.filter { event ->
+                when (event) {
+                    is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
+                    is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
+                    else -> true
+                }
+            }
+        }
+    }
+
+    private suspend fun generateFinalResponse(
+        accumulatedEvents: List<CaseEvent>,
+        lastIntention: IntentionGeneratedEvent?,
+        namespaceId: UUID,
+        caseId: UUID,
+        shouldContinue: () -> Boolean,
+        emitEvent: suspend (CaseEvent) -> Unit,
+    ) {
+        val userFullName =
+            accumulatedEvents
+                .filterIsInstance<MessageEvent>()
+                .lastOrNull()
+                ?.sessionContext
+                ?.get("userContext")
+                ?.let { it as? Map<String, String> }
+                ?.let { ctx ->
+                    listOfNotNull(ctx["firstName"], ctx["lastName"])
+                        .joinToString(" ")
+                        .ifBlank { null }
+                }
+
+        val alreadyGreeted = accumulatedEvents.count { it is MessageEvent } > 2
+
+        // Build the final prompt in clear, composable sections
+        val prompt =
+            buildString {
+                lastIntention?.let {
+                    if (it.isFailedIntention) {
+                        appendLine("Your analysis:")
+                        appendLine()
+                        appendLine("The system encountered an internal error and was unable to determine the next action to perform.")
+                        appendLine("Part or all of the requested operation was not performed.")
+                        appendLine()
+                        appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
+                    } else {
+                        appendLine("Your analysis: ${it.intention}")
+                    }
+                    appendLine()
+                }
+
+                appendLine("Based on the above conversation and your analysis, provide your response to the user.")
+
+                buildUserFacingGuidelines(accumulatedEvents)?.let {
+                    appendLine()
+                    appendLine(it)
+                }
+
+                appendLine()
+                appendLine(
+                    "- Base your response solely on the content of this conversation history. If information is missing, say so explicitly.",
+                )
+                if (alreadyGreeted) {
+                    appendLine(
+                        "- The conversation is already in progress. Do not greet the user again, continue naturally from the last exchange.",
+                    )
+                }
+                userFullName?.let {
+                    appendLine("Now, continue your conversation with $it.")
+                } ?: appendLine("Now, continue your conversation with the user.")
+            }
+
+        val messages = context.buildMessages(accumulatedEvents, prompt)
+
+        logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
+        logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
+
+        val contentBuilder = StringBuilder()
+        var lastFinishReason: String? = null
+        context.chatClient
+            .prompt(Prompt(messages))
+            .stream()
+            .chatResponse()
+            .asFlow()
+            .takeWhile { shouldContinue() }
+            .collect { response: ChatResponse ->
+                val chunk =
+                    response.result.output.text
+                        ?.takeIf { it.isNotEmpty() }
+                if (chunk != null) {
+                    contentBuilder.append(chunk)
+                    emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+                }
+                response.result.metadata.finishReason
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { lastFinishReason = it }
+            }
+        if (isTruncated(lastFinishReason)) {
+            val msg =
+                "LLM response was truncated (finish_reason=$lastFinishReason). " +
+                    "The configured maxTokens limit may be too low. " +
+                    "Consider increasing the model's maxTokens configuration."
+            logger.warn { "[$name] $msg" }
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
+        }
+        val content = contentBuilder.toString().stripConversationTags()
+        if (content.isNotEmpty()) {
+            val msg =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor(id.toString(), name, ActorRole.AGENT),
+                    content = listOf(MessageContent.Text(content)),
+                )
+            emitEvent(msg)
+        }
+    }
+
+    /**
+     * Assembles the user-facing communication guidelines shared across any LLM-generated
+     * text shown to the user (final response, confirmation prompts, re-ask questions).
+     *
+     * Detects the user's language via [detectUserLanguage] and injects it as a hard
+     * constraint, then appends the non-discrimination and no-technical-IDs rules.
+     *
+     * Returns `null` only when [events] is blank (defensive — the static rules alone
+     * make a non-null result almost certain in practice).
+     */
+    internal fun buildUserFacingGuidelines(events: List<CaseEvent>): String? {
+        val detectedLanguage = detectUserLanguage(events)
+        val lines =
+            buildList {
+                detectedLanguage?.let {
+                    add(
+                        "IMPORTANT: You MUST respond in $it. " +
+                            "This is a hard constraint — do not switch language regardless of the language " +
+                            "used in the data returned by tools or in the conversation history.",
+                    )
+                }
+                add(
+                    "Do not discriminate based on gender, ethnicity, religion, age, physical appearance, " +
+                        "or any other protected attribute. If the user's request implies such a step, " +
+                        "clarify with the user that this cannot be done.",
+                )
+                add(
+                    "Do not reference technical IDs unless explicitly asked. Instead, use a readable format " +
+                        "such as the object's name, title, or a markdown representation.",
+                )
+                add(
+                    "When you have just created an object, always include a direct link " +
+                        "or navigation path to it in your response so the user can access it immediately. " +
+                        "Use the URL or the most actionable reference available in the tool response.",
+                )
+            }
+        return lines.joinToString("\n").ifBlank { null }
+    }
+
+    /**
+     * Detects the language the user is writing in by sending a dedicated lightweight LLM call
+     * that considers only recent user [MessageEvent]s — deliberately excluding agent messages
+     * and tool payloads to avoid contamination from foreign-language data (WZ-32500).
+     *
+     * Collects user messages newest-first until [targetChars] is reached, then asks the LLM
+     * to identify the language. Returns a language name in English (e.g. `"English"`,
+     * `"French"`, `"Spanish"`) or `null` when no user messages are present.
+     *
+     * The result is consumed once per turn in [generateFinalResponse] to build a hard
+     * language constraint rather than a probabilistic hint.
+     */
+    internal fun detectUserLanguage(
+        events: List<CaseEvent>,
+        targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
+    ): String? {
+        // Collect user messages newest-first — same logic as the former buildLanguageHint.
+        val userMessages =
+            events
+                .filterIsInstance<MessageEvent>()
+                .filter { it.actor.role == ActorRole.USER }
+                .reversed()
+
+        if (userMessages.isEmpty()) return null
+
+        val collected = mutableListOf<String>()
+        var total = 0
+        for (message in userMessages) {
+            val text =
+                message.content
+                    .filterIsInstance<MessageContent.Text>()
+                    .joinToString(" ") { it.content.trim() }
+                    .trim()
+            if (text.isEmpty()) continue
+            collected.add(text)
+            total += text.length
+            if (total >= targetChars) break
+        }
+
+        if (collected.isEmpty()) return null
+
+        // Build the sample from oldest to newest for a natural reading order.
+        val sample = collected.reversed().joinToString(" ")
+
+        val prompt =
+            """
+            Determine the language the user is using to interact with the agent.
+            Only consider the user messages below — ignore any other context.
+
+            User messages: $sample
+
+            Respond with ONLY the language name in English (e.g. "English", "French", "Spanish").
+            Put the language name inside <language></language> tags and nothing else.
+            """.trimIndent()
+
+        val raw =
+            runCatching {
+                context.chatClient
+                    .prompt(
+                        Prompt(
+                            listOf(
+                                UserMessage(prompt),
+                            ),
+                        ),
+                    ).call()
+                    .content()
+                    ?.trim()
+            }.getOrNull() ?: return null
+
+        // Extract the language name from <language>...</language> tags.
+        return LANGUAGE_TAG_REGEX
+            .find(raw)
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * @deprecated Use [detectUserLanguage] + [buildUserFacingGuidelines] instead.
+     * Kept for existing unit tests until they are migrated.
+     */
+    internal fun buildLanguageHint(
+        events: List<CaseEvent>,
+        targetChars: Int = LANGUAGE_HINT_TARGET_CHARS,
+    ): String? {
+        val userMessages =
+            events
+                .filterIsInstance<MessageEvent>()
+                .filter { it.actor.role == ActorRole.USER }
+                .reversed()
+
+        if (userMessages.isEmpty()) return null
+
+        val collected = mutableListOf<String>()
+        var total = 0
+        for (message in userMessages) {
+            val text =
+                message.content
+                    .filterIsInstance<MessageContent.Text>()
+                    .joinToString(" ") { it.content.trim() }
+                    .trim()
+            if (text.isEmpty()) continue
+            collected.add(text)
+            total += text.length
+            if (total >= targetChars) break
+        }
+
+        if (collected.isEmpty()) return null
+
+        val sample = collected.reversed().joinToString(" / ") { "\"$it\"" }
+        return "Respond in the same language the user is writing in (reference: $sample)."
+    }
+
+    private suspend fun generateParameters(
+        accumulatedEvents: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
-        toolSelectedEvent: ToolSelectedEvent,
         namespaceId: UUID,
         caseId: UUID,
         toolRequestId: String,
+        emitEvent: suspend (CaseEvent) -> Unit,
     ): ToolRequestEvent {
-        val messages = convertEventsToMessages(events)
         val tool =
-            tools.firstOrNull { it.name == toolSelectedEvent.toolName }
-                ?: throw IllegalStateException("Tool not found: ${toolSelectedEvent.toolName}")
+            context.tools.firstOrNull { it.name == intentionEvent.toolName }
+                ?: throw ToolNotFoundException(intentionEvent.toolName)
 
-        val parametersPrompt =
+        // Enrichment loop for multi-phase parameter preparation
+        val enrichmentResult =
+            if (tool.getIntermediatePhaseCount() > 0) {
+                runEnrichmentPhases(tool, accumulatedEvents, intentionEvent, namespaceId)
+            } else {
+                null
+            }
+
+        val enrichmentBlock =
+            enrichmentResult?.content?.let {
+                "\n\nContext from preparation phases:\n$it"
+            } ?: ""
+
+        val basePrompt =
             """
+Generate the parameters for the tool call below. You must generate a JSON object corresponding to the given input json schema.
+
 Tool: ${tool.name}
 Description: ${tool.description}
-Input Schema: ${tool.inputSchema}
+Input JSON Schema:
+```
+${tool.inputSchema}
+```
+
+Intention: ${intentionEvent.intention}$enrichmentBlock
+
+Output requirements:
+- Wrap the JSON object in <parameter> tags: <parameter>{ ... }</parameter>
+- Inside the tags, start your response with `{` and end it with `}`.
+- Do not emit any text, whitespace, or tokens before `{` or after `}` inside the tags.
+- Do not use XML, tool-call wrappers, function tags, markdown, code fences, or any structural syntax other than JSON.
+- Do not include comments, explanations, or reasoning.
+- Only include properties defined in the schema.
+            """.trimIndent()
+        val accumulatedEventsWithoutCurrentToolCall = accumulatedEvents.dropLast(1)
+
+        logger.debug { "[$name] generateParameters for '${tool.name}'" }
+        logger.trace { "[$name] generateParameters prompt:\n$basePrompt" }
+
+        val enrichmentTraces = enrichmentResult?.traces
+
+        val result =
+            retryWithFallback<String, ToolRequestEvent>(
+                maxAttempts = MAX_PARAMETER_ATTEMPTS,
+                fallback = { lastRaw ->
+                    logger.error {
+                        "[$name] generateParameters: all $MAX_PARAMETER_ATTEMPTS attempts produced invalid JSON for '${tool.name}'. Last raw: $lastRaw"
+                    }
+                    // Do NOT pass the invalid output to the tool — it would cause a server-side
+                    // error (e.g. HTTP 500) instead of a clean failure the agent can reason about.
+                    // args=null signals the failure; the WarnEvent is emitted below after returning
+                    // from retryWithFallback (fallback lambda is not suspend).
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequestId,
+                        toolName = tool.name,
+                        args = null,
+                        enrichmentPhases = enrichmentTraces,
+                    )
+                },
+            ) { previousRaw ->
+                attemptParameterGeneration(
+                    basePrompt = basePrompt,
+                    events = accumulatedEventsWithoutCurrentToolCall,
+                    toolName = tool.name,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    previousRaw = previousRaw,
+                    enrichmentTraces = enrichmentTraces,
+                )
+            }
+
+        // args=null means all retries were exhausted — emit a WarnEvent so the failure
+        // is visible in the case event stream (cannot be done inside the non-suspend fallback).
+        if (result.args == null) {
+            val message =
+                "Failed to generate valid JSON parameters for '${tool.name}' after $MAX_PARAMETER_ATTEMPTS attempts."
+            emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = message))
+            toolMetricsService?.recordParameterGenerationFailure(
+                toolName = tool.name,
+                agentName = name,
+                namespaceId = namespaceId,
+            )
+        }
+
+        return result
+    }
+
+    private fun attemptParameterGeneration(
+        basePrompt: String,
+        events: List<CaseEvent>,
+        toolName: String,
+        namespaceId: UUID,
+        caseId: UUID,
+        toolRequestId: String,
+        previousRaw: String?,
+        enrichmentTraces: List<EnrichmentPhaseTrace>? = null,
+    ): AttemptResult<String, ToolRequestEvent> {
+        val retryHint =
+            previousRaw?.let {
+                """
+                PREVIOUS FAILED ATTEMPT(S):
+                The following output(s) were produced but are NOT valid JSON. Do NOT reproduce them:
+                ---
+                $it
+                ---
+                Generate ONLY a valid JSON object matching the schema. No explanation, no markdown fences.
+                """.trimIndent()
+            }
+        val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
+
+        val messages = context.buildMessages(events, prompt)
+        val raw = callLlmForParameters(messages)
+
+        logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
+
+        return if (isValidJson(raw)) {
+            AttemptSuccess(
+                ToolRequestEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = toolName,
+                    args = raw,
+                    enrichmentPhases = enrichmentTraces,
+                ),
+            )
+        } else {
+            logger.warn { "[$name] generateParameters: invalid JSON for '$toolName'. Raw: $raw" }
+            AttemptFailure(raw)
+        }
+    }
+
+    private fun callLlmForParameters(messages: List<org.springframework.ai.chat.messages.Message>): String {
+        val raw =
+            context.chatClient
+                .prompt(Prompt(messages))
+                .call()
+                .content()
+                ?.trim() ?: "{}"
+        return stripJsonFence(raw)
+    }
+
+    private fun isValidJson(raw: String): Boolean =
+        runCatching {
+            objectMapper.readTree(raw)
+        }.isSuccess
+
+    /**
+     * Runs all enrichment phases declared by [tool] and returns an [EnrichmentPhasesResult]
+     * containing the final accumulated content (to inject into the parameter-generation
+     * prompt) and the per-phase traces (to attach to the resulting [ToolRequestEvent]).
+     *
+     * On phase failure the loop returns early, but the traces collected up to and
+     * including the failed phase are still returned so they are persisted for debugging.
+     */
+    private suspend fun runEnrichmentPhases(
+        tool: StandardTool<*>,
+        accumulatedEvents: List<CaseEvent>,
+        intentionEvent: IntentionGeneratedEvent,
+        namespaceId: UUID,
+    ): EnrichmentPhasesResult {
+        var previousContent: String? = null
+        val traces =
+            (0 until tool.getIntermediatePhaseCount()).mapWhile(
+                transform = { phaseIndex ->
+                    runEnrichmentPhase(
+                        tool,
+                        phaseIndex,
+                        previousContent,
+                        accumulatedEvents,
+                        intentionEvent,
+                        namespaceId,
+                    ).also { trace -> if (trace.success) previousContent = trace.enrichmentContent }
+                },
+                predicate = { phaseIndex, trace ->
+                    trace.success.also {
+                        if (!it) logger.warn { "[$name] enrichment phase $phaseIndex failed for '${tool.name}'" }
+                    }
+                },
+            )
+        return EnrichmentPhasesResult(
+            content = traces.lastOrNull { it.success }?.enrichmentContent,
+            traces = traces,
+        )
+    }
+
+    private suspend fun runEnrichmentPhase(
+        tool: StandardTool<*>,
+        phaseIndex: Int,
+        previousContent: String?,
+        accumulatedEvents: List<CaseEvent>,
+        intentionEvent: IntentionGeneratedEvent,
+        namespaceId: UUID,
+    ): EnrichmentPhaseTrace {
+        val descriptor = tool.getIntermediatePhaseDescriptor(phaseIndex, previousContent)
+
+        val fullPrompt =
+            """
+${descriptor.prompt}
+
+Input JSON Schema:
+```
+${descriptor.inputSchema}
+```
 
 Intention: ${intentionEvent.intention}
 
-Generate the JSON parameters for this tool call.
+Generate ONLY the JSON object matching the input schema above, Output requirements:
+- Start your response with the character `{` and end it with `}`.
+- Do not emit any text, whitespace, or tokens before `{` or after `}`.
+- Do not use XML, tool-call wrappers, function tags, markdown, code fences, or any structural syntax other than JSON.
+- Do not include comments, explanations, or reasoning.
+- Only include properties defined in the schema.
             """.trimIndent()
 
-        val parameters =
-            chatClient
-                .prompt(Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(parametersPrompt)))
-                .call()
-                .content() ?: "{}"
+        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt)
 
-        return ToolRequestEvent(
-            namespaceId = namespaceId,
-            caseId = caseId,
-            toolRequestId = toolRequestId,
-            toolName = tool.name,
-            args = parameters,
+        logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
+
+        val rawJson =
+            context.chatClient
+                .prompt(Prompt(messages))
+                .call()
+                .content()
+                ?.trim() ?: "{}"
+        val phaseJson = stripJsonFence(rawJson)
+
+        logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
+
+        val toolCtx = buildToolContext(tool.name, namespaceId)
+        val result = tool.enrich(phaseIndex, phaseJson, toolCtx)
+
+        return EnrichmentPhaseTrace(
+            phaseIndex = phaseIndex,
+            prompt = descriptor.prompt,
+            llmOutput = phaseJson,
+            enrichmentContent = result.content,
+            success = result.success,
         )
     }
 
     /**
-     * Execute the tool with the generated parameters.
+     * Strips formatting wrappers around a JSON payload, in priority order:
+     * 1. `<parameter>...</parameter>` tags — the canonical format requested in the prompt
+     * 2. Markdown code fences ` ```json ... ``` ` — tolerated as a fallback
+     * 3. Raw string — last resort if neither wrapper is present
      */
-    private fun executeTool(
+    private fun stripJsonFence(raw: String): String =
+        PARAMETER_TAG_REGEX
+            .find(raw)
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+            ?: JSON_FENCE_REGEX
+                .matchEntire(raw)
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+            ?: raw
+
+    private suspend fun executeTool(
         toolRequest: ToolRequestEvent,
         namespaceId: UUID,
         caseId: UUID,
     ): ToolResponseEvent {
-        val tool =
-            tools.firstOrNull { it.name == toolRequest.toolName }
-                ?: return ToolResponseEvent(
+        val tool = context.tools.firstOrNull { it.name == toolRequest.toolName }
+        return when {
+            tool == null -> {
+                ToolResponseEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     toolRequestId = toolRequest.toolRequestId,
@@ -288,64 +1510,136 @@ Generate the JSON parameters for this tool call.
                     output = MessageContent.Text("Tool not found: ${toolRequest.toolName}"),
                     success = false,
                 )
+            }
 
-        return try {
-            val result = tool.executeWithJson(toolRequest.args, ToolContext(
-                namespaceId = namespaceId,
-                userId = null,
-                userExternalId = null,
-                caseEvents = emptyList(),
-            ))
-
-            ToolResponseEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                toolRequestId = toolRequest.toolRequestId,
-                toolName = toolRequest.toolName,
-                output = MessageContent.Text(result),
-                success = true,
-            )
-        } catch (e: Exception) {
-            ToolResponseEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                toolRequestId = toolRequest.toolRequestId,
-                toolName = toolRequest.toolName,
-                output = MessageContent.Text("Error executing tool: ${e.message}"),
-                success = false,
-            )
+            else -> {
+                val sample = toolMetricsService?.startTimer()
+                try {
+                    val filteredEvents = filterEventsByIntegration(toolRequest.toolName, caseEventsProvider())
+                    val result: ToolExecutionResult =
+                        tool.executeWithJson(
+                            toolRequest.args,
+                            ToolContext(
+                                namespaceId = namespaceId,
+                                userId = userId,
+                                userExternalId = userExternalId,
+                                caseEvents = filteredEvents,
+                            ),
+                        )
+                    val durationMs =
+                        toolMetricsService?.stopTimerAndSendMetrics(
+                            sample = sample,
+                            toolName = toolRequest.toolName,
+                            agentName = name,
+                            namespaceId = namespaceId,
+                            success = result.success,
+                        )
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequest.toolRequestId,
+                        toolName = toolRequest.toolName,
+                        output = MessageContent.Text(result.output),
+                        success = result.success,
+                        durationMs = durationMs,
+                        toolMetadata = result.metadata,
+                    )
+                } catch (e: AgentInterrupt) {
+                    // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent
+                    // before the interrupt propagates to the run() catch block.
+                    // Stop the timer here so the sample is not leaked.
+                    toolMetricsService?.stopTimerAndSendMetrics(
+                        sample = sample,
+                        toolName = toolRequest.toolName,
+                        agentName = name,
+                        namespaceId = namespaceId,
+                        success = true,
+                    )
+                    throw e
+                } catch (e: Exception) {
+                    logger.warn(e) {
+                        "[AgentAdvanced] error during tool execution for ${tool.name}"
+                    }
+                    val durationMs =
+                        toolMetricsService?.stopTimerAndSendMetrics(
+                            sample = sample,
+                            toolName = toolRequest.toolName,
+                            agentName = name,
+                            namespaceId = namespaceId,
+                            success = false,
+                        )
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = toolRequest.toolRequestId,
+                        toolName = toolRequest.toolName,
+                        output = MessageContent.Text("Error executing tool: ${e.message}"),
+                        success = false,
+                        durationMs = durationMs,
+                    )
+                }
+            }
         }
     }
 
     /**
-     * Convert CaseEvents to Spring AI Messages for LLM context.
-     * Masks tool calls/responses and keeps only user-agent exchanges.
-     * Converts other agents to "user" role for LLM compatibility.
+     * Internal result carrier for [runEnrichmentPhases].
+     *
+     * @param content The final content to inject into the parameter-generation prompt,
+     *   or null when an enrichment phase failed.
+     * @param traces Per-phase traces collected during the enrichment run (including any
+     *   failed phase), to be attached to the resulting [ToolRequestEvent].
      */
-    private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> =
-        events
-            .filterIsInstance<MessageEvent>()
-            .map { messageEvent ->
-                val textContent =
-                    messageEvent.content
-                        .filterIsInstance<MessageContent.Text>()
-                        .joinToString("\n") { it.content }
+    private data class EnrichmentPhasesResult(
+        val content: String?,
+        val traces: List<EnrichmentPhaseTrace>,
+    )
 
-                when (messageEvent.actor.role) {
-                    ActorRole.USER -> {
-                        UserMessage(textContent)
-                    }
+    companion object : KLogging() {
+        /**
+         * Returns true when the finish reason indicates the LLM was cut off by a token limit,
+         * rather than finishing naturally.
+         */
+        internal fun isTruncated(finishReason: String?): Boolean {
+            if (finishReason == null) return false
+            return finishReason.equals("length", ignoreCase = true) ||
+                finishReason.equals("max_tokens", ignoreCase = true)
+        }
 
-                    ActorRole.AGENT -> {
-                        if (messageEvent.actor.id == id.toString()) {
-                            AssistantMessage(textContent)
-                        } else {
-                            // Convert other agents to user messages for LLM compatibility
-                            UserMessage("[${messageEvent.actor.displayName}]: $textContent")
-                        }
-                    }
-                }
-            }
+        /** How many recent tool responses to inspect for repetition. */
+        internal const val REPETITION_WINDOW = 5
 
-    companion object : KLogging()
+        /**
+         * Target character count for the language hint sample: collect user messages
+         * newest-first until this threshold is reached, or until all messages are
+         * exhausted — whichever comes first.
+         */
+        internal const val LANGUAGE_HINT_TARGET_CHARS = 200
+
+        /** How many identical (toolName, args) calls within the window trigger a warning. */
+        internal const val REPETITION_THRESHOLD = 3
+        internal const val MAX_PARAMETER_ATTEMPTS = 3
+
+        /**
+         * Matches JSON content inside `<parameter>...</parameter>` tags.
+         * This is the canonical output format requested in the parameter generation prompt.
+         */
+        private val PARAMETER_TAG_REGEX =
+            Regex(
+                """<parameter>\s*(.*?)\s*</parameter>""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
+
+        private val JSON_FENCE_REGEX =
+            Regex(
+                """^```(?:json)?\s*(.*?)\s*```$""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
+
+        private val LANGUAGE_TAG_REGEX =
+            Regex(
+                """<language>\s*(.*?)\s*</language>""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+            )
+    }
 }

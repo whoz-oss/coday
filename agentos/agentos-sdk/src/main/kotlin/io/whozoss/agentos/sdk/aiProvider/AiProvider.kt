@@ -35,4 +35,5 @@ data class AiProvider(
     val apiType: AiApiType,
     val baseUrl: String? = null,
     val apiKey: String? = null,
+    val headers: Map<String, String> = emptyMap(),
 ) : Entity

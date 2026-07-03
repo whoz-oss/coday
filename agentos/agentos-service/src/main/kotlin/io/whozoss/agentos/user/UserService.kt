@@ -43,6 +43,8 @@ interface UserService : EntityService<User, String> {
      */
     fun resolveOrCreateByExternalId(externalId: String): User
 
+    fun createByExternalIds(externalIds: Set<String>): List<User>
+
     /**
      * Resolve the [User] for the current HTTP request.
      *

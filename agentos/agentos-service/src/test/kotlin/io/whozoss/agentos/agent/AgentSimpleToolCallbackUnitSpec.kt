@@ -2,25 +2,32 @@ package io.whozoss.agentos.agent
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import reactor.core.publisher.Flux
 import java.util.UUID
@@ -58,6 +65,8 @@ class AgentSimpleToolCallbackUnitSpec :
                 name = "TestAgent",
                 chatClient = chatClient,
                 tools = tools,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
             )
 
         fun userMessage(
@@ -104,7 +113,10 @@ class AgentSimpleToolCallbackUnitSpec :
                     override val version = "1.0.0"
                     override val paramType: Class<Nothing>? = null
 
-                    override fun execute(input: Nothing?, context: ToolContext): String = ""
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("")
                 }
 
             val capturedCallbacks = slot<List<ToolCallback>>()
@@ -148,11 +160,19 @@ class AgentSimpleToolCallbackUnitSpec :
                     override val version = "1.0.0"
                     override val paramType: Class<Nothing>? = null
 
-                    override fun execute(input: Nothing?, context: ToolContext): String = ""
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("")
 
-                    override fun executeWithJson(json: String?, context: ToolContext): String {
+                    override suspend fun executeWithJson(
+                        json: String?,
+                        context: ToolContext,
+                    ): ToolExecutionResult {
                         receivedArgs += json
-                        return """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}"""
+                        return ToolExecutionResult.success(
+                            """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}""",
+                        )
                     }
                 }
 
@@ -211,14 +231,14 @@ class AgentSimpleToolCallbackUnitSpec :
             val historyWithEmptyArgs =
                 listOf(
                     userMessage(namespaceId, caseId, "what time is it in New York?"),
-                    io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent(
+                    ToolRequestEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",
                         toolName = "GetCurrentDateTime",
                         args = "", // empty — would crash AnthropicChatModel before the fix
                     ),
-                    io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent(
+                    ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",
@@ -242,6 +262,121 @@ class AgentSimpleToolCallbackUnitSpec :
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
 
+        // -------------------------------------------------------------------------
+        // Redirect event order contract
+        // -------------------------------------------------------------------------
+
+        "on redirect, AgentFinishedEvent is emitted before AgentSelectedEvent" {
+            // CaseRuntime.processNextStep scans events newest-first. For it to launch
+            // the redirect target rather than stop, AgentFinishedEvent (current agent)
+            // must appear BEFORE AgentSelectedEvent (target agent) in the event list.
+            // This test pins that emission order as a contract.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val redirectTool =
+                RedirectTool(
+                    configName = "REDIRECT",
+                    eligibleAgents = listOf(RedirectTool.EligibleAgent("TargetAgent", "does stuff")),
+                )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every {
+                mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream()
+            } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "REDIRECT__redirect" }
+                // Let AgentInterrupt.Redirect propagate — AgentSimple catches it in its flow
+                // and emits AgentFinishedEvent + AgentSelectedEvent in the correct order.
+                cb.call("{\"agentName\":\"TargetAgent\"}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(redirectTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "do the thing"))).toList()
+
+            val finishedIndex = events.indexOfFirst { it is AgentFinishedEvent }
+            val selectedIndex = events.indexOfFirst { it is AgentSelectedEvent }
+
+            (finishedIndex >= 0) shouldBe true
+            (selectedIndex >= 0) shouldBe true
+            // AgentFinishedEvent must come before AgentSelectedEvent
+            (finishedIndex < selectedIndex) shouldBe true
+            (events[selectedIndex] as AgentSelectedEvent).agentName shouldBe "TargetAgent"
+            events.filterIsInstance<ToolResponseEvent>().first().success shouldBe true
+        }
+
+        "convertEventsToMessages produces placeholder for orphaned ToolRequestEvent in history" {
+            // When a ToolRequestEvent exists without a matching ToolResponseEvent
+            // (e.g. after an AgentInterrupt that wasn't properly recorded), the
+            // message conversion must still produce a ToolResponseMessage — OpenAI
+            // returns 400 if an AssistantMessage with tool_calls is not followed
+            // by a ToolResponseMessage for each call.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("response")
+
+            val agent = makeAgent(agentId, mockChatClient, emptyList())
+
+            // History with an orphaned ToolRequestEvent (no matching ToolResponseEvent)
+            val historyWithOrphanedRequest =
+                listOf(
+                    userMessage(namespaceId, caseId, "redirect me"),
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "orphan-request-id",
+                        toolName = "REDIRECT__redirect",
+                        args = """{"agentName":"TargetAgent"}""",
+                    ),
+                    // No ToolResponseEvent for orphan-request-id!
+                    MessageEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        actor = Actor(agentId.toString(), "TestAgent", ActorRole.AGENT),
+                        content = listOf(MessageContent.Text("Redirected.")),
+                    ),
+                    userMessage(namespaceId, caseId, "follow-up after redirect"),
+                )
+
+            // Must not throw — before the fix this would produce a malformed message
+            // list that OpenAI would reject with 400
+            val events = agent.run(historyWithOrphanedRequest).toList()
+
+            events shouldHaveAtLeastSize 3
+            events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
+        }
+
+        "NonTransientAiException from LLM provider surfaces as ErrorEvent + AgentFinishedEvent, no generic error" {
+            // Regression guard for WZ-32274: a 4xx from the provider must be caught
+            // specifically so the agent terminates cleanly and the user gets a clear message.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(any<List<ToolCallback>>()).stream() } returns mockStreamSpec
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } throws NonTransientAiException("400 - invalid_request_error")
+
+            val agent = makeAgent(agentId, mockChatClient, emptyList())
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "hello"))).toList()
+
+            val errorEvents = events.filterIsInstance<ErrorEvent>()
+            errorEvents shouldHaveSize 1
+            errorEvents[0].message shouldContain "AI provider rejected"
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
         "convertEventsToMessages should not crash when history contains a ToolRequestEvent with null args" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -257,14 +392,14 @@ class AgentSimpleToolCallbackUnitSpec :
             val historyWithNullArgs =
                 listOf(
                     userMessage(namespaceId, caseId, "what time is it?"),
-                    io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent(
+                    ToolRequestEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",
                         toolName = "GetCurrentDateTime",
                         args = null, // null — also unsafe before the fix
                     ),
-                    io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent(
+                    ToolResponseEvent(
                         namespaceId = namespaceId,
                         caseId = caseId,
                         toolRequestId = "prior-request-id",

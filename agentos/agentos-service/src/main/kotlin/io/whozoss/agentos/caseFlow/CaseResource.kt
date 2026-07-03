@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import jakarta.validation.constraints.NotNull
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -18,4 +19,6 @@ data class CaseResource(
     val namespaceId: UUID,
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String? = null,
+    val created: Instant? = null,
+    val removed: Boolean = false,
 )

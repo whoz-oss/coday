@@ -1,0 +1,138 @@
+<div class="agent-config-inspect">
+  <header class="agent-config-inspect__header">
+    <button class="agent-config-inspect__back" type="button" (click)="back()" title="Back to agent configs">
+      <span class="agent-config-inspect__back-icon">&#8592;</span>
+      Agent Configs
+    </button>
+    <h1 class="agent-config-inspect__title">Agent definition</h1>
+    <a class="agent-config-inspect__sibling-link" [routerLink]="editRoute()">Edit config &rarr;</a>
+  </header>
+
+  @if (isLoading()) {
+    <p class="agent-config-inspect__loading">Loading&hellip;</p>
+  } @else if (hasError()) {
+    <p class="agent-config-inspect__error">Failed to load agent definition.</p>
+  } @else if (definition(); as def) {
+    <div class="agent-config-inspect__content">
+      <!-- General info -->
+      <section class="agent-config-inspect__section">
+        <h2 class="agent-config-inspect__section-title">General</h2>
+        <dl class="agent-config-inspect__dl">
+          <dt class="agent-config-inspect__dt">Name</dt>
+          <dd class="agent-config-inspect__dd">{{ def.name }}</dd>
+
+          <dt class="agent-config-inspect__dt">Resolved model</dt>
+          <dd class="agent-config-inspect__dd agent-config-inspect__dd--mono">{{ def.resolvedModelApiName }}</dd>
+
+          <dt class="agent-config-inspect__dt">Provider</dt>
+          <dd class="agent-config-inspect__dd">{{ def.resolvedProviderName }}</dd>
+
+          <dt class="agent-config-inspect__dt">Advanced execution</dt>
+          <dd class="agent-config-inspect__dd">
+            <span
+              class="agent-config-inspect__badge"
+              [class.agent-config-inspect__badge--active]="def.advancedExecution"
+            >
+              {{ def.advancedExecution ? 'Enabled' : 'Disabled' }}
+            </span>
+          </dd>
+
+          @if (def.userId) {
+            <dt class="agent-config-inspect__dt">User context</dt>
+            <dd class="agent-config-inspect__dd agent-config-inspect__dd--mono">{{ def.userId }}</dd>
+          }
+        </dl>
+      </section>
+
+      <!-- System Prompt -->
+      @if (def.systemPrompt) {
+        <section class="agent-config-inspect__section">
+          <button
+            class="agent-config-inspect__collapsible"
+            type="button"
+            (click)="toggleSystemPrompt()"
+            [attr.aria-expanded]="!systemPromptCollapsed()"
+          >
+            <h2 class="agent-config-inspect__section-title">System Prompt</h2>
+            <span
+              class="agent-config-inspect__chevron"
+              [class.agent-config-inspect__chevron--open]="!systemPromptCollapsed()"
+            >
+              &#9660;
+            </span>
+          </button>
+          @if (!systemPromptCollapsed()) {
+            <pre class="agent-config-inspect__instructions">{{ def.systemPrompt }}</pre>
+          }
+        </section>
+      }
+
+      <!-- Instructions -->
+      @if (def.instructions) {
+        <section class="agent-config-inspect__section">
+          <button
+            class="agent-config-inspect__collapsible"
+            type="button"
+            (click)="toggleInstructions()"
+            [attr.aria-expanded]="!instructionsCollapsed()"
+          >
+            <h2 class="agent-config-inspect__section-title">Instructions</h2>
+            <span
+              class="agent-config-inspect__chevron"
+              [class.agent-config-inspect__chevron--open]="!instructionsCollapsed()"
+            >
+              &#9660;
+            </span>
+          </button>
+          @if (!instructionsCollapsed()) {
+            <pre class="agent-config-inspect__instructions">{{ def.instructions }}</pre>
+          }
+        </section>
+      }
+
+      <!-- Tools -->
+      <section class="agent-config-inspect__section">
+        <h2 class="agent-config-inspect__section-title">
+          Tools
+          <span class="agent-config-inspect__count">({{ def.tools.length }})</span>
+        </h2>
+
+        @if (def.tools.length === 0) {
+          <p class="agent-config-inspect__empty">No tools available for this agent.</p>
+        } @else {
+          <ul class="agent-config-inspect__tools">
+            @for (tool of def.tools; track tool.name) {
+              <li class="agent-config-inspect__tool">
+                <button
+                  class="agent-config-inspect__tool-header"
+                  type="button"
+                  (click)="toggleTool(tool)"
+                  [attr.aria-expanded]="isToolExpanded(tool)"
+                >
+                  <span class="agent-config-inspect__tool-name">{{ tool.name }}</span>
+                  <span
+                    class="agent-config-inspect__chevron"
+                    [class.agent-config-inspect__chevron--open]="isToolExpanded(tool)"
+                  >
+                    &#9660;
+                  </span>
+                </button>
+                @if (isToolExpanded(tool)) {
+                  <div class="agent-config-inspect__tool-body">
+                    @if (tool.description) {
+                      <div
+                        class="agent-config-inspect__tool-description"
+                        [innerHTML]="tool.description | agentosMarkdown"
+                      ></div>
+                    }
+                    <pre class="agent-config-inspect__schema">{{ formatSchema(tool.inputSchema) }}</pre>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
+  }
+</div>

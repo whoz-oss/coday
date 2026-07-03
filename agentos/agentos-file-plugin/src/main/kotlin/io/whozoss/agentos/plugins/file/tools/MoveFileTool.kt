@@ -1,10 +1,10 @@
 package io.whozoss.agentos.plugins.file.tools
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileAlreadyExistsException
@@ -24,7 +24,6 @@ class MoveFileTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<MoveFileTool.Input> {
     companion object {
-        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
@@ -65,19 +64,33 @@ class MoveFileTool(
         val to: String = "",
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
-            runIOWithTimeout(IO_TIMEOUT) {
-                moveFile(params.from, params.to)
-            }
+            val result = runIOWithTimeout(IO_TIMEOUT) { moveFile(params.from, params.to) }
+            ToolExecutionResult.success(result)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Operation timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid path")
+            ToolExecutionResult.error(
+                e.message ?: "Invalid path",
+                errorType = "INVALID_INPUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error moving file: ${e.message}")
+            ToolExecutionResult.error(
+                "Error moving file: ${e.message}",
+                errorType = "MOVE_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -113,5 +126,4 @@ class MoveFileTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
 }

@@ -233,7 +233,8 @@ export class Coday {
     const thread = this.context?.aiThread
     if (thread) thread.runStatus = RunStatus.STOPPED
     this.handlerLooper?.stop()
-    this.aiThreadService.autoSave()
+    // Note: autoSave is called explicitly in run() before stop(), so no need here.
+    // Calling it here would race with cleanup() killing the thread service.
   }
 
   /**
@@ -245,10 +246,17 @@ export class Coday {
    */
   async cleanup(): Promise<void> {
     try {
+      // Save thread FIRST to prevent data loss if subsequent cleanup steps hang or fail
+      // (e.g. MCP process cleanup after SIGINT propagation).
+      // An in-flight tool response could still land after this save, but losing one
+      // response is far less damaging than losing the entire thread.
+      await this.aiThreadService.autoSave()
+
       if (this.services.agent) {
         await this.services.agent.kill()
       }
-      this.aiThreadService.kill()
+
+      await this.aiThreadService.kill()
 
       // Reset AI client provider for fresh connections
       this.aiClientProvider.cleanup()

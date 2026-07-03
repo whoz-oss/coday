@@ -3,4 +3,7 @@ description: provider of infrastructure is ovhai, api provider is vllm with api 
 apiType: OpenAI
 apiKey: "****"
 baseUrl: "****"
+headers:
+  CF-Access-Client-Id: "****"
+  CF-Access-Client-Secret: "****"
 

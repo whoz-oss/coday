@@ -1,8 +1,8 @@
 package io.whozoss.agentos.plugins.datetime
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -18,10 +18,6 @@ class GetCurrentDateTimeTool(
     private val defaultTimezone: String = "UTC",
     configName: String? = null,
 ) : StandardTool<GetCurrentDateTimeTool.Input> {
-    companion object {
-        private val objectMapper = jacksonObjectMapper()
-    }
-
     override val name: String = if (configName != null) "${configName}__GetCurrentDateTime" else "GetCurrentDateTime"
 
     override val description: String =
@@ -58,41 +54,42 @@ class GetCurrentDateTimeTool(
         val timezone: String? = null,
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         val timezone = input?.timezone?.takeIf { it.isNotBlank() } ?: defaultTimezone
 
-        return try {
-            val zoneId =
-                try {
-                    ZoneId.of(timezone)
-                } catch (e: Exception) {
-                    return createErrorResponse(
-                        "Invalid timezone: $timezone. Use standard timezone IDs like 'America/New_York' or 'UTC'",
-                    )
-                }
+        val zoneId =
+            try {
+                ZoneId.of(timezone)
+            } catch (e: Exception) {
+                return ToolExecutionResult.error(
+                    output = "Invalid timezone: $timezone. Use standard timezone IDs like 'America/New_York' or 'UTC'",
+                    errorType = "INVALID_TIMEZONE",
+                    errorMessage = e.message,
+                )
+            }
 
+        return try {
             val now = ZonedDateTime.now(zoneId)
             val formatted = now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-            objectMapper.writeValueAsString(
-                mapOf(
-                    "success" to true,
-                    "datetime" to formatted,
-                    "timezone" to timezone,
-                    "offset" to now.offset.toString(),
-                    "epochSecond" to now.toEpochSecond(),
-                ),
+            ToolExecutionResult.success(
+                output = formatted,
+                metadata =
+                    mapOf(
+                        "timezone" to timezone,
+                        "offset" to now.offset.toString(),
+                        "epochSecond" to now.toEpochSecond(),
+                    ),
             )
         } catch (e: Exception) {
-            createErrorResponse("Error getting datetime: ${e.message}")
+            ToolExecutionResult.error(
+                output = "Error getting datetime: ${e.message}",
+                errorType = "EXECUTION_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
-
-    private fun createErrorResponse(message: String): String =
-        objectMapper.writeValueAsString(
-            mapOf(
-                "success" to false,
-                "error" to message,
-            ),
-        )
 }

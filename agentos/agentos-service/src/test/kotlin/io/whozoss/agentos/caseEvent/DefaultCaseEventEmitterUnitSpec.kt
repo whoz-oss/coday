@@ -16,9 +16,19 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import java.time.Instant
 import java.util.*
+
+/**
+ * Suspends until the [DefaultCaseEventEmitter]'s flow has at least [count] active subscribers.
+ * Uses [DefaultCaseEventEmitter.subscriptionCount] which is updated synchronously on subscribe,
+ * eliminating the need for arbitrary delays before emitting on a hot flow with replay=0.
+ */
+private suspend fun DefaultCaseEventEmitter.awaitSubscribers(count: Int = 1) {
+    subscriptionCount.first { it >= count }
+}
 
 class DefaultCaseEventEmitterUnitSpec :
     StringSpec({
@@ -53,8 +63,8 @@ class DefaultCaseEventEmitterUnitSpec :
                     emitter.events.take(1).toList(collectedEvents)
                 }
 
-            // Give collector time to start
-            delay(100)
+            // Wait until the collector is actually subscribed before emitting.
+            emitter.awaitSubscribers()
 
             // Emit event
             emitter.emit(event)
@@ -78,7 +88,7 @@ class DefaultCaseEventEmitterUnitSpec :
                     emitter.events.take(3).toList(collectedEvents)
                 }
 
-            delay(100)
+            emitter.awaitSubscribers()
 
             emitter.emit(event1)
             emitter.emit(event2)
@@ -109,7 +119,7 @@ class DefaultCaseEventEmitterUnitSpec :
                     emitter.events.take(1).toList(collector2Events)
                 }
 
-            delay(100)
+            emitter.awaitSubscribers(count = 2)
 
             emitter.emit(event)
 
@@ -130,8 +140,6 @@ class DefaultCaseEventEmitterUnitSpec :
             // Emit first event without collector
             emitter.emit(event1)
 
-            delay(100)
-
             // Start collecting after first event
             val collectedEvents = mutableListOf<CaseEvent>()
             val job =
@@ -139,7 +147,7 @@ class DefaultCaseEventEmitterUnitSpec :
                     emitter.events.take(1).toList(collectedEvents)
                 }
 
-            delay(100)
+            emitter.awaitSubscribers()
 
             // Emit second event
             emitter.emit(event2)
@@ -176,7 +184,7 @@ class DefaultCaseEventEmitterUnitSpec :
                     emitter.events.take(eventCount).toList(collectedEvents)
                 }
 
-            delay(100)
+            emitter.awaitSubscribers()
 
             // Emit many events rapidly
             repeat(eventCount) { i ->
@@ -213,7 +221,7 @@ class DefaultCaseEventEmitterUnitSpec :
                     emitter.events.take(3).toList(collectedEvents)
                 }
 
-            delay(100)
+            emitter.awaitSubscribers()
 
             emitter.emit(messageEvent)
             emitter.emit(statusEvent)
@@ -241,7 +249,7 @@ class DefaultCaseEventEmitterUnitSpec :
                     }
                 }
 
-            delay(100)
+            emitter.awaitSubscribers()
 
             // Emit events rapidly
             repeat(eventCount) { i ->

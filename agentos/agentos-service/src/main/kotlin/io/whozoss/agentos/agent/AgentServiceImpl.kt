@@ -1,18 +1,26 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.tool.ToolRegistryService
+import io.whozoss.agentos.tool.ToolResolverService
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -21,124 +29,265 @@ import java.util.UUID
  * Implementation of [AgentService] that resolves agents from namespace-scoped
  * [AgentConfig] entities.
  *
- * ## Resolution strategy for [findAgentByName]
- *
- * Look up an [AgentConfig] in the namespace whose `name` matches [namePart]
- * (case-insensitive).
- * - If found: use the config's `name` as agent identity, its `instructions` as
- *   base system prompt, and resolve the model via `config.modelName`
- *   (alias-first, then apiName).
- * - If not found: throws [IllegalArgumentException].
- *
- * ## Resolution strategy for [getDefaultAgent] / [getDefaultAgentName]
- *
- * Delegates to [AgentConfigService.findDefault], which always returns a non-null
- * [AgentConfig] — either the oldest persisted config in the namespace, or the
- * built-in fallback. [getDefaultAgentName] is therefore always non-null.
- *
- * [getDefaultAgent] can still return null when the resolved config has no
- * [AgentConfig.modelName] and no [AiModel] is configured for the namespace.
  */
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
-    private val toolRegistryService: ToolRegistryService,
+    private val toolResolverService: ToolResolverService,
     private val aiModelService: AiModelService,
     private val aiProviderService: AiProviderService,
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
     private val agentConfigService: AgentConfigService,
+    private val intentionGenerator: AgentIntentionGenerator,
+    private val confirmationManager: ConfirmationManager,
+    private val objectMapper: ObjectMapper,
+    private val toolRegistryService: ToolRegistryService,
+    private val toolMetricsService: ToolMetricsService,
 ) : AgentService {
-    override fun findAgentByName(
+    /**
+     * Resolves an agent by name for a given [context].
+     *
+     * **Matching semantics differ by path:**
+     * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
+     *   client-side with `.contains()` (case-insensitive substring). This is intentional for
+     *   interactive use cases where a partial name typed by a user should resolve loosely.
+     * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
+     *   a case-insensitive exact match, then falls back to platform agents.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match.
+     *
+     * **Scoping / shadowing rule (both paths):**
+     * Platform agents (namespaceId = null) are shadowed by namespace-scoped agents with the
+     * same name. Uniqueness is enforced *per level*: two configs at the same level (both
+     * namespace-scoped, or both platform) with the same name is an error; one config at each
+     * level is resolved by preferring the namespace-scoped one.
+     */
+    override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
     ): Agent {
+        require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
-            agentConfigService.findByName(context.namespaceId, namePart)
+            if (context.userId != null) {
+                val namePartLowercase = namePart.lowercase()
+                val agentConfigs =
+                    agentConfigService
+                        .findDeployedByNamespaceIdAndUserIdAndName(
+                            namespaceId = context.namespaceId,
+                            userId = context.userId,
+                            agentName = null,
+                        ).filter { it.name.lowercase().contains(namePartLowercase) }
+                resolveWithShadowing(agentConfigs, namePart, context.namespaceId)
+            } else {
+                agentConfigService.findByName(context.namespaceId, namePart)
+            } ?: throw IllegalArgumentException(
+                "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+            )
+        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
+        return instantiateAgent(definition, context, resolvedUser)
+    }
+
+    override suspend fun resolveDefinition(
+        agentConfigId: UUID,
+        namespaceId: UUID,
+        userId: UUID?,
+    ): ResolvedAgentDefinition {
+        val agentConfig =
+            agentConfigService.findById(agentConfigId)
                 ?: throw IllegalArgumentException(
-                    "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+                    "No AgentConfig found for id '$agentConfigId' in namespace $namespaceId.",
                 )
-        return createAgentFromConfig(agentConfig, context)
+        val context =
+            AgentExecutionContext(
+                namespaceId = namespaceId,
+                userId = userId,
+            )
+        val resolvedUser = userId?.let { runCatching { userService.findById(it) }.getOrNull() }
+        return resolveAgentDefinition(agentConfig, context, resolvedUser)
     }
-
-    override fun getDefaultAgent(context: AgentExecutionContext): Agent? {
-        val config = agentConfigService.findDefault(context.namespaceId)
-            .let { if (it.hasNoRealNamespace()) it.copy(namespaceId = context.namespaceId) else it }
-        return runCatching { createAgentFromConfig(config, context) }
-            .onFailure { logger.warn { "[AgentService] Cannot instantiate default agent for namespace ${context.namespaceId}: ${it.message}" } }
-            .getOrNull()
-    }
-
-    override fun getDefaultAgentName(namespaceId: UUID): String = agentConfigService.findDefault(namespaceId).name
 
     override fun resolveAgentName(
         namePart: String,
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): String? =
+        if (userId != null) {
+            agentConfigService
+                .findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    agentName = namePart,
+                ).firstOrNull()
+                ?.name
+        } else {
+            agentConfigService.findByName(namespaceId, namePart)?.name
+        }
+
+    // -------------------------------------------------------------------------
+    // Shadowing / uniqueness helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolves a single [AgentConfig] from [candidates] applying the platform-vs-namespace
+     * shadowing rule:
+     * - Namespace-scoped configs shadow platform configs with the same name.
+     * - Uniqueness is enforced *per level*: duplicate names at the same level are an error.
+     * - Returns null when [candidates] is empty.
+     *
+     * The precedence order is: namespace > platform.
+     */
+    private fun resolveWithShadowing(
+        candidates: List<AgentConfig>,
+        namePart: String,
         namespaceId: UUID,
-    ): String? = agentConfigService.findByName(namespaceId, namePart)?.name
+    ): AgentConfig? {
+        val (namespaceCandidates, platformCandidates) = candidates.partition { it.namespaceId != null }
+
+        val duplicatesAtSameLevel = namespaceCandidates.size > 1 || platformCandidates.size > 1
+        if (duplicatesAtSameLevel) {
+            val culprit = if (namespaceCandidates.size > 1) "namespace" else "platform"
+            throw IllegalArgumentException(
+                "No unique AgentConfig found for name '$namePart': " +
+                    "${if (namespaceCandidates.size > 1) namespaceCandidates.size else platformCandidates.size} " +
+                    "$culprit-level configs match in namespace $namespaceId.",
+            )
+        }
+
+        // Namespace-scoped agent shadows the platform agent when both exist.
+        return namespaceCandidates.firstOrNull() ?: platformCandidates.firstOrNull()
+    }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
     // -------------------------------------------------------------------------
 
     /**
-     * Build an [Agent] from an [AgentConfig].
+     * Phase 1: resolve all configuration for an [AgentConfig] into a [ResolvedAgentDefinition].
      *
-     * The config's [AgentConfig.modelName] is used to resolve the [AiModel] (alias
-     * first, then apiName). When [AgentConfig.modelName] is null, the namespace
-     * default model is used as a fallback.
+     * Performs model / provider overlay resolution, instruction building, and tool resolution.
+     * Does not touch the Spring AI chat client or instantiate any agent object.
      *
      * Throws [IllegalArgumentException] if no model can be resolved.
      */
-    private fun createAgentFromConfig(
-        config: AgentConfig,
+    private suspend fun resolveAgentDefinition(
+        agentConfig: AgentConfig,
         context: AgentExecutionContext,
-    ): Agent {
-        val modelLookupName = config.modelName
+        resolvedUser: User?,
+    ): ResolvedAgentDefinition {
+        val baseModel =
+            agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
+                ?: findDefaultModelConfig(context.namespaceId)
+                ?: throw IllegalArgumentException(
+                    "AgentConfig '${agentConfig.name}' could not resolve an AiModel " +
+                        "(modelName=${agentConfig.modelName}, namespace=${context.namespaceId}).",
+                )
         val (modelConfig, providerConfig) =
-            when {
-                modelLookupName != null -> resolveModelPair(modelLookupName, context.namespaceId)
-                else -> {
-                    val defaultModel =
-                        findDefaultModelConfig(context.namespaceId)
-                            ?: throw IllegalArgumentException(
-                                "AgentConfig '${config.name}' has no modelName and no default AiModel is configured " +
-                                    "for namespace ${context.namespaceId}.",
-                            )
-                    defaultModel to aiProviderService.getById(defaultModel.aiProviderId)
-                }
-            }
-        return createAgentInstance(config.name, config.instructions, config.integrations, modelConfig, providerConfig, context)
+            applyOverlaysToModel(
+                baseModel = baseModel,
+                namespaceId = context.namespaceId,
+                userId = context.userId,
+            )
+        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val namespaceSystemPrompt =
+            buildNamespaceSystemPrompt(
+                namespaceId = context.namespaceId,
+                context = context,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+            )
+        val instructions =
+            buildInstructions(
+                baseInstructions = agentConfig.instructions,
+                agentIntegrations = agentConfig.integrations,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+            )
+        val toolContext =
+            context.toToolContext(
+                userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
+                agentName = agentConfig.name,
+            )
+        val tools =
+            toolResolverService.resolveToolsForRun(
+                agentIntegrations = agentConfig.integrations,
+                context = toolContext,
+                allIntegrationConfigs = effectiveIntegrationConfigs,
+            )
+
+        return ResolvedAgentDefinition(
+            agentConfigId = agentConfig.metadata.id,
+            name = agentConfig.name,
+            systemPrompt = namespaceSystemPrompt.takeUnless { it.isBlank() },
+            instructions = instructions.takeUnless { it.isBlank() },
+            resolvedModelApiName = modelConfig.apiModelName,
+            resolvedProviderName = providerConfig.name,
+            resolvedModelId = modelConfig.metadata.id,
+            resolvedProviderId = providerConfig.metadata.id,
+            resolvedModel = modelConfig,
+            resolvedProvider = providerConfig,
+            tools = tools,
+            advancedExecution = agentConfig.advancedExecution,
+            namespaceId = context.namespaceId,
+            userId = context.userId,
+        )
     }
 
     /**
-     * Resolve a [AiModel] + [AiProvider] pair for [name] within [namespaceId].
+     * Phase 2: instantiate a live [Agent] from a [ResolvedAgentDefinition].
      *
-     * Delegates resolution to [AiModelService.findAiModel] (alias first,
-     * then apiName, highest priority wins within each group).
-     * Throws [IllegalArgumentException] if no match is found.
+     * Constructs the Spring AI chat client and the appropriate agent type
+     * ([AgentSimple] or [AgentAdvanced]). Requires the original [context] for
+     * the case-scoped providers that cannot be captured in the definition.
      */
-    private fun resolveModelPair(
-        name: String,
-        namespaceId: UUID,
-    ): Pair<AiModel, AiProvider> {
-        logger.debug { "[AgentService] Resolving '$name' in namespace $namespaceId" }
+    private fun instantiateAgent(
+        definition: ResolvedAgentDefinition,
+        context: AgentExecutionContext,
+        resolvedUser: User?,
+    ): Agent {
+        val modelConfig = definition.resolvedModel
+        val providerConfig = definition.resolvedProvider
 
-        val modelConfig =
-            aiModelService.findAiModel(namespaceId, name)
-                ?: throw IllegalArgumentException(
-                    "No AiModel found for name '$name' in namespace $namespaceId. " +
-                        "Configure an AiModel with alias or apiName matching '$name'.",
-                )
+        return createAgentInstance(
+            agentName = definition.name,
+            resolvedInstructions = definition.instructions,
+            resolvedSystemPrompt = definition.systemPrompt,
+            advancedExecution = definition.advancedExecution,
+            modelConfig = modelConfig,
+            providerConfig = providerConfig,
+            context = context,
+            resolvedTools = definition.tools,
+            resolvedUser = resolvedUser,
+        )
+    }
+
+    /**
+     * Resolve the [AiProvider] for a pre-resolved [baseModel].
+     *
+     * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
+     * fetches all four overlay layers in a single query and folds them by precedence.
+     * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
+     */
+    private fun applyOverlaysToModel(
+        baseModel: AiModel,
+        namespaceId: UUID,
+        userId: UUID?,
+    ): Pair<AiModel, AiProvider> {
+        val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
+        val providerConfig =
+            if (userId != null) {
+                aiProviderService.resolveProvider(namespaceId, userId, baseProvider.name)
+            } else {
+                baseProvider
+            }
 
         logger.info {
-            "[AgentService] Resolved '$name' -> apiName='${modelConfig.apiModelName}' " +
-                "(alias=${modelConfig.alias}, priority=${modelConfig.priority}, aiProviderId=${modelConfig.aiProviderId})"
+            "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
+                "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
+                "provider='${providerConfig.name}', userId=$userId)"
         }
-
-        val providerConfig = aiProviderService.getById(modelConfig.aiProviderId)
-        logger.debug { "[AgentService] Provider resolved: name='${providerConfig.name}' apiType=${providerConfig.apiType}" }
-        return modelConfig to providerConfig
+        return baseModel to providerConfig
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
@@ -148,88 +297,154 @@ class AgentServiceImpl(
     // -------------------------------------------------------------------------
 
     /**
-     * Build a live [AgentSimple] instance from the resolved entity pair, scoped to [context].
+     * Build a live [AgentSimple] or [AgentAdvanced] instance from fully-resolved inputs.
      *
-     * [agentName] is the logical name used to identify this agent.
-     * [baseInstructions] are the agent-level instructions from [AgentConfig], if any.
-     * [agentIntegrations] is the optional tool-access filter from [AgentConfig.integrations].
-     * The namespace description, integrations, and user context are always appended.
+     * All parameters carry already-resolved values — this method only constructs
+     * the Spring AI chat client and the appropriate agent type.
+     * [resolvedInstructions] are the final system instructions (built by [resolveAgentDefinition]).
+     * [resolvedTools] is the pre-resolved and pre-filtered tool set.
+     * [resolvedUser] is the pre-resolved user (may be null for anonymous / system runs).
      */
     private fun createAgentInstance(
         agentName: String,
-        baseInstructions: String?,
-        agentIntegrations: Map<String, List<String>?>?,
+        resolvedInstructions: String?,
+        resolvedSystemPrompt: String?,
+        advancedExecution: Boolean,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
+        resolvedTools: Collection<StandardTool<*>>,
+        resolvedUser: User?,
     ): Agent {
-        logger.info { "[AgentService] Creating agent '$agentName' for namespace ${context.namespaceId}" }
+        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
+        logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
+        logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
+        logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
+        logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val tools = toolRegistryService.resolveToolsForNamespace(context.namespaceId, agentIntegrations)
-        logger.info {
-            "[AgentService] Loaded ${tools.size} tool(s) " +
-                "(sample-5: ${tools.take(5).map { it.name }}) for agent: $agentName"
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
+
+        return if (advancedExecution) {
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val advancedContext =
+                AgentAdvancedContext(
+                    chatClient = chatClient,
+                    tools = resolvedTools.toList(),
+                    instructions = resolvedInstructions,
+                    agentId = agentId,
+                    confirmationManager = confirmationManager,
+                    systemPrompt = resolvedSystemPrompt,
+                )
+            AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = agentName,
+                context = advancedContext,
+                intentionGenerator = intentionGenerator,
+                objectMapper = objectMapper,
+                userId = resolvedUser?.metadata?.id,
+                userExternalId = resolvedUser?.externalId,
+                caseEventsProvider = context.caseEventsProvider,
+                llmProvider = providerConfig.name,
+                llmModel = modelConfig.apiModelName,
+                toolMetricsService = toolMetricsService,
+            )
+        } else {
+            AgentSimple(
+                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                name = agentName,
+                chatClient = chatClient,
+                tools = resolvedTools,
+                systemPrompt = resolvedSystemPrompt,
+                instructions = resolvedInstructions,
+                userId = resolvedUser?.metadata?.id,
+                userExternalId = resolvedUser?.externalId,
+                caseEventsProvider = context.caseEventsProvider,
+                llmProvider = providerConfig.name,
+                llmModel = modelConfig.apiModelName,
+                toolMetricsService = toolMetricsService,
+            )
         }
-
-        // Resolve user identity once here so plugins receive it via ToolContext without
-        // needing access to UserService themselves.
-        val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
-
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
-        val instructions = buildInstructions(baseInstructions = baseInstructions, agentIntegrations = agentIntegrations, context = context)
-
-        return AgentSimple(
-            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
-            name = agentName,
-            chatClient = chatClient,
-            tools = tools,
-            instructions = instructions,
-            userId = resolvedUser?.metadata?.id,
-            userExternalId = resolvedUser?.externalId,
-            caseEventsProvider = context.caseEventsProvider,
-        )
     }
 
     /**
-     * Compose the final system instructions for the agent.
+     * Build the namespace context block to be used as a system prompt, separate from
+     * the agent's own instructions. Describes the namespace the agent operates in.
      *
-     * Starts from [baseInstructions] (the agent's own instructions from [AgentConfig],
-     * may be null) and appends:
-     * 1. A namespace context block (always, when [context] is provided).
-     * 2. An integrations block listing the [IntegrationConfig] entries whose [name][io.whozoss.agentos.integrationConfig.IntegrationConfig.name]
-     *    appears in [agentIntegrations] AND that carry a non-null description. When
-     *    [agentIntegrations] is null (agent has no declared integrations), this block
-     *    is omitted entirely — the agent has no tools and should not be told about
-     *    integrations it cannot use.
-     * 3. A user context block (when [context.userId] resolves to a known [User]).
+     * Each [IntegrationConfig] in the namespace is matched to its [ToolPlugin]. If the
+     * plugin implements [io.whozoss.agentos.sdk.tool.ToolPlugin.describeNamespace], its
+     * result is appended to the system prompt. Results are collected concurrently;
+     * plugins returning null or throwing are silently skipped.
+     */
+    private suspend fun buildNamespaceSystemPrompt(
+        namespaceId: UUID,
+        context: AgentExecutionContext,
+        resolvedUser: User?,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
+    ): String {
+        val namespace = namespaceService.findById(namespaceId)
+        val toolContext = context.toToolContext(resolvedUser?.externalId, null)
+        val integrationDescriptions =
+            coroutineScope {
+                effectiveIntegrationConfigs
+                    .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
+                    .map { (config, plugin) ->
+                        async {
+                            plugin
+                                .runCatching { describeNamespace(config.parameters, config.name, toolContext) }
+                                .onFailure {
+                                    logger.warn(
+                                        it,
+                                    ) { "describeNamespace failed for '${config.name}' (${config.integrationType})" }
+                                }.getOrNull()
+                        }
+                    }.mapNotNull { it.await() }
+                    .filter { it.isNotBlank() }
+            }
+        return buildString {
+            appendLine("## Context: ${namespace?.name ?: namespaceId}")
+            namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+            integrationDescriptions.forEach { appendLine(it) }
+        }.trimEnd()
+    }
+
+    /**
+     * Compose the agent's instructions from [baseInstructions] (the agent's own instructions
+     * from [AgentConfig]), an integrations block, and a user context block.
      *
-     * All blocks are injected in the privileged system-prompt channel so they are
-     * never compacted away by the provider, regardless of conversation length.
+     * The namespace context is intentionally NOT part of this — it is built separately
+     * by [buildNamespaceSystemPrompt] and sent as a system prompt.
+     *
+     * The integrations block lists [IntegrationConfig] entries whose
+     * [name][io.whozoss.agentos.integrationConfig.IntegrationConfig.name] appears in
+     * [agentIntegrations], using the static [IntegrationConfig.description] for each.
+     * Configs with no description are excluded. The block is omitted entirely when
+     * [agentIntegrations] is null (agent has no declared integrations).
+     *
+     * The user context block is included when [context.userId] resolves to a known [User]
+     * with at least one human-readable field.
      */
     private fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
-        context: AgentExecutionContext,
+        resolvedUser: User?,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
     ): String {
-        val namespace = namespaceService.findById(context.namespaceId)
-        val namespaceBlock =
-            buildString {
-                appendLine()
-                appendLine("""## Context: ${namespace?.name ?: context.namespaceId}""")
-                namespace?.description?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
-            }.trimEnd()
-
         val integrationsBlock =
             when {
-                agentIntegrations == null -> null
+                agentIntegrations == null -> {
+                    null
+                }
+
                 else -> {
                     val listed =
-                        integrationConfigService
-                            .findByParent(context.namespaceId)
+                        effectiveIntegrationConfigs
                             .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
                     when {
-                        listed.isEmpty() -> null
-                        else ->
+                        listed.isEmpty() -> {
+                            null
+                        }
+
+                        else -> {
                             buildString {
                                 appendLine()
                                 appendLine("## Integrations")
@@ -237,26 +452,33 @@ class AgentServiceImpl(
                                     appendLine("- ${config.name}: ${config.description}")
                                 }
                             }.trimEnd()
+                        }
                     }
                 }
             }
 
         val userBlock =
-            context.userId?.let { userId ->
-                userService.findById(userId)?.let { user ->
+            resolvedUser?.let { user ->
+                // Only inject a user block when at least one human-readable field is present.
+                // Internal UUIDs (id, externalId) are intentionally excluded — they carry no
+                // conversational meaning and confuse the LLM about who the interlocutor is.
+                val hasIdentity = !user.firstname.isNullOrBlank() || !user.lastname.isNullOrBlank()
+                val hasContext = !user.bio.isNullOrBlank() || user.email.isNotBlank()
+                if (!hasIdentity && !hasContext) {
+                    null
+                } else {
                     buildString {
                         appendLine()
                         appendLine("## User")
-                        appendLine("- id: ${user.metadata.id}")
-                        if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
                         if (!user.firstname.isNullOrBlank()) appendLine("- firstname: ${user.firstname}")
                         if (!user.lastname.isNullOrBlank()) appendLine("- lastname: ${user.lastname}")
+                        if (user.email.isNotBlank()) appendLine("- email: ${user.email}")
                         if (!user.bio.isNullOrBlank()) appendLine("- bio: ${user.bio}")
                     }.trimEnd()
                 }
             }
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, namespaceBlock, integrationsBlock, userBlock)
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock)
             .joinToString("\n")
     }
 

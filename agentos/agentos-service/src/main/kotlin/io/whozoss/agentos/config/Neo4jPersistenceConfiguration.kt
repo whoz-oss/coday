@@ -5,7 +5,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository
 import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
 import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
@@ -17,6 +16,9 @@ import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseEvent.MessageContentSerializer
 import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
+import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
+import io.whozoss.agentos.feedback.FeedbackRepository
+import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
@@ -42,6 +44,7 @@ import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.data.neo4j.config.EnableNeo4jAuditing
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 
 /**
@@ -60,10 +63,11 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
  *
  */
 @Configuration
+@EnableNeo4jAuditing
 @EnableConfigurationProperties(PersistenceConfigProperties::class)
 @ConditionalOnExpression(
-    "'\${agentos.persistence.mode:in-memory}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:in-memory}' == 'embedded-neo4j'",
+    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
+        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
 )
 @EnableNeo4jRepositories(
     basePackages = [
@@ -74,6 +78,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.namespace",
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
+        "io.whozoss.agentos.feedback",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.userGroup",
@@ -84,12 +89,12 @@ class Neo4jPersistenceConfiguration {
     fun neo4jAgentConfigRepository(
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
-        namespaceService: NamespaceService,
+        namespaceRepository: NamespaceRepository,
     ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemAgentConfigRepository(
             delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
-            namespaceService = namespaceService,
+            namespaceRepository = namespaceRepository,
         )
     }
 
@@ -158,6 +163,15 @@ class Neo4jPersistenceConfiguration {
     ): UserGroupRepository {
         logger.info { "[Persistence] Neo4jUserGroupRepository active" }
         return Neo4jUserGroupRepository(userGroupNodeNeo4jRepository, childLinkService, neo4jClient)
+    }
+
+    @Bean
+    fun neo4jFeedbackRepository(
+        feedbackNodeNeo4jRepository: FeedbackNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): FeedbackRepository {
+        logger.info { "[Persistence] Neo4jFeedbackRepository active" }
+        return Neo4jFeedbackRepository(feedbackNodeNeo4jRepository, childLinkService)
     }
 
     @Bean

@@ -61,5 +61,14 @@ class AgentOsAuthenticationFilter(
 
     override fun shouldNotFilterErrorDispatch(): Boolean = true
 
+    /**
+     * Skip identity resolution for management/actuator endpoints.
+     * These are infrastructure probes (health, metrics, info) that do not
+     * carry an [io.whozoss.agentos.security.AuthSecurityService.X_EXTERNAL_USER_ID_HEADER]
+     * header and do not need a Spring Security principal.
+     */
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean =
+        request.requestURI.startsWith("/management/")
+
     companion object : KLogging()
 }

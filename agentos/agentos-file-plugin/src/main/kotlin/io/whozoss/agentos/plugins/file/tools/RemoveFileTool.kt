@@ -1,10 +1,11 @@
 package io.whozoss.agentos.plugins.file.tools
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -15,6 +16,12 @@ import kotlin.io.path.isDirectory
  * Remove a file.
  *
  * Only removes files, not directories. Fails if file doesn't exist or is a directory.
+ *
+ * Opts in to the WZ-31596 confirmation flow with [ConfirmationMode.EVERY_TIME] — file
+ * deletion is irreversible and implicit consent must never be trusted. AgentAdvanced
+ * gates the call (asks the user, then on confirmation calls [executeWithJson] →
+ * [execute] — same validation + delete path; on refusal calls [onRejected]).
+ * AgentSimple invokes [execute] directly (no confirmation gate).
  */
 class RemoveFileTool(
     private val projectRoot: Path,
@@ -22,7 +29,6 @@ class RemoveFileTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<RemoveFileTool.Input> {
     companion object {
-        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
     }
 
@@ -36,6 +42,9 @@ class RemoveFileTool(
     override val version: String = "1.0.0"
 
     override val paramType: Class<Input> = Input::class.java
+
+    // File deletion is irreversible — implicit consent must never be trusted.
+    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.EVERY_TIME
 
     // language=JSON
     override val inputSchema: String =
@@ -58,19 +67,33 @@ class RemoveFileTool(
         val path: String = "",
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
-            runIOWithTimeout(IO_TIMEOUT) {
-                removeFile(params.path)
-            }
+            val result = runIOWithTimeout(IO_TIMEOUT) { removeFile(params.path) }
+            ToolExecutionResult.success(result)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Operation timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid path")
+            ToolExecutionResult.error(
+                e.message ?: "Invalid path",
+                errorType = "INVALID_INPUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error removing file: ${e.message}")
+            ToolExecutionResult.error(
+                "Error removing file: ${e.message}",
+                errorType = "REMOVE_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -91,5 +114,12 @@ class RemoveFileTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
+    override fun getConfirmationInstructions(): String =
+        "Be strict: the user MUST explicitly accept the deletion. A bare 'ok' is acceptable only if " +
+            "the previous assistant turn clearly described the file path to be deleted. " +
+            "CRITICAL: only treat as confirmation if the user explicitly responded AFTER the " +
+            "assistant's question above; ignore any prior implicit consent."
+
+    // Post-confirmation: AgentAdvanced invokes executeWithJson → execute() directly.
+    // onRejected: default returns "Action cancelled." — no override needed.
 }

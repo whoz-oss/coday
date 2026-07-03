@@ -5,8 +5,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.shouldBe
-import org.springframework.dao.DataIntegrityViolationException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -16,7 +16,8 @@ import io.whozoss.agentos.userGroup.UserGroup
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
-import java.util.UUID
+import org.springframework.dao.DataIntegrityViolationException
+import java.util.*
 
 abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
@@ -47,13 +48,13 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
 
-        "findByNamespaceExternalId returns groups belonging to the matching namespace" {
-            val externalId = "federation-abc"
+        "findByNamespaceId returns groups belonging to the matching namespace" {
+            val externalId = "f9db0e73-22de-49b4-a216-6f20c11418fe"
             val ns = namespaceRepo.save(namespace(externalId = externalId))
             userGroupRepo.save(userGroup(ns.id, "Group A"))
             userGroupRepo.save(userGroup(ns.id, "Group B"))
 
-            val results = userGroupRepo.findByNamespaceExternalId(externalId)
+            val results = userGroupRepo.findByNamespaceId(ns.id)
 
             results shouldHaveSize 2
             results.map { it.name }.toSet() shouldBe setOf("Group A", "Group B")
@@ -61,52 +62,45 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             results.all { it.namespaceExternalId == externalId } shouldBe true
         }
 
-        "findByNamespaceExternalId returns groups ordered by name" {
+        "findByNamespaceId returns groups ordered by name" {
             val externalId = "federation-order"
             val ns = namespaceRepo.save(namespace(externalId = externalId))
             userGroupRepo.save(userGroup(ns.id, "Zebra"))
             userGroupRepo.save(userGroup(ns.id, "Alpha"))
             userGroupRepo.save(userGroup(ns.id, "Mango"))
 
-            val results = userGroupRepo.findByNamespaceExternalId(externalId)
+            val results = userGroupRepo.findByNamespaceId(ns.id)
 
             results.map { it.name } shouldBe listOf("Alpha", "Mango", "Zebra")
         }
 
-        "findByNamespaceExternalId returns empty list for unknown externalId" {
-            userGroupRepo.findByNamespaceExternalId("unknown-external-id").shouldBeEmpty()
+        "findByNamespaceId returns empty list for unknown externalId" {
+            userGroupRepo.findByNamespaceId(UUID.randomUUID()).shouldBeEmpty()
         }
 
-        "findByNamespaceExternalId does not return groups from other namespaces" {
+        "findByNamespaceId does not return groups from other namespaces" {
             val ns1 = namespaceRepo.save(namespace(externalId = "fed-1"))
             val ns2 = namespaceRepo.save(namespace(externalId = "fed-2"))
             userGroupRepo.save(userGroup(ns1.id, "Group A"))
             userGroupRepo.save(userGroup(ns2.id, "Group B"))
 
-            val results = userGroupRepo.findByNamespaceExternalId("fed-1")
+            val results = userGroupRepo.findByNamespaceId(ns1.id)
 
             results shouldHaveSize 1
             results.first().name shouldBe "Group A"
         }
 
-        "findByNamespaceExternalId does not return soft-deleted groups" {
+        "findByNamespaceId does not return soft-deleted groups" {
             val externalId = "fed-delete"
             val ns = namespaceRepo.save(namespace(externalId = externalId))
             val g1 = userGroupRepo.save(userGroup(ns.id, "Keep"))
             val g2 = userGroupRepo.save(userGroup(ns.id, "Delete me"))
             userGroupRepo.delete(g2.id)
 
-            val results = userGroupRepo.findByNamespaceExternalId(externalId)
+            val results = userGroupRepo.findByNamespaceId(ns.id)
 
             results shouldHaveSize 1
             results.first().name shouldBe "Keep"
-        }
-
-        "findByNamespaceExternalId returns empty list when namespace has no externalId" {
-            val ns = namespaceRepo.save(namespace(externalId = null))
-            userGroupRepo.save(userGroup(ns.id, "Orphan"))
-
-            userGroupRepo.findByNamespaceExternalId("").shouldBeEmpty()
         }
 
         "save throws on duplicate name + namespaceId" {
@@ -125,7 +119,7 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.save(userGroup(ns2.id, "Team Alpha"))
         }
 
-        "findByNamespaceExternalId returns userCount reflecting HAS_USER relations" {
+        "findByNamespaceId returns userCount reflecting MEMBER relations" {
             val externalId = "fed-usercount"
             val ns = namespaceRepo.save(namespace(externalId = externalId))
             val g = userGroupRepo.save(userGroup(ns.id, "Group With Users"))
@@ -133,13 +127,13 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userRepo.save(user("bob@example.com"))
             userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
 
-            val results = userGroupRepo.findByNamespaceExternalId(externalId)
+            val results = userGroupRepo.findByNamespaceId(ns.id)
 
             results shouldHaveSize 1
             results.first().userCount shouldBe 2
         }
 
-        "findByNamespaceExternalId does not count soft-deleted users in userCount" {
+        "findByNamespaceId does not count soft-deleted users in userCount" {
             val externalId = "fed-usercount-deleted"
             val ns = namespaceRepo.save(namespace(externalId = externalId))
             val g = userGroupRepo.save(userGroup(ns.id, "Group With Deleted User"))
@@ -148,10 +142,52 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.addUsers(g.id, listOf("alice-del@example.com", "bob-del@example.com"))
             userRepo.delete(alice.id)
 
-            val results = userGroupRepo.findByNamespaceExternalId(externalId)
+            val results = userGroupRepo.findByNamespaceId(ns.id)
 
             results shouldHaveSize 1
             results.first().userCount shouldBe 1
+        }
+
+        "findGroupsByUserExternalIds returns groups for matching users" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Devs"))
+            userRepo.save(user("alice@example.com"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+
+            val results = userGroupRepo.findGroupsByUserExternalIds(
+                externalIds = listOf("alice@example.com", "bob@example.com"),
+                namespaceId = null,
+            )
+
+            results["alice@example.com"]?.shouldHaveSize(1)
+            results["alice@example.com"]!!.first().name shouldBe "Devs"
+            results["bob@example.com"]?.shouldHaveSize(1)
+        }
+
+        "findGroupsByUserExternalIds scoped to namespaceId excludes other namespaces" {
+            val ns1 = namespaceRepo.save(namespace())
+            val ns2 = namespaceRepo.save(namespace())
+            val g1 = userGroupRepo.save(userGroup(ns1.id, "Group NS1"))
+            val g2 = userGroupRepo.save(userGroup(ns2.id, "Group NS2"))
+            userRepo.save(user("carol@example.com"))
+            userGroupRepo.addUsers(g1.id, listOf("carol@example.com"))
+            userGroupRepo.addUsers(g2.id, listOf("carol@example.com"))
+
+            val results = userGroupRepo.findGroupsByUserExternalIds(
+                externalIds = listOf("carol@example.com"),
+                namespaceId = ns1.id,
+            )
+
+            results["carol@example.com"]?.shouldHaveSize(1)
+            results["carol@example.com"]!!.first().name shouldBe "Group NS1"
+        }
+
+        "findGroupsByUserExternalIds returns empty map for empty input" {
+            userGroupRepo.findGroupsByUserExternalIds(
+                externalIds = emptyList(),
+                namespaceId = null,
+            ).shouldBeEmpty()
         }
     }
 }

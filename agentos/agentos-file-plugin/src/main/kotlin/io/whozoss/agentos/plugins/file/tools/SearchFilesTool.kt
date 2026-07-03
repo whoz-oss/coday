@@ -1,11 +1,11 @@
 package io.whozoss.agentos.plugins.file.tools
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
 import io.whozoss.agentos.plugins.file.matchesPattern
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
 import java.nio.file.Files
@@ -28,7 +28,6 @@ class SearchFilesTool(
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<SearchFilesTool.Input> {
     companion object : KLogging() {
-        private val objectMapper = jacksonObjectMapper()
         private const val IO_TIMEOUT = 30L
         private const val CONTENT_THRESHOLD = 200 * 1024 // 200 KB
     }
@@ -83,23 +82,40 @@ class SearchFilesTool(
         val fileTypes: List<String>? = null,
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
             if (params.fileName.isNullOrBlank() && params.fileContent.isNullOrBlank()) {
-                return createErrorResponse("At least one of fileName or fileContent must be provided")
+                return ToolExecutionResult.error(
+                    "At least one of fileName or fileContent must be provided",
+                    errorType = "INVALID_INPUT",
+                )
             }
 
-            runIOWithTimeout(IO_TIMEOUT) {
-                searchFiles(params)
-            }
+            val result = runIOWithTimeout(IO_TIMEOUT) { searchFiles(params) }
+            ToolExecutionResult.success(result)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Search timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Search timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: IllegalArgumentException) {
-            createErrorResponse(e.message ?: "Invalid search parameters")
+            ToolExecutionResult.error(
+                e.message ?: "Invalid search parameters",
+                errorType = "INVALID_INPUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error searching files: ${e.message}")
+            ToolExecutionResult.error(
+                "Error searching files: ${e.message}",
+                errorType = "SEARCH_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
@@ -136,31 +152,33 @@ class SearchFilesTool(
                 return null // Fallback to NIO
             }
 
-            val command = buildList {
-                add("rg")
-                add("--files-with-matches")
-                add("--fixed-strings")
-                add("--ignore-case")
-                add("--color=never")
-                params.fileName?.let {
-                    add("--iglob")
-                    add("*$it*")
+            val command =
+                buildList {
+                    add("rg")
+                    add("--files-with-matches")
+                    add("--fixed-strings")
+                    add("--ignore-case")
+                    add("--color=never")
+                    params.fileName?.let {
+                        add("--iglob")
+                        add("*$it*")
+                    }
+                    params.fileTypes?.forEach { ext ->
+                        add("--glob")
+                        add("*.$ext")
+                    }
+                    add("--")
+                    add(pattern)
+                    add(searchRoot.pathString)
                 }
-                params.fileTypes?.forEach { ext ->
-                    add("--glob")
-                    add("*.$ext")
-                }
-                add("--")
-                add(pattern)
-                add(searchRoot.pathString)
-            }
 
             process = ProcessBuilder(command).start()
 
             // Anti-deadlock pattern: read stdout asynchronously
-            val stdoutFuture = CompletableFuture.supplyAsync {
-                process!!.inputStream.bufferedReader().use { it.readLines() }
-            }
+            val stdoutFuture =
+                CompletableFuture.supplyAsync {
+                    process!!.inputStream.bufferedReader().use { it.readLines() }
+                }
 
             val completed = process.waitFor(IO_TIMEOUT, TimeUnit.SECONDS)
             if (!completed) {
@@ -231,18 +249,19 @@ class SearchFilesTool(
         }
 
         // Filter out denied files first
-        val allowedFiles = files.mapNotNull { file ->
-            val relPath = projectRoot.relativize(file).pathString
-            val fileName = file.name
+        val allowedFiles =
+            files.mapNotNull { file ->
+                val relPath = projectRoot.relativize(file).pathString
+                val fileName = file.name
 
-            // Check if filename matches any deny pattern
-            val isDenied = denyPatterns.any { pattern -> matchesPattern(fileName, pattern) }
-            if (isDenied) {
-                null // Skip denied files (e.g., .env, credentials.json)
-            } else {
-                file to relPath
+                // Check if filename matches any deny pattern
+                val isDenied = denyPatterns.any { pattern -> matchesPattern(fileName, pattern) }
+                if (isDenied) {
+                    null // Skip denied files (e.g., .env, credentials.json)
+                } else {
+                    file to relPath
+                }
             }
-        }
 
         if (allowedFiles.isEmpty()) {
             return "No matching files found."
@@ -277,5 +296,4 @@ class SearchFilesTool(
         }
     }
 
-    private fun createErrorResponse(message: String): String = message
 }

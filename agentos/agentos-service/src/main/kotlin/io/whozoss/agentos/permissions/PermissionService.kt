@@ -20,16 +20,20 @@ interface PermissionService {
      * 3. Direct permission check
      * 4. Transitive permission check (namespace → child entities)
      *
+     * **Platform-scoped entities** ([entityId] = null): these entities have no parent namespace.
+     * - READ is granted to any authenticated user.
+     * - WRITE / DELETE require super-admin (`user.isAdmin`).
+     *
      * @param userId The ID of the user to check permissions for
      * @param entityType The type of entity (e.g., "Namespace", "Case", "AgentConfig")
-     * @param entityId The ID of the specific entity
+     * @param entityId The ID of the specific entity, or null for platform-scoped entities
      * @param action The action to perform (READ, WRITE, DELETE)
      * @return true if permission is granted, false otherwise (fail-closed)
      */
     fun hasPermission(
         userId: String,
         entityType: EntityType,
-        entityId: String,
+        entityId: String?,
         action: Action
     ): Boolean
 

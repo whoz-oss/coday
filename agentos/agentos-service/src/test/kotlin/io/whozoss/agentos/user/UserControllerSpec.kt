@@ -6,9 +6,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.userGroup.UserGroupService
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 import java.util.UUID
@@ -45,7 +47,8 @@ class UserControllerSpec : StringSpec({
 
     val userService = mockk<UserService>()
     val permissionService = mockk<io.whozoss.agentos.permissions.PermissionService>(relaxed = true)
-    val controller = UserController(userService, permissionService)
+    val userGroupService = mockk<UserGroupService>(relaxed = true)
+    val controller = UserController(userService, permissionService, userGroupService)
 
     fun user(
         id: UUID = UUID.randomUUID(),
@@ -174,7 +177,7 @@ class UserControllerSpec : StringSpec({
         val u = user()
         every { userService.getCurrentUser() } returns u
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
-        every { userService.findById(u.id) } returns u
+        every { userService.findById(u.id, withRemoved = true) } returns u
 
         val result = controller.getById(u.id)
 
@@ -186,7 +189,7 @@ class UserControllerSpec : StringSpec({
         val id = UUID.randomUUID()
         every { userService.getCurrentUser() } returns currentUser
         every { userService.findByIds(listOf(id)) } returns emptyList()
-        every { userService.findById(id) } returns null
+        every { userService.findById(id, withRemoved = true) } returns null
 
         val ex = runCatching { controller.getById(id) }.exceptionOrNull()
 
@@ -202,9 +205,9 @@ class UserControllerSpec : StringSpec({
         val u1 = user(email = "a@x.com")
         val u2 = user(email = "b@x.com")
         every { userService.getCurrentUser() } returns adminUser
-        every { userService.findByIds(listOf(u1.id, u2.id)) } returns listOf(u1, u2)
+        every { userService.findByIds(listOf(u1.id, u2.id), false) } returns listOf(u1, u2)
 
-        val result = controller.getByIds(listOf(u1.id, u2.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(u1.id, u2.id)))
 
         result shouldBe listOf(controller.toResource(u1), controller.toResource(u2))
     }
@@ -357,6 +360,42 @@ class UserControllerSpec : StringSpec({
 
         captured.captured.isAdmin shouldBe false  // PRESERVED
         result.isAdmin shouldBe false
+    }
+
+    // -------------------------------------------------------------------------
+    // listByExternalIds
+    // -------------------------------------------------------------------------
+
+    "listByExternalIds returns empty list immediately when input is empty" {
+        controller.listByExternalIds(emptyList()) shouldBe emptyList()
+    }
+
+    "listByExternalIds returns all matching users mapped to UserResource" {
+        val u1 = user(email = "alice@example.com", externalId = "alice@example.com")
+        val u2 = user(email = "bob@example.com", externalId = "bob@example.com")
+        every { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) } returns listOf(u1, u2)
+
+        val result = controller.listByExternalIds(listOf("alice@example.com", "bob@example.com"))
+
+        result shouldBe listOf(controller.toResource(u1), controller.toResource(u2))
+        verify(exactly = 1) { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) }
+    }
+
+    "listByExternalIds silently omits external ids that match no user" {
+        every { userService.findByExternalIds(setOf("ghost@example.com")) } returns emptyList()
+
+        controller.listByExternalIds(listOf("ghost@example.com")) shouldBe emptyList()
+    }
+
+    "listByExternalIds deduplicates repeated external ids before querying" {
+        val u = user(email = "alice@example.com", externalId = "alice@example.com")
+        every { userService.findByExternalIds(setOf("alice@example.com")) } returns listOf(u)
+
+        val result = controller.listByExternalIds(listOf("alice@example.com", "alice@example.com"))
+
+        result shouldBe listOf(controller.toResource(u))
+        // The Set conversion means the service is called with a deduplicated set
+        verify(exactly = 1) { userService.findByExternalIds(setOf("alice@example.com")) }
     }
 
     // -------------------------------------------------------------------------

@@ -2,10 +2,14 @@ package io.whozoss.agentos.plugins.file.tools
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
+import io.whozoss.agentos.sdk.tool.EnrichmentResult
+import io.whozoss.agentos.sdk.tool.IntermediatePhaseDescriptor
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
 import java.nio.charset.StandardCharsets
@@ -36,6 +40,7 @@ class EditFilesTool(
         private const val WRITE_SIZE_THRESHOLD = 64 * 1024 // 64 KB
         private const val PATCH_MIN_CHUNK = 15
         private val PID = ProcessHandle.current().pid()
+        private val objectMapper = jacksonObjectMapper()
     }
 
     override val name: String = if (configName != null) "${configName}__editFiles" else "FILES__editFiles"
@@ -53,9 +58,9 @@ class EditFilesTool(
 
     // language=JSON
     override val inputSchema: String =
-        """
+        $$"""
         {
-            "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
             "properties": {
                 "edits": {
@@ -131,35 +136,102 @@ class EditFilesTool(
         val edits: List<Edit> = emptyList(),
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun getIntermediatePhaseCount(): Int = 1
+
+    override suspend fun getIntermediatePhaseDescriptor(
+        phaseIndex: Int,
+        previousContent: String?,
+    ): IntermediatePhaseDescriptor =
+        IntermediatePhaseDescriptor(
+            inputSchema =
+                """
+                {
+                    "type": "object",
+                    "properties": {
+                        "filePaths": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Relative paths of the files that need to be edited"
+                        }
+                    },
+                    "required": ["filePaths"],
+                    "additionalProperties": false
+                }
+                """.trimIndent(),
+            prompt = "Identify the relative file paths that need to be edited to fulfill the user's intention.",
+        )
+
+    override suspend fun enrich(
+        phaseIndex: Int,
+        phaseParametersJson: String,
+        context: ToolContext,
+    ): EnrichmentResult {
+        return try {
+            val input = objectMapper.readTree(phaseParametersJson)
+            val paths = input.get("filePaths")?.map { it.asText() } ?: emptyList()
+            if (paths.isEmpty()) {
+                return EnrichmentResult(success = false, errorMessage = "No file paths provided")
+            }
+            val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
+            val contents =
+                paths.map { path ->
+                    try {
+                        val resolved = resolver.resolve(path, createIntent = false)
+                        val content = Files.readString(resolved, StandardCharsets.UTF_8)
+                        "=== $path ===\n$content"
+                    } catch (e: Exception) {
+                        "=== $path === [Error: ${e.message}]"
+                    }
+                }
+            EnrichmentResult(
+                success = true,
+                content = "Current file contents:\n${contents.joinToString("\n\n")}",
+            )
+        } catch (e: Exception) {
+            EnrichmentResult(success = false, errorMessage = "Failed to read files: ${e.message}")
+        }
+    }
+
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         val params = input ?: Input()
 
         return try {
             if (params.edits.isEmpty()) {
-                return "No edits provided."
+                return ToolExecutionResult.error("No edits provided.", errorType = "INVALID_INPUT")
             }
 
-            runIOWithTimeout(IO_TIMEOUT) {
-                processEdits(params.edits)
-            }
+            val result = runIOWithTimeout(IO_TIMEOUT) { processEdits(params.edits) }
+            ToolExecutionResult.success(result)
         } catch (e: TimeoutCancellationException) {
-            createErrorResponse("Operation timed out after ${IO_TIMEOUT} seconds")
+            ToolExecutionResult.error(
+                "Operation timed out after ${IO_TIMEOUT} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = e.message,
+            )
         } catch (e: Exception) {
-            createErrorResponse("Error processing edits: ${e.message}")
+            ToolExecutionResult.error(
+                "Error processing edits: ${e.message}",
+                errorType = "EDIT_ERROR",
+                errorMessage = e.message,
+            )
         }
     }
 
     private fun processEdits(edits: List<Edit>): String {
-        val results = edits.map { edit ->
-            try {
-                when (edit) {
-                    is WriteEdit -> processWrite(edit.path, edit.content)
-                    is PatchEdit -> processPatch(edit.path, edit.replacements)
+        val results =
+            edits.map { edit ->
+                try {
+                    when (edit) {
+                        is WriteEdit -> processWrite(edit.path, edit.content)
+                        is PatchEdit -> processPatch(edit.path, edit.replacements)
+                    }
+                } catch (e: Exception) {
+                    "${edit.path}: Error — ${e.message}"
                 }
-            } catch (e: Exception) {
-                "${edit.path}: Error — ${e.message}"
             }
-        }
         return results.joinToString("\n")
     }
 
@@ -179,7 +251,7 @@ class EditFilesTool(
         }
 
         // Atomic write with cleanup
-        val tmpPath = resolved.resolveSibling("${resolved.fileName}.${PID}.${UUID.randomUUID()}.tmp")
+        val tmpPath = resolved.resolveSibling("${resolved.fileName}.$PID.${UUID.randomUUID()}.tmp")
         return try {
             // Create parent directories
             resolved.parent?.let { Files.createDirectories(it) }
@@ -220,12 +292,15 @@ class EditFilesTool(
                 oldPart.length < PATCH_MIN_CHUNK -> {
                     tooShortChunks.add(oldPart)
                 }
+
                 !fileContent.contains(oldPart) -> {
                     chunksNotFound.add(oldPart)
                 }
+
                 fileContent.split(oldPart).size - 1 > 1 -> {
                     duplicateChunks.add(oldPart)
                 }
+
                 else -> {
                     fileContent = fileContent.replaceFirst(oldPart, newPart)
                 }
@@ -233,7 +308,7 @@ class EditFilesTool(
         }
 
         // Write file ALWAYS (non-transactional behavior)
-        val tmpPath = resolved.resolveSibling("${resolved.fileName}.${PID}.${UUID.randomUUID()}.tmp")
+        val tmpPath = resolved.resolveSibling("${resolved.fileName}.$PID.${UUID.randomUUID()}.tmp")
         try {
             Files.writeString(tmpPath, fileContent, StandardCharsets.UTF_8)
             Files.move(tmpPath, resolved, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
@@ -265,6 +340,4 @@ class EditFilesTool(
     }
 
     private fun formatChunks(chunks: List<String>): String = chunks.joinToString(" ") { "\n- \"\"\"$it\"\"\"" } + "\n"
-
-    private fun createErrorResponse(message: String): String = message
 }

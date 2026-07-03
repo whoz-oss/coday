@@ -7,8 +7,11 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  * AiModelItemComponent — presentational component for a single AI model card.
  *
  * Displays the model display name, api name, and optional parameters (temperature,
- * maxTokens). Edit navigates to the dedicated edit route; delete uses a two-step
- * inline confirmation before emitting upward.
+ * maxTokens). Delete uses a two-step inline confirmation before emitting upward.
+ *
+ * Edit is dispatched via `editRequested` when a container provides it; otherwise
+ * falls back to navigating to `/:namespaceId/ai-models/:id/edit` (legacy behaviour,
+ * kept for backward compatibility with existing namespace containers).
  */
 @Component({
   selector: 'agentos-ai-model-item',
@@ -22,9 +25,11 @@ export class AiModelItemComponent {
   private readonly router = inject(Router)
 
   @Input({ required: true }) model!: AiModel
-  @Input({ required: true }) namespaceId!: string
+  /** Required for the legacy navigation fallback when `editRequested` has no listeners. */
+  @Input() namespaceId: string | undefined
 
   @Output() deleteRequested = new EventEmitter<AiModel>()
+  @Output() editRequested = new EventEmitter<AiModel>()
 
   protected readonly pendingDelete = signal(false)
 
@@ -40,7 +45,11 @@ export class AiModelItemComponent {
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.router.navigate(['/agentos', this.namespaceId, 'ai-models', this.model.id, 'edit'])
+        if (this.editRequested.observed) {
+          this.editRequested.emit(this.model)
+        } else if (this.namespaceId) {
+          this.router.navigate(['/agentos', this.namespaceId, 'ai-models', this.model.id, 'edit'])
+        }
         break
       case 'delete':
         this.pendingDelete.set(true)

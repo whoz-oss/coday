@@ -59,19 +59,19 @@ class EntityControllerBatchSpec : StringSpec({
     beforeTest { clearAllMocks() }
 
     "getByIds short-circuits to empty list on empty input WITHOUT calling userService or permissionService" {
-        controller.getByIds(emptyList()) shouldBe emptyList()
+        controller.getByIds(GetByIdsRequest(ids = emptyList())) shouldBe emptyList()
         verify(exactly = 0) { userService.getCurrentUser() }
         verify(exactly = 0) { permissionService.filterVisibleIds(any(), any(), any(), any()) }
-        verify(exactly = 0) { service.findByIds(any()) }
+        verify(exactly = 0) { service.findByIds(any(), any()) }
     }
 
     "getByIds returns all matching entities for a super-admin caller (admin bypass — no permissionService call)" {
         val a = entity(tag = "alpha")
         val b = entity(tag = "beta")
         every { userService.getCurrentUser() } returns superAdmin
-        every { service.findByIds(setOf(a.id, b.id)) } returns listOf(a, b)
+        every { service.findByIds(setOf(a.id, b.id), false) } returns listOf(a, b)
 
-        val result = controller.getByIds(listOf(a.id, b.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id)))
 
         result.map { it.tag } shouldContainExactly listOf("alpha", "beta")
         verify(exactly = 0) { permissionService.filterVisibleIds(any(), any(), any(), any()) }
@@ -86,9 +86,9 @@ class EntityControllerBatchSpec : StringSpec({
                 callerId.toString(), EntityType.AGENT_CONFIG, listOf(a.id.toString(), b.id.toString()), Action.READ,
             )
         } returns setOf(a.id.toString())
-        every { service.findByIds(setOf(a.id)) } returns listOf(a)
+        every { service.findByIds(setOf(a.id), false) } returns listOf(a)
 
-        val result = controller.getByIds(listOf(a.id, b.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id)))
 
         result.map { it.tag } shouldContainExactly listOf("visible")
     }
@@ -100,16 +100,16 @@ class EntityControllerBatchSpec : StringSpec({
             permissionService.filterVisibleIds(any(), any(), any(), any())
         } returns emptySet()
 
-        controller.getByIds(listOf(a.id)) shouldBe emptyList()
-        verify(exactly = 0) { service.findByIds(any()) }
+        controller.getByIds(GetByIdsRequest(ids = listOf(a.id))) shouldBe emptyList()
+        verify(exactly = 0) { service.findByIds(any(), any()) }
     }
 
     "getByIds returns empty list when admin sees no matching entity (findByIds returns empty)" {
         val a = entity()
         every { userService.getCurrentUser() } returns superAdmin
-        every { service.findByIds(setOf(a.id)) } returns emptyList()
+        every { service.findByIds(setOf(a.id), false) } returns emptyList()
 
-        controller.getByIds(listOf(a.id)) shouldBe emptyList()
+        controller.getByIds(GetByIdsRequest(ids = listOf(a.id))) shouldBe emptyList()
     }
 
     "getByIds preserves input order" {
@@ -118,9 +118,9 @@ class EntityControllerBatchSpec : StringSpec({
         val c = entity(tag = "third")
         every { userService.getCurrentUser() } returns superAdmin
         // Service may return in any order — controller must reorder to match input.
-        every { service.findByIds(setOf(a.id, b.id, c.id)) } returns listOf(c, a, b)
+        every { service.findByIds(setOf(a.id, b.id, c.id), false) } returns listOf(c, a, b)
 
-        val result = controller.getByIds(listOf(a.id, b.id, c.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id, c.id)))
 
         result.map { it.tag } shouldContainExactly listOf("first", "second", "third")
     }
@@ -128,10 +128,10 @@ class EntityControllerBatchSpec : StringSpec({
     "getByIds preserves duplicate input ids in the response" {
         val a = entity(tag = "dup")
         every { userService.getCurrentUser() } returns superAdmin
-        every { service.findByIds(setOf(a.id)) } returns listOf(a)
+        every { service.findByIds(setOf(a.id), false) } returns listOf(a)
 
         // Input has 3 copies of the same id ; output also has 3 copies.
-        val result = controller.getByIds(listOf(a.id, a.id, a.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(a.id, a.id, a.id)))
 
         result.size shouldBe 3
         result.all { it.tag == "dup" } shouldBe true
@@ -141,9 +141,9 @@ class EntityControllerBatchSpec : StringSpec({
         val a = entity(tag = "found")
         val missingId = UUID.randomUUID()
         every { userService.getCurrentUser() } returns superAdmin
-        every { service.findByIds(setOf(a.id, missingId)) } returns listOf(a)
+        every { service.findByIds(setOf(a.id, missingId), false) } returns listOf(a)
 
-        val result = controller.getByIds(listOf(a.id, missingId))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(a.id, missingId)))
 
         result.map { it.tag } shouldContainExactly listOf("found")
     }
@@ -151,20 +151,20 @@ class EntityControllerBatchSpec : StringSpec({
     "getByIds rejects oversized input batches with HTTP 400 (DoS protection)" {
         val oversizedIds = List(EntityController.MAX_BATCH_SIZE + 1) { UUID.randomUUID() }
 
-        val ex = shouldThrow<ResponseStatusException> { controller.getByIds(oversizedIds) }
+        val ex = shouldThrow<ResponseStatusException> { controller.getByIds(GetByIdsRequest(ids = oversizedIds)) }
 
         ex.statusCode shouldBe HttpStatus.BAD_REQUEST
         verify(exactly = 0) { userService.getCurrentUser() }
-        verify(exactly = 0) { service.findByIds(any()) }
+        verify(exactly = 0) { service.findByIds(any(), any()) }
     }
 
     "getByIds accepts exactly MAX_BATCH_SIZE input ids (boundary)" {
         val ids = List(EntityController.MAX_BATCH_SIZE) { UUID.randomUUID() }
         every { userService.getCurrentUser() } returns superAdmin
-        every { service.findByIds(ids.toSet()) } returns emptyList()
+        every { service.findByIds(ids.toSet(), false) } returns emptyList()
 
         // Should not throw — exactly at the cap is allowed.
-        controller.getByIds(ids) shouldBe emptyList()
+        controller.getByIds(GetByIdsRequest(ids = ids)) shouldBe emptyList()
     }
 
     "getByIds tolerates malformed UUIDs returned by permissionService (silent drop, fail-closed)" {
@@ -176,9 +176,9 @@ class EntityControllerBatchSpec : StringSpec({
         every {
             permissionService.filterVisibleIds(any(), any(), any(), any())
         } returns setOf(a.id.toString(), "not-a-uuid")
-        every { service.findByIds(setOf(a.id)) } returns listOf(a)
+        every { service.findByIds(setOf(a.id), false) } returns listOf(a)
 
-        val result = controller.getByIds(listOf(a.id))
+        val result = controller.getByIds(GetByIdsRequest(ids = listOf(a.id)))
 
         result.map { it.tag } shouldContainExactly listOf("ok")
     }

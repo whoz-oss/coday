@@ -30,20 +30,24 @@ neo4jEmbedded = "2026.02.2"
 # Spring Boot BOM pins 4.1.x; we force 4.2.x on testRuntimeClasspath only.
 netty = "4.2.9.Final"
 testcontainers = "1.20.4"
-# Spring Cloud — Moore release train, compatible with Spring Boot 3.4.x / 3.5.x
-springCloud = "2024.0.1"
-# Individual Spring Cloud starter versions within the Moore release train.
+# Spring Cloud — Northfields release train, compatible with Spring Boot 3.5.x
+springCloud = "2025.0.1"
+# Individual Spring Cloud starter versions within the Northfields release train.
 # These are the actual artifact versions (not the BOM train version).
-# spring-cloud-starter-config 4.2.1 and spring-cloud-starter-netflix-eureka-client 4.2.1
-# are the versions shipped in spring-cloud-dependencies 2024.0.1.
-springCloudConfig = "4.2.1"
-springCloudNetflixEureka = "4.2.1"
-# Jersey 3.x (Jakarta EE 10) — required by eureka-client-jersey3 HTTP transport
-jersey = "3.1.9"
-# Netflix Eureka client Jersey3 transport — provides TransportClientFactories bean
-# required by EurekaClientAutoConfiguration in Spring Cloud 2024.0.x.
-# Version 2.0.4 is shipped within eureka-client 2.0.4 (part of netflix OSS).
-eurekaClientJersey3 = "2.0.4"
+# spring-cloud-starter-config 4.3.1 and spring-cloud-starter-netflix-eureka-client 4.3.1
+# are the versions shipped in spring-cloud-dependencies 2025.0.1.
+springCloudConfig = "4.3.1"
+springCloudNetflixEureka = "4.3.1"
+
+# Logstash Logback Encoder — JSON structured logging for ELK/Filebeat
+# 8.1 is the last version compatible with Jackson 2.x (Spring Boot 3.x);
+# 9.0+ requires Jackson 3.x.
+logstashLogbackEncoder = "8.1"
+# Micrometer Datadog registry — version intentionally omitted; managed by
+# the Spring Boot BOM to stay aligned with the rest of the Micrometer stack.
+# OkHttp — version aligned with Spring Cloud BOM constraint (spring-cloud-dependencies 2025.0.1)
+# and the transitive version pulled by com.google.genai:google-genai (Spring AI Gemini).
+okhttp = "4.12.0"
 
 # MCP Java SDK — version shipped by Spring AI 1.1.x BOM
 # NOTE: MCP SDK 1.1.x requires Jackson 3 (tools.jackson.*), incompatible with Spring Boot 3.x
@@ -51,8 +55,8 @@ eurekaClientJersey3 = "2.0.4"
 mcpSdk = "0.17.2"
 
 # AgentOS modules versions
-agentosSdk = "0.137.1"
-agentosService = "0.137.1"
+agentosSdk = "0.195.0"
+agentosService = "0.195.0"
 
 [libraries]
 # Kotlin
@@ -63,6 +67,7 @@ kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
 # Kotlin Coroutines
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinCoroutines" }
 kotlinx-coroutines-reactive = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactive", version.ref = "kotlinCoroutines" }
+kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "kotlinCoroutines" }
 
 # PF4J Plugin Framework
 pf4j = { module = "org.pf4j:pf4j", version.ref = "pf4j" }
@@ -80,13 +85,21 @@ spring-cloud-bom = { module = "org.springframework.cloud:spring-cloud-dependenci
 spring-cloud-starter-config = { module = "org.springframework.cloud:spring-cloud-starter-config", version.ref = "springCloudConfig" }
 spring-cloud-starter-eureka-client = { module = "org.springframework.cloud:spring-cloud-starter-netflix-eureka-client", version.ref = "springCloudNetflixEureka" }
 
-# Jersey 3.x — HTTP transport runtime for eureka-client-jersey3
-jersey-client = { module = "org.glassfish.jersey.core:jersey-client", version.ref = "jersey" }
-jersey-hk2 = { module = "org.glassfish.jersey.inject:jersey-hk2", version.ref = "jersey" }
-eureka-client-jersey3 = { module = "com.netflix.eureka:eureka-client-jersey3", version.ref = "eurekaClientJersey3" }
-
 # Klogger
-klogger = {module="io.github.microutils:kotlin-logging-jvm", version.ref="klogger"}
+klogger = { module = "io.github.microutils:kotlin-logging-jvm", version.ref = "klogger" }
+
+# Logstash Logback Encoder — JSON structured logging
+logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashLogbackEncoder" }
+# Micrometer Datadog registry — exports Micrometer metrics to the Datadog API.
+# Disabled at runtime unless DATADOG_API_KEY is set and datadog.metrics.export.enabled=true.
+# Version managed by Spring Boot BOM.
+micrometer-registry-datadog = { module = "io.micrometer:micrometer-registry-datadog" }
+micrometer-registry-statsd = { module = "io.micrometer:micrometer-registry-statsd" }
+
+# OkHttp — HTTP client used by plugins (e.g. copilot) and optionally by Feign (whoz profile)
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-logging-interceptor = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
+
 
 # Springdoc OpenAPI
 springdoc-openapi-starter = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
@@ -94,6 +107,7 @@ springdoc-openapi-starter = { module = "org.springdoc:springdoc-openapi-starter-
 # Spring AI
 spring-ai-anthropic = { module = "org.springframework.ai:spring-ai-starter-model-anthropic" }
 spring-ai-gemini = { module = "org.springframework.ai:spring-ai-starter-model-google-genai" }
+spring-ai-ollama = { module = "org.springframework.ai:spring-ai-starter-model-ollama" }
 spring-ai-openai = { module = "org.springframework.ai:spring-ai-starter-model-openai" }
 spring-ai-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
 spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "springAi" }
@@ -143,7 +157,8 @@ spring-dependency-management = { id = "io.spring.dependency-management", version
 [bundles]
 jackson = ["jackson-annotations", "jackson-core", "jackson-databind", "jackson-dataformat-yaml", "jackson-module-kotlin"]
 kotlin-common = ["kotlin-stdlib", "kotlin-reflect"]
-kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive"]
-spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-openai", "spring-ai-mcp-client"]
+kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive", "kotlinx-coroutines-reactor"]
+spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-ollama", "spring-ai-openai", "spring-ai-mcp-client"]
+okhttp = ["okhttp", "okhttp-logging-interceptor"]
 testing-common = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "mockk"]
 testing-spring = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-extensions-spring", "mockk"]

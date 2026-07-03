@@ -24,15 +24,19 @@ package io.whozoss.agentos.permissions
  * once at the boundary in [Neo4jPermissionRepository] before delegating to
  * [PermissionNodeNeo4jRepository].
  */
-enum class EntityType(val label: String) {
+enum class EntityType(
+    val label: String,
+) {
     AGENT_CONFIG("AgentConfig"),
     AI_MODEL("AiModel"),
     AI_PROVIDER("AiProvider"),
     CASE("Case"),
     CASE_EVENT("CaseEvent"),
+    FEEDBACK("Feedback"),
     INTEGRATION_CONFIG("IntegrationConfig"),
     NAMESPACE("Namespace"),
     USER("User"),
+    USER_GROUP("UserGroup"),
     ;
 
     override fun toString(): String = label

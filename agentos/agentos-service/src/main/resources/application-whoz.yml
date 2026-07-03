@@ -2,7 +2,9 @@
 # Activates Cloud Config import and Eureka service registration so that
 # the agentos service is discoverable by the rest of the Whoz backend platform.
 # This file is only active when --spring.profiles.active includes 'whoz'.
-
+agentos:
+  security:
+    mode: auth
 spring:
   application:
     name: agentos
@@ -13,6 +15,8 @@ spring:
     # during local development without the 'whoz' infrastructure.
     import: "optional:configserver:${CLOUD_CONFIG_URL:http://localhost:8102/config}"
   cloud:
+    discovery:
+      enabled: true
     config:
       enabled: true
       fail-fast: true
@@ -20,14 +24,9 @@ spring:
         max-attempts: 10000000
         initial-interval: 1000
         multiplier: 1.1
-    discovery:
-      enabled: true
-    compatibility-verifier:
-      enabled: false
-    refresh:
-      enabled: false
-  main:
-    allow-bean-definition-overriding: true
+      # We can take advantage of the eureka discovery service and avoiding setting up config server uri
+      # This works only if registration IP or name is in the same network of the client app. (ie: don't work when app is local and config/discovery are docker containers)
+      uri: ${CLOUD_CONFIG_URL:http://localhost:8102/config}
 
 feign:
   okhttp:
@@ -39,32 +38,5 @@ eureka:
   client:
     enabled: true
     register-with-eureka: true
-    fetch-registry: true
-    eureka-server-connect-timeout-seconds: 5
-    eureka-server-read-timeout-seconds: 8
-    eureka-connection-idle-timeout-seconds: 30
-    initial-instance-info-replication-interval-seconds: 40
-    registry-fetch-interval-seconds: 30
-    serviceUrl:
-      defaultZone: ${EUREKA_URL:http://localhost:8102/eureka}
-    # Do NOT enable healthcheck here: the active health check mode makes Spring
-    # Cloud push the status via WebClient using the instance hostname, which may
-    # not be DNS-resolvable from within the container network. The standard
-    # Eureka heartbeat (lease renewal) is sufficient for UP/DOWN detection.
-    healthcheck:
+    jersey:
       enabled: false
-  instance:
-    prefer-ip-address: false
-    hostname: ${AGENTOS_HOSTNAME:localhost}
-    # Absolute health check URL on localhost so Eureka can reach it from
-    # within the container without needing DNS resolution of the hostname.
-    health-check-url: http://localhost:${server.port:8123}/management/health
-    status-page-url: http://localhost:${server.port:8123}/management/info
-    home-page-url: http://localhost:${server.port:8123}/
-    lease-renewal-interval-in-seconds: 30
-    lease-expiration-duration-in-seconds: 90
-    # instance-id must be unique; use app name + port.
-    instance-id: ${spring.application.name}:${server.port:8123}
-    metadata-map:
-      management.port: ${server.port:8123}
-      zone: ${EUREKA_ZONE:default-zone}

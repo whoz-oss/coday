@@ -522,6 +522,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+  /api/users/groups-by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: getGroupsByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupsByExternalIdsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/UserGroupSummary"
   /api/users/by-ids:
     post:
       tags:
@@ -531,10 +553,29 @@ paths:
         content:
           application/json:
             schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+  /api/users/by-external-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: listByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
               type: array
               items:
                 type: string
-                format: uuid
         required: true
       responses:
         "200":
@@ -549,13 +590,14 @@ paths:
     get:
       tags:
       - user-group-controller
-      operationId: searchByNamespaceExternalIdUserGroup
+      operationId: searchByNamespaceIdUserGroup
       parameters:
-      - name: namespaceExternalId
+      - name: namespaceId
         in: query
         required: true
         schema:
           type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -625,6 +667,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
+    delete:
+      tags:
+      - user-group-controller
+      operationId: deleteUserGroup
+      parameters:
+      - name: userGroupId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -741,6 +797,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Namespace"
+  /api/namespaces/{namespaceId}/undeploy-agents:
+    post:
+      tags:
+      - namespace-controller
+      operationId: undeployAgentsNamespace
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+  /api/namespaces/{namespaceId}/deploy-agents:
+    post:
+      tags:
+      - namespace-controller
+      operationId: deployAgentsNamespace
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+  /api/namespaces/update-roles-by-external-id:
+    post:
+      tags:
+      - namespace-permission-endpoints
+      operationId: updateRolesByExternalId
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncUserRolesRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncUserRolesRequest"
   /api/namespaces/by-ids:
     post:
       tags:
@@ -750,10 +866,29 @@ paths:
         content:
           application/json:
             schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+  /api/namespaces/by-external-ids:
+    post:
+      tags:
+      - namespace-controller
+      operationId: listByExternalIdsNamespace
+      requestBody:
+        content:
+          application/json:
+            schema:
               type: array
               items:
                 type: string
-                format: uuid
         required: true
       responses:
         "200":
@@ -765,9 +900,60 @@ paths:
                 items:
                   $ref: "#/components/schemas/Namespace"
   /api/integration-configs:
+    get:
+      tags:
+      - integration-config-controller
+      summary: List IntegrationConfigs by scope
+      description: |-
+        Scope is inferred from the query params :
+
+        | query                            | mode             | required permission                            |
+        |----------------------------------|------------------|------------------------------------------------|
+        | (no params)                      | platform         | authenticated                                  |
+        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+
+        When called with no params, returns platform-level configs.
+      operationId: listIntegrationConfig
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
     post:
       tags:
       - integration-config-controller
+      summary: Create an IntegrationConfig
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | platform      | Super Admin only                     |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15). A `namespaceId` that does not exist returns 404.
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -791,10 +977,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -805,6 +988,24 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/IntegrationConfig"
+  /api/feedbacks:
+    post:
+      tags:
+      - feedback-controller
+      operationId: createFeedback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
   /api/cases:
     post:
       tags:
@@ -874,6 +1075,26 @@ paths:
       responses:
         "200":
           description: OK
+  /api/cases/by-user/in-namespace:
+    post:
+      tags:
+      - case-controller
+      operationId: listByUserInNamespaceCase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListByUserInNamespaceRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
   /api/cases/by-ids:
     post:
       tags:
@@ -883,10 +1104,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -925,8 +1143,11 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/ConfirmationResolvedEvent"
+                  - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
                   - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
@@ -935,9 +1156,57 @@ paths:
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
   /api/ai-providers:
+    get:
+      tags:
+      - ai-provider-controller
+      summary: List AiProviders by scope
+      description: |-
+        Scope is inferred from the query params :
+
+        | query                                              | mode             | required permission                            |
+        |----------------------------------------------------|------------------|------------------------------------------------|
+        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
+        | `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |
+        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+      operationId: listAiProvider
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
     post:
       tags:
       - ai-provider-controller
+      summary: Create an AiProvider
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | platform      | super-admin only                     |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` that does not exist returns 404 (Decision 15 / AC7).
       operationId: createAiProvider
       requestBody:
         content:
@@ -961,10 +1230,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1002,10 +1268,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1034,6 +1297,64 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/{id}/enable:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: enableAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/{id}/disable:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: disableAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+  /api/agent-configs/search:
+    post:
+      tags:
+      - agent-config-controller
+      operationId: searchAgentConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfigSearchRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
   /api/agent-configs/by-ids:
     post:
       tags:
@@ -1043,10 +1364,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: string
-                format: uuid
+              $ref: "#/components/schemas/GetByIdsRequest"
         required: true
       responses:
         "200":
@@ -1246,15 +1564,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationTypeDescriptor"
-  /api/integration-configs/by-parentId/{parentId}:
+  /api/feedbacks/by-parentId/{caseId}:
     get:
       tags:
-      - integration-config-controller
-      operationId: listByParentIntegrationConfig
+      - feedback-controller
+      operationId: listByCaseFeedback
       parameters:
-      - name: parentId
+      - name: caseId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -1267,7 +1584,28 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/IntegrationConfig"
+                  $ref: "#/components/schemas/Feedback"
+  /api/feedbacks/by-case-event/{caseEventId}:
+    get:
+      tags:
+      - feedback-controller
+      operationId: listByCaseEventFeedback
+      parameters:
+      - name: caseEventId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feedback"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -1284,6 +1622,11 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: includePreviousEvents
+        in: query
+        required: false
+        schema:
+          type: boolean
       responses:
         "200":
           description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
@@ -1291,6 +1634,47 @@ paths:
             \ field."
           content:
             text/event-stream: {}
+  /api/cases/by-user/{userId}:
+    get:
+      tags:
+      - case-controller
+      operationId: listByUserCase
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
+  /api/cases/by-user/external/{externalId}:
+    get:
+      tags:
+      - case-controller
+      operationId: listByUserExternalIdCase
+      parameters:
+      - name: externalId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
   /api/cases/by-parentId/{parentId}:
     get:
       tags:
@@ -1337,8 +1721,11 @@ paths:
                 - $ref: "#/components/schemas/AgentSelectedEvent"
                 - $ref: "#/components/schemas/AnswerEvent"
                 - $ref: "#/components/schemas/CaseStatusEvent"
+                - $ref: "#/components/schemas/ConfirmationResolvedEvent"
+                - $ref: "#/components/schemas/ErrorEvent"
                 - $ref: "#/components/schemas/IntentionGeneratedEvent"
                 - $ref: "#/components/schemas/MessageEvent"
+                - $ref: "#/components/schemas/PendingConfirmationEvent"
                 - $ref: "#/components/schemas/QuestionEvent"
                 - $ref: "#/components/schemas/TextChunkEvent"
                 - $ref: "#/components/schemas/ThinkingEvent"
@@ -1372,8 +1759,11 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/ConfirmationResolvedEvent"
+                  - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
                   - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
@@ -1381,18 +1771,11 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
-  /api/ai-providers/by-userId/{userId}:
+  /api/ai-models/platform:
     get:
       tags:
-      - ai-provider-controller
-      operationId: listByUserIdAiProvider
-      parameters:
-      - name: userId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
+      - ai-model-controller
+      operationId: listPlatformLevelAiModel
       responses:
         "200":
           description: OK
@@ -1401,50 +1784,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/AiProvider"
-  /api/ai-providers/by-parentId/{parentId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByParentAiProvider
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
-  /api/ai-providers/by-namespaceId/{namespaceId}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: listByNamespaceIdAiProvider
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
+                  $ref: "#/components/schemas/AiModel"
   /api/ai-models/by-parentId/{parentId}:
     get:
       tags:
@@ -1488,11 +1828,63 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AiModel"
+  /api/agent-configs/{id}/definition:
+    get:
+      tags:
+      - agent-config-controller
+      operationId: getDefinitionAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: withUserOverlay
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDefinition"
+  /api/agent-configs/platform:
+    get:
+      tags:
+      - agent-config-controller
+      operationId: listPlatformAgentsAgentConfig
+      parameters:
+      - name: withDisabled
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
   /api/agent-configs/by-parentId/{parentId}:
     get:
       tags:
       - agent-config-controller
-      operationId: listByParentAgentConfig
+      operationId: listByNamespaceAgentConfig
       parameters:
       - name: parentId
         in: path
@@ -1501,6 +1893,12 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: withDisabled
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
       responses:
         "200":
           description: OK
@@ -1551,6 +1949,11 @@ components:
           type: string
           description: "Optional external identifier for this namespace, e.g. a federation\
             \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: "Logical name of the default agent for this namespace. Resolved\
+            \ at runtime against AgentConfig entries (case-insensitive). When null,\
+            \ messages without an @mention will produce an explicit error."
       required:
       - name
     IntegrationConfig:
@@ -1560,7 +1963,14 @@ components:
           type: string
           format: uuid
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
@@ -1575,7 +1985,6 @@ components:
       required:
       - integrationType
       - name
-      - namespaceId
     JsonNode: {}
     Case:
       type: object
@@ -1596,8 +2005,14 @@ components:
           - ERROR
         title:
           type: string
+        created:
+          type: string
+          format: date-time
+        removed:
+          type: boolean
       required:
       - namespaceId
+      - removed
       - status
     AiProvider:
       type: object
@@ -1606,10 +2021,14 @@ components:
           type: string
           format: uuid
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
         name:
           type: string
@@ -1622,10 +2041,16 @@ components:
           - OpenAI
           - Anthropic
           - Gemini
+          - vLLM
+          - Ollama
         baseUrl:
           type: string
         apiKey:
           type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
       required:
       - apiType
       - name
@@ -1688,20 +2113,74 @@ components:
             type: array
             items:
               type: string
+        advancedExecution:
+          type: boolean
+        externalMetadata:
+          type: object
+          additionalProperties: {}
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+        enabled:
+          type: boolean
       required:
+      - createdOn
       - name
-      - namespaceId
+      - updatedOn
+    GroupsByExternalIdsRequest:
+      type: object
+      properties:
+        externalIds:
+          type: array
+          items:
+            type: string
+        namespaceId:
+          type: string
+          format: uuid
+      required:
+      - externalIds
+    UserGroupSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
+    GetByIdsRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        withRemoved:
+          type: boolean
+      required:
+      - ids
+      - withRemoved
     UserGroupCreateRequest:
       type: object
       properties:
-        namespaceExternalId:
+        namespaceId:
           type: string
-          minLength: 1
+          format: uuid
         name:
           type: string
           maxLength: 250
           minLength: 0
-        userExternalIds:
+        userExternalIdsToAdd:
           type: array
           items:
             type: string
@@ -1719,8 +2198,8 @@ components:
       required:
       - agentIds
       - name
-      - namespaceExternalId
-      - userExternalIds
+      - namespaceId
+      - userExternalIdsToAdd
     UserGroupSearchResult:
       type: object
       properties:
@@ -1756,14 +2235,14 @@ components:
           type: string
           maxLength: 250
           minLength: 0
-        addedUserExternalIds:
+        userExternalIdsToAdd:
           type: array
           items:
             type: string
           maxItems: 200
           minItems: 0
           uniqueItems: true
-        removedUserExternalIds:
+        userExternalIdsToRemove:
           type: array
           items:
             type: string
@@ -1779,10 +2258,10 @@ components:
           minItems: 0
           uniqueItems: true
       required:
-      - addedUserExternalIds
       - agentIds
       - name
-      - removedUserExternalIds
+      - userExternalIdsToAdd
+      - userExternalIdsToRemove
     PluginActionResponse:
       type: object
       properties:
@@ -1805,6 +2284,97 @@ components:
       required:
       - message
       - success
+    NamespaceAgentDeployRequest:
+      type: object
+      properties:
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - agentIds
+    NamespaceRoleEntry:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          minLength: 1
+        role:
+          type: string
+          pattern: ADMIN|MEMBER
+      required:
+      - namespaceExternalId
+      - role
+    SyncUserRolesRequest:
+      type: object
+      properties:
+        userExternalId:
+          type: string
+          minLength: 1
+        namespaceRoles:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamespaceRoleEntry"
+      required:
+      - namespaceRoles
+      - userExternalId
+    FeedbackInput:
+      type: object
+      properties:
+        caseEventId:
+          type: string
+          format: uuid
+        positive:
+          type: boolean
+        type:
+          type: string
+          description: Optional category label. Ignored (cleared) when positive=true.
+        comment:
+          type: string
+          description: Optional free-text note. Ignored (cleared) when positive=true.
+      required:
+      - caseEventId
+      - positive
+    Feedback:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        caseId:
+          type: string
+          format: uuid
+        caseEventId:
+          type: string
+          format: uuid
+        positive:
+          type: boolean
+        type:
+          type: string
+        comment:
+          type: string
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - caseEventId
+      - caseId
+      - createdOn
+      - id
+      - namespaceId
+      - positive
+      - updatedOn
     AddMessageRequest:
       type: object
       properties:
@@ -1813,8 +2383,21 @@ components:
         answerToEventId:
           type: string
           format: uuid
+        sessionContext:
+          type: object
+          additionalProperties: {}
       required:
       - content
+    ListByUserInNamespaceRequest:
+      type: object
+      properties:
+        userExternalId:
+          type: string
+        namespaceExternalId:
+          type: string
+      required:
+      - namespaceExternalId
+      - userExternalId
     Actor:
       type: object
       properties:
@@ -1841,6 +2424,10 @@ components:
             format: uuid
           agentName:
             type: string
+          llmModel:
+            type: string
+          llmProvider:
+            type: string
       required:
       - agentId
       - agentName
@@ -1859,6 +2446,10 @@ components:
             type: string
             format: uuid
           agentName:
+            type: string
+          llmModel:
+            type: string
+          llmProvider:
             type: string
       required:
       - agentId
@@ -1947,6 +2538,8 @@ components:
           - IntentionGeneratedEvent
           - ToolSelectedEvent
           - TextChunkEvent
+          - PendingConfirmationEvent
+          - ConfirmationResolvedEvent
       required:
       - caseId
       - id
@@ -1975,6 +2568,47 @@ components:
       - status
       - timestamp
       - type
+    ConfirmationResolvedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          confirmed:
+            type: boolean
+          pendingEventId:
+            type: string
+            format: uuid
+          resultText:
+            type: string
+      required:
+      - caseId
+      - confirmed
+      - id
+      - metadata
+      - namespaceId
+      - pendingEventId
+      - resultText
+      - timestamp
+      - type
+    EnrichmentPhaseTrace:
+      type: object
+      properties:
+        phaseIndex:
+          type: integer
+          format: int32
+        prompt:
+          type: string
+        llmOutput:
+          type: string
+        enrichmentContent:
+          type: string
+        success:
+          type: boolean
+      required:
+      - llmOutput
+      - phaseIndex
+      - prompt
+      - success
     EntityMetadata:
       type: object
       properties:
@@ -1998,6 +2632,21 @@ components:
       - id
       - modified
       - removed
+    ErrorEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          message:
+            type: string
+      required:
+      - caseId
+      - id
+      - message
+      - metadata
+      - namespaceId
+      - timestamp
+      - type
     Image:
       allOf:
       - $ref: "#/components/schemas/MessageContent"
@@ -2026,14 +2675,20 @@ components:
             format: uuid
           intention:
             type: string
+          isFailedIntention:
+            type: boolean
+          toolName:
+            type: string
       required:
       - agentId
       - caseId
       - id
       - intention
+      - isFailedIntention
       - metadata
       - namespaceId
       - timestamp
+      - toolName
       - type
     MessageContent:
       discriminator:
@@ -2056,6 +2711,9 @@ components:
               oneOf:
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
+          sessionContext:
+            type: object
+            additionalProperties: {}
       required:
       - actor
       - caseId
@@ -2064,6 +2722,30 @@ components:
       - metadata
       - namespaceId
       - timestamp
+      - type
+    PendingConfirmationEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          inputJson:
+            type: string
+          toolConfirmationInstructions:
+            type: string
+          toolName:
+            type: string
+          toolRequestId:
+            type: string
+      required:
+      - caseId
+      - id
+      - inputJson
+      - metadata
+      - namespaceId
+      - timestamp
+      - toolConfirmationInstructions
+      - toolName
+      - toolRequestId
       - type
     QuestionEvent:
       allOf:
@@ -2132,6 +2814,10 @@ components:
         properties:
           args:
             type: string
+          enrichmentPhases:
+            type: array
+            items:
+              $ref: "#/components/schemas/EnrichmentPhaseTrace"
           toolName:
             type: string
           toolRequestId:
@@ -2150,12 +2836,18 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
+          durationMs:
+            type: integer
+            format: int64
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
           success:
             type: boolean
+          toolMetadata:
+            type: object
+            additionalProperties: {}
           toolName:
             type: string
           toolRequestId:
@@ -2168,6 +2860,7 @@ components:
       - output
       - success
       - timestamp
+      - toolMetadata
       - toolName
       - toolRequestId
       - type
@@ -2205,6 +2898,20 @@ components:
       - namespaceId
       - timestamp
       - type
+    AgentConfigSearchRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+        userExternalId:
+          type: string
+          minLength: 1
+        userId:
+          type: string
+      required:
+      - namespaceId
+      - userExternalId
     PluginInfo:
       type: object
       properties:
@@ -2257,6 +2964,10 @@ components:
           type: string
           description: "Optional external identifier for this namespace, e.g. a federation\
             \ id from an external system"
+        defaultAgentName:
+          type: string
+          description: Logical name of the default agent for this namespace. Null
+            means no default is configured. Name matching is case-insensitive.
         role:
           type: string
           description: The caller's effective role on this namespace
@@ -2309,3 +3020,52 @@ components:
       - description
       - displayName
       - type
+    AgentDefinition:
+      type: object
+      properties:
+        agentConfigId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        systemPrompt:
+          type: string
+        instructions:
+          type: string
+        resolvedModelApiName:
+          type: string
+        resolvedProviderName:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentDefinitionToolSummary"
+        advancedExecution:
+          type: boolean
+        namespaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+      required:
+      - advancedExecution
+      - agentConfigId
+      - name
+      - namespaceId
+      - resolvedModelApiName
+      - resolvedProviderName
+      - tools
+    AgentDefinitionToolSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        inputSchema:
+          type: string
+      required:
+      - description
+      - inputSchema
+      - name

@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.bash
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
 import java.io.File
 
@@ -78,10 +79,13 @@ class BashTool(
         private val objectMapper = jacksonObjectMapper()
     }
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
         val resolvedCommand =
             resolveCommand(input)
-                ?: return "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided"
+                ?: return ToolExecutionResult.error(
+                    "Error: tool '${toolConfig.name}' requires a 'parameters' value but none was provided",
+                    errorType = "INVALID_INPUT",
+                )
 
         val workDir = resolveWorkingDirectory()
         val timeout = toolConfig.timeoutSeconds ?: integrationConfig.defaultTimeoutSeconds
@@ -89,9 +93,25 @@ class BashTool(
         logger.debug { "Executing tool '${toolConfig.name}' in ${workDir.absolutePath} (timeout: ${timeout}s)" }
 
         return when (val result = BashCommandExecutor.execute(resolvedCommand, workDir, timeout)) {
-            is BashExecutionResult.Completed -> formatCompleted(result)
-            is BashExecutionResult.Timeout -> "Error: command timed out after ${result.timeoutSeconds} seconds"
-            is BashExecutionResult.Error -> "Error: ${result.message}"
+            is BashExecutionResult.Completed ->
+                when {
+                    result.exitCode != 0 -> ToolExecutionResult.error(
+                        output = formatCompleted(result),
+                        errorType = "NONZERO_EXIT",
+                        errorMessage = "Command exited with code ${result.exitCode}",
+                    )
+                    else -> ToolExecutionResult.success(formatCompleted(result))
+                }
+            is BashExecutionResult.Timeout -> ToolExecutionResult.error(
+                output = "Error: command timed out after ${result.timeoutSeconds} seconds",
+                errorType = "TIMEOUT",
+                errorMessage = "Command timed out after ${result.timeoutSeconds} seconds",
+            )
+            is BashExecutionResult.Error -> ToolExecutionResult.error(
+                output = "Error: ${result.message}",
+                errorType = "EXECUTION_ERROR",
+                errorMessage = result.message,
+            )
         }
     }
 

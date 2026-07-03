@@ -11,6 +11,23 @@
     <p class="ai-provider-form__loading">Loading&hellip;</p>
   } @else {
     <form class="ai-provider-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      @if (!isPlatformMode) {
+        <fieldset class="ai-provider-form__scope" [disabled]="isEditMode()">
+          <legend class="ai-provider-form__label">Portée de la configuration</legend>
+          @for (opt of scopeOptions; track trackByScope($index, opt)) {
+            <label class="ai-provider-form__scope-option">
+              <input
+                type="radio"
+                [formControl]="scopeControl"
+                [value]="opt.value"
+                [disabled]="opt.value === 'namespace' && !isAdmin()"
+              />
+              <span>{{ opt.label }}</span>
+            </label>
+          }
+        </fieldset>
+      }
+
       <div class="ai-provider-form__field">
         <label class="ai-provider-form__label" for="llm-api-type">API type <span aria-hidden="true">*</span></label>
         <select id="llm-api-type" class="ai-provider-form__select" [formControl]="apiTypeControl">
@@ -66,6 +83,40 @@
           [formControl]="apiKeyControl"
           autocomplete="new-password"
         />
+      </div>
+
+      <div class="ai-provider-form__headers" [formArrayName]="'headers'">
+        <div class="ai-provider-form__headers-title">
+          <span class="ai-provider-form__label">Custom headers</span>
+          <button class="ai-provider-form__headers-add" type="button" (click)="addHeader()">+ Add header</button>
+        </div>
+        @for (headerGroup of headersArray.controls; track $index) {
+          <div class="ai-provider-form__header-row" [formGroupName]="$index">
+            <input
+              class="ai-provider-form__input"
+              type="text"
+              placeholder="Header name"
+              formControlName="key"
+              autocomplete="off"
+            />
+            <input
+              class="ai-provider-form__input"
+              type="text"
+              placeholder="Value"
+              formControlName="value"
+              autocomplete="off"
+            />
+            <button
+              class="ai-provider-form__header-remove"
+              type="button"
+              (click)="removeHeader($index)"
+              title="Remove header"
+              aria-label="Remove header"
+            >
+              &times;
+            </button>
+          </div>
+        }
       </div>
 
       <div class="ai-provider-form__actions">

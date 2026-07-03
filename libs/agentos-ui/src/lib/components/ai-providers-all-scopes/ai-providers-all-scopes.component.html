@@ -1,0 +1,28 @@
+<ds-entity-list
+  title="AI Providers"
+  [items]="(listItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No AI providers available."
+  cardMinWidth="400px"
+  [itemTemplate]="aiProviderItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
+</ds-entity-list>
+
+<!-- Item template: synthetic '__empty__*' rows render a placeholder line; everything else
+     is delegated to AiProviderItemComponent. -->
+<ng-template #aiProviderItemTpl let-item>
+  @if (isEmptyPlaceholder(item.id)) {
+    <p class="ai-providers-all-scopes__empty">{{ item.name }}</p>
+  } @else if (resolve(item.id); as resolved) {
+    <agentos-ai-provider-item
+      [config]="resolved.config"
+      [scope]="resolved.scope"
+      [readOnly]="resolved.scope === 'namespace' && !isAdmin()"
+      (editRequested)="onEdit(resolved)"
+      (deleteRequested)="onDelete(resolved)"
+      (duplicateRequested)="onDuplicate(resolved)"
+    />
+  }
+</ng-template>

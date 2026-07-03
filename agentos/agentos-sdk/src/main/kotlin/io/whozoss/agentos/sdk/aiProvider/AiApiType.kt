@@ -4,4 +4,6 @@ enum class AiApiType {
     OpenAI,
     Anthropic,
     Gemini,
+    vLLM,
+    Ollama,
 }

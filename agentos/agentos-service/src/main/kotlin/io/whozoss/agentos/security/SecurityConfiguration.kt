@@ -10,7 +10,8 @@ import org.springframework.context.annotation.Configuration
  * Registers the correct [SecurityService] bean based on [SecurityConfigProperties.mode].
  *
  * - `local` (default): [LocalSecurityService] — OS username, no external dependencies.
- * - `auth`: [AuthSecurityService] — Cloudflare JWT / x-forwarded-email.
+ * - `auth`: [AuthSecurityService] — priority chain: X-External-User-Id header,
+ *   then Cloudflare JWT, then Authorization Bearer JWT, then x-forwarded-email.
  *
  * Neither implementation depends on [io.whozoss.agentos.user.UserService]. User
  * persistence (lookup / auto-create) is handled by
@@ -22,12 +23,10 @@ class SecurityConfiguration(
     private val props: SecurityConfigProperties,
 ) {
     @Bean
-    fun securityService(
-        objectMapper: ObjectMapper,
-    ): SecurityService {
+    fun securityService(objectMapper: ObjectMapper): SecurityService {
         return when (props.mode) {
             SecurityMode.AUTH -> {
-                logger.info { "[Security] Mode: auth (Cloudflare JWT / x-forwarded-email)" }
+                logger.info { "[Security] Mode: auth (X-External-User-Id / Cloudflare JWT / x-forwarded-email)" }
                 AuthSecurityService(objectMapper)
             }
             SecurityMode.LOCAL -> {

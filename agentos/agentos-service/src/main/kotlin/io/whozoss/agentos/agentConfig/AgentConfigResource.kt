@@ -1,8 +1,9 @@
 package io.whozoss.agentos.agentConfig
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -19,14 +20,30 @@ import java.util.UUID
  * A null list means all tools from that integration are allowed.
  */
 @Schema(name = "AgentConfig")
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class AgentConfigResource(
     val id: UUID? = null,
-    @field:NotNull(message = "namespaceId must not be null")
-    val namespaceId: UUID,
+    /**
+     * The namespace this agent belongs to. Null for platform-level agents.
+     * Platform agents are visible across all namespaces and require super-admin to manage.
+     */
+    val namespaceId: UUID? = null,
     @field:NotBlank(message = "name must not be blank")
     val name: String,
     val description: String? = null,
     val instructions: String? = null,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
+    val advancedExecution: Boolean? = null,
+    /**
+     * Opaque metadata map for external consumers (e.g. Copilot).
+     * AgentOS persists this field as-is without interpreting its content.
+     */
+    val externalMetadata: Map<String, Any?>? = null,
+    val createdBy: String? = null,
+    val createdOn: Instant = Instant.now(),
+    val updatedBy: String? = null,
+    val updatedOn: Instant = Instant.now(),
+    /** Whether this agent is published. Null on input is treated as false (unpublished). */
+    val enabled: Boolean? = null,
 )

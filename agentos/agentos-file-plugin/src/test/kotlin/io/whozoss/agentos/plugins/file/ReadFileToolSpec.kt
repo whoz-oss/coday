@@ -24,7 +24,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("test.txt"), ctx)
 
-                result shouldBe "Hello, World!\nLine 2\nLine 3"
+                result.success shouldBe true
+                result.output shouldBe "Hello, World!\nLine 2\nLine 3"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -37,7 +38,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("nonexistent.txt"), ctx)
 
-                result shouldContain "Path does not exist"
+                result.success shouldBe false
+                result.output shouldContain "Path does not exist"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -51,7 +53,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("empty.txt"), ctx)
 
-                result shouldBe ""
+                result.success shouldBe true
+                result.output shouldBe ""
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -66,7 +69,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("binary.bin"), ctx)
 
-                result shouldBe "[binary or unreadable file]"
+                result.success shouldBe true
+                result.output shouldBe "[binary or unreadable file]"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -82,8 +86,9 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("large.txt"), ctx)
 
-                result shouldContain "exceeds maximum size"
-                result shouldContain "10"
+                result.success shouldBe false
+                result.output shouldContain "exceeds maximum size"
+                result.output shouldContain "10"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -94,11 +99,12 @@ class ReadFileToolSpec : StringSpec() {
             try {
                 val tool = ReadFileTool(tempDir)
                 val file = tempDir.resolve("unicode.txt")
-                file.writeText("Hello 世界 🌍 émoji")
+                file.writeText("Hello \u4e16\u754c \ud83c\udf0d \u00e9moji")
 
                 val result = tool.execute(ReadFileTool.Input("unicode.txt"), ctx)
 
-                result shouldBe "Hello 世界 🌍 émoji"
+                result.success shouldBe true
+                result.output shouldBe "Hello \u4e16\u754c \ud83c\udf0d \u00e9moji"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -115,7 +121,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("link.txt"), ctx)
 
-                result shouldBe "target content"
+                result.success shouldBe true
+                result.output shouldBe "target content"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -131,7 +138,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("multi.txt"), ctx)
 
-                result shouldBe content
+                result.success shouldBe true
+                result.output shouldBe content
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -148,7 +156,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("twoKb.txt"), ctx)
 
-                result shouldContain "exceeds maximum size"
+                result.success shouldBe false
+                result.output shouldContain "exceeds maximum size"
             } finally {
                 tempDir.toFile().deleteRecursively()
             }
@@ -165,8 +174,8 @@ class ReadFileToolSpec : StringSpec() {
 
                 val result = tool.execute(ReadFileTool.Input("fiveMb.txt"), ctx)
 
-                // Should succeed and return the content (we'll just check it's not an error)
-                result shouldBe content
+                result.success shouldBe true
+                result.output shouldBe content
             } finally {
                 tempDir.toFile().deleteRecursively()
             }

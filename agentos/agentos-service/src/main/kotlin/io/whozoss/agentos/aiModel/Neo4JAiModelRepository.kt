@@ -31,10 +31,10 @@ open class Neo4JAiModelRepository(
                 }
             }
 
-    override fun findByIds(ids: Collection<UUID>): List<AiModel> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiModel> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<AiModel> =
@@ -72,6 +72,16 @@ open class Neo4JAiModelRepository(
                 logger.debug { "[Neo4jAiModelRepository] Soft-deleted AiModel $id" }
                 true
             } ?: false
+
+    override fun findPlatformLevel(): List<AiModel> =
+        neo4jRepository
+            .findActivePlatformLevel()
+            .map { it.toDomain() }
+
+    override fun findAllForNamespace(namespaceId: UUID): List<AiModel> =
+        neo4jRepository
+            .findAllForNamespace(namespaceId.toString())
+            .map { it.toDomain() }
 
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {

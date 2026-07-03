@@ -24,11 +24,6 @@
         "^default"
       ]
     },
-    "nx-release-publish": {
-      "dependsOn": [
-        "build"
-      ]
-    },
     "lint": {
       "cache": true
     },
@@ -100,7 +95,7 @@
         "createRelease": "github"
       },
       "git": {
-        "commitMessage": "chore(release): {version}",
+        "commitMessage": "chore(release): {version} [skip ci]",
         "tag": true
       }
     },
@@ -139,5 +134,5 @@
     ]
   },
   "analytics": false,
-  "nxCloudId": "69faead76f99323de41d00d3"
+  "nxCloudId_disable": "69faead76f99323de41d00d3"
 }

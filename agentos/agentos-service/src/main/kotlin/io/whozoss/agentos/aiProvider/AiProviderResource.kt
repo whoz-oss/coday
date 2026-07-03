@@ -9,21 +9,32 @@ import java.util.UUID
 /**
  * HTTP resource (DTO) for [AiProvider] entities.
  *
- * At least one of [namespaceId] / [userId] must be non-null. This constraint is
- * enforced in [AiProviderServiceImpl] rather than via Bean Validation annotations,
- * because @NotNull cannot express an "either/or" condition across two fields.
+ * **Triple-mode contract** — both [namespaceId] and [userId] are nullable. The cross-field
+ * invariant `(namespaceId != null) OR (userId != null)` is enforced server-side by
+ * [AiProviderServiceImpl.requireScope] and surfaces as HTTP 400 — Bean Validation cannot
+ * express an "either / or" across two fields. The `(namespaceId, userId)` pair drives the
+ * implicit-scope dispatch on `POST` (Decision 15) :
+ *  - `(ns, null)` → NS-shared ; `(null, user)` → user-global ; `(ns, user)` → user × ns ;
+ *  - both null → 400 ; `userId` mismatched with the principal → 400.
  *
  * [apiKey] is write-only in practice: on read it is always returned masked.
  * On write, if the value contains the mask sentinel "****", the controller treats
  * it as "unchanged" and preserves the persisted key.
  *
- * Models are managed as independent [AiModel]
- * entities via their own endpoints — they are not embedded in this resource.
+ * Models are managed as independent `AiModel` entities via their own endpoints — they
+ * are not embedded in this resource.
  */
 @Schema(name = "AiProvider")
 data class AiProviderResource(
     val id: UUID? = null,
+    // SpringDoc 2.x workaround for nullable Kotlin fields in OpenAPI 3.1 mode: without the
+    // explicit `types = ["string", "null"]`, the generated schema occasionally drops the
+    // field entirely or flips it to `required` (verified by removing the annotation and
+    // regenerating: `userId` disappeared from the IntegrationConfig schema and `namespaceId`
+    // became required, even though both are nullable Kotlin fields with default `null`).
+    @field:Schema(types = ["string", "null"], format = "uuid")
     val namespaceId: UUID? = null,
+    @field:Schema(types = ["string", "null"], format = "uuid")
     val userId: UUID? = null,
     @field:NotBlank
     val name: String,
@@ -32,4 +43,5 @@ data class AiProviderResource(
     val apiType: AiApiType?,
     val baseUrl: String? = null,
     val apiKey: String? = null,
+    val headers: Map<String, String>? = null,
 )

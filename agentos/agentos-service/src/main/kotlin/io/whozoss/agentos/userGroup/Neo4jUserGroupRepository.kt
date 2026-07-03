@@ -7,6 +7,12 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.*
 
+private data class UserExternalIdGroupRow(
+    val externalId: String,
+    val groupId: String,
+    val groupName: String,
+)
+
 open class Neo4jUserGroupRepository(
     private val neo4jRepository: UserGroupNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
@@ -15,13 +21,15 @@ open class Neo4jUserGroupRepository(
     override fun save(entity: UserGroup): UserGroup =
         neo4jRepository
             .save(UserGroupNode.fromDomain(entity))
-            .also { childLinkService.link("UserGroup", it.id, "Namespace", entity.namespaceId.toString()) }
-            .toDomain()
+            .also {
+                childLinkService.link("UserGroup", it.id, "Namespace", entity.namespaceId.toString())
+                if (!entity.metadata.removed) neo4jRepository.setActive(it.id)
+            }.toDomain()
 
-    override fun findByIds(ids: Collection<UUID>): List<UserGroup> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<UserGroup> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<UserGroup> =
@@ -29,16 +37,16 @@ open class Neo4jUserGroupRepository(
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
 
-    override fun findByNamespaceExternalId(externalId: String): List<UserGroupSearchResult> =
+    override fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult> =
         querySearchResults(
-            whereClause = $$"ns.externalId = $externalId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
-            paramName = "externalId",
-            paramValue = externalId,
+            whereClause = $$"ns.id = $namespaceId AND NOT COALESCE(g.removed, false) AND NOT COALESCE(ns.removed, false)",
+            paramName = "namespaceId",
+            paramValue = namespaceId.toString(),
         ).all().toList()
 
     override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? =
         querySearchResults(
-            whereClause = $$"g.id = $userGroupId AND (g.removed IS NULL OR g.removed = false) AND (ns.removed IS NULL OR ns.removed = false)",
+            whereClause = $$"g.id = $userGroupId AND NOT COALESCE(g.removed, false) AND NOT COALESCE(ns.removed, false)",
             paramName = "userGroupId",
             paramValue = id.toString(),
         ).one().orElse(null)
@@ -52,13 +60,14 @@ open class Neo4jUserGroupRepository(
             """
                 MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
                 WHERE $whereClause
-                OPTIONAL MATCH (g)-[:HAS_AGENT]->(a:AgentConfig)
-                  WHERE a.removed IS NULL OR a.removed = false
-                OPTIONAL MATCH (g)-[:HAS_USER]->(u:User)
-                  WHERE u.removed IS NULL OR u.removed = false
-                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+                OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
+                  WHERE NOT COALESCE(a.removed, false)
+                OPTIONAL MATCH (u:User)-[:MEMBER|ADMIN]->(g)
+                  WHERE NOT COALESCE(u.removed, false)
+                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
+                       g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
                 ORDER BY g.name ASC
-            """,
+            """.trimIndent(),
         ).bind(paramValue)
         .to(paramName)
         .fetchAs(UserGroupSearchResult::class.java)
@@ -98,18 +107,66 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
+    /**
+     * Returns groups for the given user external IDs, optionally scoped to a namespace.
+     *
+     * When [namespaceId] is null, groups from all namespaces are returned.
+     * When [namespaceId] is provided, the Cypher query adds an extra predicate
+     * `AND g.namespaceId = $$namespaceId` to scope results to a single federation.
+     */
+    override fun findGroupsByUserExternalIds(
+        externalIds: Collection<String>,
+        namespaceId: UUID?,
+    ): Map<String, List<UserGroupSummary>> {
+        if (externalIds.isEmpty()) return emptyMap()
+        val params = mutableMapOf<String, Any>("externalIds" to externalIds.toList())
+        val namespaceClause: String
+        if (namespaceId != null) {
+            params["namespaceId"] = namespaceId.toString()
+            namespaceClause = $$"AND g.namespaceId = $namespaceId"
+        } else {
+            namespaceClause = ""
+        }
+        val query = $$"""
+            MATCH (u:User)-[:MEMBER]->(g:UserGroup)
+            WHERE u.externalId IN $externalIds
+              AND NOT COALESCE(g.removed, false)
+              AND NOT COALESCE(u.removed, false)
+              $$namespaceClause
+            RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
+            ORDER BY u.externalId ASC, g.name ASC
+        """.trimIndent()
+        return neo4jClient
+            .query(query)
+            .bindAll(params)
+            .fetchAs(UserExternalIdGroupRow::class.java)
+            .mappedBy { _, record ->
+                UserExternalIdGroupRow(
+                    externalId = record["externalId"].asString(),
+                    groupId = record["groupId"].asString(),
+                    groupName = record["groupName"].asString(),
+                )
+            }.all()
+            .groupBy(
+                keySelector = { it.externalId },
+                valueTransform = { UserGroupSummary(id = UUID.fromString(it.groupId), name = it.groupName) },
+            )
+    }
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
                 neo4jRepository.save(node.copy(removed = true))
+                neo4jRepository.setInactive(node.id)
                 true
             } ?: false
 
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
+        neo4jRepository.setInactiveByNamespaceId(parentId.toString())
         neo4jRepository.saveAll(active.map { it.copy(removed = true) })
         return active.size
     }

@@ -86,6 +86,7 @@
       }
     },
     "nx-release-publish": {
+      "dependsOn": ["build"],
       "options": {
         "packageRoot": "apps/client/dist"
       }

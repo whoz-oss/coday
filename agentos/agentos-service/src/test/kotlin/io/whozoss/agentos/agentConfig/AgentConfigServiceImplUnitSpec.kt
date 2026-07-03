@@ -1,113 +1,272 @@
 package io.whozoss.agentos.agentConfig
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import java.time.Instant
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
-class AgentConfigServiceImplUnitSpec : StringSpec({
+class AgentConfigServiceImplUnitSpec :
+    StringSpec({
 
-    fun repository(): AgentConfigRepository =
-        object :
-            AgentConfigRepository,
-            io.whozoss.agentos.entity.EntityRepository<AgentConfig, UUID>
-            by InMemoryEntityRepository(
-                parentIdExtractor = { it.namespaceId },
-                comparator = compareBy { it.name },
-            ) {}
+        fun repository(): AgentConfigRepository {
+            val inMemory =
+                InMemoryEntityRepository<AgentConfig, UUID?>(
+                    parentIdExtractor = { it.namespaceId },
+                    comparator = compareBy { it.name },
+                )
+            return object :
+                AgentConfigRepository,
+                EntityRepository<AgentConfig, UUID?> by inMemory {
+                // findAvailableByNamespaceIdAndUserId is a Neo4j-only query; not exercised in unit tests.
+                override fun findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId: UUID?,
+                    userId: UUID?,
+                    agentName: String?,
+                    withDisabled: Boolean,
+                ): List<AgentConfig> = throw UnsupportedOperationException("Not available in InMemoryEntityRepository")
 
-    fun service(repo: AgentConfigRepository = repository()) = AgentConfigServiceImpl(repo)
+                // ConcurrentHashMap does not support null keys, so platform agents (namespaceId=null)
+                // are retrieved by scanning all stored entities rather than calling findByParent(null).
+                private fun platformAgents(): List<AgentConfig> = inMemory.findAll().filter { it.namespaceId == null }
 
-    val namespaceId: UUID = UUID.randomUUID()
+                override fun findByParent(parentId: UUID?): List<AgentConfig> =
+                    if (parentId == null) platformAgents() else inMemory.findByParent(parentId)
 
-    fun config(
-        name: String,
-        nsId: UUID = namespaceId,
-        modelName: String? = "BIG",
-        createdAt: Instant = Instant.ofEpochSecond(1_000_000),
-    ) = AgentConfig(
-        metadata = EntityMetadata(id = UUID.randomUUID(), created = createdAt),
-        namespaceId = nsId,
-        name = name,
-        modelName = modelName,
-    )
+                override fun findByParent(
+                    parentId: UUID?,
+                    withDisabled: Boolean,
+                ): List<AgentConfig> {
+                    val all = findByParent(parentId)
+                    return if (withDisabled) all else all.filter { it.enabled }
+                }
+            }
+        }
 
-    // -------------------------------------------------------------------------
-    // findByName
-    // -------------------------------------------------------------------------
+        val userService = mockk<UserService>(relaxed = true)
 
-    "findByName returns config with exact name match" {
-        val repo = repository()
-        val svc = service(repo)
-        val saved = repo.save(config("Dev", nsId = namespaceId))
+        fun service(
+            repo: AgentConfigRepository = repository(),
+            us: UserService = userService,
+        ) = AgentConfigServiceImpl(repo, us)
 
-        svc.findByName(namespaceId, "Dev") shouldBe saved
-    }
+        val namespaceId: UUID = UUID.randomUUID()
 
-    "findByName is case-insensitive" {
-        val repo = repository()
-        val svc = service(repo)
-        val saved = repo.save(config("Dev", nsId = namespaceId))
+        fun config(
+            name: String,
+            nsId: UUID? = namespaceId,
+            modelName: String? = "BIG",
+        ) = AgentConfig(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            namespaceId = nsId,
+            name = name,
+            modelName = modelName,
+        )
 
-        svc.findByName(namespaceId, "dev") shouldBe saved
-        svc.findByName(namespaceId, "DEV") shouldBe saved
-    }
+        // -------------------------------------------------------------------------
+        // findByName
+        // -------------------------------------------------------------------------
 
-    "findByName returns null when no config matches" {
-        val svc = service()
+        "findByName returns config with exact name match" {
+            val repo = repository()
+            val svc = service(repo)
+            val saved = repo.save(config("Dev", nsId = namespaceId))
 
-        svc.findByName(namespaceId, "unknown").shouldBeNull()
-    }
+            svc.findByName(namespaceId, "Dev") shouldBe saved
+        }
 
-    "findByName is scoped to the given namespace" {
-        val repo = repository()
-        val svc = service(repo)
-        val otherNamespaceId = UUID.randomUUID()
-        repo.save(config("Dev", nsId = otherNamespaceId))
+        "findByName is case-insensitive" {
+            val repo = repository()
+            val svc = service(repo)
+            val saved = repo.save(config("Dev", nsId = namespaceId))
 
-        svc.findByName(namespaceId, "Dev").shouldBeNull()
-    }
+            svc.findByName(namespaceId, "dev") shouldBe saved
+            svc.findByName(namespaceId, "DEV") shouldBe saved
+        }
 
-    // -------------------------------------------------------------------------
-    // findDefault
-    // -------------------------------------------------------------------------
+        "findByName returns null when no config matches" {
+            val svc = service()
 
-    "findDefault returns built-in fallback when namespace has no configs" {
-        val svc = service()
+            svc.findByName(namespaceId, "unknown").shouldBeNull()
+        }
 
-        val result = svc.findDefault(namespaceId)
+        // -------------------------------------------------------------------------
+        // create — uniqueness check
+        // -------------------------------------------------------------------------
 
-        result shouldBe AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG
-    }
+        "create throws when an AgentConfig with the same name already exists in the namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Dev", nsId = namespaceId))
 
-    "findDefault returns the oldest config when multiple exist" {
-        val repo = repository()
-        val svc = service(repo)
-        val older = repo.save(config("Alpha", nsId = namespaceId, createdAt = Instant.ofEpochSecond(1000)))
-        repo.save(config("Beta", nsId = namespaceId, createdAt = Instant.ofEpochSecond(2000)))
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.create(config("Dev", nsId = namespaceId))
+            }
+        }
 
-        svc.findDefault(namespaceId) shouldBe older
-    }
+        "create uniqueness check is case-insensitive" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Dev", nsId = namespaceId))
 
-    "findDefault returns the single config when only one exists" {
-        val repo = repository()
-        val svc = service(repo)
-        val saved = repo.save(config("Solo", nsId = namespaceId))
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.create(config("dev", nsId = namespaceId))
+            }
+        }
 
-        svc.findDefault(namespaceId).shouldNotBeNull() shouldBe saved
-    }
+        "create allows same name in a different namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            val otherNs = UUID.randomUUID()
+            repo.save(config("Dev", nsId = namespaceId))
 
-    "findDefault is scoped to the given namespace" {
-        val repo = repository()
-        val svc = service(repo)
-        val otherNamespaceId = UUID.randomUUID()
-        repo.save(config("Alpha", nsId = otherNamespaceId))
+            svc.create(config("Dev", nsId = otherNs)).name shouldBe "Dev"
+        }
 
-        // own namespace is empty -> fallback
-        svc.findDefault(namespaceId) shouldBe AgentConfigServiceImpl.DEFAULT_AGENT_CONFIG
-    }
-})
+        "create allows same name at platform level independently of namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Dev", nsId = namespaceId))
+
+            svc.create(config("Dev", nsId = null)).name shouldBe "Dev"
+        }
+
+        "create succeeds when no name conflict exists" {
+            val repo = repository()
+            val svc = service(repo)
+
+            svc.create(config("Dev", nsId = namespaceId)).name shouldBe "Dev"
+        }
+
+        // -------------------------------------------------------------------------
+        // update — uniqueness check
+        // -------------------------------------------------------------------------
+
+        "update throws when renaming to a name already taken in the same namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Alpha", nsId = namespaceId))
+            val beta = repo.save(config("Beta", nsId = namespaceId))
+
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.update(beta.copy(name = "Alpha"))
+            }
+        }
+
+        "update allows saving an entity with its own current name (no self-conflict)" {
+            val repo = repository()
+            val svc = service(repo)
+            val saved = repo.save(config("Dev", nsId = namespaceId))
+
+            svc.update(saved.copy(instructions = "updated")).name shouldBe "Dev"
+        }
+
+        "update uniqueness check is case-insensitive" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Alpha", nsId = namespaceId))
+            val beta = repo.save(config("Beta", nsId = namespaceId))
+
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                svc.update(beta.copy(name = "alpha"))
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // findAvailableByUserExternalId
+        // -------------------------------------------------------------------------
+
+        "findAvailableByUserExternalId throws ResourceNotFoundException when user is not found" {
+            val us = mockk<UserService> { every { findByExternalId("ghost@example.com") } returns null }
+            val svc = service(us = us)
+
+            shouldThrow<ResourceNotFoundException> {
+                svc.findAvailableByUserExternalId(namespaceId, "ghost@example.com")
+            }
+        }
+
+        "findByName is scoped to the given namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            val otherNamespaceId = UUID.randomUUID()
+            repo.save(config("Dev", nsId = otherNamespaceId))
+
+            svc.findByName(namespaceId, "Dev").shouldBeNull()
+        }
+
+        "findByName falls back to platform agents when not found in namespace" {
+            val repo = repository()
+            val svc = service(repo)
+            val platform = repo.save(config("Coday", nsId = null))
+
+            svc.findByName(namespaceId, "Coday") shouldBe platform
+        }
+
+        "findByName platform fallback is case-insensitive" {
+            val repo = repository()
+            val svc = service(repo)
+            val platform = repo.save(config("Coday", nsId = null))
+
+            svc.findByName(namespaceId, "coday") shouldBe platform
+            svc.findByName(namespaceId, "CODAY") shouldBe platform
+        }
+
+        "findByName namespace agent takes priority over platform agent with same name" {
+            val repo = repository()
+            val svc = service(repo)
+            val nsAgent = repo.save(config("Coday", nsId = namespaceId))
+            repo.save(config("Coday", nsId = null))
+
+            svc.findByName(namespaceId, "Coday") shouldBe nsAgent
+        }
+
+        "findByName with null namespaceId returns platform agent directly" {
+            val repo = repository()
+            val svc = service(repo)
+            val platform = repo.save(config("Coday", nsId = null))
+
+            svc.findByName(null, "Coday") shouldBe platform
+        }
+
+        // -------------------------------------------------------------------------
+        // findByNamespace
+        // -------------------------------------------------------------------------
+
+        "findByNamespace with withDisabled=true returns all configs" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Published").copy(enabled = true))
+            repo.save(config("Unpublished").copy(enabled = false))
+
+            val result = svc.findByNamespace(namespaceId, withDisabled = true)
+            result.map { it.name }.toSet() shouldBe setOf("Published", "Unpublished")
+        }
+
+        "findByNamespace with withDisabled=false returns only enabled configs" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Published").copy(enabled = true))
+            repo.save(config("Unpublished").copy(enabled = false))
+
+            val result = svc.findByNamespace(namespaceId, withDisabled = false)
+            result.map { it.name } shouldBe listOf("Published")
+        }
+
+        "findByNamespace defaults to withDisabled=true" {
+            val repo = repository()
+            val svc = service(repo)
+            repo.save(config("Alpha").copy(enabled = false))
+            repo.save(config("Beta").copy(enabled = true))
+
+            val result = svc.findByNamespace(namespaceId)
+            result shouldHaveSize 2
+        }
+    })

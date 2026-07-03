@@ -2,10 +2,15 @@ package io.whozoss.agentos.user
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.userGroup.UserGroupService
+import io.whozoss.agentos.userGroup.UserGroupSummaryResource
+import io.whozoss.agentos.userGroup.toResource
 import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
@@ -47,8 +52,8 @@ import java.util.UUID
 class UserController(
     userService: UserService,
     permissionService: PermissionService,
+    private val userGroupService: UserGroupService,
 ) : EntityController<User, String, UserResource>(userService, userService, permissionService) {
-
     /**
      * Required by [EntityController] but not used here — User access is gated by
      * `hasRole('SUPER_ADMIN')` (or self-or-admin), NOT by the namespace permission
@@ -70,7 +75,7 @@ class UserController(
     override fun toDomain(resource: UserResource): User =
         User(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-            externalId = "",  // server-managed — never sourced from the request body
+            externalId = "", // server-managed — never sourced from the request body
             email = resource.email ?: "",
             firstname = resource.firstname,
             lastname = resource.lastname,
@@ -80,7 +85,9 @@ class UserController(
 
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN') or #id.toString() == authentication.name")
-    override fun getById(@PathVariable id: UUID): UserResource = super.getById(id)
+    override fun getById(
+        @PathVariable id: UUID,
+    ): UserResource = super.getById(id)
 
     /**
      * POST /by-ids — super-admin batch fetch.
@@ -94,7 +101,10 @@ class UserController(
      */
     @PostMapping("/by-ids")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    override fun getByIds(@RequestBody ids: List<UUID>): List<UserResource> {
+    override fun getByIds(
+        @RequestBody request: GetByIdsRequest,
+    ): List<UserResource> {
+        val ids = request.ids
         if (ids.size > EntityController.MAX_BATCH_SIZE) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
@@ -102,13 +112,15 @@ class UserController(
             )
         }
         if (ids.isEmpty()) return emptyList()
-        return userService.findByIds(ids).map(::toResource)
+        return userService.findByIds(ids, request.withRemoved).map(::toResource)
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    override fun create(@Valid @RequestBody resource: UserResource): UserResource {
+    override fun create(
+        @Valid @RequestBody resource: UserResource,
+    ): UserResource {
         val created = service.create(toDomain(resource))
         logger.info { "Super-admin created user ${created.id} (isAdmin=${created.isAdmin})" }
         return toResource(created)
@@ -120,8 +132,9 @@ class UserController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: UserResource,
     ): UserResource {
-        val existing = userService.findById(id)
-            ?: throw ResourceNotFoundException("Entity not found: $id")
+        val existing =
+            userService.findById(id)
+                ?: throw ResourceNotFoundException("Entity not found: $id")
         // Self-rule: a user can never change their own isAdmin via the API.
         // Guarantees the DB never reaches 0 super-admins via API (a super-admin
         // needs ANOTHER super-admin to be demoted). auth.name is the User's UUID
@@ -133,11 +146,12 @@ class UserController(
         val callerName = SecurityContextHolder.getContext().authentication?.name
         val isSelfEdit = callerName != null && id.toString() == callerName
         val newIsAdmin = if (isSelfEdit) existing.isAdmin else resource.isAdmin
-        val updated = toDomain(resource).copy(
-            metadata = existing.metadata,
-            externalId = existing.externalId,        // server-managed (IdP key)
-            isAdmin = newIsAdmin,                    // self-rule applied above
-        )
+        val updated =
+            toDomain(resource).copy(
+                metadata = existing.metadata,
+                externalId = existing.externalId, // server-managed (IdP key)
+                isAdmin = newIsAdmin, // self-rule applied above
+            )
         val persisted = userService.update(updated)
         logger.info {
             "User profile $id updated by caller=$callerName " +
@@ -149,7 +163,9 @@ class UserController(
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    override fun delete(@PathVariable id: UUID) {
+    override fun delete(
+        @PathVariable id: UUID,
+    ) {
         val exists = service.findById(id) != null
         if (!exists) {
             throw ResourceNotFoundException("Entity not found: $id")
@@ -174,5 +190,53 @@ class UserController(
     @Operation(summary = "Get the current user's profile")
     fun getMe(): UserResource = toResource(userService.getCurrentUser())
 
+    /**
+     * POST /api/users/by-external-ids — look up users by a list of external identity-provider keys.
+     *
+     * External ids that match no active user are silently omitted from the result.
+     * The order of results is not guaranteed to match the order of the input ids.
+     * Super-admin only — same authorization policy as [listAll] and [getByIds].
+     */
+    @PostMapping("/by-external-ids")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun listByExternalIds(
+        @RequestBody externalIds: List<String>,
+    ): List<UserResource> {
+        if (externalIds.isEmpty()) return emptyList()
+        return userService.findByExternalIds(externalIds.toSet()).map(::toResource)
+    }
+
+    /**
+     * POST /api/users/groups-by-external-ids — return groups per user, filtered to groups visible to the caller.
+     *
+     * Accepts an optional [GroupsByExternalIdsRequest.namespaceId] to scope results to a single namespace.
+     * When omitted, groups from all namespaces are returned.
+     */
+    @PostMapping("/groups-by-external-ids")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("isAuthenticated()")
+    fun getGroupsByExternalIds(
+        @RequestBody request: GroupsByExternalIdsRequest,
+    ): Map<String, List<UserGroupSummaryResource>> {
+        if (request.externalIds.isEmpty()) return emptyMap()
+        val currentUser = userService.getCurrentUser()
+        return userGroupService
+            .findGroupsByUserExternalIdsVisibleToUser(request.externalIds, currentUser, request.namespaceId)
+            .mapValues { (_, groups) -> groups.map { it.toResource() } }
+    }
+
     companion object : KLogging()
 }
+
+/**
+ * Request body for `POST /api/users/groups-by-external-ids`.
+ *
+ * @param externalIds List of user external IDs (identity-provider keys) to look up.
+ * @param namespaceId Optional namespace UUID to scope results to a single federation.
+ *   When null, groups from all namespaces are returned.
+ */
+data class GroupsByExternalIdsRequest(
+    val externalIds: List<String>,
+    val namespaceId: UUID? = null,
+)

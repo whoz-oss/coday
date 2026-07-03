@@ -4,6 +4,11 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.data.annotation.CreatedBy
+import org.springframework.data.annotation.CreatedDate
+import org.springframework.data.annotation.LastModifiedBy
+import org.springframework.data.annotation.LastModifiedDate
+import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
@@ -27,17 +32,22 @@ import java.util.UUID
 data class AgentConfigNode(
     @Id
     val id: String,
-    val namespaceId: String,
+    /** Null for platform-level agents (no namespace scope). */
+    val namespaceId: String?,
     val name: String,
     val description: String? = null,
     val instructions: String? = null,
     val modelName: String? = null,
     val integrationsJson: String? = null,
+    val externalMetadataJson: String? = null,
+    val advancedExecution: Boolean = false,
+    val enabled: Boolean,
     // EntityMetadata fields
-    val created: Instant = Instant.now(),
-    val createdBy: String? = null,
-    val modified: Instant = Instant.now(),
-    val modifiedBy: String? = null,
+    @Version val version: Long? = null,
+    @CreatedDate val created: Instant = Instant.now(),
+    @CreatedBy val createdBy: String? = null,
+    @LastModifiedDate val modified: Instant = Instant.now(),
+    @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     val namespace: NamespaceNode? = null,
@@ -52,28 +62,37 @@ data class AgentConfigNode(
                     modified = modified,
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
+                    version = version,
                 ),
-            namespaceId = UUID.fromString(namespaceId),
+            namespaceId = namespaceId?.let { UUID.fromString(it) },
             name = name,
             description = description,
             instructions = instructions,
             modelName = modelName,
             integrations = integrationsJson?.let { MAPPER.readValue(it, INTEGRATIONS_TYPE) },
+            advancedExecution = advancedExecution,
+            externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
+            enabled = enabled,
         )
 
     companion object {
         private val MAPPER = jacksonObjectMapper()
         private val INTEGRATIONS_TYPE = object : TypeReference<Map<String, List<String>?>>() {}
+        private val EXTERNAL_METADATA_TYPE = object : TypeReference<Map<String, Any?>>() {}
 
         fun fromDomain(config: AgentConfig): AgentConfigNode =
             AgentConfigNode(
                 id = config.id.toString(),
-                namespaceId = config.namespaceId.toString(),
+                namespaceId = config.namespaceId?.toString(),
                 name = config.name,
                 description = config.description,
                 instructions = config.instructions,
                 modelName = config.modelName,
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
+                externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
+                advancedExecution = config.advancedExecution,
+                version = config.metadata.version,
+                enabled = config.enabled,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,

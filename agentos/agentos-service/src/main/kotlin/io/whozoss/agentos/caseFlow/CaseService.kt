@@ -37,6 +37,22 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
 
+    /**
+     * List all cases concerning [userId] across every namespace.
+     *
+     * Delegates to [CaseRepository.findConcerningUser]. A case concerns a user
+     * when they have a direct ADMIN or MEMBER relation on it. Namespace-level
+     * ADMIN is intentionally excluded.
+     */
+    fun findConcerningUser(userId: UUID): List<Case>
+
+    /**
+     * List all cases concerning [userId] scoped to a single [namespaceId].
+     *
+     * Same permission rule as [findConcerningUser] but restricted to one namespace.
+     */
+    fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+
     // ========================================
     // Runtime Instance Management
     // ========================================
@@ -76,12 +92,19 @@ interface CaseService : EntityService<Case, UUID> {
     /**
      * Store a user message on the case and launch the execution loop in the background.
      * Returns immediately — the caller is never blocked by agent execution.
+     *
+     * [sessionContext] is an optional opaque map of application-level context at the time
+     * the user sent the message (e.g. current page, entity type/id, edit mode). When present,
+     * it is embedded directly on [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext]
+     * and persisted with the message. Only the last user message's context is injected into
+     * the LLM prompt; earlier turns' context is ignored during message conversion.
      */
     fun addMessage(
         caseId: UUID,
         actor: Actor,
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
         answerToEventId: UUID? = null,
+        sessionContext: Map<String, Any?>? = null,
     )
 
     // ========================================

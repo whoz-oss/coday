@@ -1,5 +1,5 @@
 import { releaseChangelog, releasePublish, releaseVersion } from 'nx/release'
-import { readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
@@ -11,8 +11,18 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run')
   if (dryRun) console.log('Dry run mode — no files will be written, no git operations performed')
 
+  const specifierIndex = process.argv.indexOf('--specifier')
+  const specifier = specifierIndex !== -1 ? process.argv[specifierIndex + 1] : undefined
+  if (specifier) {
+    console.log(`Forced specifier: ${specifier}`)
+  }
+
   // Step 1: Determine new version and update package.json files
-  const { projectsVersionData, releaseGraph, workspaceVersion } = await releaseVersion({ dryRun, verbose: false })
+  const { projectsVersionData, releaseGraph, workspaceVersion } = await releaseVersion({
+    dryRun,
+    verbose: false,
+    specifier,
+  })
 
   // workspaceVersion is null when conventional commits detected no changes, undefined would indicate a misconfiguration
   if (workspaceVersion === undefined) {
@@ -26,6 +36,10 @@ async function main(): Promise<void> {
   }
 
   console.log(`New version: ${workspaceVersion}`)
+
+  if (!dryRun && process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${workspaceVersion}\n`)
+  }
 
   // Step 2: Update Gradle version catalog to match the new release version.
   // This must happen AFTER releaseVersion (which determines the new version)

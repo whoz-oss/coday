@@ -48,6 +48,17 @@
     <span class="task-time">{{ formatRelativeTime(task().modifiedDate) }}</span>
 
     <div class="task-actions">
+      @if (previewMode()) {
+        <button
+          mat-icon-button
+          class="action-btn open-btn"
+          (click)="onOpenDirect($event)"
+          matTooltip="Open full view"
+          aria-label="Open task in full view"
+        >
+          <mat-icon>open_in_new</mat-icon>
+        </button>
+      }
       @if (task().status === 'in-progress') {
         <button
           mat-icon-button

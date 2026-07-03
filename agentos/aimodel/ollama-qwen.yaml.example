@@ -1,0 +1,5 @@
+apiModelName: qwen3.5:9b
+providerName: ollama
+description: "Qwen 3.5 9B via Ollama"
+alias: local
+temperature: 0.7

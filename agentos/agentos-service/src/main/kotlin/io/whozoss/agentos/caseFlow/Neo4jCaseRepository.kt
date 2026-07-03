@@ -26,10 +26,10 @@ open class Neo4jCaseRepository(
             .toDomain()
             .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<Case> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Case> =
         caseNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<Case> =
@@ -40,6 +40,19 @@ open class Neo4jCaseRepository(
     override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
         caseNodeNeo4jRepository
             .findAccessibleByUserInNamespace(
+                userId = userId.toString(),
+                namespaceId = namespaceId.toString(),
+            )
+            .map { it.toDomain() }
+
+    override fun findConcerningUser(userId: UUID): List<Case> =
+        caseNodeNeo4jRepository
+            .findConcerningUser(userId = userId.toString())
+            .map { it.toDomain() }
+
+    override fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+        caseNodeNeo4jRepository
+            .findConcerningUserInNamespace(
                 userId = userId.toString(),
                 namespaceId = namespaceId.toString(),
             )

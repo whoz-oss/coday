@@ -27,7 +27,7 @@ class CaseEventServiceImpl(
     /**
      * Find multiple events by their IDs.
      */
-    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> = repository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<CaseEvent> = repository.findByIds(ids, withRemoved)
 
     /**
      * Find all events belonging to a case, ordered by timestamp.

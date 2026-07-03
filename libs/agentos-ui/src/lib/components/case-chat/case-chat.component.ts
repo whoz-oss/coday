@@ -1,4 +1,5 @@
 import { HttpClient } from '@angular/common/http'
+import { JsonPipe } from '@angular/common'
 import {
   afterNextRender,
   Component,
@@ -14,15 +15,27 @@ import {
   ViewChild,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
+  AgentFinishedEvent,
+  AgentRunningEvent,
+  AgentSelectedEvent,
   CaseEvent,
+  CaseStatusEvent,
   Configuration,
+  EnrichmentPhaseTrace,
+  ErrorEvent,
+  IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
   ToolResponseEvent,
+  WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+import DOMPurify from 'dompurify'
+import { marked, Renderer } from 'marked'
+import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 
 export interface ToolCall {
   requestId: string
@@ -30,12 +43,29 @@ export interface ToolCall {
   args: string | null
   /** undefined = pending, defined = done */
   response?: ToolResponseEvent
+  /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
+  enrichmentPhases?: EnrichmentPhaseTrace[] | null
+}
+
+/** A technical event displayed only when showTechnical is enabled. */
+export interface TechnicalItem {
+  type:
+    | 'WarnEvent'
+    | 'ErrorEvent'
+    | 'CaseStatusEvent'
+    | 'AgentRunningEvent'
+    | 'AgentFinishedEvent'
+    | 'AgentSelectedEvent'
+    | 'IntentionGeneratedEvent'
+  label: string
+  detail?: string
 }
 
 export type TimelineItem =
-  | { kind: 'message'; event: CaseMessageEvent }
+  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming'; text: string }
+  | { kind: 'technical'; item: TechnicalItem; eventId: string }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -57,7 +87,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
 @Component({
   selector: 'agentos-case-chat',
   standalone: true,
-  imports: [IconButtonComponent],
+  imports: [IconButtonComponent, JsonPipe],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -66,12 +96,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly domSanitizer = inject(DomSanitizer)
 
   private readonly config = inject(Configuration)
+  protected readonly preferences = inject(USER_PREFERENCES_PORT)
 
   // Read from snapshot initially; updated reactively in ngOnInit via route.params
   private caseId = this.route.snapshot.params['caseId'] as string
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+
+  /** Markdown renderer shared across all message pre-computations. */
+  private readonly markdownRenderer = this.buildMarkdownRenderer()
 
   /** Display name used for the streaming assistant bubble (before final MessageEvent arrives). */
   protected readonly agentDisplayName = computed(() => {
@@ -83,13 +118,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (!e) continue
 
       if (e.type === 'AgentRunningEvent' || e.type === 'AgentSelectedEvent' || e.type === 'AgentFinishedEvent') {
-        const name = (e as unknown as { agentName?: string }).agentName
+        const name = e.agentName
         if (name && name.trim().length > 0) return name
       }
 
-      if (e.type === 'MessageEvent') {
-        const msg = e as unknown as { actor?: { role?: string; displayName?: string } }
-        if (msg.actor?.role === 'AGENT' && msg.actor.displayName) return msg.actor.displayName
+      if (e.type === 'MessageEvent' && e.actor.role === 'AGENT' && e.actor.displayName) {
+        return e.actor.displayName
       }
     }
     return 'Assistant'
@@ -101,15 +135,32 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   @ViewChild('messagesContainer') private messagesContainer?: ElementRef<HTMLDivElement>
 
   protected readonly events = signal<CaseEvent[]>([])
+
+  /**
+   * Pre-computed markdown HTML per event id.
+   * Populated at SSE ingestion time so the computed() timeline stays synchronous.
+   */
+  private readonly messageHtmlCache = new Map<string, SafeHtml>()
+
   protected inputValue = signal('')
   protected isRunning = signal(false)
   protected isTerminal = signal(false)
+
+  private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
+
+  /** When true, technical events are shown in the timeline. Persisted in localStorage. */
+  protected readonly showTechnical = signal<boolean>(
+    localStorage.getItem(CaseChatComponent.SHOW_TECHNICAL_KEY) === 'true'
+  )
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
 
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  /** Expanded state per technical eventId — collapsed by default */
+  protected readonly expandedTechnicals = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -148,20 +199,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Unified chronological timeline: messages and tool calls interleaved
-   * in the order they first appeared in the event stream.
+   * Static timeline derived from persisted events only — does NOT depend on streamingText.
+   * Splitting from `timeline` avoids rebuilding the full reconciliation on every TextChunkEvent
+   * during a streaming turn (dozens per second).
    *
    * Two-pass approach:
    * 1. Build a complete ToolCall map (request merged with its response)
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
-   *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
-   *
-   * The computed re-runs fully on every events() change, so the merged
-   * ToolCall objects are always fresh — no mutation needed.
+   *    so TOOL_RESPONSE doesn’t create a second item — it’s already merged.
    */
-  protected readonly timeline = computed<TimelineItem[]>(() => {
+  private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
-    const streamingText = this.streamingText()
+    const showTechnical = this.showTechnical()
 
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
@@ -175,6 +224,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           toolName: req.toolName ?? 'unknown',
           args: req.args ?? null,
           response: existing?.response,
+          enrichmentPhases: (req as ToolRequestEvent).enrichmentPhases ?? null,
         })
       } else if (e.type === 'ToolResponseEvent') {
         const res = e as ToolResponseEvent
@@ -185,34 +235,58 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           toolName: existing?.toolName ?? res.toolName ?? 'unknown',
           args: existing?.args ?? null,
           response: res,
+          enrichmentPhases: existing?.enrichmentPhases ?? null,
         })
       }
     }
 
-    // Pass 2: walk events in order, emit one timeline item per message or tool call
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     for (const e of allEvents) {
       if (e.type === 'MessageEvent') {
-        items.push({ kind: 'message', event: e as CaseMessageEvent })
+        const msg = e as CaseMessageEvent
+        items.push({
+          kind: 'message',
+          event: msg,
+          html: this.messageHtmlCache.get(e.id) ?? '',
+        })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
-        const raw = e as ToolRequestEvent | ToolResponseEvent
-        const requestId = raw.toolRequestId ?? e.id
+        const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
           items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
         }
+      } else if (showTechnical) {
+        const technical = this.toTechnicalItem(e)
+        if (technical) {
+          items.push({ kind: 'technical', item: technical, eventId: e.id })
+        }
       }
-    }
-
-    // Append the streaming assistant message at the end while running.
-    // We keep it separate from MessageEvent so we don't create dozens of timeline rows.
-    if (streamingText.trim().length > 0) {
-      items.push({ kind: 'streaming', text: streamingText })
     }
 
     return items
   })
+
+  /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
+  protected readonly timeline = computed<TimelineItem[]>(() => {
+    const base = this.baseTimeline()
+    const streamingText = this.streamingText()
+    if (streamingText.trim().length === 0) return base
+    return [...base, { kind: 'streaming', text: streamingText }]
+  })
+
+  protected trackTimelineItem(_index: number, item: TimelineItem): string {
+    switch (item.kind) {
+      case 'message':
+        return item.event.id
+      case 'tool':
+        return item.call.requestId
+      case 'technical':
+        return item.eventId
+      case 'streaming':
+        return 'streaming'
+    }
+  }
 
   protected get canSend(): boolean {
     return !!this.inputValue().trim() && !this.isRunning() && !this.isTerminal()
@@ -308,6 +382,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
           const beforeLen = this.events().length
+
+          // Pre-compute markdown HTML for MessageEvent before adding to signal.
+          if (event.type === 'MessageEvent') {
+            const msg = event as CaseMessageEvent
+            const text = this.extractText(msg)
+            if (!this.messageHtmlCache.has(event.id)) {
+              this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
+            }
+          }
+
           this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
           const afterLen = this.events().length
 
@@ -332,7 +416,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
-            const status = (event as import('@whoz-oss/agentos-api-client').CaseStatusEvent).status as string
+            const status = (event as CaseStatusEvent).status as string
 
             const isTerminal = status === 'KILLED' || status === 'ERROR'
             this.isTerminal.set(isTerminal)
@@ -362,7 +446,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
-          // For other events: don't force isRunning=true.
+          // For other events: don’t force isRunning=true.
           // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
         })
       } catch (err) {
@@ -384,6 +468,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'TextChunkEvent',
       'ToolRequestEvent',
       'ToolResponseEvent',
+      'PendingConfirmationEvent',
+      'ConfirmationResolvedEvent',
+      'ErrorEvent',
+      'WarnEvent',
+      'IntentionGeneratedEvent',
     ] as const
 
     // handle the different event names we see in the SSE stream
@@ -425,7 +514,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
     }
@@ -439,6 +528,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.eventSource?.close()
     this.eventSource = null
     this.events.set([])
+    this.messageHtmlCache.clear()
     this.inputValue.set('')
     this.isRunning.set(false)
     this.isTerminal.set(false)
@@ -517,5 +607,116 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Collapsed by default: a tool call is expanded only when its id is in the set */
   protected isToolCallExpanded(requestId: string): boolean {
     return this.collapsedTools().has(requestId)
+  }
+
+  protected toggleShowTechnical(): void {
+    this.showTechnical.update((v) => {
+      const next = !v
+      localStorage.setItem(CaseChatComponent.SHOW_TECHNICAL_KEY, String(next))
+      return next
+    })
+  }
+
+  protected toggleTechnical(eventId: string): void {
+    this.expandedTechnicals.update((set) => {
+      const next = new Set(set)
+      if (next.has(eventId)) next.delete(eventId)
+      else next.add(eventId)
+      return next
+    })
+  }
+
+  protected isTechnicalExpanded(eventId: string): boolean {
+    return this.expandedTechnicals().has(eventId)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Markdown rendering
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Render markdown to sanitized SafeHtml synchronously.
+   * Called once per MessageEvent at SSE ingestion time.
+   */
+  private renderMarkdown(text: string): SafeHtml {
+    if (!text) return ''
+    const rawHtml = marked.parse(text, {
+      renderer: this.markdownRenderer,
+      breaks: true,
+      gfm: true,
+      async: false,
+    }) as string
+
+    const clean = DOMPurify.sanitize(rawHtml, {
+      ADD_TAGS: ['span'],
+      ADD_ATTR: ['aria-hidden', 'aria-label', 'target', 'rel'],
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+    })
+
+    return this.domSanitizer.bypassSecurityTrustHtml(clean)
+  }
+
+  private buildMarkdownRenderer(): Renderer {
+    const renderer = new Renderer()
+    const originalLink = renderer.link.bind(renderer)
+    renderer.link = (token): string => {
+      let html = originalLink(token)
+      if (this.isExternalLink(token.href)) {
+        html = html
+          .replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
+          .replace('</a>', '<span class="external-link-icon" aria-hidden="true">↗</span></a>')
+      }
+      return html
+    }
+    return renderer
+  }
+
+  private isExternalLink(href: string): boolean {
+    if (!href || href.startsWith('/') || href.startsWith('#') || href.startsWith('?')) return false
+    if (href.startsWith('//')) return true
+    try {
+      return new URL(href, window.location.href).hostname !== window.location.hostname
+    } catch {
+      return false
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Technical event mapping
+  // ---------------------------------------------------------------------------
+
+  private toTechnicalItem(event: CaseEvent): TechnicalItem | null {
+    switch (event.type) {
+      case 'WarnEvent': {
+        const e = event as WarnEvent
+        return { type: 'WarnEvent', label: '⚠️ Warn', detail: e.message }
+      }
+      case 'ErrorEvent': {
+        const e = event as ErrorEvent
+        return { type: 'ErrorEvent', label: '❌ Error', detail: e.message }
+      }
+      case 'CaseStatusEvent': {
+        const e = event as CaseStatusEvent
+        return { type: 'CaseStatusEvent', label: `🟡 Status: ${e.status}` }
+      }
+      case 'AgentRunningEvent': {
+        const e = event as AgentRunningEvent
+        return { type: 'AgentRunningEvent', label: `▶️ Agent running: ${e.agentName}` }
+      }
+      case 'AgentFinishedEvent': {
+        const e = event as AgentFinishedEvent
+        return { type: 'AgentFinishedEvent', label: `✅ Agent finished: ${e.agentName}` }
+      }
+      case 'AgentSelectedEvent': {
+        const e = event as AgentSelectedEvent
+        return { type: 'AgentSelectedEvent', label: `🎯 Agent selected: ${e.agentName}` }
+      }
+      case 'IntentionGeneratedEvent': {
+        const e = event as IntentionGeneratedEvent
+        return { type: 'IntentionGeneratedEvent', label: `🧠 Intention → ${e.toolName}`, detail: e.intention }
+      }
+      default:
+        return null
+    }
   }
 }

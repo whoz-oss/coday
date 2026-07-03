@@ -18,4 +18,6 @@ export interface IntentionGeneratedEvent {
   type: 'IntentionGeneratedEvent'
   agentId: string
   intention: string
+  isFailedIntention: boolean
+  toolName: string
 }

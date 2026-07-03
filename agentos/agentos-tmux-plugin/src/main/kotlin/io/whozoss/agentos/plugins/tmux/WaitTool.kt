@@ -1,8 +1,9 @@
 package io.whozoss.agentos.plugins.tmux
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.delay
 
 private const val MAX_WAIT_SECONDS = 30
 
@@ -17,10 +18,6 @@ private const val MAX_WAIT_SECONDS = 30
 class WaitTool(
     configName: String? = null,
 ) : StandardTool<WaitTool.Input> {
-    companion object {
-        private val objectMapper = jacksonObjectMapper()
-    }
-
     override val name: String = when (configName) {
         null -> "Wait"
         else -> "${configName}__Wait"
@@ -65,28 +62,15 @@ class WaitTool(
         val seconds: Int,
     )
 
-    override fun execute(input: Input?, context: ToolContext): String {
-        if (input == null) return createErrorResponse("Input is required")
+    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
+        if (input == null) return ToolExecutionResult.error("Input is required", errorType = "INVALID_INPUT")
         if (input.seconds < 1 || input.seconds > MAX_WAIT_SECONDS) {
-            return createErrorResponse("seconds must be between 1 and $MAX_WAIT_SECONDS, got ${input.seconds}")
+            return ToolExecutionResult.error(
+                "seconds must be between 1 and $MAX_WAIT_SECONDS, got ${input.seconds}",
+                errorType = "INVALID_INPUT",
+            )
         }
-        Thread.sleep(input.seconds * 1000L)
-        return createSuccessResponse("Waited ${input.seconds} second${if (input.seconds == 1) "" else "s"}")
+        delay(input.seconds * 1000L)
+        return ToolExecutionResult.success("Waited ${input.seconds} second${if (input.seconds == 1) "" else "s"}")
     }
-
-    private fun createSuccessResponse(output: String): String =
-        objectMapper.writeValueAsString(
-            mapOf(
-                "success" to true,
-                "output" to output,
-            ),
-        )
-
-    private fun createErrorResponse(message: String): String =
-        objectMapper.writeValueAsString(
-            mapOf(
-                "success" to false,
-                "error" to message,
-            ),
-        )
 }

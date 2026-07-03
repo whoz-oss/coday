@@ -3,17 +3,16 @@ package io.whozoss.agentos.userGroup
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
-import java.util.*
+import java.util.UUID
 
 @Schema(name = "UserGroupCreateRequest")
 data class UserGroupCreateRequest(
-    @field:NotBlank
-    val namespaceExternalId: String,
+    val namespaceId: UUID,
     @field:NotBlank
     @field:Size(max = 250)
     val name: String,
     @field:Size(max = 200)
-    val userExternalIds: Set<@NotBlank String> = emptySet(),
+    val userExternalIdsToAdd: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
     val agentIds: Set<UUID> = emptySet(),
 )

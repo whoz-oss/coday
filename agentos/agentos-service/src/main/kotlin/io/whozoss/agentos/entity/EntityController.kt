@@ -89,12 +89,16 @@ abstract class EntityController<E : Entity, ParentIdentifier, ResourceType>(
 
     /**
      * GET /{id} — get a single entity by its ID.
+     *
+     * Passes [withRemoved]=true so that a direct lookup by ID resolves the entity
+     * regardless of its removal state. This mirrors [EntityService.getById] semantics
+     * and allows callers to inspect or audit a soft-deleted entity via REST.
      */
     @GetMapping("/{id}", produces = [MediaType.APPLICATION_JSON_VALUE])
     open fun getById(
         @PathVariable id: UUID,
     ): ResourceType =
-        service.findById(id)
+        service.findById(id, withRemoved = true)
             ?.let { toResource(it) }
             ?: throw ResourceNotFoundException("Entity not found: $id")
 
@@ -106,6 +110,9 @@ abstract class EntityController<E : Entity, ParentIdentifier, ResourceType>(
      * the input order and duplicates so clients that index on request position keep working.
      *
      * Capped at [MAX_BATCH_SIZE] ids to prevent DoS via unbounded requests.
+     *
+     * @param request Wrapper containing the list of IDs and an optional [GetByIdsRequest.withRemoved]
+     *   flag. When false (default), soft-deleted entities are excluded from the result.
      */
     @PostMapping(
         "/by-ids",
@@ -114,8 +121,9 @@ abstract class EntityController<E : Entity, ParentIdentifier, ResourceType>(
     )
     @PreAuthorize("isAuthenticated()")
     open fun getByIds(
-        @RequestBody ids: List<UUID>,
+        @RequestBody request: GetByIdsRequest,
     ): List<ResourceType> {
+        val ids = request.ids
         // Runtime size cap. We deliberately do NOT use Bean Validation `@Size` here :
         // `@Size` on a `@RequestBody` parameter only fires when the controller class
         // is annotated `@Validated` (Spring), and its violation maps by default to
@@ -151,7 +159,7 @@ abstract class EntityController<E : Entity, ParentIdentifier, ResourceType>(
         if (visibleIds.isEmpty()) return emptyList()
 
         // Preserve input order and duplicates : look up each input id in the entity map.
-        val entityById = service.findByIds(visibleIds).associateBy { it.metadata.id }
+        val entityById = service.findByIds(visibleIds, request.withRemoved).associateBy { it.metadata.id }
         return ids.mapNotNull { id -> entityById[id]?.let(::toResource) }
     }
 
@@ -220,3 +228,14 @@ abstract class EntityController<E : Entity, ParentIdentifier, ResourceType>(
         const val MAX_BATCH_SIZE = 1000
     }
 }
+
+/**
+ * Request body for `POST /by-ids`.
+ *
+ * @param ids List of entity UUIDs to fetch.
+ * @param withRemoved when true, soft-deleted entities are included in the result.
+ */
+data class GetByIdsRequest(
+    val ids: List<UUID>,
+    val withRemoved: Boolean = false,
+)

@@ -23,13 +23,14 @@ open class Neo4jUserRepository(
     override fun save(entity: User): User =
         userNodeNeo4jRepository
             .save(UserNode.fromDomain(entity))
+            .also { if (!entity.metadata.removed) userNodeNeo4jRepository.setActive(it.id) }
             .toDomain()
             .also { logger.debug { "[Neo4jUserRepository] Saved user ${it.id} (${entity.email})" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<User> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<User> =
         userNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     /**
@@ -51,6 +52,7 @@ open class Neo4jUserRepository(
             ?.takeIf { it.removed != true }
             ?.let { node ->
                 userNodeNeo4jRepository.save(node.copy(removed = true))
+                userNodeNeo4jRepository.setInactive(node.id)
                 logger.debug { "[Neo4jUserRepository] Soft-deleted user $id" }
                 true
             } ?: false
@@ -59,6 +61,7 @@ open class Neo4jUserRepository(
     open override fun deleteByParent(parentId: String): Int {
         val active = userNodeNeo4jRepository.findAllActive()
         userNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
+        userNodeNeo4jRepository.setInactiveByIds(active.map { it.id })
         logger.debug { "[Neo4jUserRepository] Soft-deleted ${active.size} users" }
         return active.size
     }
