@@ -182,7 +182,10 @@ class CaseServiceImplSpec :
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
             agent: Agent = finishingAgent(),
-            userService: UserService = mockk { every { findById(userId) } returns activeUser },
+            userService: UserService = mockk {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            },
             defaultAgentName: String? = agentName,
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
@@ -1393,7 +1396,10 @@ class CaseServiceImplSpec :
                 every { resolveAgentName(any(), any(), any()) } returns agentName
                 coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
             }
-            val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
+            val userService = mockk<UserService> {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            }
             val service = CaseServiceImpl(
                 agentService,
                 allowAllAgentConfigService,
