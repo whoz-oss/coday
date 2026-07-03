@@ -84,14 +84,19 @@ class DelegationTool(
     override val description: String =
         when {
             allowedAgents.isEmpty() -> {
-                "No sub-agents are currently available for delegation. Do not attempt to delegate — handle the request yourself or inform the user that no sub-agent can address it."
+                """
+                No sub-agents are currently available for delegation. 
+                Do not attempt to delegate — handle the request yourself or inform the user that no sub-agent can address it.
+                """.trimIndent()
             }
 
             else -> {
-                "Delegate one or more tasks to specialized sub-agents and wait for all results. " +
-                    "All delegations run in parallel — pass multiple entries to fan out work concurrently. " +
-                    "Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. " +
-                    "Available agents: ${allowedAgents.joinToString(", ")}."
+                """
+                Delegate one or more tasks to specialized sub-agents and wait for all results. 
+                All delegations run in parallel — pass multiple entries to fan out work concurrently. 
+                Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. 
+                Available agents: ${allowedAgents.joinToString(", ")}.
+                """.trimIndent()
             }
         }
     override val version = "1.0.0"

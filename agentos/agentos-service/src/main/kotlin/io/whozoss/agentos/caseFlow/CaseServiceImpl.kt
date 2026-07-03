@@ -619,6 +619,28 @@ class CaseServiceImpl(
         runtime.requestInterrupt()
     }
 
+    /**
+     * Resolves a [User] by [userId] and builds the corresponding [Actor].
+     *
+     * Throws [ResourceNotFoundException] when no user exists for [userId].
+     * The display name is the user's full name when available, falling back to
+     * the UUID string so the actor is always identifiable in event history.
+     */
+    private fun resolveActor(userId: UUID): Actor {
+        val user =
+            userService.findById(userId)
+                ?: throw ResourceNotFoundException("User not found: $userId")
+        val displayName =
+            listOfNotNull(user.firstname, user.lastname)
+                .joinToString(" ")
+                .ifBlank { userId.toString() }
+        return Actor(
+            id = userId.toString(),
+            displayName = displayName,
+            role = ActorRole.USER,
+        )
+    }
+
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
         activeRuntimes[caseId]?.requestKill()
@@ -645,25 +667,13 @@ class CaseServiceImpl(
         val subCase =
             findById(subCaseId)
                 ?: throw ResourceNotFoundException("Sub-case not found: $subCaseId")
-        require(subCase.status == io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE) {
+        check(subCase.status == CaseStatus.IDLE) {
             "Sub-case $subCaseId is in status ${subCase.status}, expected IDLE to resume."
         }
-        require(agentName in allowedAgents) {
+        check(agentName in allowedAgents) {
             "Agent '$agentName' is not in the delegation allowlist for sub-case $subCaseId."
         }
-        val user =
-            userService.findById(userId)
-                ?: throw ResourceNotFoundException("User not found: $userId")
-        val displayName =
-            listOfNotNull(user.firstname, user.lastname)
-                .joinToString(" ")
-                .ifBlank { userId.toString() }
-        val actor =
-            Actor(
-                id = userId.toString(),
-                displayName = displayName,
-                role = ActorRole.USER,
-            )
+        val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
         scope.launch { runtime.run() }
@@ -680,26 +690,12 @@ class CaseServiceImpl(
         userId: UUID,
     ): CaseRuntime {
         val ancestorDepth = caseRepository.countAncestorDepth(parentCaseId)
-        if (ancestorDepth >= MAX_DELEGATION_DEPTH) {
-            throw IllegalStateException(
-                "Delegation depth limit ($MAX_DELEGATION_DEPTH) reached for case $parentCaseId. " +
-                    "Cannot create a sub-case at depth ${ancestorDepth + 1}.",
-            )
+        check(ancestorDepth < MAX_DELEGATION_DEPTH) {
+            "Delegation depth limit ($MAX_DELEGATION_DEPTH) reached for case $parentCaseId. " +
+                "Cannot create a sub-case at depth ${ancestorDepth + 1}."
         }
 
-        val user =
-            userService.findById(userId)
-                ?: throw ResourceNotFoundException("User not found: $userId")
-        val displayName =
-            listOfNotNull(user.firstname, user.lastname)
-                .joinToString(" ")
-                .ifBlank { userId.toString() }
-        val actor =
-            Actor(
-                id = userId.toString(),
-                displayName = displayName,
-                role = ActorRole.USER,
-            )
+        val actor = resolveActor(userId)
         // Use @mention syntax so the normal selectAgent resolution picks up the
         // requested agent without any special-casing in the runtime.
         val mentionedTask = "@$agentName $task"
@@ -707,7 +703,7 @@ class CaseServiceImpl(
             create(
                 Case(
                     namespaceId = namespaceId,
-                    title = "Sub-case: $task".take(120),
+                    title = "Sub-case: $task".take(MAX_SUBCASE_TITLE_LENGTH),
                     parentCaseId = parentCaseId,
                 ),
             )
@@ -798,6 +794,9 @@ class CaseServiceImpl(
          * delegation chains without forbidding legitimate multi-level orchestration.
          */
         private const val MAX_DELEGATION_DEPTH = 5
+
+        /** Maximum character length for a sub-case title derived from the task description. */
+        private const val MAX_SUBCASE_TITLE_LENGTH = 50
 
         /**
          * Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`.
