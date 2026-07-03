@@ -30,6 +30,10 @@ import java.util.UUID
  * materialised by [Neo4jPromptRepository.save] via Neo4jChildLinkService.
  * Platform-level prompts (namespaceId == null) have no BELONGS_TO edge.
  *
+ * [fromDomain] accepts both active and removed entities — soft-deleted prompts
+ * can be persisted via [save] to support frontend sync scenarios (e.g. cache
+ * invalidation based on last-modified/removed state).
+ *
  * [namespace] is a nullable var so SDN can call the primary constructor before
  * injecting the @Relationship field via property injection.
  *
@@ -93,10 +97,6 @@ data class PromptNode(
             prompt: Prompt,
             objectMapper: ObjectMapper,
         ): PromptNode {
-            require(!prompt.metadata.removed) {
-                "fromDomain must not be called with a removed entity (id=${prompt.id}). " +
-                    "Use Neo4jPromptRepository.delete / deleteByParent to soft-delete."
-            }
             val idString = prompt.id.toString()
             return PromptNode(
                 id = idString,
