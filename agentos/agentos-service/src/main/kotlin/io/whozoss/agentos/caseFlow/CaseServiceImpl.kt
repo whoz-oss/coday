@@ -29,6 +29,7 @@ import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -191,6 +192,7 @@ class CaseServiceImpl(
      * The coroutine runs for the lifetime of the service scope. It is automatically
      * cancelled when [scope] is cancelled (service shutdown).
      */
+    @OptIn(FlowPreview::class)
     private fun startEvictionWatcher(
         caseId: UUID,
         runtime: CaseRuntime,
@@ -630,13 +632,9 @@ class CaseServiceImpl(
         val user =
             userService.findById(userId)
                 ?: throw ResourceNotFoundException("User not found: $userId")
-        val displayName =
-            listOfNotNull(user.firstname, user.lastname)
-                .joinToString(" ")
-                .ifBlank { userId.toString() }
         return Actor(
             id = userId.toString(),
-            displayName = displayName,
+            displayName = user.displayName(),
             role = ActorRole.USER,
         )
     }
@@ -715,22 +713,24 @@ class CaseServiceImpl(
 
         // Grant the delegating user ADMIN on the sub-case so they can list, open, and
         // stream it — same grant that CaseController.create applies for user-created cases.
-        // This runs outside the Neo4j transaction boundary (permission edges are written
-        // via a separate Cypher MERGE that commits immediately). A failure here does NOT
-        // roll back the sub-case: the case exists and is usable, but the user may need a
-        // manual permission grant from a namespace ADMIN.
-        runCatching {
+        // The permission write runs outside the Neo4j transaction boundary (it is a separate
+        // Cypher MERGE). If it fails we kill the orphaned sub-case (setting it to KILLED status)
+        // and rethrow so the DelegationTool can surface a clear failure message to the LLM
+        // instead of leaving an inaccessible case in PENDING state in the database.
+        try {
             permissionService.grantPermission(
                 userId.toString(),
                 EntityType.CASE,
                 subCase.id.toString(),
                 PermissionRelation.ADMIN,
             )
-        }.onFailure { e ->
-            logger.warn(e) {
-                "Auto-ADMIN grant failed for sub-case ${subCase.id} (user $userId) — sub-case persisted. " +
-                    "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
-            }
+        } catch (e: Exception) {
+            logger.error(e) { "Auto-ADMIN grant failed for sub-case ${subCase.id} (user $userId) — killing sub-case" }
+            runCatching { killCase(subCase.id) }
+                .onFailure { killErr ->
+                    logger.warn(killErr) { "Failed to kill orphaned sub-case ${subCase.id} after permission grant failure" }
+                }
+            throw IllegalStateException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
 
         val runtime = activeRuntimes[subCase.id]!!
