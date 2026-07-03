@@ -38,13 +38,31 @@ interface AiModelService : EntityService<AiModel, UUID> {
     fun findByNamespaceId(namespaceId: UUID): List<AiModel>
 
     /**
+     * Find all non-removed [AiModel] visible for a given namespace in a single query —
+     * namespace-scoped models and platform-level models (namespaceId IS NULL).
+     */
+    fun findAllForNamespace(namespaceId: UUID): List<AiModel>
+
+    /**
+     * Find all platform-level [AiModel] (namespaceId IS NULL AND userId IS NULL).
+     * These belong to platform-level [io.whozoss.agentos.aiProvider.AiProvider] entries.
+     * Readable by any authenticated user; writable only by super-admins.
+     */
+    fun findPlatformLevel(): List<AiModel>
+
+    /**
      * Find the [AiModel] for [name] within the given namespace.
      *
      * Resolution order:
      * 1. Match [AiModel.alias] (case-insensitive). If one or more configs match,
-     *    return the one with the highest [AiModel.priority].
+     *    return the one with the highest scope rank, breaking ties by [AiModel.priority].
      * 2. If no alias matches, fall back to [AiModel.apiModelName] (case-insensitive)
-     *    and again return the highest-priority match.
+     *    and apply the same scope-then-priority ranking.
+     *
+     * **Scope always wins over priority**: a namespace-scoped model (namespaceId != null)
+     * always beats a platform-level model (namespaceId == null), regardless of their
+     * respective priority values. Priority only competes among models at the same scope
+     * level (e.g. two namespace-scoped models from different providers both aliased "default").
      *
      * The default value of [name] is `"default"`, which is the conventional alias
      * for the primary model in a namespace.

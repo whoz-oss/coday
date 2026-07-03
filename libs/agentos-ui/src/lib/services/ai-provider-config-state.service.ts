@@ -154,7 +154,11 @@ export class AiProviderConfigStateService {
     }
 
     if (scope === 'namespace') {
-      if (!namespaceId) throw new Error('Cannot create namespace-scoped provider without a namespaceId')
+      // namespaceId=null is the platform scope (namespaceId IS NULL on the backend).
+      // namespaceId=undefined/'' is a programming error for a namespace-scoped create.
+      if (namespaceId === undefined || namespaceId === '') {
+        throw new Error('Cannot create namespace-scoped provider without a namespaceId')
+      }
       const payload: AiProvider = {
         name: draft.name,
         apiType: draft.apiType,
@@ -162,7 +166,8 @@ export class AiProviderConfigStateService {
         baseUrl: draft.baseUrl as string | undefined,
         apiKey: draft.apiKey as string | undefined,
         headers: draft.headers ?? undefined,
-        namespaceId,
+        // null → platform scope (namespaceId IS NULL); string UUID → namespace scope
+        namespaceId: namespaceId ?? undefined,
       }
       return this.nsController.createAiProvider(payload).pipe(tap(() => this.refresh()))
     }

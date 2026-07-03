@@ -113,12 +113,14 @@ class AiProviderControllerIntegrationSpec : StringSpec() {
         // POST — Decision 15 implicit scope dispatch
         // -------------------------------------------------------------------------
 
-        "POST with neither namespaceId nor userId returns 400 (must provide one or both)" {
+        "POST with neither namespaceId nor userId is platform scope: non-admin gets 403" {
+            // Platform scope (both null) requires super-admin. Alice has isAdmin=false and
+            // permissionService returns false by default → 403.
             mockMvc.perform(
                 post("/api/ai-providers")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "name": "anthropic", "apiType": "Anthropic" }"""),
-            ).andExpect(status().isBadRequest)
+            ).andExpect(status().isForbidden)
         }
 
         "POST NS-shared (namespaceId only) returns 201" {
