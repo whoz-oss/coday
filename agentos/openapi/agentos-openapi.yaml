@@ -2068,6 +2068,11 @@ components:
           - string
           - "null"
           format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
         name:
           type: string
           minLength: 1
