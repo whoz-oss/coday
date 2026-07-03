@@ -73,7 +73,7 @@ class RedirectTool(
             appendLine("Route the current request to another agent.")
             appendLine("Only use this tool if at least one of the available agents below is clearly relevant to the user's request.")
             appendLine("If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.")
-            appendLine("Available agents:")
+            appendLine("Available agents:<AvailableAgents>")
             eligibleAgents.forEach { agent ->
                 val desc = agent.description?.takeIf { it.isNotBlank() }
                 when (desc) {
@@ -90,6 +90,7 @@ class RedirectTool(
                     }
                 }
             }
+            appendLine("</AvailableAgents>")
         }.trimEnd()
     }
 
