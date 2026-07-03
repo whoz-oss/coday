@@ -18,13 +18,11 @@ export class ThreadPostProcessor {
   ) {}
 
   /**
-   * Entry point. Called after ThreadCodayInstance.cleanup().
-   * Returns immediately — processing is async and non-blocking.
+   * Entry point. Called after autoSave completes.
+   * Returns a promise — caller decides whether to await or fire-and-forget.
    */
-  process(thread: AiThread, projectName: string): void {
-    this.run(thread, projectName).catch((err) =>
-      debugLog('POST_PROCESSOR', `Unhandled error for thread ${thread.id}:`, err)
-    )
+  process(thread: AiThread, projectName: string): Promise<void> {
+    return this.run(thread, projectName)
   }
 
   private async run(thread: AiThread, projectName: string): Promise<void> {
