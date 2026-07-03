@@ -222,7 +222,17 @@ class AgentServiceImpl(
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
             )
-        val tools = baseTools + buildDelegationTools(agentConfig, context, subCaseManager)
+        val tools =
+            baseTools +
+                listOfNotNull(
+                    subCaseManager?.let {
+                        buildDelegationTools(
+                            config = agentConfig,
+                            context = context,
+                            subCaseManager = it,
+                        )
+                    },
+                )
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
@@ -506,10 +516,10 @@ class AgentServiceImpl(
     private fun buildDelegationTools(
         config: AgentConfig,
         context: AgentExecutionContext,
-        subCaseManager: SubCaseManager?,
-    ): List<DelegationTool> {
+        subCaseManager: SubCaseManager,
+    ): DelegationTool? {
         val patterns = config.subAgents?.filter { it.isNotBlank() }
-        if (subCaseManager == null || patterns.isNullOrEmpty() || context.caseId == null) return emptyList()
+        if (patterns.isNullOrEmpty() || context.caseId == null) return null
 
         val accessibleNames =
             if (context.userId != null) {
@@ -530,18 +540,16 @@ class AgentServiceImpl(
 
         if (allowedAgents.isEmpty()) {
             logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
-            return emptyList()
+            return null
         }
 
         logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
-        return listOf(
-            DelegationTool(
-                subCaseManager = subCaseManager,
-                parentCaseId = context.caseId,
-                namespaceId = context.namespaceId,
-                allowedAgents = allowedAgents,
-                loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
-            ),
+        return DelegationTool(
+            subCaseManager = subCaseManager,
+            parentCaseId = context.caseId,
+            namespaceId = context.namespaceId,
+            allowedAgents = allowedAgents,
+            loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
         )
     }
 

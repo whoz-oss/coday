@@ -160,7 +160,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * so that [countAncestorDepth] can traverse the chain.
      */
     @Query(
-        $$$"""MATCH (parent:Case {id: $parentCaseId}), (child:Case {id: $childCaseId})
+        $$"""MATCH (parent:Case {id: $parentCaseId}), (child:Case {id: $childCaseId})
             MERGE (parent)-[:PARENT_OF]->(child)
             """,
     )
