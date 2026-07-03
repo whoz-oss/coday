@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.sdk.agent.Agent
 import java.util.UUID
 
@@ -21,11 +22,19 @@ interface AgentService {
      * Find and instantiate an agent by exact or partial name match.
      * The agent is built with [context] so its instructions and tool set
      * are scoped to the given namespace and case.
+     *
+     * When [subCaseManager] is non-null and the resolved [AgentConfig] declares
+     * [io.whozoss.agentos.agentConfig.AgentConfig.subAgents], a
+     * [io.whozoss.agentos.delegation.DelegationTool] is added to the agent's tool set.
+     * The allowed agents list is computed by resolving the subAgents patterns against
+     * the agents actually accessible to the current user in the namespace.
+     *
      * Throws if no model matches [namePart].
      */
     suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
+        subCaseManager: SubCaseManager? = null,
     ): Agent
 
     /**

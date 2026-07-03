@@ -103,6 +103,70 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             found.first().description shouldBe "important"
         }
 
+        "findActiveDescendants returns empty list when case has no children" {
+            val ns = namespaceRepo.save(namespace())
+            val root = repo.save(case(ns.id))
+            repo.findActiveDescendants(root.id).shouldBeEmpty()
+        }
+
+        "findActiveDescendants returns direct children" {
+            val ns = namespaceRepo.save(namespace())
+            val root = repo.save(case(ns.id))
+            val child1 = repo.save(case(ns.id).copy(parentCaseId = root.id))
+            val child2 = repo.save(case(ns.id).copy(parentCaseId = root.id))
+            repo.linkParentToChild(root.id, child1.id)
+            repo.linkParentToChild(root.id, child2.id)
+            val descendants = repo.findActiveDescendants(root.id)
+            descendants shouldHaveSize 2
+            descendants.map { it.id }.toSet() shouldBe setOf(child1.id, child2.id)
+        }
+
+        "findActiveDescendants returns multi-level descendants leaves first" {
+            val ns = namespaceRepo.save(namespace())
+            val root = repo.save(case(ns.id))
+            val child = repo.save(case(ns.id).copy(parentCaseId = root.id))
+            val grandchild = repo.save(case(ns.id).copy(parentCaseId = child.id))
+            repo.linkParentToChild(root.id, child.id)
+            repo.linkParentToChild(child.id, grandchild.id)
+            val descendants = repo.findActiveDescendants(root.id)
+            descendants shouldHaveSize 2
+            // grandchild is at depth 2, child at depth 1 — grandchild must come first
+            descendants.first().id shouldBe grandchild.id
+            descendants.last().id shouldBe child.id
+        }
+
+        "findActiveDescendants excludes terminal-status descendants" {
+            val ns = namespaceRepo.save(namespace())
+            val root = repo.save(case(ns.id))
+            val active = repo.save(case(ns.id).copy(parentCaseId = root.id))
+            val killed = repo.save(case(ns.id, CaseStatus.KILLED).copy(parentCaseId = root.id))
+            val errored = repo.save(case(ns.id, CaseStatus.ERROR).copy(parentCaseId = root.id))
+            repo.linkParentToChild(root.id, active.id)
+            repo.linkParentToChild(root.id, killed.id)
+            repo.linkParentToChild(root.id, errored.id)
+            val descendants = repo.findActiveDescendants(root.id)
+            descendants shouldHaveSize 1
+            descendants.first().id shouldBe active.id
+        }
+
+        "findActiveDescendants excludes soft-deleted descendants" {
+            val ns = namespaceRepo.save(namespace())
+            val root = repo.save(case(ns.id))
+            val child = repo.save(case(ns.id).copy(parentCaseId = root.id))
+            repo.linkParentToChild(root.id, child.id)
+            repo.delete(child.id)
+            repo.findActiveDescendants(root.id).shouldBeEmpty()
+        }
+
+        "findActiveDescendants does not include the root case itself" {
+            val ns = namespaceRepo.save(namespace())
+            val root = repo.save(case(ns.id))
+            val child = repo.save(case(ns.id).copy(parentCaseId = root.id))
+            repo.linkParentToChild(root.id, child.id)
+            val descendants = repo.findActiveDescendants(root.id)
+            descendants.map { it.id } shouldBe listOf(child.id)
+        }
+
         "deleteByParent removes all cases in namespace without touching others" {
             val ns1 = namespaceRepo.save(namespace())
             val ns2 = namespaceRepo.save(namespace())

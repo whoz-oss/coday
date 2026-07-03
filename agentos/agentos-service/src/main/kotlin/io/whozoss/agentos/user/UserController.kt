@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -133,8 +132,7 @@ class UserController(
         @Valid @RequestBody resource: UserResource,
     ): UserResource {
         val existing =
-            userService.findById(id)
-                ?: throw ResourceNotFoundException("Entity not found: $id")
+            userService.getById(id)
         // Self-rule: a user can never change their own isAdmin via the API.
         // Guarantees the DB never reaches 0 super-admins via API (a super-admin
         // needs ANOTHER super-admin to be demoted). auth.name is the User's UUID
