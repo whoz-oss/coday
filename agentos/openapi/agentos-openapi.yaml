@@ -739,19 +739,58 @@ paths:
         "204":
           description: No Content
   /api/prompts:
+    get:
+      tags:
+      - prompt-controller
+      summary: List Prompts by scope
+      description: |-
+        Scope is inferred from the query params:
+
+        | query                            | mode             | required permission                            |
+        |----------------------------------|------------------|------------------------------------------------|
+        | (no params)                      | platform         | authenticated                                  |
+        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me`. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+      operationId: listPrompt
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
     post:
       tags:
       - prompt-controller
       summary: Create a Prompt
       description: |-
-        Scope is inferred from body.namespaceId:
+        Scope is inferred from `(body.namespaceId, body.userId)`:
 
-        | body.namespaceId | scope     | required permission        |
-        |------------------|-----------|----------------------------|
-        | null             | platform  | Super Admin only           |
-        | present          | namespace | WRITE on the namespace     |
+        | body.namespaceId | body.userId      | scope           | required permission        |
+        |------------------|------------------|-----------------|----------------------------|
+        | null             | null             | platform        | Super Admin only           |
+        | present          | null             | namespace       | WRITE on the namespace     |
+        | null             | <currentUser.id> | user-global     | authenticated only         |
+        | present          | <currentUser.id> | user×namespace  | READ on the namespace      |
 
-        A namespaceId that does not exist returns 404.
+        `body.userId` must equal the authenticated user's id when supplied. A `namespaceId` that does not exist returns 404.
       operationId: createPrompt
       requestBody:
         content:
@@ -1515,20 +1554,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-  /api/prompts/platform:
-    get:
-      tags:
-      - prompt-controller
-      operationId: listPlatformPrompts
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
   /api/prompts/by-parentId/{parentId}:
     get:
       tags:

@@ -83,6 +83,7 @@ class PromptControllerSpec : StringSpec({
     fun resource(
         id: UUID? = UUID.randomUUID(),
         nsId: UUID? = namespaceId,
+        userId: UUID? = null,
         name: String = "My Prompt",
         description: String? = null,
         content: List<String> = listOf("Hello {{name}}"),
@@ -90,6 +91,7 @@ class PromptControllerSpec : StringSpec({
     ) = PromptResource(
         id = id,
         namespaceId = nsId,
+        userId = userId,
         name = name,
         description = description,
         content = content,
@@ -217,6 +219,18 @@ class PromptControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // create — mass-assignment guard
+    // -------------------------------------------------------------------------
+
+    "create throws 400 when userId in body does not match authenticated user" {
+        val otherId = UUID.randomUUID()
+        shouldThrow<io.whozoss.agentos.exception.BadRequestException> {
+            controller.create(resource(id = null, nsId = namespaceId, userId = otherId))
+        }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    // -------------------------------------------------------------------------
     // create — namespace scope (namespaceId != null)
     // -------------------------------------------------------------------------
 
@@ -285,6 +299,53 @@ class PromptControllerSpec : StringSpec({
 
         // Controller always generates a new UUID — body id is ignored
         captured.captured.id shouldBe captured.captured.id // exists and is a valid UUID
+    }
+
+    // -------------------------------------------------------------------------
+    // create — user-global scope (namespaceId == null, userId == callerId)
+    // -------------------------------------------------------------------------
+
+    "create user-global prompt succeeds for any authenticated user" {
+        val captured = slot<Prompt>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        controller.create(resource(id = null, nsId = null, userId = callerId))
+
+        captured.captured.namespaceId.shouldBeNull()
+        captured.captured.userId shouldBe callerId
+        // No permission check needed beyond isAuthenticated()
+        verify(exactly = 0) { permissionService.hasPermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { namespaceService.findById(any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // create — user x namespace scope (namespaceId != null, userId == callerId)
+    // -------------------------------------------------------------------------
+
+    "create user x namespace prompt succeeds when caller has READ on namespace" {
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+        } returns true
+        val captured = slot<Prompt>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        controller.create(resource(id = null, nsId = namespaceId, userId = callerId))
+
+        captured.captured.namespaceId shouldBe namespaceId
+        captured.captured.userId shouldBe callerId
+        verify(exactly = 1) { namespaceService.findById(namespaceId) }
+    }
+
+    "create user x namespace prompt throws AccessDeniedException when caller lacks READ" {
+        every {
+            permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+        } returns false
+
+        shouldThrow<AccessDeniedException> {
+            controller.create(resource(id = null, nsId = namespaceId, userId = callerId))
+        }
+        verify(exactly = 0) { service.create(any()) }
+        verify(exactly = 0) { namespaceService.findById(any()) }
     }
 
     // -------------------------------------------------------------------------

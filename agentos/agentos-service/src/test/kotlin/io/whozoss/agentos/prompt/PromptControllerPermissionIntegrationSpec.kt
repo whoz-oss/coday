@@ -310,11 +310,10 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /platform — @PreAuthorize("isAuthenticated()")
+        // GET /api/prompts (no params) — platform scope
         // -------------------------------------------------------------------------
 
-        "GET /platform returns 200 with platform prompts for any authenticated user" {
-            // Create a platform prompt as admin, then verify alice (non-admin) can list it.
+        "GET /api/prompts returns 200 with platform prompts for any authenticated user" {
             every { userService.getCurrentUser() } returns admin
             val name = "Platform-list-${UUID.randomUUID()}"
             promptService.create(
@@ -327,13 +326,13 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             every { userService.getCurrentUser() } returns alice
-            mockMvc.perform(get("/api/prompts/platform"))
+            mockMvc.perform(get("/api/prompts"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
                 .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
         }
 
-        "GET /platform does not include namespace-scoped prompts" {
+        "GET /api/prompts does not include namespace-scoped prompts" {
             every { userService.getCurrentUser() } returns admin
             val nsName = "NS-only-${UUID.randomUUID()}"
             promptService.create(
@@ -346,9 +345,79 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             every { userService.getCurrentUser() } returns alice
-            mockMvc.perform(get("/api/prompts/platform"))
+            mockMvc.perform(get("/api/prompts"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.name == '$nsName')]").doesNotExist())
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/prompts?userId=me — user-scoped listing
+        // -------------------------------------------------------------------------
+
+        "GET /api/prompts?userId=me returns 200 with user-scoped prompts" {
+            // Create a user-global prompt for alice
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = alice.id,
+                    name = "User-global-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(get("/api/prompts").param("userId", "me"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+        }
+
+        "GET /api/prompts?namespaceId=none&userId=me returns only user-global prompts" {
+            val userGlobalName = "UserGlobal-${UUID.randomUUID()}"
+            val userNsName = "UserNs-${UUID.randomUUID()}"
+
+            // user-global prompt (namespaceId = null, userId = alice)
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = alice.id,
+                    name = userGlobalName,
+                    content = listOf("Hello"),
+                ),
+            )
+            // user × namespace prompt (namespaceId != null, userId = alice)
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    userId = alice.id,
+                    name = userNsName,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(get("/api/prompts").param("namespaceId", "none").param("userId", "me"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$userGlobalName')]").exists())
+                .andExpect(jsonPath("$[?(@.name == '$userNsName')]").doesNotExist())
+        }
+
+        "GET /api/prompts?userId=me does not return prompts owned by another user" {
+            // Create a user-global prompt for bob
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = bob.id,
+                    name = "Bob-only-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            // alice requests her own prompts — bob's prompt must not appear
+            mockMvc.perform(get("/api/prompts").param("userId", "me"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name =~ /Bob-only-.*/i)]").doesNotExist())
         }
 
         "GET /by-parentId returns 200 for super-admin without explicit namespace membership" {
@@ -639,6 +708,81 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             every { userService.getCurrentUser() } returns bob
 
             mockMvc.perform(delete("/api/prompts/${prompt.id}"))
+                .andExpect(status().isNotFound)
+        }
+
+        // -------------------------------------------------------------------------
+        // Ownership branch — user-scoped prompts (userId = alice)
+        // -------------------------------------------------------------------------
+
+        "PUT returns 200 for the prompt owner (userId == caller)" {
+            val userPrompt = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = alice.id,
+                    name = "Owner-write-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(
+                put("/api/prompts/${userPrompt.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "${userPrompt.name}", "content": ["Updated by owner"] }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$.content[0]").value("Updated by owner"))
+        }
+
+        "DELETE returns 204 for the prompt owner (userId == caller)" {
+            val userPrompt = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = alice.id,
+                    name = "Owner-delete-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(delete("/api/prompts/${userPrompt.id}"))
+                .andExpect(status().isNoContent)
+        }
+
+        "PUT returns 404 for a non-owner on a user-scoped prompt" {
+            val userPrompt = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = alice.id,
+                    name = "Non-owner-write-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            every { userService.getCurrentUser() } returns bob
+
+            mockMvc.perform(
+                put("/api/prompts/${userPrompt.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "${userPrompt.name}", "content": ["Bob tries"] }"""),
+            ).andExpect(status().isNotFound)
+        }
+
+        "DELETE returns 404 for a non-owner on a user-scoped prompt" {
+            val userPrompt = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = alice.id,
+                    name = "Non-owner-delete-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            every { userService.getCurrentUser() } returns bob
+
+            mockMvc.perform(delete("/api/prompts/${userPrompt.id}"))
                 .andExpect(status().isNotFound)
         }
 

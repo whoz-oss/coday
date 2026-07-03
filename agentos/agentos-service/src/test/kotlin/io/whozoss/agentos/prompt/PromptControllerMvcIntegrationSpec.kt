@@ -195,6 +195,15 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("\$.namespaceId").value(namespaceId.toString()))
         }
 
+        "POST with userId not matching authenticated user returns 400" {
+            val otherId = UUID.randomUUID()
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "userId": "$otherId", "name": "Bad-${UUID.randomUUID()}", "content": ["Hello"] }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
         // -------------------------------------------------------------------------
         // PUT — Bean Validation
         // -------------------------------------------------------------------------

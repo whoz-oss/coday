@@ -3,8 +3,10 @@ package io.whozoss.agentos.prompt
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.entity.GetByIdsRequest
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -30,17 +33,17 @@ import java.util.UUID
 /**
  * REST API for [Prompt] entities at /api/prompts.
  *
- * Listing uses the standard `by-parentId` pattern with namespace READ permission.
+ * **Scope dispatch on POST** — inferred from `(body.namespaceId, body.userId)`:
+ * - `(null, null)`   → platform (Super Admin only)
+ * - `(ns, null)`     → namespace-scoped (WRITE on namespace)
+ * - `(null, user)`   → user-global (authenticated only)
+ * - `(ns, user)`     → user × namespace (READ on namespace)
  *
- * Scope dispatch on POST is inferred from body.namespaceId:
- * - null     -> platform scope (Super Admin only)
- * - non-null -> namespace-scoped (WRITE permission on namespace required)
+ * `body.userId` must equal the authenticated user's id when supplied (mass-assignment guard).
  *
  * Authorization on PUT / DELETE is fully handled by @PreAuthorize("hasPermission(#id, 'Prompt', ACTION)").
- * PermissionServiceImpl enforces that platform-level entities (namespaceId == null) require Super Admin
- * for WRITE/DELETE — no additional check is needed in the controller body.
  *
- * Mass-assignment guard on PUT: [namespaceId] is immutable post-create.
+ * Mass-assignment guard on PUT: [namespaceId] and [userId] are immutable post-create.
  * Mutable fields: name, description, content, parameters.
  */
 @RestController
@@ -140,18 +143,44 @@ class PromptController(
         @PathVariable parentId: UUID,
     ): List<PromptResource> = promptService.findByParent(parentId).map { toResource(it) }
 
-    /**
-     * GET /api/prompts/platform
-     *
-     * Lists all non-removed platform-level prompts (namespaceId = null).
-     *
-     * Readable by any authenticated user — consistent with `GET /{id}` which grants READ
-     * to every authenticated caller for platform-scoped prompts via [isPlatformScoped]
-     * in [Neo4jPermissionRepository].
-     */
-    @GetMapping("/platform")
+    @Operation(
+        summary = "List Prompts by scope",
+        description = "Scope is inferred from the query params:\n\n" +
+            "| query                            | mode             | required permission                            |\n" +
+            "|----------------------------------|------------------|------------------------------------------------|\n" +
+            "| (no params)                      | platform         | authenticated                                  |\n" +
+            "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
+            "| `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |\n" +
+            "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
+            "| `?userId=me` (no namespace)      | all caller's     | authenticated                                  |\n\n" +
+            "`userId` accepts ONLY the literal sentinel `me`. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.",
+    )
+    @GetMapping
     @PreAuthorize("isAuthenticated()")
-    fun listPlatformPrompts(): List<PromptResource> = promptService.findPlatform().map { toResource(it) }
+    fun list(
+        @RequestParam(required = false) namespaceId: String?,
+        @RequestParam(required = false) userId: String?,
+    ): List<PromptResource> {
+        val currentUser = userService.getCurrentUser()
+        validateUserParam(userId)
+
+        val resolvedNs = parseNamespaceParam(namespaceId)
+        val all = promptService.findFiltered(
+            namespaceId = resolvedNs,
+            namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
+            callerId = currentUser.id,
+            userRequested = userId != null,
+            canReadNamespace = { nsId ->
+                permissionService.hasPermission(
+                    userId = currentUser.id.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = nsId.toString(),
+                    action = Action.READ,
+                )
+            },
+        )
+        return all.map { toResource(it) }
+    }
 
     // -------------------------------------------------------------------------
     // Write endpoints
@@ -160,12 +189,15 @@ class PromptController(
     @Operation(
         summary = "Create a Prompt",
         description =
-            "Scope is inferred from body.namespaceId:\n\n" +
-                "| body.namespaceId | scope     | required permission        |\n" +
-                "|------------------|-----------|----------------------------|\n" +
-                "| null             | platform  | Super Admin only           |\n" +
-                "| present          | namespace | WRITE on the namespace     |\n\n" +
-                "A namespaceId that does not exist returns 404.",
+            "Scope is inferred from `(body.namespaceId, body.userId)`:\n\n" +
+                "| body.namespaceId | body.userId      | scope           | required permission        |\n" +
+                "|------------------|------------------|-----------------|----------------------------|\n" +
+                "| null             | null             | platform        | Super Admin only           |\n" +
+                "| present          | null             | namespace       | WRITE on the namespace     |\n" +
+                "| null             | <currentUser.id> | user-global     | authenticated only         |\n" +
+                "| present          | <currentUser.id> | user×namespace  | READ on the namespace      |\n\n" +
+                "`body.userId` must equal the authenticated user's id when supplied. " +
+                "A `namespaceId` that does not exist returns 404.",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
@@ -173,29 +205,44 @@ class PromptController(
     override fun create(
         @Valid @RequestBody resource: PromptResource,
     ): PromptResource {
-        val resolvedNs: UUID? = resource.namespaceId
-        val isPlatform = resolvedNs == null
         val currentUser = userService.getCurrentUser()
+        val me = currentUser.id
 
-        // Authorization - run BEFORE existence check to avoid leaking namespace existence.
-        if (isPlatform) {
-            if (!currentUser.isAdmin) {
-                throw AccessDeniedException("Platform-level Prompt requires Super Admin")
-            }
-        } else {
-            val granted =
-                permissionService.hasPermission(
-                    userId = currentUser.id.toString(),
-                    entityType = EntityType.NAMESPACE,
-                    entityId = resolvedNs.toString(),
-                    action = io.whozoss.agentos.permissions.Action.WRITE,
-                )
-            if (!granted) {
-                throw AccessDeniedException("Cannot create Prompt in namespace $resolvedNs (WRITE required)")
-            }
+        // Phase 1 — mass-assignment guard
+        if (resource.userId != null && resource.userId != me) {
+            throw BadRequestException("userId in body must match authenticated user or be omitted")
         }
 
-        // Namespace existence check (deferred after authz to avoid 404 existence oracle).
+        // Phase 2 — scope determination
+        val resolvedNs: UUID? = resource.namespaceId
+        val resolvedUser: UUID? = if (resource.userId != null) me else null
+        val isPlatform = resolvedNs == null && resolvedUser == null
+
+        // Phase 3 — per-scope authorization, run BEFORE existence check
+        when {
+            isPlatform -> {
+                if (!currentUser.isAdmin) {
+                    throw AccessDeniedException("Platform-level Prompt requires Super Admin")
+                }
+            }
+            resolvedNs != null -> {
+                val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
+                val granted = permissionService.hasPermission(
+                    userId = me.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = resolvedNs.toString(),
+                    action = authzAction,
+                )
+                if (!granted) {
+                    throw AccessDeniedException(
+                        "Cannot create Prompt in namespace $resolvedNs (${authzAction.name} required)",
+                    )
+                }
+            }
+            // user-global: isAuthenticated() from class-level @PreAuthorize is sufficient
+        }
+
+        // Phase 4 — namespace existence check (deferred after authz)
         if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
             throw ResourceNotFoundException("Namespace not found: $resolvedNs")
         }
@@ -204,7 +251,7 @@ class PromptController(
             Prompt(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
                 namespaceId = resolvedNs,
-                userId = null, // user-scoped prompt support to be added in a follow-up
+                userId = resolvedUser,
                 name = resource.name,
                 description = resource.description,
                 content = resource.content,
@@ -238,5 +285,23 @@ class PromptController(
         super.delete(id)
     }
 
-    companion object : KLogging()
+    private fun parseNamespaceParam(raw: String?): UUID? = when {
+        raw == null -> null
+        raw.equals(NONE_SENTINEL, ignoreCase = true) -> null
+        else -> runCatching { UUID.fromString(raw) }
+            .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
+    }
+
+    private fun validateUserParam(raw: String?) {
+        if (raw != null && !raw.equals(ME_SENTINEL, ignoreCase = true)) {
+            throw BadRequestException(
+                "Invalid userId filter: '$raw' — only 'me' is supported",
+            )
+        }
+    }
+
+    companion object : KLogging() {
+        const val NONE_SENTINEL = "none"
+        const val ME_SENTINEL = "me"
+    }
 }

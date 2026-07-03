@@ -55,6 +55,31 @@ class PromptServiceImpl(
 
     override fun findByUserId(userId: UUID): List<Prompt> = repository.findByUserId(userId)
 
+    override fun findFiltered(
+        namespaceId: UUID?,
+        namespaceIsNone: Boolean,
+        callerId: UUID,
+        userRequested: Boolean,
+        canReadNamespace: (UUID) -> Boolean,
+    ): List<Prompt> = when {
+        // Specific namespace, no user filter -> namespace-shared layer
+        namespaceId != null && !userRequested -> {
+            if (!canReadNamespace(namespaceId)) emptyList()
+            else repository.findByParent(namespaceId)
+        }
+        // User requested -> user-scoped rows, optionally filtered by namespace
+        userRequested -> {
+            val nsFilter: (UUID?) -> Boolean = when {
+                namespaceIsNone -> { nsId -> nsId == null }
+                namespaceId != null -> { nsId -> nsId == namespaceId }
+                else -> { _ -> true }
+            }
+            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+        }
+        // No filters -> platform prompts
+        else -> findPlatform()
+    }
+
     override fun delete(id: UUID): Boolean = repository.delete(id)
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
