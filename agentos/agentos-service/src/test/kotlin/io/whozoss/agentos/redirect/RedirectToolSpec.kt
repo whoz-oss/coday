@@ -34,8 +34,9 @@ class RedirectToolSpec : StringSpec({
             Route the current request to another agent.
             Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
             If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
-            Available agents:
+            Available agents:<AvailableAgents>
               - AgentA: Does A
+            </AvailableAgents>
         """.trimIndent()
     }
 
@@ -57,11 +58,12 @@ class RedirectToolSpec : StringSpec({
             Route the current request to another agent.
             Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
             If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
-            Available agents:
+            Available agents:<AvailableAgents>
               - AgentA: Does A
                 Integrations:
                   - JIRA
                   - FILES
+            </AvailableAgents>
         """.trimIndent()
     }
 
@@ -82,10 +84,11 @@ class RedirectToolSpec : StringSpec({
             Route the current request to another agent.
             Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
             If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
-            Available agents:
+            Available agents:<AvailableAgents>
               - AgentA: Does A
                 Integrations:
                   - JIRA: GetIssue, PostComment
+            </AvailableAgents>
         """.trimIndent()
     }
 
@@ -100,8 +103,9 @@ class RedirectToolSpec : StringSpec({
             Route the current request to another agent.
             Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
             If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
-            Available agents:
+            Available agents:<AvailableAgents>
               - AgentA: Does A
+            </AvailableAgents>
         """.trimIndent()
     }
 
@@ -123,11 +127,12 @@ class RedirectToolSpec : StringSpec({
             Route the current request to another agent.
             Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
             If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
-            Available agents:
+            Available agents:<AvailableAgents>
               - AgentA: Does A
                 Integrations:
                   - JIRA: GetIssue
               - AgentB: Does B
+            </AvailableAgents>
         """.trimIndent()
     }
 

@@ -1,10 +1,12 @@
 package io.whozoss.agentos.aiModel
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -78,10 +80,12 @@ class AiModelGuardSpec : StringSpec({
         guard.canCreate(resource(providerId = null)) shouldBe false
     }
 
-    "canCreate returns false when the provider does not exist" {
+    "canCreate throws ResourceNotFoundException when the provider does not exist" {
         every { aiProviderService.findById(aiProviderId) } returns null
 
-        guard.canCreate(resource()) shouldBe false
+        shouldThrow<ResourceNotFoundException> {
+            guard.canCreate(resource())
+        }
     }
 
     "canCreate returns false when the provider is user-scoped (namespaceId null)" {
@@ -110,10 +114,12 @@ class AiModelGuardSpec : StringSpec({
         guard.canListByProvider(aiProviderId) shouldBe false
     }
 
-    "canListByProvider returns false when the provider does not exist (fail-closed)" {
+    "canListByProvider throws ResourceNotFoundException when the provider does not exist" {
         every { aiProviderService.findById(aiProviderId) } returns null
 
-        guard.canListByProvider(aiProviderId) shouldBe false
+        shouldThrow<ResourceNotFoundException> {
+            guard.canListByProvider(aiProviderId)
+        }
     }
 
     "canListByProvider returns false when the provider is user-scoped (closes legacy listing leak)" {

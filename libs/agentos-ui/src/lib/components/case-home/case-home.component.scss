@@ -33,7 +33,7 @@
     backdrop-filter: var(--glass-backdrop-blur, blur(20px));
     -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
     border-radius: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
+    box-shadow: 0 4px 24px var(--color-shadow, rgba(0, 0, 0, 0.07));
     overflow: hidden;
     transition:
       box-shadow 0.2s ease,

@@ -126,6 +126,15 @@ class AiModelController(
         @PathVariable namespaceId: UUID,
     ): List<AiModelDto> = aiModelService.findByNamespaceId(namespaceId).map(::toDto)
 
+    /**
+     * GET /platform — list all platform-level model configs (namespaceId IS NULL).
+     * Readable by any authenticated user; the models are owned by platform-level AiProviders.
+     */
+    @GetMapping("/platform")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("isAuthenticated()")
+    fun listPlatformLevel(): List<AiModelResource> = aiModelService.findPlatformLevel().map { toResource(it) }
+
     companion object : KLogging()
 }
 

@@ -10,7 +10,7 @@
 
 export interface AgentConfig {
   id?: string
-  namespaceId: string
+  namespaceId?: string
   name: string
   description?: string
   instructions?: string
@@ -23,4 +23,8 @@ export interface AgentConfig {
   updatedBy?: string
   updatedOn: string
   enabled?: boolean
+  /**
+   * Glob patterns controlling which agents this agent may delegate to. When null or empty, no delegation capability is provided. \'*\' matches any sequence of characters (anchored, case-insensitive). Examples: [\'*\'] allows all agents, [\'*Fixer\'] matches BugFixer/StoryFixer, [\'Fixer*\'] matches FixerHelper/FixerV2.
+   */
+  subAgents?: Array<string>
 }

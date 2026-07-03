@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
 import java.time.Instant
 import java.util.UUID
 
@@ -29,8 +28,11 @@ import java.util.UUID
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class AgentConfigDto(
     val id: UUID? = null,
-    @field:NotNull(message = "namespaceId must not be null")
-    val namespaceId: UUID,
+    /**
+     * The namespace this agent belongs to. Null for platform-level agents.
+     * Platform agents are visible across all namespaces and require super-admin to manage.
+     */
+    val namespaceId: UUID? = null,
     @field:NotBlank(message = "name must not be blank")
     val name: String,
     val description: String? = null,
@@ -44,4 +46,12 @@ data class AgentConfigDto(
     val updatedBy: String? = null,
     val updatedOn: Instant? = null,
     val enabled: Boolean? = null,
+    @field:Schema(
+        description = "Glob patterns controlling which agents this agent may delegate to. " +
+            "When null or empty, no delegation capability is provided. " +
+            "'*' matches any sequence of characters (anchored, case-insensitive). " +
+            "Examples: ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, " +
+            "['Fixer*'] matches FixerHelper/FixerV2.",
+    )
+    val subAgents: List<String>? = null,
 )

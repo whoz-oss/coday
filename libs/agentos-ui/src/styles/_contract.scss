@@ -15,12 +15,18 @@
  *   --color-text              Main text color
  *   --color-text-secondary    Muted / secondary text
  *   --color-text-inverse      Text on colored backgrounds (e.g. badges)
+ *   --color-text-tertiary     Subtle / tertiary text (labels, counts)
  *
  * ── Backgrounds ────────────────────────────────────────────────────────────
  *   --color-bg                Page background (can be a gradient)
  *   --color-bg-solid          Solid fallback for page background
  *   --color-bg-secondary      Card / panel background
  *   --color-bg-hover          Hover state background
+ *
+ * ── Surfaces ───────────────────────────────────────────────────────────────
+ *   --color-surface-hover     Hover surface tint (lists, rows, buttons)
+ *   --color-surface-secondary Subtle secondary surface
+ *   --color-surface-muted     Muted surface tint
  *
  * ── Interactive ────────────────────────────────────────────────────────────
  *   --color-primary           Primary brand / action color
@@ -34,6 +40,7 @@
  *
  * ── Status ─────────────────────────────────────────────────────────────────
  *   --color-success
+ *   --color-success-bg        Success badge / panel background
  *   --color-error
  *   --color-warning
  *   --color-info

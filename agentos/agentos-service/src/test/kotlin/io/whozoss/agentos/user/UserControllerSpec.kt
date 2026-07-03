@@ -209,7 +209,7 @@ class UserControllerSpec : StringSpec({
         val auth = mockk<Authentication> { every { name } returns u.id.toString() }
         every { userService.getCurrentUser() } returns u
         every { userService.findByIds(listOf(u.id)) } returns listOf(u)
-        every { userService.findById(u.id) } returns u
+        every { userService.getById(u.id) } returns u
         every { userService.update(capture(captured)) } answers { firstArg() }
 
         val result = withAuthContext(auth) { controller.update(u.id, updatedResource) }
@@ -227,7 +227,7 @@ class UserControllerSpec : StringSpec({
         val auth = mockk<Authentication> { every { name } returns id.toString() }
         every { userService.getCurrentUser() } returns currentUser
         every { userService.findByIds(listOf(id)) } returns emptyList()
-        every { userService.findById(id) } returns null
+        every { userService.getById(id) } throws ResourceNotFoundException("Entity $id not found")
 
         val ex = runCatching { withAuthContext(auth) { controller.update(id, r) } }.exceptionOrNull()
 
@@ -274,7 +274,7 @@ class UserControllerSpec : StringSpec({
         val r = resource(id = targetId, email = target.email, isAdmin = true)
         val auth = mockk<Authentication> { every { name } returns adminId.toString() }
         val captured = slot<User>()
-        every { userService.findById(targetId) } returns target
+        every { userService.getById(targetId) } returns target
         every { userService.update(capture(captured)) } answers { firstArg() }
 
         val result = withAuthContext(auth) { controller.update(targetId, r) }
@@ -290,7 +290,7 @@ class UserControllerSpec : StringSpec({
         val r = resource(id = targetId, email = target.email, isAdmin = false)
         val auth = mockk<Authentication> { every { name } returns adminId.toString() }
         val captured = slot<User>()
-        every { userService.findById(targetId) } returns target
+        every { userService.getById(targetId) } returns target
         every { userService.update(capture(captured)) } answers { firstArg() }
 
         withAuthContext(auth) { controller.update(targetId, r) }
@@ -304,7 +304,7 @@ class UserControllerSpec : StringSpec({
         val r = resource(id = selfId, email = self.email, isAdmin = false)  // attempt self-demote
         val auth = mockk<Authentication> { every { name } returns selfId.toString() }
         val captured = slot<User>()
-        every { userService.findById(selfId) } returns self
+        every { userService.getById(selfId) } returns self
         every { userService.update(capture(captured)) } answers { firstArg() }
 
         val result = withAuthContext(auth) { controller.update(selfId, r) }
@@ -319,7 +319,7 @@ class UserControllerSpec : StringSpec({
         val r = resource(id = selfId, email = self.email, isAdmin = true)  // attempt self-promote
         val auth = mockk<Authentication> { every { name } returns selfId.toString() }
         val captured = slot<User>()
-        every { userService.findById(selfId) } returns self
+        every { userService.getById(selfId) } returns self
         every { userService.update(capture(captured)) } answers { firstArg() }
 
         val result = withAuthContext(auth) { controller.update(selfId, r) }

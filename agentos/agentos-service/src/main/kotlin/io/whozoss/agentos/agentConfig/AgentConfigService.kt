@@ -6,15 +6,18 @@ import java.util.UUID
 /**
  * Service for managing [AgentConfig] entities.
  *
- * Agent configs are scoped under a namespace — [parentId] is the namespace UUID.
+ * Agent configs may be scoped under a namespace ([parentId] = namespace UUID) or
+ * exist at the platform level ([parentId] = null).
  */
-interface AgentConfigService : EntityService<AgentConfig, UUID> {
+interface AgentConfigService : EntityService<AgentConfig, UUID?> {
     /**
      * Find the first [AgentConfig] in [namespaceId] whose [AgentConfig.name] matches
      * [name] (case-insensitive). Returns null if none is found.
+     *
+     * When [namespaceId] is null, searches only among platform-level agents.
      */
     fun findByName(
-        namespaceId: UUID,
+        namespaceId: UUID?,
         name: String,
     ): AgentConfig?
 
@@ -24,24 +27,36 @@ interface AgentConfigService : EntityService<AgentConfig, UUID> {
      *
      * See [AgentConfigRepository.findAvailableByUserExternalId] for the full semantics.
      */
-    fun findAvailableByUserExternalId(namespaceId: UUID, userExternalId: String): List<AgentConfig>
+    fun findAvailableByUserExternalId(
+        namespaceId: UUID,
+        userExternalId: String,
+    ): List<AgentConfig>
 
     /**
      * Returns [AgentConfig]s accessible to [userId] in [namespaceId].
-     * When [agentName] is non-null, further filters to configs whose name matches
-     * [agentName] case-insensitively. The comparison is pushed to Neo4j via
-     * `toLower()` — no Kotlin-side filtering needed.
+     * When [agentName] is non-null, further filters to configs whose name starts with
+     * [agentName] (case-insensitive prefix match). The comparison is pushed to Neo4j via
+     * `toLower()` / `STARTS WITH` — no Kotlin-side filtering needed.
      */
-    fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String? = null): List<AgentConfig>
+    fun findDeployedByNamespaceIdAndUserIdAndName(
+        namespaceId: UUID?,
+        userId: UUID?,
+        agentName: String? = null,
+    ): List<AgentConfig>
 
     /**
      * Returns all agent configs in [namespaceId], optionally filtered to published
      * (enabled) agents only.
      *
-     * @param namespaceId The namespace to list agents for
+     * When [namespaceId] is null, returns platform-level agents.
+     *
+     * @param namespaceId The namespace to list agents for, or null for platform-level agents
      * @param withDisabled When `true` (the default), all configs are returned; when `false`, only published agents are returned
      */
-    fun findByNamespace(namespaceId: UUID, withDisabled: Boolean = true): List<AgentConfig>
+    fun findByNamespace(
+        namespaceId: UUID?,
+        withDisabled: Boolean = true,
+    ): List<AgentConfig>
 
     /**
      * Enables an agent config, making it active.

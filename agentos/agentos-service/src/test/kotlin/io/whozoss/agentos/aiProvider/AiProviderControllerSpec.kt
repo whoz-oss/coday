@@ -20,13 +20,11 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
-import io.whozoss.agentos.sdk.api.aiProvider.AiProviderDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -39,10 +37,11 @@ import java.util.UUID
  * `UserAiProviderControllerSpec.kt` per the test-migration-checklist
  * (`_bmad-output/implementation-artifacts/test-migration-checklist.md`).
  *
- * `auth.principal` enters the controller through `SecurityContextHolder` for both
- * `create()` and `list()` via `userService.getCurrentUser()`. The helper [withAuth]
- * sets and clears the context per test so the runtime mirrors what Spring Security
- * would inject in production.
+ * `auth.principal` enters the controller through `SecurityContextHolder` for
+ * `create()` (the override signature is fixed by [io.whozoss.agentos.entity.EntityController]),
+ * and through the explicit `auth: Authentication` parameter for `list()`. The helper
+ * [withAuth] sets and clears the context per test so the runtime mirrors what
+ * Spring Security would inject in production.
  *
  * MVC-layer wiring (Bean Validation, the @HideOnAccessDenied → 404 translation,
  * routing) is verified in [AiProviderControllerIntegrationSpec] and
@@ -66,7 +65,7 @@ class AiProviderControllerSpec : StringSpec({
         email = "alice@example.com",
     )
 
-    fun authFor(userId: UUID): Authentication =
+    fun authFor(userId: UUID) =
         UsernamePasswordAuthenticationToken(userId.toString(), "n/a", emptyList())
 
     fun <T> withAuth(userId: UUID, block: () -> T): T {
@@ -102,7 +101,7 @@ class AiProviderControllerSpec : StringSpec({
         name: String = "anthropic",
         apiType: AiApiType? = AiApiType.Anthropic,
         apiKey: String? = null,
-    ) = AiProviderDto(
+    ) = AiProviderResource(
         id = id,
         namespaceId = nsId,
         userId = uId,
@@ -124,38 +123,37 @@ class AiProviderControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // toDto (file-level function)
+    // toResource — mapping
     // -------------------------------------------------------------------------
 
-    "toDto masks a long apiKey" {
-        maskApiKey("sk-ant-api03-abcdefghijklmnop") shouldBe "sk-a****mnop"
+    "toResource masks a long apiKey" {
+        controller.toResource(config(apiKey = "sk-ant-api03-abcdefghijklmnop")).apiKey shouldBe "sk-a****mnop"
     }
 
-    "toDto returns null apiKey when no key is set" {
-        maskApiKey(null).shouldBeNull()
+    "toResource returns null apiKey when no key is set" {
+        controller.toResource(config(apiKey = null)).apiKey.shouldBeNull()
     }
 
-    "toDto maps namespaceId and userId" {
+    "toResource maps namespaceId and userId" {
         val uid = UUID.randomUUID()
-        val p = config(nsId = namespaceId, uId = uid)
-        val dto = AiProviderDto(
-            id = p.metadata.id, namespaceId = p.namespaceId, userId = p.userId,
-            name = p.name, apiType = p.apiType,
-            apiKey = maskApiKey(p.apiKey),
-        )
-        dto.namespaceId shouldBe namespaceId
-        dto.userId shouldBe uid
+        val r = controller.toResource(config(nsId = namespaceId, uId = uid))
+        r.namespaceId shouldBe namespaceId
+        r.userId shouldBe uid
     }
 
-    "toDto masks apiKey and maps all fields" {
+    "toResource maps all fields and masks apiKey" {
         val p = config(name = "MY_OPENAI", apiType = AiApiType.OpenAI, apiKey = "sk-openai-123456789012")
-        val masked = maskApiKey(p.apiKey)
-        masked shouldBe maskApiKey("sk-openai-123456789012")
-        masked shouldNotBe "sk-openai-123456789012"
+        val r = controller.toResource(p)
+
+        r.id shouldBe p.metadata.id
+        r.name shouldBe "MY_OPENAI"
+        r.apiType shouldBe AiApiType.OpenAI
+        r.apiKey shouldBe maskApiKey("sk-openai-123456789012")
+        r.apiKey shouldNotBe "sk-openai-123456789012"
     }
 
-    "toDto with null apiKey returns null apiKey" {
-        maskApiKey(null) shouldBe null
+    "toResource with null apiKey returns null apiKey" {
+        controller.toResource(config(apiKey = null)).apiKey shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -173,12 +171,34 @@ class AiProviderControllerSpec : StringSpec({
         verify(exactly = 0) { service.create(any()) }
     }
 
-    "create rejects payload with neither namespaceId nor userId with 400" {
+    "create with neither namespaceId nor userId is platform scope: non-admin gets AccessDeniedException" {
+        // Platform scope (both null) → hasPermission(NAMESPACE, entityId=null, WRITE) → false for non-admin.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, null, Action.WRITE)
+        } returns false
+
         withAuth(aliceId) {
-            shouldThrow<BadRequestException> {
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
                 controller.create(resource(id = null, nsId = null, uId = null))
             }
         }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create with neither namespaceId nor userId is platform scope: super-admin succeeds" {
+        // Platform scope (both null) → hasPermission(NAMESPACE, entityId=null, WRITE) → true for super-admin.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, null, Action.WRITE)
+        } returns true
+        val captured = slot<AiProvider>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        withAuth(aliceId) {
+            controller.create(resource(id = null, nsId = null, uId = null, name = "platform-provider"))
+        }
+
+        captured.captured.namespaceId shouldBe null
+        captured.captured.userId shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -403,9 +423,9 @@ class AiProviderControllerSpec : StringSpec({
             config(nsId = null, uId = aliceId, name = "GLOBAL", apiKey = "sk-ant-secret123456789"),
             config(nsId = namespaceId, uId = aliceId, name = "NS", apiKey = "sk-ant-secret987654321"),
         )
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
+        every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
-        val resp = withAuth(aliceId) { controller.list(namespaceId = null, userId = null) }
+        val resp = controller.list(namespaceId = null, userId = null)
 
         resp.size shouldBe 2
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL", "NS")
@@ -419,20 +439,25 @@ class AiProviderControllerSpec : StringSpec({
         val globalRows = listOf(
             config(nsId = null, uId = aliceId, name = "GLOBAL"),
         )
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns globalRows
+        every { service.findFiltered(any(), any(), any(), any()) } returns globalRows
 
-        val respLower = withAuth(aliceId) { controller.list(namespaceId = "none", userId = "me") }
+        val respLower = controller.list(namespaceId = "none", userId = "me")
         respLower.map { it.name } shouldBe listOf("GLOBAL")
 
-        val respUpper = withAuth(aliceId) { controller.list(namespaceId = "NONE", userId = "me") }
+        val respUpper = controller.list(namespaceId = "NONE", userId = "me")
         respUpper.map { it.name } shouldBe listOf("GLOBAL")
     }
 
     "list with specific namespaceId and userId=me returns only that namespace's user rows" {
-        val rows = listOf(config(nsId = namespaceId, uId = aliceId, name = "NS"))
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
+        val rows = listOf(
+            config(nsId = namespaceId, uId = aliceId, name = "NS"),
+        )
+        every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
-        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = "me") }
+        val resp = controller.list(
+            namespaceId = namespaceId.toString(),
+            userId = "me",
+        )
 
         resp.map { it.name } shouldBe listOf("NS")
     }
@@ -442,24 +467,33 @@ class AiProviderControllerSpec : StringSpec({
             config(nsId = namespaceId, uId = null, name = "NS-A"),
             config(nsId = namespaceId, uId = null, name = "NS-B"),
         )
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
+        every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
-        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = null) }
+        val resp = controller.list(
+            namespaceId = namespaceId.toString(),
+            userId = null,
+        )
 
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
+        every { service.findFiltered(any(), any(), any(), any()) } returns emptyList()
 
-        val resp = withAuth(aliceId) { controller.list(namespaceId = namespaceId.toString(), userId = null) }
+        val resp = controller.list(
+            namespaceId = namespaceId.toString(),
+            userId = null,
+        )
 
         resp shouldBe emptyList()
     }
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
+        // Replaces the legacy test "list always queries by auth.name regardless of any
+        // attempted userId param" : post-fusion the unified controller does not silently
+        // override, it explicitly rejects cross-user listing attempts.
         shouldThrow<BadRequestException> {
-            withAuth(aliceId) { controller.list(namespaceId = null, userId = bobId.toString()) }
+            controller.list(namespaceId = null, userId = bobId.toString())
         }
     }
 })

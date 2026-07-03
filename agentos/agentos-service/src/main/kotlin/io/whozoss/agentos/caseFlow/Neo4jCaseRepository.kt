@@ -68,6 +68,24 @@ open class Neo4jCaseRepository(
                 true
             } ?: false
 
+    override fun findActiveByParentCaseId(parentCaseId: UUID): List<Case> =
+        caseNodeNeo4jRepository
+            .findActiveByParentCaseId(parentCaseId.toString())
+            .map { it.toDomain() }
+
+    override fun findActiveDescendants(caseId: UUID): List<Case> =
+        caseNodeNeo4jRepository
+            .findActiveDescendants(caseId.toString())
+            .map { it.toDomain() }
+
+    override fun countAncestorDepth(caseId: UUID): Int =
+        caseNodeNeo4jRepository.countAncestorDepth(caseId.toString())
+
+    override fun linkParentToChild(
+        parentCaseId: UUID,
+        childCaseId: UUID,
+    ) = caseNodeNeo4jRepository.linkParentToChild(parentCaseId.toString(), childCaseId.toString())
+
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = caseNodeNeo4jRepository.findActiveByNamespaceId(parentId.toString())
