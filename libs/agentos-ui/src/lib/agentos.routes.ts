@@ -99,6 +99,27 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformIntegrationConfigsComponent
               ),
           },
+          // --- Admin: Platform Prompts ---
+          {
+            path: 'admin/prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: 'admin/prompts/:promptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: 'admin/prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-prompts/platform-prompts.component').then(
+                (m) => m.PlatformPromptsComponent
+              ),
+          },
           // --- Admin: Platform Agent Configs ---
           {
             path: 'admin/agent-configs/new',

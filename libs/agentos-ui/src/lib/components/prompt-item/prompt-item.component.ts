@@ -22,7 +22,9 @@ export class PromptItemComponent {
   private readonly router = inject(Router)
 
   @Input({ required: true }) prompt!: Prompt
-  @Input({ required: true }) namespaceId!: string
+  @Input() namespaceId?: string
+  /** When true, edit navigates to the admin platform route instead of the namespace route. */
+  @Input() platformMode = false
 
   @Output() deleteRequested = new EventEmitter<Prompt>()
 
@@ -36,7 +38,11 @@ export class PromptItemComponent {
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.router.navigate(['/agentos', this.namespaceId, 'prompts', this.prompt.id, 'edit'])
+        if (this.platformMode) {
+          this.router.navigate(['/agentos', 'admin', 'prompts', this.prompt.id, 'edit'])
+        } else {
+          this.router.navigate(['/agentos', this.namespaceId, 'prompts', this.prompt.id, 'edit'])
+        }
         break
       case 'delete':
         this.pendingDelete.set(true)

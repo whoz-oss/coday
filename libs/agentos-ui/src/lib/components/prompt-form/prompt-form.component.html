@@ -2,7 +2,7 @@
   <header class="prompt-form__header">
     <button class="prompt-form__back" type="button" (click)="cancel()" title="Back to prompts">
       <span class="prompt-form__back-icon">&#8592;</span>
-      Prompts
+      {{ isPlatformMode ? 'Platform prompts' : 'Prompts' }}
     </button>
     <h1 class="prompt-form__title">{{ isEditMode() ? 'Edit prompt' : 'New prompt' }}</h1>
   </header>

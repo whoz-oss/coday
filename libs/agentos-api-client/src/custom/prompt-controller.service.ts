@@ -24,6 +24,7 @@ export interface PromptParameter {
 export interface Prompt {
   id?: string
   namespaceId?: string
+  userId?: string
   name: string
   description?: string
   content: string[]
@@ -40,6 +41,7 @@ export interface Prompt {
  *
  * Endpoints:
  *   POST   /api/prompts                    → create
+ *   GET    /api/prompts                    → list by scope (no params = platform)
  *   GET    /api/prompts/{id}               → getById
  *   PUT    /api/prompts/{id}               → update
  *   DELETE /api/prompts/{id}               → delete (soft)
@@ -55,6 +57,16 @@ export class PromptControllerService extends BaseService {
     @Optional() configuration?: Configuration
   ) {
     super(basePath, configuration)
+  }
+
+  /** List platform-level prompts (no namespaceId, no userId). */
+  listPlatformPrompt(): Observable<Prompt[]> {
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.get<Prompt[]>(`${basePath}/api/prompts`, {
+      headers: this.defaultHeaders,
+      ...(withCredentials ? { withCredentials } : {}),
+      context: new HttpContext(),
+    })
   }
 
   /** List all prompts belonging to a namespace. */

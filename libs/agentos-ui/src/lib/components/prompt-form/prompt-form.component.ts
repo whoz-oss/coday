@@ -10,11 +10,14 @@ import { PromptStateService } from '../../services/prompt-state.service'
  * PromptFormComponent — full-page create / edit form for a prompt.
  *
  * Mode is determined by the presence of `:promptId` in the route params:
- * - `/:namespaceId/prompts/new`              → create mode
- * - `/:namespaceId/prompts/:promptId/edit`   → edit mode
+ * - `/:namespaceId/prompts/new`              → create mode (namespace scope)
+ * - `/:namespaceId/prompts/:promptId/edit`   → edit mode (namespace scope)
+ * - `/admin/prompts/new`                     → create mode (platform scope, no namespaceId)
+ * - `/admin/prompts/:promptId/edit`          → edit mode (platform scope)
  *
- * The namespaceId is fixed at creation time and never exposed as an editable field.
- * On success or cancel, navigates back to /:namespaceId/prompts.
+ * Platform mode is detected when `namespaceId` is absent from the route params.
+ * In platform mode, `namespaceId` is omitted from the payload (platform scope).
+ * On success or cancel, navigates back to the appropriate list route.
  *
  * ## Content section
  *
@@ -43,7 +46,9 @@ export class PromptFormComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly promptState = inject(PromptStateService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+  /** True when loaded from /admin/prompts — platform scope, no namespaceId in route. */
+  protected readonly isPlatformMode = !this.namespaceId
 
   // ---------------------------------------------------------------------------
   // Form structure
@@ -220,7 +225,7 @@ export class PromptFormComponent implements OnInit {
       error: (err: HttpErrorResponse) => {
         this.isSubmitting.set(false)
         if (err.status === 409) {
-          this.errorMessage.set(`A prompt named "${payload.name}" already exists in this namespace.`)
+          this.errorMessage.set(`A prompt named "${payload.name}" already exists in this scope.`)
         } else if (err.status === 400) {
           this.errorMessage.set(err.error?.message ?? 'Invalid prompt data.')
         } else {
@@ -235,7 +240,11 @@ export class PromptFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'prompts'])
+    if (this.isPlatformMode) {
+      this.router.navigate(['/agentos', 'admin', 'prompts'])
+    } else {
+      this.router.navigate(['/agentos', this.namespaceId, 'prompts'])
+    }
   }
 }
 
