@@ -1,3 +1,15 @@
+## 0.197.0 (2026-07-03)
+
+### 🚀 Features
+
+- wz-33102 add awareness of available agents (decide whether to hand off) ([f5af7138](https://github.com/whoz-oss/coday/commit/f5af7138))
+- wz-33102 fix MR returns ([8f23099a](https://github.com/whoz-oss/coday/commit/8f23099a))
+- wz-33102 add awareness of available agents (decide whether to h… ([#1078](https://github.com/whoz-oss/coday/pull/1078))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
 ## 0.196.1 (2026-07-03)
 
 ### 🩹 Fixes
