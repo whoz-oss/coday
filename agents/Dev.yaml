@@ -58,3 +58,10 @@ mandatoryDocs:
   - ./agentos/README.md
   - ./agentos/agentos-sdk/README.md
   - ./agentos/docs/*
+
+subAgents:
+  - Gradlay
+  - Daemonay
+  - Nxay
+  - Searchay
+  - Reviewer
