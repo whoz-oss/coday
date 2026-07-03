@@ -1312,8 +1312,8 @@ paths:
         | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
+        | `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |
         | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
-
         `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
       operationId: listAiProvider
       parameters:
@@ -1345,7 +1345,7 @@ paths:
 
         | body.namespaceId | body.userId        | scope         | required permission                  |
         |------------------|--------------------|---------------|--------------------------------------|
-        | null             | null               | —             | 400 Bad Request                      |
+        | null             | null               | platform      | super-admin only                     |
         | present          | null               | NS-shared     | WRITE on the namespace               |
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
@@ -1937,6 +1937,20 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/ai-models/platform:
+    get:
+      tags:
+      - ai-model-controller
+      operationId: listPlatformLevelAiModel
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiModel"
   /api/ai-models/by-parentId/{parentId}:
     get:
       tags:
@@ -2216,6 +2230,9 @@ components:
           - ERROR
         title:
           type: string
+        parentCaseId:
+          type: string
+          format: uuid
         created:
           type: string
           format: date-time
@@ -2341,6 +2358,15 @@ components:
           format: date-time
         enabled:
           type: boolean
+        subAgents:
+          type: array
+          description: "Glob patterns controlling which agents this agent may delegate\
+            \ to. When null or empty, no delegation capability is provided. '*' matches\
+            \ any sequence of characters (anchored, case-insensitive). Examples: ['*']\
+            \ allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
+            \ matches FixerHelper/FixerV2."
+          items:
+            type: string
       required:
       - createdOn
       - name

@@ -1,7 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityService
-import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import java.util.UUID
 
@@ -140,4 +139,5 @@ interface CaseService : EntityService<Case, UUID> {
      * @param caseId The unique identifier of the case to kill
      */
     fun killCase(caseId: UUID)
+
 }

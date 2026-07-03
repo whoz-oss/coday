@@ -22,4 +22,10 @@ class InMemoryAiModelRepository : AiModelRepository {
         findByParent(aiProviderId).firstOrNull { it.apiModelName == apiName }
     override fun findByAiProviderAndAlias(aiProviderId: UUID, alias: String): AiModel? =
         findByParent(aiProviderId).firstOrNull { it.alias == alias }
+
+    override fun findPlatformLevel(): List<AiModel> =
+        delegate.findAll().filter { it.namespaceId == null && it.userId == null }
+
+    override fun findAllForNamespace(namespaceId: UUID): List<AiModel> =
+        delegate.findAll().filter { it.namespaceId == null || it.namespaceId == namespaceId }
 }

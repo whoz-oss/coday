@@ -120,6 +120,48 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformPromptsComponent
               ),
           },
+          // --- Admin: Platform AI Providers ---
+          {
+            path: 'admin/ai-providers/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
+          },
+          {
+            path: 'admin/ai-providers/:aiProviderId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-provider-form/ai-provider-form.component').then((m) => m.AiProviderFormComponent),
+          },
+          {
+            path: 'admin/ai-providers',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-ai-providers/platform-ai-providers.component').then(
+                (m) => m.PlatformAiProvidersComponent
+              ),
+          },
+          // --- Admin: Platform AI Models ---
+          {
+            path: 'admin/ai-models/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+          },
+          {
+            path: 'admin/ai-models/:modelId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/ai-model-form/ai-model-form.component').then((m) => m.AiModelFormComponent),
+          },
+          {
+            path: 'admin/ai-models',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-ai-models/platform-ai-models.component').then(
+                (m) => m.PlatformAiModelsComponent
+              ),
+          },
           // --- Admin: Platform Agent Configs ---
           {
             path: 'admin/agent-configs/new',

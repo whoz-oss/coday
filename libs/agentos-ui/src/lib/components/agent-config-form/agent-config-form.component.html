@@ -116,6 +116,58 @@
         <p class="agent-config-form__toggle-hint">Disabled agents are excluded from namespace resolution.</p>
       </div>
 
+      <div class="agent-config-form__field">
+        <span class="agent-config-form__label">Sub-agents</span>
+        <p class="agent-config-form__field-hint">
+          Glob patterns for agents this agent may delegate to. <code class="agent-config-form__code">*</code> matches
+          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
+          <code class="agent-config-form__code">*</code> for all). Leave empty to disable delegation.
+        </p>
+
+        @if (subAgentRows().length > 0) {
+          <ul class="agent-config-form__sub-agent-list">
+            @for (row of subAgentRows(); track $index) {
+              <li class="agent-config-form__sub-agent-row">
+                <input
+                  class="agent-config-form__input agent-config-form__sub-agent-input"
+                  type="text"
+                  autocomplete="off"
+                  [formControl]="row.control"
+                />
+                <button
+                  class="agent-config-form__sub-agent-btn agent-config-form__sub-agent-btn--danger"
+                  type="button"
+                  title="Remove"
+                  (click)="removeSubAgent(row)"
+                >
+                  &#128465;
+                </button>
+              </li>
+            }
+          </ul>
+        }
+
+        <div class="agent-config-form__sub-agent-add">
+          <input
+            class="agent-config-form__input agent-config-form__sub-agent-input"
+            type="text"
+            placeholder="e.g. *Fixer or *"
+            autocomplete="off"
+            [formControl]="newSubAgentControl"
+            (keydown.enter)="addSubAgent()"
+          />
+          <button
+            class="agent-config-form__sub-agent-btn agent-config-form__sub-agent-btn--add"
+            type="button"
+            title="Add pattern"
+            [disabled]="!newSubAgentControl.value.trim()"
+            (click)="addSubAgent()"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
       <div class="agent-config-form__actions">
         <button
           class="agent-config-form__btn agent-config-form__btn--primary"

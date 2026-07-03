@@ -22,4 +22,9 @@ data class Case(
     val namespaceId: UUID,
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String = "Case ${metadata.id}",
+    /**
+     * Id of the parent case when this case was created by a delegation tool.
+     * Null for top-level cases created directly by a user.
+     */
+    val parentCaseId: UUID? = null,
 ) : Entity
