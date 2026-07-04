@@ -2,6 +2,7 @@ package io.whozoss.agentos.prompt
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.entity.OverlayScope
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -144,42 +145,69 @@ class PromptController(
     ): List<PromptResource> = promptService.findByParent(parentId).map { toResource(it) }
 
     @Operation(
-        summary = "List Prompts by scope",
-        description = "Scope is inferred from the query params:\n\n" +
-            "| query                            | mode             | required permission                            |\n" +
-            "|----------------------------------|------------------|------------------------------------------------|\n" +
-            "| (no params)                      | platform         | authenticated                                  |\n" +
-            "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
-            "| `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |\n" +
-            "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
-            "| `?userId=me` (no namespace)      | all caller's     | authenticated                                  |\n\n" +
-            "`userId` accepts ONLY the literal sentinel `me`. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.",
+        summary = "List Prompts by explicit scope",
+        description = "Returns prompts for the given scope. `namespaceId` is required for " +
+            "`NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.\n\n" +
+            "| scope          | namespaceId | returned prompts                  | required permission       |\n" +
+            "|----------------|-------------|-----------------------------------|---------------------------|\n" +
+            "| PLATFORM       | absent      | platform-level (null, null)       | authenticated             |\n" +
+            "| NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |\n" +
+            "| USER           | absent      | user-global (null, me)            | authenticated             |\n" +
+            "| USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |",
     )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     fun list(
-        @RequestParam(required = false) namespaceId: String?,
-        @RequestParam(required = false) userId: String?,
+        @RequestParam scope: OverlayScope,
+        @RequestParam(required = false) namespaceId: UUID?,
     ): List<PromptResource> {
+        validateScopeConstraints(scope, namespaceId)
         val currentUser = userService.getCurrentUser()
-        validateUserParam(userId)
 
-        val resolvedNs = parseNamespaceParam(namespaceId)
-        val all = promptService.findFiltered(
-            namespaceId = resolvedNs,
-            namespaceIsNone = namespaceId?.equals(NONE_SENTINEL, ignoreCase = true) == true,
-            callerId = currentUser.id,
-            userRequested = userId != null,
-            canReadNamespace = { nsId ->
-                permissionService.hasPermission(
+        return when (scope) {
+            OverlayScope.PLATFORM -> promptService.findPlatform()
+
+            OverlayScope.NAMESPACE -> {
+                val granted = permissionService.hasPermission(
                     userId = currentUser.id.toString(),
                     entityType = EntityType.NAMESPACE,
-                    entityId = nsId.toString(),
+                    entityId = namespaceId!!.toString(),
                     action = Action.READ,
                 )
-            },
-        )
-        return all.map { toResource(it) }
+                if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $namespaceId")
+                promptService.findByParent(namespaceId)
+            }
+
+            OverlayScope.USER -> promptService.findByUserId(currentUser.id)
+                .filter { it.namespaceId == null }
+
+            OverlayScope.USER_NAMESPACE -> {
+                val granted = permissionService.hasPermission(
+                    userId = currentUser.id.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = namespaceId!!.toString(),
+                    action = Action.READ,
+                )
+                if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $namespaceId")
+                promptService.findByUserId(currentUser.id)
+                    .filter { it.namespaceId == namespaceId }
+            }
+        }.map { toResource(it) }
+    }
+
+    @Operation(
+        summary = "Effective prompts for a namespace",
+        description = "Returns the resolved set of prompts accessible in the given namespace context. " +
+            "Merges platform, namespace-shared, user-global and user×namespace layers by name, " +
+            "highest-priority layer wins. Requires READ on the namespace.",
+    )
+    @GetMapping("/effective")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    fun effective(
+        @RequestParam namespaceId: UUID,
+    ): List<PromptResource> {
+        val currentUser = userService.getCurrentUser()
+        return promptService.findEffective(namespaceId, currentUser.id).map { toResource(it) }
     }
 
     // -------------------------------------------------------------------------
@@ -285,23 +313,25 @@ class PromptController(
         super.delete(id)
     }
 
-    private fun parseNamespaceParam(raw: String?): UUID? = when {
-        raw == null -> null
-        raw.equals(NONE_SENTINEL, ignoreCase = true) -> null
-        else -> runCatching { UUID.fromString(raw) }
-            .getOrElse { throw BadRequestException("Invalid namespaceId: '$raw'") }
-    }
-
-    private fun validateUserParam(raw: String?) {
-        if (raw != null && !raw.equals(ME_SENTINEL, ignoreCase = true)) {
-            throw BadRequestException(
-                "Invalid userId filter: '$raw' — only 'me' is supported",
-            )
+    /**
+     * Validates the scope/namespaceId parameter combination:
+     * - NAMESPACE, USER_NAMESPACE require a non-null namespaceId.
+     * - PLATFORM, USER forbid namespaceId.
+     *
+     * Namespace **existence** is NOT checked here — it is deferred to after the
+     * permission check in [list] to avoid leaking existence to unauthorized callers
+     * (same ordering as [create] Phase 3 → Phase 4).
+     */
+    private fun validateScopeConstraints(scope: OverlayScope, namespaceId: UUID?) {
+        when (scope) {
+            OverlayScope.NAMESPACE, OverlayScope.USER_NAMESPACE ->
+                if (namespaceId == null)
+                    throw BadRequestException("namespaceId is required for scope=$scope")
+            OverlayScope.PLATFORM, OverlayScope.USER ->
+                if (namespaceId != null)
+                    throw BadRequestException("namespaceId must not be provided for scope=$scope")
         }
     }
 
-    companion object : KLogging() {
-        const val NONE_SENTINEL = "none"
-        const val ME_SENTINEL = "me"
-    }
+    companion object : KLogging()
 }

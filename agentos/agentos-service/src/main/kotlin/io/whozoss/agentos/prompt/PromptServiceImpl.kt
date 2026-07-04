@@ -55,30 +55,21 @@ class PromptServiceImpl(
 
     override fun findByUserId(userId: UUID): List<Prompt> = repository.findByUserId(userId)
 
-    override fun findFiltered(
-        namespaceId: UUID?,
-        namespaceIsNone: Boolean,
-        callerId: UUID,
-        userRequested: Boolean,
-        canReadNamespace: (UUID) -> Boolean,
-    ): List<Prompt> = when {
-        // Specific namespace, no user filter -> namespace-shared layer
-        namespaceId != null && !userRequested -> {
-            if (!canReadNamespace(namespaceId)) emptyList()
-            else repository.findByParent(namespaceId)
+    override fun findEffective(namespaceId: UUID, callerId: UUID): List<Prompt> =
+        repository
+            .findEffective(namespaceId, callerId)
+            .sortedBy { layerPriority(it) }
+            .groupBy { it.name }
+            .map { (_, layers) -> layers.last() }
+            .sortedBy { it.name }
+
+    private fun layerPriority(p: Prompt): Int =
+        when {
+            p.namespaceId == null && p.userId == null -> 0 // platform
+            p.namespaceId == null -> 1                     // user-global
+            p.userId == null -> 2                          // namespace-shared
+            else -> 3                                      // user×namespace
         }
-        // User requested -> user-scoped rows, optionally filtered by namespace
-        userRequested -> {
-            val nsFilter: (UUID?) -> Boolean = when {
-                namespaceIsNone -> { nsId -> nsId == null }
-                namespaceId != null -> { nsId -> nsId == namespaceId }
-                else -> { _ -> true }
-            }
-            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
-        }
-        // No filters -> platform prompts
-        else -> findPlatform()
-    }
 
     override fun delete(id: UUID): Boolean = repository.delete(id)
 

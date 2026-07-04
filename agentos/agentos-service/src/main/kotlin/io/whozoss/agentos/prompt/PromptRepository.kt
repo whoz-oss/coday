@@ -27,4 +27,11 @@ interface PromptRepository : EntityRepository<Prompt, UUID> {
      * NULL values are matched literally.
      */
     fun findByTriple(namespaceId: UUID?, userId: UUID?, name: String): Prompt?
+
+    /**
+     * Find all non-removed prompts across the four overlay layers for the given
+     * (namespaceId, userId) pair: platform, user-global, namespace-shared, user×namespace.
+     * Returned in name-ascending order; callers are responsible for priority folding.
+     */
+    fun findEffective(namespaceId: UUID, userId: UUID): List<Prompt>
 }

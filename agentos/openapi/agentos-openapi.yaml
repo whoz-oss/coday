@@ -742,31 +742,34 @@ paths:
     get:
       tags:
       - prompt-controller
-      summary: List Prompts by scope
+      summary: List Prompts by explicit scope
       description: |-
-        Scope is inferred from the query params:
+        Returns prompts for the given scope. `namespaceId` is required for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.
 
-        | query                            | mode             | required permission                            |
-        |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
-        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
-        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
-        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
-        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
-
-        `userId` accepts ONLY the literal sentinel `me`. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+        | scope          | namespaceId | returned prompts                  | required permission       |
+        |----------------|-------------|-----------------------------------|---------------------------|
+        | PLATFORM       | absent      | platform-level (null, null)       | authenticated             |
+        | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |
+        | USER           | absent      | user-global (null, me)            | authenticated             |
+        | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
       operationId: listPrompt
       parameters:
+      - name: scope
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - PLATFORM
+          - NAMESPACE
+          - USER
+          - USER_NAMESPACE
       - name: namespaceId
         in: query
         required: false
         schema:
           type: string
-      - name: userId
-        in: query
-        required: false
-        schema:
-          type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -1554,6 +1557,31 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/prompts/effective:
+    get:
+      tags:
+      - prompt-controller
+      summary: Effective prompts for a namespace
+      description: "Returns the resolved set of prompts accessible in the given namespace\
+        \ context. Merges platform, namespace-shared, user-global and user×namespace\
+        \ layers by name, highest-priority layer wins. Requires READ on the namespace."
+      operationId: effectivePrompt
+      parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
   /api/prompts/by-parentId/{parentId}:
     get:
       tags:

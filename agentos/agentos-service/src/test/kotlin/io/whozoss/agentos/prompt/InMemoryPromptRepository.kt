@@ -40,6 +40,14 @@ class InMemoryPromptRepository : PromptRepository {
             it.namespaceId == namespaceId && it.userId == userId && it.name == name
         }
 
+    override fun findEffective(namespaceId: UUID, userId: UUID): List<Prompt> =
+        delegate.findAll().filter { p ->
+            (p.namespaceId == null && p.userId == null) ||
+                (p.userId == userId && p.namespaceId == null) ||
+                (p.namespaceId == namespaceId && p.userId == null) ||
+                (p.namespaceId == namespaceId && p.userId == userId)
+        }
+
     companion object {
         private const val ALL_KEY = "all"
     }

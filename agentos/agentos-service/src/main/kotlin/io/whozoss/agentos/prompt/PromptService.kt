@@ -28,24 +28,14 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
     fun findByUserId(userId: UUID): List<Prompt>
 
     /**
-     * Scope-aware filtered listing used by [PromptController.list].
+     * Resolves the effective set of prompts for a given namespace + user context.
      *
-     * Dispatches based on the resolved namespace/user filter combination:
-     * - Specific namespace + no user request -> namespace-shared (guarded by [canReadNamespace])
-     * - User requested -> user-scoped rows, optionally filtered by namespace
-     * - No filters -> platform prompts
+     * Merges platform, namespace-shared, user-global and user×namespace layers by name.
+     * Higher-priority layers override lower ones (same precedence as IntegrationConfig):
+     * platform (0) < user-global (1) < namespace-shared (2) < user×namespace (3).
      *
-     * @param namespaceId resolved namespace UUID (null when absent or `none` sentinel)
-     * @param namespaceIsNone true when the raw query parameter was the `none` sentinel
-     * @param callerId the authenticated user's id (always provided)
-     * @param userRequested true when the caller explicitly passed `userId=me`
-     * @param canReadNamespace callback to check caller READ permission on the namespace
+     * @param namespaceId the namespace context
+     * @param callerId the authenticated user's id
      */
-    fun findFiltered(
-        namespaceId: UUID?,
-        namespaceIsNone: Boolean,
-        callerId: UUID,
-        userRequested: Boolean,
-        canReadNamespace: (UUID) -> Boolean,
-    ): List<Prompt>
+    fun findEffective(namespaceId: UUID, callerId: UUID): List<Prompt>
 }

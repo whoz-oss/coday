@@ -59,21 +59,23 @@ export class PromptControllerService extends BaseService {
     super(basePath, configuration)
   }
 
-  /** List platform-level prompts (no namespaceId, no userId). */
+  /** List platform-level prompts (namespaceId null, userId null). */
   listPlatformPrompt(): Observable<Prompt[]> {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.get<Prompt[]>(`${basePath}/api/prompts`, {
       headers: this.defaultHeaders,
+      params: { scope: 'PLATFORM' },
       ...(withCredentials ? { withCredentials } : {}),
       context: new HttpContext(),
     })
   }
 
-  /** List all prompts belonging to a namespace. */
+  /** List namespace-shared prompts (userId null) for a given namespace. */
   listByNamespacePrompt(namespaceId: string): Observable<Prompt[]> {
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.get<Prompt[]>(`${basePath}/api/prompts/by-parentId/${encodeURIComponent(namespaceId)}`, {
+    return this.httpClient.get<Prompt[]>(`${basePath}/api/prompts`, {
       headers: this.defaultHeaders,
+      params: { scope: 'NAMESPACE', namespaceId },
       ...(withCredentials ? { withCredentials } : {}),
       context: new HttpContext(),
     })

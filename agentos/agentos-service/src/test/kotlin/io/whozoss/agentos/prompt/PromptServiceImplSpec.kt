@@ -26,6 +26,7 @@ class PromptServiceImplSpec : StringSpec() {
 
     private fun prompt(
         namespaceId: UUID? = UUID.randomUUID(),
+        userId: UUID? = null,
         name: String = "My Prompt",
         content: List<String> = listOf("Hello {{name}}"),
         parameters: List<PromptParameter> = emptyList(),
@@ -33,6 +34,7 @@ class PromptServiceImplSpec : StringSpec() {
     ) = Prompt(
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
+        userId = userId,
         name = name,
         description = description,
         content = content,
@@ -213,6 +215,142 @@ class PromptServiceImplSpec : StringSpec() {
 
             service.findByParent(nsA).shouldBeEmpty()
             service.findByParent(nsB) shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // findEffective — overlay fold
+        // -------------------------------------------------------------------------
+
+        "findEffective returns all four layers when names are distinct" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "platform-only"))
+            service.create(prompt(namespaceId = null, userId = user, name = "user-only"))
+            service.create(prompt(namespaceId = ns, userId = null, name = "ns-only"))
+            service.create(prompt(namespaceId = ns, userId = user, name = "user-ns-only"))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 4
+            effective.map { it.name } shouldBe listOf("ns-only", "platform-only", "user-ns-only", "user-only")
+        }
+
+        "findEffective higher layer overrides lower layer by name" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "deploy", content = listOf("platform")))
+            val nsPrompt = service.create(prompt(namespaceId = ns, userId = null, name = "deploy", content = listOf("namespace")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().name shouldBe "deploy"
+            effective.first().content shouldBe listOf("namespace")
+            effective.first().id shouldBe nsPrompt.id
+        }
+
+        "findEffective user x namespace wins over all other layers" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "deploy", content = listOf("platform")))
+            service.create(prompt(namespaceId = null, userId = user, name = "deploy", content = listOf("user-global")))
+            service.create(prompt(namespaceId = ns, userId = null, name = "deploy", content = listOf("namespace")))
+            val winner = service.create(prompt(namespaceId = ns, userId = user, name = "deploy", content = listOf("user-ns")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().content shouldBe listOf("user-ns")
+            effective.first().id shouldBe winner.id
+        }
+
+        "findEffective priority: user-global overrides platform" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "a", content = listOf("platform")))
+            service.create(prompt(namespaceId = null, userId = user, name = "a", content = listOf("user-global")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().content shouldBe listOf("user-global")
+        }
+
+        "findEffective priority: namespace overrides user-global" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = user, name = "a", content = listOf("user-global")))
+            service.create(prompt(namespaceId = ns, userId = null, name = "a", content = listOf("namespace")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().content shouldBe listOf("namespace")
+        }
+
+        "findEffective excludes prompts from other namespaces" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val otherNs = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = otherNs, userId = null, name = "foreign"))
+            service.create(prompt(namespaceId = otherNs, userId = user, name = "foreign-user"))
+
+            val effective = service.findEffective(ns, user)
+            effective.shouldBeEmpty()
+        }
+
+        "findEffective excludes prompts from other users" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val otherUser = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = otherUser, name = "other-user-global"))
+            service.create(prompt(namespaceId = ns, userId = otherUser, name = "other-user-ns"))
+
+            val effective = service.findEffective(ns, user)
+            effective.shouldBeEmpty()
+        }
+
+        "findEffective returns results sorted by name" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "zebra"))
+            service.create(prompt(namespaceId = ns, userId = null, name = "alpha"))
+            service.create(prompt(namespaceId = null, userId = user, name = "middle"))
+
+            val effective = service.findEffective(ns, user)
+            effective.map { it.name } shouldBe listOf("alpha", "middle", "zebra")
+        }
+
+        "findEffective returns empty when no prompts exist" {
+            val service = newService()
+            service.findEffective(UUID.randomUUID(), UUID.randomUUID()).shouldBeEmpty()
+        }
+
+        "findEffective partial override leaves non-overridden prompts intact" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "shared", content = listOf("platform")))
+            service.create(prompt(namespaceId = null, userId = null, name = "only-platform", content = listOf("stays")))
+            service.create(prompt(namespaceId = ns, userId = user, name = "shared", content = listOf("user-ns override")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 2
+            val byName = effective.associateBy { it.name }
+            byName["shared"]!!.content shouldBe listOf("user-ns override")
+            byName["only-platform"]!!.content shouldBe listOf("stays")
         }
     }
 }

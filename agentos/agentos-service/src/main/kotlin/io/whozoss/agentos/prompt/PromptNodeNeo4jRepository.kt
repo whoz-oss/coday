@@ -60,4 +60,27 @@ interface PromptNodeNeo4jRepository : Neo4jRepository<PromptNode, String> {
             """,
     )
     fun findActiveByTripleKey(tripleKey: String): PromptNode?
+
+    /**
+     * Find all non-removed prompts that belong to any of the four overlay layers for the
+     * given (namespaceId, userId) pair, ordered by name:
+     *   - platform         (namespaceId IS NULL AND userId IS NULL)
+     *   - user-global      (userId = $userId AND namespaceId IS NULL)
+     *   - namespace-shared (namespaceId = $namespaceId AND userId IS NULL)
+     *   - user×namespace   (namespaceId = $namespaceId AND userId = $userId)
+     */
+    @Query(
+        $$"""
+            MATCH (p:Prompt)
+            WHERE NOT COALESCE(p.removed, false)
+              AND (
+                (p.namespaceId IS NULL AND p.userId IS NULL)
+                OR (p.userId = $userId AND p.namespaceId IS NULL)
+                OR (p.namespaceId = $namespaceId AND p.userId IS NULL)
+                OR (p.namespaceId = $namespaceId AND p.userId = $userId)
+              )
+            RETURN p ORDER BY p.name ASC
+            """,
+    )
+    fun findEffective(namespaceId: String, userId: String): List<PromptNode>
 }

@@ -74,6 +74,11 @@ open class Neo4jPromptRepository(
             .findActiveByTripleKey(PromptNode.computeTripleKey(namespaceId, userId, name))
             ?.toDomain(objectMapper)
 
+    override fun findEffective(namespaceId: UUID, userId: UUID): List<Prompt> =
+        neo4jRepository
+            .findEffective(namespaceId.toString(), userId.toString())
+            .map { it.toDomain(objectMapper) }
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
