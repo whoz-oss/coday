@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
@@ -13,58 +13,57 @@ import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-namespace-item',
-  standalone: true,
   imports: [KebabMenuComponent],
   templateUrl: './namespace-item.component.html',
   styleUrl: './namespace-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  @Input({ required: true }) namespace!: Namespace
+  readonly namespace = input.required<Namespace>()
 
-  @Output() selected = new EventEmitter<Namespace>()
-  @Output() editRequested = new EventEmitter<Namespace>()
-  @Output() integrationsRequested = new EventEmitter<Namespace>()
-  @Output() aiProvidersRequested = new EventEmitter<Namespace>()
-  @Output() aiModelsRequested = new EventEmitter<Namespace>()
-  @Output() agentConfigsRequested = new EventEmitter<Namespace>()
-  @Output() deleteRequested = new EventEmitter<Namespace>()
+  readonly selected = output<Namespace>()
+  readonly editRequested = output<Namespace>()
+  readonly integrationsRequested = output<Namespace>()
+  readonly aiProvidersRequested = output<Namespace>()
+  readonly aiModelsRequested = output<Namespace>()
+  readonly agentConfigsRequested = output<Namespace>()
+  readonly deleteRequested = output<Namespace>()
 
   protected readonly menuItems: KebabMenuItem[] = [
     { key: 'edit', label: 'Edit namespace', icon: 'edit' },
-    { key: 'integrations', label: 'Manage integrations', icon: 'settings' },
-    { key: 'ai-providers', label: 'AI Providers', icon: 'smart_toy' },
-    { key: 'ai-models', label: 'AI models', icon: 'model_training' },
-    { key: 'agent-configs', label: 'Agent Configs', icon: 'support_agent' },
     { key: 'delete', label: 'Delete namespace', icon: 'delete', variant: 'danger' },
   ]
 
   protected onSelect(): void {
-    this.selected.emit(this.namespace)
+    this.selected.emit(this.namespace())
   }
 
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.editRequested.emit(this.namespace)
-        break
-      case 'integrations':
-        this.integrationsRequested.emit(this.namespace)
-        break
-      case 'ai-providers':
-        this.aiProvidersRequested.emit(this.namespace)
-        break
-      case 'ai-models':
-        this.aiModelsRequested.emit(this.namespace)
-        break
-      case 'agent-configs':
-        this.agentConfigsRequested.emit(this.namespace)
+        this.editRequested.emit(this.namespace())
         break
       case 'delete':
-        if (confirm(`Delete namespace "${this.namespace.name}"?`)) {
-          this.deleteRequested.emit(this.namespace)
+        if (confirm(`Delete namespace "${this.namespace().name}"?`)) {
+          this.deleteRequested.emit(this.namespace())
         }
         break
     }
+  }
+
+  protected onIntegrations(): void {
+    this.integrationsRequested.emit(this.namespace())
+  }
+
+  protected onAiProviders(): void {
+    this.aiProvidersRequested.emit(this.namespace())
+  }
+
+  protected onAiModels(): void {
+    this.aiModelsRequested.emit(this.namespace())
+  }
+
+  protected onAgentConfigs(): void {
+    this.agentConfigsRequested.emit(this.namespace())
   }
 }

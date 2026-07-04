@@ -1,33 +1,80 @@
-<ds-entity-list
-  title="Cases"
-  [items]="caseItems"
-  [itemTemplate]="caseItemTpl"
-  [showCreate]="true"
-  emptyMessage="No cases yet. Start one below."
-  searchPlaceholder="Filter cases…"
-  cardMinWidth="220px"
-  contentMaxWidth="100%"
-  (itemSelected)="onItemSelected($event)"
-  (createRequested)="onCreateRequested()"
->
-  <!-- Inject the close button into the toolbar-start slot, before the title -->
-  <ds-icon-button
-    toolbar-start
-    icon="chevron_left"
-    variant="default"
-    title="Close drawer"
-    (action)="closeRequested.emit()"
-  />
-</ds-entity-list>
+<div class="case-drawer">
+  @for (item of caseItems(); track item.id) {
+    <div
+      class="case-card"
+      [class.case-card--active]="item.id === activeCaseId()"
+      tabindex="0"
+      role="button"
+      (click)="onItemSelected(item.id)"
+      (keyup.enter)="onItemSelected(item.id)"
+    >
+      <!-- Single row: dot + title + status label -->
+      <div class="case-card__top">
+        <span class="case-card__dot" [class]="'case-card__dot--' + item.status"></span>
+        <div class="case-card__title">{{ item.name }}</div>
+        <span class="case-card__status-label" [class]="'case-card__status-label--' + item.status">{{
+          item.statusLabel
+        }}</span>
+      </div>
 
-<!-- Minimal case item template: single-line row, active highlight -->
-<ng-template #caseItemTpl let-item>
-  <button
-    type="button"
-    class="case-drawer-item"
-    [class.case-drawer-item--active]="item.id === activeCaseId"
-    (click)="onItemSelected(item.id)"
-  >
-    <span class="case-drawer-item__name">{{ item.name }}</span>
-  </button>
-</ng-template>
+      <!-- Expand panel — visible on hover / active via CSS only -->
+      <div class="case-card__expand">
+        <div class="case-card__expand-inner">
+          <!-- Meta: date -->
+          @if (item.timeAgo) {
+            <div class="case-card__meta">{{ item.timeAgo }}</div>
+          }
+
+          <!-- Action buttons -->
+          <div class="case-card__expand-actions">
+            <button
+              class="case-card__expand-btn case-card__expand-btn--interrupt"
+              type="button"
+              [disabled]="!item.canInterrupt"
+              (click)="onStop($event, item.id)"
+            >
+              Interrupt
+            </button>
+
+            <button
+              class="case-card__expand-btn case-card__expand-btn--kill"
+              type="button"
+              [disabled]="!item.canKill"
+              (click)="onKill($event, item.id)"
+            >
+              Kill
+            </button>
+
+            @if (pendingDeleteId() === item.id) {
+              <button
+                class="case-card__expand-btn case-card__expand-btn--confirm"
+                type="button"
+                title="Confirmer la suppression"
+                (click)="onDeleteConfirm($event, item.id)"
+              >
+                &#10003;
+              </button>
+              <button
+                class="case-card__expand-btn case-card__expand-btn--cancel"
+                type="button"
+                title="Annuler"
+                (click)="onDeleteCancel($event)"
+              >
+                &#10005;
+              </button>
+            } @else {
+              <button
+                class="case-card__expand-btn case-card__expand-btn--delete"
+                type="button"
+                [disabled]="!item.canDelete"
+                (click)="onDeleteArm($event, item.id)"
+              >
+                Delete
+              </button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+</div>

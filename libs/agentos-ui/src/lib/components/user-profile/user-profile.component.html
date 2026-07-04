@@ -1,10 +1,10 @@
 <div class="user-profile">
   <header class="user-profile__header">
-    <button class="user-profile__back" type="button" (click)="goBack()" title="Go back">
-      <span class="user-profile__back-icon">&#8592;</span>
-      Back
+    <button class="user-profile__back" type="button" (click)="goBack()" title="Retour à l'accueil">
+      <img src="CODAY-Logo.png" alt="Coday" class="user-profile__logo-img" />
+      <span class="user-profile__logo-text">Coday</span>
     </button>
-    <h1 class="user-profile__title">My profile</h1>
+    <h1 class="user-profile__title">My user</h1>
   </header>
 
   @if (isLoading()) {
@@ -160,7 +160,7 @@
 
         <div class="user-profile__actions">
           <button class="user-profile__btn user-profile__btn--primary" type="button" (click)="startEditing()">
-            Edit profile
+            Edit user
           </button>
         </div>
 

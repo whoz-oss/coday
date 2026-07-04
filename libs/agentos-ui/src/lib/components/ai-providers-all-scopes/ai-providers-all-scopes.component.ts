@@ -45,7 +45,6 @@ interface ResolvedItem {
  */
 @Component({
   selector: 'agentos-ai-providers-all-scopes',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent, IconButtonComponent],
   templateUrl: './ai-providers-all-scopes.component.html',
   styleUrl: './ai-providers-all-scopes.component.scss',

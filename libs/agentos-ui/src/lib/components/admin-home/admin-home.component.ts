@@ -13,7 +13,6 @@ import { Router } from '@angular/router'
  */
 @Component({
   selector: 'agentos-admin-home',
-  standalone: true,
   imports: [],
   templateUrl: './admin-home.component.html',
   styleUrl: './admin-home.component.scss',
@@ -24,5 +23,9 @@ export class AdminHomeComponent {
 
   protected navigateTo(path: string): void {
     this.router.navigate([path])
+  }
+
+  protected navigateHome(): void {
+    this.router.navigate(['/agentos/home'])
   }
 }

@@ -1,4 +1,5 @@
 <div class="case-home">
+  <div class="case-home__spacer-top"></div>
   <div class="case-home__hero">
     <h1 class="case-home__headline">What can I help you with?</h1>
 
@@ -15,8 +16,9 @@
       ></textarea>
       <div class="case-home__composer-footer">
         <span class="case-home__hint">{{ preferences.composerHint() }}</span>
-        <ds-icon-button icon="send" variant="primary" title="Start case" [disabled]="!canSend" (action)="submit()" />
+        <ds-icon-button icon="send" variant="primary" title="Start case" [disabled]="!canSend()" (action)="submit()" />
       </div>
     </div>
   </div>
+  <div class="case-home__spacer-bottom"></div>
 </div>

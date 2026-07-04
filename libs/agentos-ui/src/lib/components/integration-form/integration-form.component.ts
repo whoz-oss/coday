@@ -40,7 +40,6 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-integration-form',
-  standalone: true,
   imports: [ReactiveFormsModule, JsonSchemaFormComponent],
   templateUrl: './integration-form.component.html',
   styleUrl: './integration-form.component.scss',

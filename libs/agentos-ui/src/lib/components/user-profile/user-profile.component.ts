@@ -1,4 +1,3 @@
-import { Location } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
@@ -38,7 +37,6 @@ interface UserGlobalRecap {
  */
 @Component({
   selector: 'agentos-user-profile',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './user-profile.component.html',
   styleUrl: './user-profile.component.scss',
@@ -47,7 +45,6 @@ interface UserGlobalRecap {
 export class UserProfileComponent implements OnInit {
   private readonly userState = inject(UserStateService)
   private readonly router = inject(Router)
-  private readonly location = inject(Location)
   private readonly destroyRef = inject(DestroyRef)
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
@@ -222,11 +219,7 @@ export class UserProfileComponent implements OnInit {
   }
 
   protected goBack(): void {
-    if (window.history.length > 1) {
-      this.location.back()
-    } else {
-      this.router.navigate(['/agentos'])
-    }
+    this.router.navigate(['/agentos/home'])
   }
 
   protected trackEntry(_index: number, entry: UserGlobalEntry): string {

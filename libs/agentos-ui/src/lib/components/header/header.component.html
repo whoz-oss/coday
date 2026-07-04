@@ -13,12 +13,12 @@
     <button
       class="header__user-btn"
       type="button"
-      [class.header__user-btn--active]="isOnProfilePage"
-      [title]="isOnProfilePage ? 'Back' : 'My profile'"
+      [class.header__user-btn--active]="isOnProfilePage()"
+      [title]="isOnProfilePage() ? 'Back' : 'My profile'"
       (click)="toggleProfile()"
     >
-      @if (userInitials) {
-        <span class="header__user-initials">{{ userInitials }}</span>
+      @if (userInitials()) {
+        <span class="header__user-initials">{{ userInitials() }}</span>
       } @else {
         <span class="header__user-icon">&#9711;</span>
       }

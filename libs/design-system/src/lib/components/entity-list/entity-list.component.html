@@ -3,36 +3,26 @@
   <div class="entity-list__toolbar">
     <ng-content select="[toolbar-start]" />
     <h1 class="entity-list__title">{{ title }}</h1>
-    <mat-form-field class="entity-list__search-field" appearance="fill" subscriptSizing="dynamic">
-      <mat-icon matPrefix>search</mat-icon>
+    <div class="entity-list__search-wrap">
+      <span class="entity-list__search-icon">&#128269;</span>
       <input
         #searchInput
-        matInput
+        class="entity-list__search-input"
         type="search"
         [placeholder]="searchPlaceholder"
-        [ngModel]="searchQuery()"
-        (ngModelChange)="onSearchChange($event)"
+        [value]="searchQuery()"
+        (input)="onSearchChange($any($event.target).value)"
         (keydown.escape)="clearSearch()"
         autocomplete="off"
       />
       @if (isSearchActive()) {
-        <button matSuffix mat-icon-button aria-label="Clear" (click)="clearSearch()">
-          <mat-icon>close</mat-icon>
-        </button>
+        <button class="entity-list__search-clear" type="button" aria-label="Clear" (click)="clearSearch()">✕</button>
       }
-    </mat-form-field>
+    </div>
     <!-- Optional toolbar extras projected by the consumer (filters, toggles…) -->
     <ng-content select="[toolbar-extras]" />
     @if (showCreate) {
-      <button
-        mat-icon-button
-        class="entity-list__toolbar-btn entity-list__toolbar-btn--primary"
-        type="button"
-        title="Create"
-        (click)="onCreateRequested()"
-      >
-        <mat-icon>add</mat-icon>
-      </button>
+      <button class="entity-list__create-btn" type="button" title="Create" (click)="onCreateRequested()">+</button>
     }
   </div>
 

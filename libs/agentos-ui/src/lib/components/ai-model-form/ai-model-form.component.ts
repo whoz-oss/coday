@@ -25,7 +25,6 @@ import {
  */
 @Component({
   selector: 'agentos-ai-model-form',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './ai-model-form.component.html',
   styleUrl: './ai-model-form.component.scss',

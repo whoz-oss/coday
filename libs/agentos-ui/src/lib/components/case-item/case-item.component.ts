@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input } from '@angular/core'
 import { Case } from '@whoz-oss/agentos-api-client'
 import { EntityListItem } from '@whoz-oss/design-system'
 
@@ -10,12 +10,11 @@ import { EntityListItem } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-case-item',
-  standalone: true,
   template: '',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CaseItemComponent {
-  @Input({ required: true }) case!: Case
+  readonly case = input.required<Case>()
 
   /** Map a Case to the EntityListItem shape expected by ds-entity-list. */
   static toListItem(c: Case): EntityListItem {

@@ -1,12 +1,34 @@
 <div class="namespace-item" role="listitem">
-  <button class="namespace-item__body" type="button" (click)="onSelect()">
-    <span class="namespace-item__name">{{ namespace.name }}</span>
-    @if (namespace.description) {
-      <span class="namespace-item__desc">{{ namespace.description }}</span>
-    }
-  </button>
+  <!-- Header : nom/desc + kebab -->
+  <div class="namespace-item__header">
+    <button class="namespace-item__body" type="button" (click)="onSelect()">
+      <span class="namespace-item__name">{{ namespace().name }}</span>
+      @if (namespace().description) {
+        <span class="namespace-item__desc">{{ namespace().description }}</span>
+      }
+    </button>
+    <div class="namespace-item__menu">
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    </div>
+  </div>
 
+  <!-- Footer : 4 boutons d'action -->
   <div class="namespace-item__actions">
-    <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    <button class="namespace-item__action-btn" type="button" (click)="onIntegrations()">
+      <span class="namespace-item__action-icon">&#9881;&#65039;</span>
+      <span>Integrations</span>
+    </button>
+    <button class="namespace-item__action-btn" type="button" (click)="onAiProviders()">
+      <span class="namespace-item__action-icon">&#129302;</span>
+      <span>AI Providers</span>
+    </button>
+    <button class="namespace-item__action-btn" type="button" (click)="onAiModels()">
+      <span class="namespace-item__action-icon">&#128260;</span>
+      <span>AI Models</span>
+    </button>
+    <button class="namespace-item__action-btn" type="button" (click)="onAgentConfigs()">
+      <span class="namespace-item__action-icon">&#128100;</span>
+      <span>Agent Configs</span>
+    </button>
   </div>
 </div>

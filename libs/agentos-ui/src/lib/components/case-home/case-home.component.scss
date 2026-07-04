@@ -2,17 +2,26 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
   align-items: center;
-  justify-content: center;
+
+  &__spacer-top {
+    flex: 2; /* prend 2/3 de l'espace libre = composer à ~40% */
+  }
+
+  &__spacer-bottom {
+    flex: 3; /* prend 3/3 de l'espace libre en bas */
+  }
 
   &__hero {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2rem;
-    padding: 2rem 1.5rem 4rem;
+    gap: 1.5rem;
+    padding: 0 1.5rem;
     max-width: 680px;
     width: 100%;
+    flex-shrink: 0;
   }
 
   &__headline {

@@ -38,41 +38,86 @@
   white-space: nowrap;
 }
 
-.entity-list__search-field {
-  // Pushed to the right by margin-left: auto, capped at 240px, shrinks before title
+.entity-list__search-wrap {
   margin-left: auto;
-  padding-left: 20px;
   flex: 0 1 240px;
   min-width: 80px;
-  // Compact height
-  --mat-form-field-container-height: 36px;
-  --mat-form-field-container-vertical-padding: 6px;
-  font-size: 0.875rem;
-  // Erase fill appearance: no background, no bottom border
-  --mat-form-field-filled-with-label-container-padding-top: 0;
-  --mdc-filled-text-field-container-color: transparent;
-  --mdc-filled-text-field-hover-container-color: transparent;
-  --mdc-filled-text-field-focus-container-color: transparent;
-  --mdc-filled-text-field-active-indicator-color: transparent;
-  --mdc-filled-text-field-hover-active-indicator-color: transparent;
-  --mdc-filled-text-field-focus-active-indicator-color: transparent;
-  --mdc-filled-text-field-active-indicator-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: border-color 150ms;
+
+  &:focus-within {
+    border-color: var(--color-primary, #016b71);
+    background: var(--color-bg, #fff);
+  }
 }
 
-.entity-list__toolbar-btn {
+.entity-list__search-icon {
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary, #5a5449);
   flex-shrink: 0;
-  color: var(--color-text-secondary, #6e6e73);
+  line-height: 1;
+}
 
-  &:hover {
-    color: var(--color-text, #1d1d1f);
+.entity-list__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text, #1b1916);
+
+  &::placeholder {
+    color: var(--color-text-tertiary, #5a5449);
   }
 
-  &--primary {
-    color: var(--color-primary, #007aff);
+  // Hide browser native clear button — we have our own
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+}
 
-    &:hover {
-      color: var(--color-primary-hover, #0051d5);
-    }
+.entity-list__search-clear {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary, #5a5449);
+  padding: 0;
+  line-height: 1;
+
+  &:hover {
+    color: var(--color-text, #1b1916);
+  }
+}
+
+.entity-list__create-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: var(--color-primary, #016b71);
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 300;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 150ms;
+
+  &:hover {
+    background: var(--color-primary-hover, #7cc0c7);
   }
 }
 

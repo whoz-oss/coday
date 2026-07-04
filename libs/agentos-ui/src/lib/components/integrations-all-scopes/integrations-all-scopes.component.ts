@@ -46,7 +46,6 @@ interface ResolvedItem {
  */
 @Component({
   selector: 'agentos-integrations-all-scopes',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent, IconButtonComponent],
   templateUrl: './integrations-all-scopes.component.html',
   styleUrl: './integrations-all-scopes.component.scss',

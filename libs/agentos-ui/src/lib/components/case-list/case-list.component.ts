@@ -14,7 +14,6 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
  */
 @Component({
   selector: 'agentos-case-list',
-  standalone: true,
   imports: [AsyncPipe],
   templateUrl: './case-list.component.html',
   styleUrl: './case-list.component.scss',

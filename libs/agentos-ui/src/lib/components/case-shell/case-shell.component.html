@@ -1,28 +1,277 @@
 <div class="case-shell">
-  <agentos-header class="case-shell__header" />
-
-  <div class="case-shell__body">
-    <ds-drawer [(open)]="drawerOpen" drawerWidth="400px">
-      <!-- Sidenav: case list with close button injected into ds-entity-list toolbar -->
-      <div dsDrawerSide class="case-shell__sidenav">
-        <agentos-case-drawer
-          [cases]="cases()"
-          [activeCaseId]="activeCaseId()"
-          (caseSelected)="onCaseSelected($event)"
-          (createRequested)="onCreateRequested()"
-          (closeRequested)="toggleDrawer()"
-        />
-      </div>
-
-      <!-- Main content: routed child (CaseHomeComponent or CaseChatComponent) -->
-      <div dsDrawerContent class="case-shell__content">
-        @if (!drawerOpen()) {
-          <div class="case-shell__toggle">
-            <ds-icon-button icon="menu" variant="default" title="Open drawer" (action)="toggleDrawer()" />
+  <!-- ═══ MOBILE TOP BAR ═══ -->
+  <div class="case-shell__mobile-topbar">
+    <div class="case-shell__mobile-brand">
+      <button class="case-shell__brand case-shell__brand--mobile" type="button" title="Home" (click)="navigateHome()">
+        <img src="CODAY-Logo.png" alt="Coday" class="case-shell__logo-img" />
+        <span class="case-shell__logo-text">Coday</span>
+      </button>
+      <span class="case-shell__mobile-sep">/</span>
+      <div class="case-shell__mobile-ns-wrap">
+        <button class="case-shell__mobile-ns" type="button" (click)="toggleNsMenu($event)">
+          {{ selectedNamespace()?.name ?? '' }}<span class="case-shell__mobile-chevron">▾</span>
+        </button>
+        @if (nsMenuOpen()) {
+          <!-- Invisible overlay to close menu on outside click -->
+          <div class="case-shell__ns-backdrop" (click)="closeNsMenu($event)"></div>
+          <div class="case-shell__ns-menu case-shell__ns-menu--mobile">
+            @for (ns of namespaces(); track ns.id) {
+              <button
+                class="case-shell__ns-item"
+                [class.case-shell__ns-item--active]="ns.id === selectedNamespace()?.id"
+                (click)="onNamespaceSelected(ns)"
+              >
+                <span class="case-shell__ns-dot"></span>
+                <span class="case-shell__ns-item-name">{{ ns.name }}</span>
+                @if (ns.id === selectedNamespace()?.id) {
+                  <span>&#10003;</span>
+                }
+              </button>
+            }
           </div>
         }
-        <router-outlet />
       </div>
-    </ds-drawer>
+    </div>
+    <div
+      class="case-shell__mobile-avatar"
+      tabindex="0"
+      role="button"
+      aria-label="Menu utilisateur"
+      (click)="toggleMenu($event)"
+      (keyup.enter)="toggleMenu()"
+    >
+      {{ userInitials() || '···' }}
+    </div>
+
+    @if (menuOpen()) {
+      <div class="case-shell__menu-backdrop" (click)="closeMenu($event)"></div>
+      <div class="case-shell__menu-overlay case-shell__menu-overlay--mobile">
+        <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/user')">👤 User</button>
+        @if (isAdmin()) {
+          <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/admin')">
+            ⚙️ Administration
+          </button>
+        }
+        <div class="case-shell__menu-separator"></div>
+        <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/namespaces')">
+          🌐 Namespaces
+        </button>
+        <div class="case-shell__menu-separator"></div>
+        <button class="case-shell__menu-item" type="button" (click)="onMenuToggleTheme()">
+          @if (isDark()) {
+            ☀️ Mode clair
+          } @else {
+            🌙 Mode sombre
+          }
+        </button>
+        <button
+          class="case-shell__menu-item"
+          [class.case-shell__menu-item--active]="showTechnical()"
+          type="button"
+          (click)="onMenuToggleLogs()"
+        >
+          &lt;/&gt; Logs techniques
+        </button>
+      </div>
+    }
   </div>
+
+  <!-- ═══ MOBILE CASE SWITCHER ═══ -->
+  <div class="case-shell__mobile-switcher">
+    <div
+      class="case-shell__mobile-switcher-trigger"
+      tabindex="0"
+      role="button"
+      (click)="toggleMobileSwitcher()"
+      (keyup.enter)="toggleMobileSwitcher()"
+    >
+      <span class="case-shell__mobile-dot" [class]="'case-shell__mobile-dot--' + activeCaseStatus()"></span>
+      <span class="case-shell__mobile-case-title">{{ activeCaseTitle() }}</span>
+      <span class="case-shell__mobile-case-status">{{ activeCaseStatusLabel() }}</span>
+      <span class="case-shell__mobile-chevron">⌄</span>
+    </div>
+    @if (mobileSwitcherOpen()) {
+      <div class="case-shell__mobile-switcher-list">
+        <!-- Create new case -->
+        <div
+          class="case-shell__mobile-switcher-item case-shell__mobile-switcher-item--new"
+          tabindex="0"
+          role="button"
+          (click)="onMobileCreateCase()"
+          (keyup.enter)="onMobileCreateCase()"
+        >
+          <span class="case-shell__mobile-new-icon">+</span>
+          <span class="case-shell__mobile-case-title">Nouveau case</span>
+        </div>
+        <!-- Search -->
+        <div class="case-shell__mobile-search-wrap">
+          <input
+            class="case-shell__search"
+            type="text"
+            placeholder="Rechercher..."
+            [value]="searchQuery()"
+            (input)="searchQuery.set($any($event.target).value)"
+            (click)="$event.stopPropagation()"
+          />
+        </div>
+        @for (c of cases(); track c.id) {
+          @if (c.id !== activeCaseId()) {
+            <div
+              class="case-shell__mobile-switcher-item"
+              tabindex="0"
+              role="button"
+              (click)="onMobileCaseSelect(c.id ?? '')"
+              (keyup.enter)="onMobileCaseSelect(c.id ?? '')"
+            >
+              <span
+                class="case-shell__mobile-dot"
+                [class]="'case-shell__mobile-dot--' + deriveMobileStatus(c.status)"
+              ></span>
+              <span class="case-shell__mobile-case-title">{{ c.title ?? c.id }}</span>
+              <span class="case-shell__mobile-case-status">{{ c.status.toLowerCase() }}</span>
+            </div>
+          }
+        }
+      </div>
+    }
+  </div>
+  <!-- SIDEBAR -->
+  <aside class="case-shell__sidebar" [style.width.px]="sidebarWidth()">
+    <!-- Top: logo + user menu trigger -->
+    <div class="case-shell__sb-top">
+      <button class="case-shell__brand" type="button" title="Home" (click)="navigateHome()">
+        <img src="CODAY-Logo.png" alt="Coday" class="case-shell__logo-img" />
+        <span class="case-shell__logo-text">Coday</span>
+      </button>
+
+      <!-- User context menu -->
+      <div class="case-shell__user-menu">
+        <button class="case-shell__user-btn" type="button" title="Menu" (click)="toggleMenu($event)">
+          @if (userInitials()) {
+            {{ userInitials() }}
+          } @else {
+            &bull;&bull;&bull;
+          }
+        </button>
+
+        @if (menuOpen()) {
+          <div class="case-shell__menu-backdrop" (click)="closeMenu($event)"></div>
+          <div class="case-shell__menu-overlay">
+            <!-- Profil -->
+            <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/user')">
+              👤 User
+            </button>
+
+            <!-- Admin (admin only) -->
+            @if (isAdmin()) {
+              <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/admin')">
+                ⚙️ Administration
+              </button>
+            }
+
+            <div class="case-shell__menu-separator"></div>
+
+            <!-- Namespaces -->
+            <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/namespaces')">
+              🌐 Namespaces
+            </button>
+
+            <div class="case-shell__menu-separator"></div>
+
+            <!-- Dark mode toggle -->
+            <button class="case-shell__menu-item" type="button" (click)="onMenuToggleTheme()">
+              @if (isDark()) {
+                ☀️ Mode clair
+              } @else {
+                🌙 Mode sombre
+              }
+            </button>
+
+            <!-- Logs techniques -->
+            <button
+              class="case-shell__menu-item"
+              [class.case-shell__menu-item--active]="showTechnical()"
+              type="button"
+              (click)="onMenuToggleLogs()"
+            >
+              &lt;/&gt; Logs techniques
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Namespace picker -->
+    <div class="case-shell__ns-wrap">
+      <div class="case-shell__ns-label">Namespace</div>
+      @if (showNsPicker()) {
+        <div class="case-shell__ns-picker">
+          <button class="case-shell__ns-trigger" (click)="toggleNsMenu()">
+            <span class="case-shell__ns-dot"></span>
+            <span class="case-shell__ns-name">{{ selectedNamespace()?.name ?? 'Select namespace' }}</span>
+            <span class="case-shell__ns-chevron">&#9662;</span>
+          </button>
+          @if (nsMenuOpen()) {
+            <div class="case-shell__ns-menu">
+              @for (ns of namespaces(); track ns.id) {
+                <button
+                  class="case-shell__ns-item"
+                  [class.case-shell__ns-item--active]="ns.id === selectedNamespace()?.id"
+                  (click)="onNamespaceSelected(ns)"
+                >
+                  <span class="case-shell__ns-dot"></span>
+                  <span class="case-shell__ns-item-name">{{ ns.name }}</span>
+                  @if (ns.id === selectedNamespace()?.id) {
+                    <span>&#10003;</span>
+                  }
+                </button>
+              }
+            </div>
+          }
+        </div>
+      } @else {
+        <span class="case-shell__ns-name-static">{{ selectedNamespace()?.name }}</span>
+      }
+    </div>
+
+    <!-- New case button -->
+    <button class="case-shell__new-case-btn" (click)="onCreateRequested()">+ Nouveau case</button>
+
+    <!-- Search input -->
+    <div class="case-shell__search-wrap">
+      <input
+        class="case-shell__search"
+        type="text"
+        placeholder="Rechercher..."
+        [value]="searchQuery()"
+        (input)="searchQuery.set($any($event.target).value)"
+      />
+    </div>
+
+    <!-- Case list -->
+    <div class="case-shell__sb-section">En cours</div>
+    <div class="case-shell__cases-scroll">
+      <agentos-case-drawer
+        [cases]="cases()"
+        [activeCaseId]="activeCaseId()"
+        (caseSelected)="onCaseSelected($event)"
+        (createRequested)="onCreateRequested()"
+        (deleteRequested)="onDeleteCase($event)"
+        (interruptRequested)="onInterruptCase($event)"
+        (killRequested)="onKillCase($event)"
+      />
+    </div>
+  </aside>
+
+  <!-- Resize handle -->
+  <div class="case-shell__resize-handle" (mousedown)="onResizeStart($event)"></div>
+
+  <!-- MAIN -->
+  <main class="case-shell__main">
+    @if (activeCaseId()) {
+      <agentos-case-chat [showTechnicalOverride]="showTechnical()" />
+    } @else {
+      <agentos-case-home />
+    }
+  </main>
 </div>

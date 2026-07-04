@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http'
-import { afterNextRender, Component, DestroyRef, ElementRef, inject, signal, ViewChild } from '@angular/core'
+import { afterNextRender, Component, computed, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, Configuration } from '@whoz-oss/agentos-api-client'
@@ -20,7 +20,6 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
  */
 @Component({
   selector: 'agentos-case-home',
-  standalone: true,
   imports: [IconButtonComponent],
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
@@ -33,21 +32,19 @@ export class CaseHomeComponent {
   private readonly destroyRef = inject(DestroyRef)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
 
-  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
+  private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   protected readonly inputValue = signal('')
   protected readonly isCreating = signal(false)
 
+  protected readonly canSend = computed(() => !!this.inputValue().trim() && !this.isCreating())
+
   constructor() {
     afterNextRender(() => {
-      this.composerInput?.nativeElement.focus()
+      this.composerInput()?.nativeElement.focus()
     })
-  }
-
-  protected get canSend(): boolean {
-    return !!this.inputValue().trim() && !this.isCreating()
   }
 
   protected onInput(event: Event): void {
@@ -62,7 +59,7 @@ export class CaseHomeComponent {
   }
 
   protected submit(): void {
-    if (!this.canSend) return
+    if (!this.canSend()) return
     const firstMessage = this.inputValue().trim()
     this.inputValue.set('')
     this.isCreating.set(true)
@@ -88,7 +85,9 @@ export class CaseHomeComponent {
       .subscribe({
         next: (createdCase) => {
           // Step 3: navigate — no firstMessage in state, the message is already posted
-          this.router.navigate([createdCase.id ?? ''], { relativeTo: this.route })
+          this.router.navigate(['/agentos/home'], {
+            queryParams: { ns: this.namespaceId, case: createdCase.id ?? '' },
+          })
         },
         error: (err) => {
           console.error('[CaseHome] Failed to create case or send first message', err)
