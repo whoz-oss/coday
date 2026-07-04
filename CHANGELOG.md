@@ -1,3 +1,14 @@
+## 0.200.0 (2026-07-04)
+
+### 🚀 Features
+
+- wz-32950 Prompt entity CRUD ([#1070](https://github.com/whoz-oss/coday/pull/1070))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- thomas.martin @thomasmartin-whoz
+
 ## 0.199.0 (2026-07-03)
 
 ### 🚀 Features
