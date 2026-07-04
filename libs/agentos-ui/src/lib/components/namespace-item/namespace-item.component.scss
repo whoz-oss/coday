@@ -61,7 +61,7 @@
     flex-shrink: 0;
   }
 
-  // ── Footer : boutons d’action ──
+  // ── Footer : boutons d'action ──
   &__actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -96,5 +96,13 @@
   &__action-icon {
     font-size: 0.9rem;
     flex-shrink: 0;
+  }
+
+  &__confirm-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-error, #ff3b30);
+    margin-right: 0.25rem;
+    white-space: nowrap;
   }
 }

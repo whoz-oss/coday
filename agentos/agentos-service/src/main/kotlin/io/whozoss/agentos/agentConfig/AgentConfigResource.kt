@@ -46,4 +46,12 @@ data class AgentConfigResource(
     val updatedOn: Instant = Instant.now(),
     /** Whether this agent is published. Null on input is treated as false (unpublished). */
     val enabled: Boolean? = null,
+    @field:Schema(
+        description = "Glob patterns controlling which agents this agent may delegate to. " +
+            "When null or empty, no delegation capability is provided. " +
+            "'*' matches any sequence of characters (anchored, case-insensitive). " +
+            "Examples: ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, " +
+            "['Fixer*'] matches FixerHelper/FixerV2.",
+    )
+    val subAgents: List<String>? = null,
 )

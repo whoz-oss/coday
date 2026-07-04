@@ -18,16 +18,9 @@
   background: transparent;
   transition: background 130ms;
 
-  &:hover {
-    background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-  }
-
+  &:hover,
   &--active {
-    background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
-
-    .case-card__title {
-      color: var(--color-primary, #016b71);
-    }
+    background: color-mix(in srgb, var(--color-primary, #016b71) 8%, transparent);
   }
 
   // ── Top row ──
@@ -74,15 +67,19 @@
     &--run {
       color: var(--color-success, #7cb85d);
     }
+
     &--ask {
       color: var(--color-error, #ce6272);
     }
+
     &--idle {
       color: var(--color-text-tertiary, #5a5449);
     }
+
     &--killed {
       color: #c0392b;
     }
+
     &--error {
       color: #e67e22;
     }

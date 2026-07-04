@@ -72,6 +72,7 @@ class AgentConfigController(
             updatedBy = entity.metadata.modifiedBy,
             updatedOn = entity.metadata.modified,
             enabled = entity.enabled,
+            subAgents = entity.subAgents,
         )
 
     override fun toDomain(resource: AgentConfigResource): AgentConfig =
@@ -86,6 +87,7 @@ class AgentConfigController(
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
             enabled = resource.enabled ?: false,
+            subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
         )
 
     /**
@@ -111,6 +113,7 @@ class AgentConfigController(
             advancedExecution = resource.advancedExecution ?: false,
             externalMetadata = resource.externalMetadata,
             enabled = resource.enabled ?: existing.enabled,
+            subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
         )
 
     @GetMapping("/{id}")
@@ -143,7 +146,15 @@ class AgentConfigController(
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(
         @PathVariable parentId: UUID?,
-    ): List<AgentConfigResource> = listByNamespace(parentId!!, withDisabled = true)
+    ): List<AgentConfigResource> {
+        if (parentId == null) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "parentId must not be null — use GET /api/agent-configs/platform for platform-level agents",
+            )
+        }
+        return listByNamespace(parentId!!, withDisabled = true)
+    }
 
     /**
      * GET /api/agent-configs/by-parentId/{parentId}?withDisabled=...

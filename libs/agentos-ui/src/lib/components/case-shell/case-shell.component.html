@@ -13,7 +13,13 @@
         </button>
         @if (nsMenuOpen()) {
           <!-- Invisible overlay to close menu on outside click -->
-          <div class="case-shell__ns-backdrop" (click)="closeNsMenu($event)"></div>
+          <div
+            class="case-shell__ns-backdrop"
+            role="presentation"
+            tabindex="-1"
+            (click)="closeNsMenu($event)"
+            (keyup.escape)="closeNsMenu($event)"
+          ></div>
           <div class="case-shell__ns-menu case-shell__ns-menu--mobile">
             @for (ns of namespaces(); track ns.id) {
               <button
@@ -44,7 +50,13 @@
     </div>
 
     @if (menuOpen()) {
-      <div class="case-shell__menu-backdrop" (click)="closeMenu($event)"></div>
+      <div
+        class="case-shell__menu-backdrop"
+        role="presentation"
+        tabindex="-1"
+        (click)="closeMenu($event)"
+        (keyup.escape)="closeMenu($event)"
+      ></div>
       <div class="case-shell__menu-overlay case-shell__menu-overlay--mobile">
         <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/user')">👤 User</button>
         @if (isAdmin()) {
@@ -155,7 +167,13 @@
         </button>
 
         @if (menuOpen()) {
-          <div class="case-shell__menu-backdrop" (click)="closeMenu($event)"></div>
+          <div
+            class="case-shell__menu-backdrop"
+            role="presentation"
+            tabindex="-1"
+            (click)="closeMenu($event)"
+            (keyup.escape)="closeMenu($event)"
+          ></div>
           <div class="case-shell__menu-overlay">
             <!-- Profil -->
             <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/user')">
@@ -264,7 +282,13 @@
   </aside>
 
   <!-- Resize handle -->
-  <div class="case-shell__resize-handle" (mousedown)="onResizeStart($event)"></div>
+  <div
+    class="case-shell__resize-handle"
+    role="separator"
+    tabindex="-1"
+    aria-label="Resize sidebar"
+    (mousedown)="onResizeStart($event)"
+  ></div>
 
   <!-- MAIN -->
   <main class="case-shell__main">

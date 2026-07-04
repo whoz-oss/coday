@@ -1,4 +1,4 @@
-<div class="namespace-item" role="listitem">
+<div class="namespace-item" role="listitem" [class.namespace-item--pending-delete]="pendingDelete()">
   <!-- Header : nom/desc + kebab -->
   <div class="namespace-item__header">
     <button class="namespace-item__body" type="button" (click)="onSelect()">
@@ -14,21 +14,31 @@
 
   <!-- Footer : 4 boutons d'action -->
   <div class="namespace-item__actions">
-    <button class="namespace-item__action-btn" type="button" (click)="onIntegrations()">
-      <span class="namespace-item__action-icon">&#9881;&#65039;</span>
-      <span>Integrations</span>
-    </button>
-    <button class="namespace-item__action-btn" type="button" (click)="onAiProviders()">
-      <span class="namespace-item__action-icon">&#129302;</span>
-      <span>AI Providers</span>
-    </button>
-    <button class="namespace-item__action-btn" type="button" (click)="onAiModels()">
-      <span class="namespace-item__action-icon">&#128260;</span>
-      <span>AI Models</span>
-    </button>
-    <button class="namespace-item__action-btn" type="button" (click)="onAgentConfigs()">
-      <span class="namespace-item__action-icon">&#128100;</span>
-      <span>Agent Configs</span>
-    </button>
+    @if (pendingDelete()) {
+      <span class="namespace-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <button class="namespace-item__action-btn" type="button" (click)="onIntegrations()">
+        <span class="namespace-item__action-icon">&#9881;&#65039;</span>
+        <span>Integrations</span>
+      </button>
+      <button class="namespace-item__action-btn" type="button" (click)="onAiProviders()">
+        <span class="namespace-item__action-icon">&#129302;</span>
+        <span>AI Providers</span>
+      </button>
+      <button class="namespace-item__action-btn" type="button" (click)="onAiModels()">
+        <span class="namespace-item__action-icon">&#128260;</span>
+        <span>AI Models</span>
+      </button>
+      <button class="namespace-item__action-btn" type="button" (click)="onAgentConfigs()">
+        <span class="namespace-item__action-icon">&#128100;</span>
+        <span>Agent Configs</span>
+      </button>
+      <button class="namespace-item__action-btn" type="button" (click)="onPrompts()">
+        <span class="namespace-item__action-icon">&#128203;</span>
+        <span>Prompts</span>
+      </button>
+    }
   </div>
 </div>

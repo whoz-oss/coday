@@ -6,6 +6,11 @@ import { AgentConfig, AgentConfigControllerService, IntegrationConfig } from '@w
 import { forkJoin, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 
+/** Represents one sub-agent glob pattern entry in the list. */
+interface SubAgentRow {
+  control: FormControl<string>
+}
+
 /**
  * Tracks the per-integration state within the form:
  * - `enabled`: signal-based toggle so OnPush change detection reacts immediately
@@ -96,6 +101,14 @@ export class AgentConfigFormComponent implements OnInit {
     return this.form.controls.enabled
   }
 
+  // ── Sub-agents list ───────────────────────────────────────────────────────
+
+  /** Current list of sub-agent glob patterns, each backed by a live FormControl. */
+  protected readonly subAgentRows = signal<SubAgentRow[]>([])
+
+  /** Input control for the "add new pattern" field at the bottom of the list. */
+  protected readonly newSubAgentControl = new FormControl<string>('', { nonNullable: true })
+
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
@@ -154,6 +167,9 @@ export class AgentConfigFormComponent implements OnInit {
           this.enabledControl.setValue(config.enabled ?? true)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
+          this.subAgentRows.set(
+            (config.subAgents ?? []).map((p) => ({ control: new FormControl<string>(p, { nonNullable: true }) }))
+          )
           this.isLoading.set(false)
         },
         error: () => {
@@ -212,6 +228,30 @@ export class AgentConfigFormComponent implements OnInit {
     row.enabled.update((v) => !v)
   }
 
+  /** Add the current newSubAgentControl value as a new row, then reset the input. */
+  protected addSubAgent(): void {
+    const pattern = this.newSubAgentControl.value.trim()
+    if (!pattern) return
+    this.subAgentRows.update((rows) => [...rows, { control: new FormControl<string>(pattern, { nonNullable: true }) }])
+    this.newSubAgentControl.reset('')
+  }
+
+  /** Remove a row from the list. */
+  protected removeSubAgent(row: SubAgentRow): void {
+    this.subAgentRows.update((rows) => rows.filter((r) => r !== row))
+  }
+
+  /**
+   * Convert the sub-agent rows into the AgentConfig.subAgents payload.
+   * Empty list → undefined (no delegation capability).
+   */
+  protected buildSubAgentsPayload(): AgentConfig['subAgents'] {
+    const patterns = this.subAgentRows()
+      .map((r) => r.control.value.trim())
+      .filter((p) => p.length > 0)
+    return patterns.length > 0 ? patterns : undefined
+  }
+
   /**
    * Convert the integration rows into the AgentConfig.integrations payload.
    *
@@ -220,6 +260,7 @@ export class AgentConfigFormComponent implements OnInit {
    * Disabled rows → excluded from the map.
    * If no rows are enabled → undefined (no filter, agent sees all namespace tools).
    */
+
   protected buildIntegrationsPayload(): AgentConfig['integrations'] {
     const rows = this.integrationRows()
     const enabledRows = rows.filter((r) => r.enabled())
@@ -249,6 +290,10 @@ export class AgentConfigFormComponent implements OnInit {
   protected submit(): void {
     if (this.form.invalid || this.isSubmitting()) return
 
+    // Flush the "add pattern" input: if the user typed a pattern and clicked Save
+    // without pressing "+" or Enter, we include it rather than silently dropping it.
+    this.addSubAgent()
+
     this.isSubmitting.set(true)
 
     // createdOn / updatedOn are server-set audit fields — omitted on create, preserved from
@@ -271,6 +316,7 @@ export class AgentConfigFormComponent implements OnInit {
       integrations: this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
       enabled: this.enabledControl.value,
+      subAgents: this.buildSubAgentsPayload(),
     } as AgentConfig
 
     const call$ = this.isEditMode()

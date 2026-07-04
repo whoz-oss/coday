@@ -92,6 +92,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'agent-configs'])
   }
 
+  protected openPrompts(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'prompts'])
+  }
+
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {

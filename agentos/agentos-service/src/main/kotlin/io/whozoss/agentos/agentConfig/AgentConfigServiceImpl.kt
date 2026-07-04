@@ -16,13 +16,11 @@ class AgentConfigServiceImpl(
 ) : AgentConfigService {
     override fun create(entity: AgentConfig): AgentConfig {
         requireUniqueName(entity.namespaceId, entity.name, excludeId = null)
-        return agentConfigRepository.save(entity)
-    }
+        return agentConfigRepository.save(entity)}
 
     override fun update(entity: AgentConfig): AgentConfig {
         requireUniqueName(entity.namespaceId, entity.name, excludeId = entity.metadata.id)
-        return agentConfigRepository.save(entity)
-    }
+        return agentConfigRepository.save(entity)}
 
     override fun findByIds(
         ids: Collection<UUID>,

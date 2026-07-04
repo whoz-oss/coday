@@ -25,7 +25,6 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -66,7 +65,7 @@ class AiProviderControllerSpec : StringSpec({
         email = "alice@example.com",
     )
 
-    fun authFor(userId: UUID): Authentication =
+    fun authFor(userId: UUID) =
         UsernamePasswordAuthenticationToken(userId.toString(), "n/a", emptyList())
 
     fun <T> withAuth(userId: UUID, block: () -> T): T {
@@ -172,12 +171,34 @@ class AiProviderControllerSpec : StringSpec({
         verify(exactly = 0) { service.create(any()) }
     }
 
-    "create rejects payload with neither namespaceId nor userId with 400" {
+    "create with neither namespaceId nor userId is platform scope: non-admin gets AccessDeniedException" {
+        // Platform scope (both null) → hasPermission(NAMESPACE, entityId=null, WRITE) → false for non-admin.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, null, Action.WRITE)
+        } returns false
+
         withAuth(aliceId) {
-            shouldThrow<BadRequestException> {
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
                 controller.create(resource(id = null, nsId = null, uId = null))
             }
         }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create with neither namespaceId nor userId is platform scope: super-admin succeeds" {
+        // Platform scope (both null) → hasPermission(NAMESPACE, entityId=null, WRITE) → true for super-admin.
+        every {
+            permissionService.hasPermission(aliceId.toString(), EntityType.NAMESPACE, null, Action.WRITE)
+        } returns true
+        val captured = slot<AiProvider>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        withAuth(aliceId) {
+            controller.create(resource(id = null, nsId = null, uId = null, name = "platform-provider"))
+        }
+
+        captured.captured.namespaceId shouldBe null
+        captured.captured.userId shouldBe null
     }
 
     // -------------------------------------------------------------------------
@@ -402,9 +423,9 @@ class AiProviderControllerSpec : StringSpec({
             config(nsId = null, uId = aliceId, name = "GLOBAL", apiKey = "sk-ant-secret123456789"),
             config(nsId = namespaceId, uId = aliceId, name = "NS", apiKey = "sk-ant-secret987654321"),
         )
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
+        every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = null, userId = null)
 
         resp.size shouldBe 2
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL", "NS")
@@ -418,12 +439,12 @@ class AiProviderControllerSpec : StringSpec({
         val globalRows = listOf(
             config(nsId = null, uId = aliceId, name = "GLOBAL"),
         )
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns globalRows
+        every { service.findFiltered(any(), any(), any(), any()) } returns globalRows
 
-        val respLower = controller.list(namespaceId = "none", userId = "me", auth = authFor(aliceId))
+        val respLower = controller.list(namespaceId = "none", userId = "me")
         respLower.map { it.name } shouldBe listOf("GLOBAL")
 
-        val respUpper = controller.list(namespaceId = "NONE", userId = "me", auth = authFor(aliceId))
+        val respUpper = controller.list(namespaceId = "NONE", userId = "me")
         respUpper.map { it.name } shouldBe listOf("GLOBAL")
     }
 
@@ -431,12 +452,11 @@ class AiProviderControllerSpec : StringSpec({
         val rows = listOf(
             config(nsId = namespaceId, uId = aliceId, name = "NS"),
         )
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
+        every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = "me",
-            auth = authFor(aliceId),
         )
 
         resp.map { it.name } shouldBe listOf("NS")
@@ -447,24 +467,22 @@ class AiProviderControllerSpec : StringSpec({
             config(nsId = namespaceId, uId = null, name = "NS-A"),
             config(nsId = namespaceId, uId = null, name = "NS-B"),
         )
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
+        every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            auth = authFor(aliceId),
         )
 
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
     }
 
     "list NS-shared without READ on the namespace returns empty (no 403)" {
-        every { service.findFiltered(any(), any(), any(), any(), any()) } returns emptyList()
+        every { service.findFiltered(any(), any(), any(), any()) } returns emptyList()
 
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            auth = authFor(aliceId),
         )
 
         resp shouldBe emptyList()
@@ -475,7 +493,7 @@ class AiProviderControllerSpec : StringSpec({
         // attempted userId param" : post-fusion the unified controller does not silently
         // override, it explicitly rejects cross-user listing attempts.
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = null, userId = bobId.toString(), auth = authFor(aliceId))
+            controller.list(namespaceId = null, userId = bobId.toString())
         }
     }
 })

@@ -171,7 +171,7 @@ export class CaseShellComponent {
     this.nsMenuOpen.update((v) => !v)
   }
 
-  protected closeNsMenu(event: MouseEvent): void {
+  protected closeNsMenu(event: Event): void {
     event.stopPropagation()
     this.nsMenuOpen.set(false)
   }
@@ -243,7 +243,7 @@ export class CaseShellComponent {
     this.menuOpen.update((v) => !v)
   }
 
-  protected closeMenu(event: MouseEvent): void {
+  protected closeMenu(event: Event): void {
     event.stopPropagation()
     this.menuOpen.set(false)
   }

@@ -29,6 +29,9 @@ interface CaseDrawerItem {
  * - (killRequested)      — kill a RUNNING case
  *
  * Kept presentational: no Router, no HttpClient, no state services.
+ * Uses ds-entity-list for the chrome (toolbar, search, create button).
+ * The itemTemplate handles hierarchical rendering: each root item renders
+ * its sub-cases inline, collapsed by default.
  */
 @Component({
   selector: 'agentos-case-drawer',

@@ -1,6 +1,11 @@
 package io.whozoss.agentos.aiProvider
 
+import io.whozoss.agentos.exception.ConfigNotFoundException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
@@ -28,9 +33,11 @@ import java.util.UUID
 @Service
 class AiProviderServiceImpl(
     private val repository: AiProviderRepository,
+    private val mergeStrategy: AiProviderMergeStrategy,
+    private val permissionService: PermissionService,
+    private val userService: UserService,
 ) : AiProviderService {
     override fun create(entity: AiProvider): AiProvider {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
         }
@@ -39,7 +46,6 @@ class AiProviderServiceImpl(
     }
 
     override fun update(entity: AiProvider): AiProvider {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -49,7 +55,10 @@ class AiProviderServiceImpl(
         return saveOrConflict(entity)
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiProvider> = repository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<AiProvider> = repository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<AiProvider> = repository.findByParent(parentId)
 
@@ -60,6 +69,25 @@ class AiProviderServiceImpl(
     override fun findByNamespaceId(namespaceId: UUID): List<AiProvider> = repository.findByNamespaceId(namespaceId)
 
     override fun findByUserId(userId: UUID): List<AiProvider> = repository.findByUserId(userId)
+
+    override fun findPlatformLevel(): List<AiProvider> = repository.findPlatformLevel()
+
+    override fun resolveProvider(
+        namespaceId: UUID,
+        userId: UUID,
+        name: String,
+    ): AiProvider {
+        val layers =
+            repository
+                .findAllForScope(namespaceId, userId)
+                .filter { it.name == name }
+                .sortedWith(LAYER_COMPARATOR)
+        return layers
+            .drop(1)
+            .fold(layers.firstOrNull() ?: throw ConfigNotFoundException(namespaceId, userId, name)) { base, override ->
+                mergeStrategy.merge(base, override)
+            }
+    }
 
     override fun findByTriple(
         namespaceId: UUID?,
@@ -72,36 +100,46 @@ class AiProviderServiceImpl(
         namespaceIsNone: Boolean,
         callerId: UUID,
         userRequested: Boolean,
-        canReadNamespace: (UUID) -> Boolean,
-    ): List<AiProvider> = when {
-        // NS-shared layer of a specific namespace (no userId param) : check READ permission
-        namespaceId != null && !userRequested -> {
-            if (!canReadNamespace(namespaceId)) emptyList()
-            else findByNamespaceId(namespaceId).filter { it.userId == null }
-        }
-
-        // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
-        userRequested -> {
-            val nsFilter: (UUID?) -> Boolean = when {
-                namespaceIsNone -> { nsId -> nsId == null }
-                namespaceId != null -> { nsId -> nsId == namespaceId }
-                else -> { _ -> true }
+    ): List<AiProvider> =
+        when {
+            // Platform level: namespaceId=none without userId — open to all authenticated users
+            namespaceIsNone && !userRequested -> {
+                findPlatformLevel()
             }
-            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+
+            // NS-shared layer of a specific namespace (no userId param) : check READ permission
+            namespaceId != null && !userRequested -> {
+                if (!callerCanReadNamespace(namespaceId)) {
+                    emptyList()
+                } else {
+                    findByNamespaceId(namespaceId).filter { it.userId == null }
+                }
+            }
+
+            // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
+            userRequested -> {
+                val nsFilter: (UUID?) -> Boolean =
+                    when {
+                        namespaceIsNone -> { nsId -> nsId == null }
+                        namespaceId != null -> { nsId -> nsId == namespaceId }
+                        else -> { _ -> true }
+                    }
+                findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+            }
+
+            // No filter at all : surface the caller's own overlays
+            else -> {
+                findByUserId(callerId)
+            }
         }
 
-        // No filter at all : surface the caller's own overlays
-        else -> findByUserId(callerId)
-    }
-
-    private fun requireScope(entity: AiProvider) {
-        if (entity.namespaceId == null && entity.userId == null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "AiProvider must be scoped to at least a namespace or a user",
-            )
-        }
-    }
+    private fun callerCanReadNamespace(namespaceId: UUID): Boolean =
+        permissionService.hasPermission(
+            userId = userService.getCurrentUser().id.toString(),
+            entityType = EntityType.NAMESPACE,
+            entityId = namespaceId.toString(),
+            action = Action.READ,
+        )
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
@@ -133,13 +171,15 @@ class AiProviderServiceImpl(
             )
 
         if (namespaceId != null) {
-            repository.findByTriple(namespaceId, null, name)
+            repository
+                .findByTriple(namespaceId, null, name)
                 ?.takeIf { it.metadata.id != entityId && it.apiType != type }
                 ?.let(::reject)
         }
 
         if (userId != null) {
-            repository.findByTriple(null, userId, name)
+            repository
+                .findByTriple(null, userId, name)
                 ?.takeIf { it.metadata.id != entityId && it.apiType != type }
                 ?.let(::reject)
 
@@ -151,8 +191,7 @@ class AiProviderServiceImpl(
                             it.namespaceId != null &&
                             it.name == name &&
                             it.apiType != type
-                    }
-                    ?.let(::reject)
+                    }?.let(::reject)
             }
         }
     }
@@ -195,5 +234,30 @@ class AiProviderServiceImpl(
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "ai_provider_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+
+        /**
+         * Comparator defining the 4-tier overlay precedence (lowest → highest).
+         *
+         * | Scope            | namespaceId | userId   | rank |
+         * |------------------|-------------|----------|------|
+         * | Platform         | null        | null     | 0    |
+         * | User-global      | null        | non-null | 1    |
+         * | Namespace-shared | non-null    | null     | 2    |
+         * | User × namespace | non-null    | non-null | 3    |
+         *
+         * Namespace-shared (rank 2) overrides user-global (rank 1): namespace admins
+         * enforce a config that supersedes user preferences. User×namespace (rank 3)
+         * lets the user restore a personal override for that specific namespace.
+         */
+        val LAYER_COMPARATOR: Comparator<AiProvider> =
+            Comparator { a, b ->
+                layerRank(a).compareTo(layerRank(b))
+            }
+
+        private fun layerRank(p: AiProvider): Int {
+            val nsRank = if (p.namespaceId == null) 0 else 2
+            val userRank = if (p.userId == null) 0 else 1
+            return nsRank + userRank
+        }
     }
 }

@@ -219,10 +219,8 @@ class NamespacePermissionEndpoints(
         namespaceId: UUID,
         targetUserId: UUID,
     ) {
-        namespaceService.findById(namespaceId)
-            ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
-        userService.findById(targetUserId)
-            ?: throw ResourceNotFoundException("User not found: $targetUserId")
+        namespaceService.getById(namespaceId)
+        userService.getById(targetUserId)
     }
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()
