@@ -99,6 +99,27 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformIntegrationConfigsComponent
               ),
           },
+          // --- Admin: Platform Prompts ---
+          {
+            path: 'admin/prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: 'admin/prompts/:promptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: 'admin/prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-prompts/platform-prompts.component').then(
+                (m) => m.PlatformPromptsComponent
+              ),
+          },
           // --- Admin: Platform AI Providers ---
           {
             path: 'admin/ai-providers/new',
@@ -246,6 +267,27 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/namespace-ai-models/namespace-ai-models.component').then(
                 (m) => m.NamespaceAiModelsComponent
+              ),
+          },
+          // --- Prompts ---
+          {
+            path: ':namespaceId/prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: ':namespaceId/prompts/:promptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/prompt-form/prompt-form.component').then((m) => m.PromptFormComponent),
+          },
+          {
+            path: ':namespaceId/prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-prompts/namespace-prompts.component').then(
+                (m) => m.NamespacePromptsComponent
               ),
           },
           // --- Agent Configs ---

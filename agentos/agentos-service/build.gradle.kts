@@ -233,7 +233,7 @@ dependencyManagement {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict")
+        freeCompilerArgs.addAll("-Xjsr305=strict", "-Xemit-jvm-type-annotations")
         jvmTarget.set(
             org.jetbrains.kotlin.gradle.dsl.JvmTarget
                 .fromTarget(libs.versions.kotlinJvmTarget.get()),
