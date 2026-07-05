@@ -15,10 +15,10 @@ interface ScopeBadge {
  * `×` glyph in the visible label would otherwise be announced as "multiplication sign".
  */
 const SCOPE_BADGES: Readonly<Record<IntegrationScope, ScopeBadge>> = Object.freeze({
-  platform: { label: 'PLATFORM', ariaLabel: 'Configuration partagée plateforme', variant: 'neutral' },
-  namespace: { label: 'NS', ariaLabel: 'Configuration partagée du namespace', variant: 'neutral' },
-  userOnNs: { label: 'USER × NS', ariaLabel: 'Configuration utilisateur sur ce namespace', variant: 'info' },
-  userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Configuration utilisateur globale', variant: 'warning' },
+  platform: { label: 'PLATFORM', ariaLabel: 'Shared platform configuration', variant: 'neutral' },
+  namespace: { label: 'NS', ariaLabel: 'Shared namespace configuration', variant: 'neutral' },
+  userOnNs: { label: 'USER × NS', ariaLabel: 'User configuration on this namespace', variant: 'info' },
+  userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Global user configuration', variant: 'warning' },
 })
 
 /**

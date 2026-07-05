@@ -15,10 +15,10 @@ import { NamespaceRoleStateService } from '../../services/namespace-role-state.s
 const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['platform', 'namespace', 'userOnNs', 'userGlobal'])
 
 const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
-  platform: 'Configuration plateforme',
-  namespace: 'Configuration du namespace',
-  userOnNs: 'Pour moi sur ce namespace',
-  userGlobal: 'Pour moi globalement',
+  platform: 'Platform configuration',
+  namespace: 'Namespace configuration',
+  userOnNs: 'For me on this namespace',
+  userGlobal: 'For me globally',
 })
 
 /**

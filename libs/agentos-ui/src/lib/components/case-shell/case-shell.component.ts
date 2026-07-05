@@ -274,7 +274,7 @@ export class CaseShellComponent {
 
   protected readonly activeCaseTitle = computed(() => {
     const id = this.activeCaseId()
-    if (!id) return 'Nouveau case'
+    if (!id) return 'New case'
     const found = this.cases().find((c) => c.id === id)
     return found?.title ?? id
   })

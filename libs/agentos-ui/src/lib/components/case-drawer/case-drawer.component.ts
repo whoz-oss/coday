@@ -146,7 +146,7 @@ export class CaseDrawerComponent {
 
 /**
  * Returns a human-readable relative time string from an ISO date string.
- * e.g. "il y a 2h", "il y a 3j", "il y a 5min"
+ * e.g. "2h ago", "3d ago", "5min ago"
  */
 function timeAgo(iso: string): string {
   const now = Date.now()
@@ -154,13 +154,13 @@ function timeAgo(iso: string): string {
   if (isNaN(then)) return ''
   const diffMs = now - then
   const diffMin = Math.floor(diffMs / 60_000)
-  if (diffMin < 1) return 'il y a quelques secondes'
-  if (diffMin < 60) return `il y a ${diffMin}min`
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin}min ago`
   const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `il y a ${diffH}h`
+  if (diffH < 24) return `${diffH}h ago`
   const diffD = Math.floor(diffH / 24)
-  if (diffD < 30) return `il y a ${diffD}j`
+  if (diffD < 30) return `${diffD}d ago`
   const diffM = Math.floor(diffD / 30)
-  if (diffM < 12) return `il y a ${diffM} mois`
-  return `il y a ${Math.floor(diffM / 12)} an(s)`
+  if (diffM < 12) return `${diffM}mo ago`
+  return `${Math.floor(diffM / 12)}y ago`
 }

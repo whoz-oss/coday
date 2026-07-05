@@ -17,9 +17,9 @@ interface ScopeBadge {
  * Same convention as story 6.5 IntegrationConfigItemComponent.
  */
 const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freeze({
-  namespace: { label: 'NS', ariaLabel: 'Configuration partagée du namespace', variant: 'neutral' },
-  userOnNs: { label: 'USER × NS', ariaLabel: 'Configuration utilisateur sur ce namespace', variant: 'info' },
-  userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Configuration utilisateur globale', variant: 'warning' },
+  namespace: { label: 'NS', ariaLabel: 'Shared namespace configuration', variant: 'neutral' },
+  userOnNs: { label: 'USER × NS', ariaLabel: 'User configuration on this namespace', variant: 'info' },
+  userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Global user configuration', variant: 'warning' },
 })
 
 /**

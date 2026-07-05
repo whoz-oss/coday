@@ -42,7 +42,7 @@
       class="case-shell__mobile-avatar"
       tabindex="0"
       role="button"
-      aria-label="Menu utilisateur"
+      aria-label="User menu"
       (click)="toggleMenu($event)"
       (keyup.enter)="toggleMenu()"
     >
@@ -61,7 +61,7 @@
         <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/user')">👤 User</button>
         @if (isAdmin()) {
           <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/admin')">
-            ⚙️ Administration
+            ⚙️ Admin
           </button>
         }
         <div class="case-shell__menu-separator"></div>
@@ -71,9 +71,9 @@
         <div class="case-shell__menu-separator"></div>
         <button class="case-shell__menu-item" type="button" (click)="onMenuToggleTheme()">
           @if (isDark()) {
-            ☀️ Mode clair
+            ☀️ Light mode
           } @else {
-            🌙 Mode sombre
+            🌙 Dark mode
           }
         </button>
         <button
@@ -82,7 +82,7 @@
           type="button"
           (click)="onMenuToggleLogs()"
         >
-          &lt;/&gt; Logs techniques
+          &lt;/&gt; Technical logs
         </button>
       </div>
     }
@@ -113,14 +113,14 @@
           (keyup.enter)="onMobileCreateCase()"
         >
           <span class="case-shell__mobile-new-icon">+</span>
-          <span class="case-shell__mobile-case-title">Nouveau case</span>
+          <span class="case-shell__mobile-case-title">New case</span>
         </div>
         <!-- Search -->
         <div class="case-shell__mobile-search-wrap">
           <input
             class="case-shell__search"
             type="text"
-            placeholder="Rechercher..."
+            placeholder="Search..."
             [value]="searchQuery()"
             (input)="searchQuery.set($any($event.target).value)"
             (click)="$event.stopPropagation()"
@@ -183,7 +183,7 @@
             <!-- Admin (admin only) -->
             @if (isAdmin()) {
               <button class="case-shell__menu-item" type="button" (click)="onMenuNavigate('/agentos/admin')">
-                ⚙️ Administration
+                ⚙️ Admin
               </button>
             }
 
@@ -199,20 +199,20 @@
             <!-- Dark mode toggle -->
             <button class="case-shell__menu-item" type="button" (click)="onMenuToggleTheme()">
               @if (isDark()) {
-                ☀️ Mode clair
+                ☀️ Light mode
               } @else {
-                🌙 Mode sombre
+                🌙 Dark mode
               }
             </button>
 
-            <!-- Logs techniques -->
+            <!-- Technical logs -->
             <button
               class="case-shell__menu-item"
               [class.case-shell__menu-item--active]="showTechnical()"
               type="button"
               (click)="onMenuToggleLogs()"
             >
-              &lt;/&gt; Logs techniques
+              &lt;/&gt; Technical logs
             </button>
           </div>
         }
@@ -253,21 +253,21 @@
     </div>
 
     <!-- New case button -->
-    <button class="case-shell__new-case-btn" (click)="onCreateRequested()">+ Nouveau case</button>
+    <button class="case-shell__new-case-btn" (click)="onCreateRequested()">+ New case</button>
 
     <!-- Search input -->
     <div class="case-shell__search-wrap">
       <input
         class="case-shell__search"
         type="text"
-        placeholder="Rechercher..."
+        placeholder="Search..."
         [value]="searchQuery()"
         (input)="searchQuery.set($any($event.target).value)"
       />
     </div>
 
     <!-- Case list -->
-    <div class="case-shell__sb-section">En cours</div>
+    <div class="case-shell__sb-section">Cases</div>
     <div class="case-shell__cases-scroll">
       <agentos-case-drawer
         [cases]="cases()"
