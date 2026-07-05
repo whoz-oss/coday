@@ -49,15 +49,15 @@
   }
 
   &__logo-img {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    height: 30px;
     object-fit: contain;
     flex-shrink: 0;
   }
 
   &__logo-text {
-    font-size: 0.88rem;
-    font-weight: 700;
+    font-size: 1rem;
+    font-weight: 800;
     letter-spacing: -0.02em;
     color: var(--color-text, #eae5dd);
     white-space: nowrap;
