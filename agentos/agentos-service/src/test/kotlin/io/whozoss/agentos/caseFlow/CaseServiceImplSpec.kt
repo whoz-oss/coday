@@ -16,6 +16,7 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
@@ -177,15 +178,19 @@ class CaseServiceImplSpec :
             clearMocks(allowAllAgentConfigService, answers = false)
         }
 
+        /** No-op naming service — tests do not exercise automatic case naming. */
+        val noOpCaseNamingService: CaseNamingService = mockk(relaxed = true)
+
         val permissionService: PermissionService = mockk(relaxed = true)
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
             agent: Agent = finishingAgent(),
-            userService: UserService = mockk {
-                every { findById(userId) } returns activeUser
-                every { getById(userId) } returns activeUser
-            },
+            userService: UserService =
+                mockk {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                },
             defaultAgentName: String? = agentName,
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
@@ -215,6 +220,7 @@ class CaseServiceImplSpec :
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 permissionService = permissionService,
+                caseNamingService = noOpCaseNamingService,
             )
         }
 
@@ -355,6 +361,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -578,6 +585,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -676,6 +684,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -747,6 +756,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -792,6 +802,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -861,6 +872,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -928,6 +940,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1033,6 +1046,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1130,6 +1144,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1344,13 +1359,14 @@ class CaseServiceImplSpec :
             val service = buildService()
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
-            val runtime = service.startSubCase(
-                parentCaseId = parentCase.id,
-                namespaceId = namespaceId,
-                agentName = agentName,
-                task = "do something",
-                userId = userId,
-            )
+            val runtime =
+                service.startSubCase(
+                    parentCaseId = parentCase.id,
+                    namespaceId = namespaceId,
+                    agentName = agentName,
+                    task = "do something",
+                    userId = userId,
+                )
 
             // A runtime was returned — the sub-case exists and is active
             val subCaseId = runtime.id
@@ -1366,51 +1382,58 @@ class CaseServiceImplSpec :
             // would be created and the error silently logged.
             // After the refacto, the exception propagates to the caller.
             val delegate = InMemoryCaseRepository()
-            val throwingRepo = mockk<CaseRepository> {
-                every { save(any()) } answers { delegate.save(firstArg()) }
-                every { findByIds(any(), any()) } answers { delegate.findByIds(firstArg(), secondArg()) }
-                every { findByParent(any()) } answers { delegate.findByParent(firstArg()) }
-                every { delete(any()) } answers { delegate.delete(firstArg()) }
-                every { deleteByParent(any()) } answers { delegate.deleteByParent(firstArg()) }
-                every { findAccessibleByUserInNamespace(any(), any()) } answers {
-                    delegate.findAccessibleByUserInNamespace(firstArg(), secondArg())
+            val throwingRepo =
+                mockk<CaseRepository> {
+                    every { save(any()) } answers { delegate.save(firstArg()) }
+                    every { findByIds(any(), any()) } answers { delegate.findByIds(firstArg(), secondArg()) }
+                    every { findByParent(any()) } answers { delegate.findByParent(firstArg()) }
+                    every { delete(any()) } answers { delegate.delete(firstArg()) }
+                    every { deleteByParent(any()) } answers { delegate.deleteByParent(firstArg()) }
+                    every { findAccessibleByUserInNamespace(any(), any()) } answers {
+                        delegate.findAccessibleByUserInNamespace(firstArg(), secondArg())
+                    }
+                    every { findConcerningUser(any()) } answers { delegate.findConcerningUser(firstArg()) }
+                    every { findConcerningUserInNamespace(any(), any()) } answers {
+                        delegate.findConcerningUserInNamespace(firstArg(), secondArg())
+                    }
+                    every { findActiveByParentCaseId(any()) } answers { delegate.findActiveByParentCaseId(firstArg()) }
+                    every { findActiveDescendants(any()) } answers { delegate.findActiveDescendants(firstArg()) }
+                    every { countAncestorDepth(any()) } answers { delegate.countAncestorDepth(firstArg()) }
+                    every { linkParentToChild(any(), any()) } throws RuntimeException("simulated Neo4j link failure")
                 }
-                every { findConcerningUser(any()) } answers { delegate.findConcerningUser(firstArg()) }
-                every { findConcerningUserInNamespace(any(), any()) } answers {
-                    delegate.findConcerningUserInNamespace(firstArg(), secondArg())
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
                 }
-                every { findActiveByParentCaseId(any()) } answers { delegate.findActiveByParentCaseId(firstArg()) }
-                every { findActiveDescendants(any()) } answers { delegate.findActiveDescendants(firstArg()) }
-                every { countAncestorDepth(any()) } answers { delegate.countAncestorDepth(firstArg()) }
-                every { linkParentToChild(any(), any()) } throws RuntimeException("simulated Neo4j link failure")
-            }
-            val namespace = Namespace(
-                metadata = EntityMetadata(id = namespaceId),
-                name = "test-namespace",
-                defaultAgentName = agentName,
-            )
-            val namespaceService = mockk<NamespaceService> {
-                every { findById(namespaceId) } returns namespace
-            }
-            val agentService = mockk<AgentService> {
-                every { resolveAgentName(any(), any(), any()) } returns agentName
-                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
-            }
-            val userService = mockk<UserService> {
-                every { findById(userId) } returns activeUser
-                every { getById(userId) } returns activeUser
-            }
-            val service = CaseServiceImpl(
-                agentService,
-                allowAllAgentConfigService,
-                AgentConfigProperties(),
-                throwingRepo,
-                CaseEventServiceImpl(InMemoryCaseEventRepository()),
-                userService,
-                namespaceService,
-                caseConfig = CaseConfigProperties(),
-                permissionService = permissionService,
-            )
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                }
+            val service =
+                CaseServiceImpl(
+                    agentService,
+                    allowAllAgentConfigService,
+                    AgentConfigProperties(),
+                    throwingRepo,
+                    CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                    userService,
+                    namespaceService,
+                    caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
+                )
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
             shouldThrow<RuntimeException> {
@@ -1543,6 +1566,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1695,6 +1719,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    caseNamingService = noOpCaseNamingService,
                 )
 
             // Insert the case directly into the repository so no runtime is created in
