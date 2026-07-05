@@ -1,3 +1,13 @@
+## 0.201.0 (2026-07-05)
+
+### 🚀 Features
+
+- #1010 auto-name cases ([#1083](https://github.com/whoz-oss/coday/pull/1083), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.200.0 (2026-07-04)
 
 ### 🚀 Features
