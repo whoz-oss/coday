@@ -47,22 +47,11 @@
       <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
         <span class="case-tree-node__name">{{ node.name }}</span>
       </button>
-      <ds-icon-button
-        class="case-tree-node__star"
-        variant="default"
-        [icon]="node.favorite ? 'star' : 'star_border'"
-        [title]="node.favorite ? 'Unstar case' : 'Star case'"
-        (action)="onStarToggled(node)"
+      <ds-kebab-menu
+        class="case-tree-node__menu"
+        [items]="menuItemsFor(node)"
+        (itemSelected)="onMenuAction(node, $event)"
       />
-      @if (node.canDelete) {
-        <ds-icon-button
-          class="case-tree-node__delete"
-          icon="delete"
-          variant="danger"
-          title="Delete case"
-          (action)="onDeleteRequested(node.id)"
-        />
-      }
     </div>
 
     @if (isExpanded(node.id) && node.children.length) {

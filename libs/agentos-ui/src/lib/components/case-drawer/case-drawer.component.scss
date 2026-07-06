@@ -101,24 +101,19 @@
     font-size: 0.8rem;
   }
 
-  // Row actions (star + delete) stay hidden to keep the list light, and are
-  // revealed only when the row is hovered or focused (keyboard-accessible).
-  &__star,
-  &__delete {
+  // Overflow menu ("⋯") stays hidden to keep the list light; it is revealed on row
+  // hover, on keyboard focus, while its menu is open, or on the active row.
+  &__menu {
     flex: none;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s ease;
   }
 
-  &__delete {
-    margin-inline-end: 0.25rem;
-  }
-
-  &__row:hover &__star,
-  &__row:hover &__delete,
-  &__row:focus-within &__star,
-  &__row:focus-within &__delete {
+  &__row:hover &__menu,
+  &__row:focus-within &__menu,
+  &__row--active &__menu,
+  &__menu:has([aria-expanded='true']) {
     opacity: 1;
     pointer-events: auto;
   }

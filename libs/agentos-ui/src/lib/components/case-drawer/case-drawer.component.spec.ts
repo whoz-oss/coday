@@ -98,4 +98,32 @@ describe('CaseDrawerComponent', () => {
 
     expect(c['rootItems'][0].groupKey).toBeUndefined()
   })
+
+  it('builds overflow-menu items: star toggle, and delete only when the caller may delete', () => {
+    const c = new CaseDrawerComponent()
+
+    const admin = c['menuItemsFor']({ id: 'x', name: 'x', favorite: false, canDelete: true, children: [] })
+    expect(admin.map((i) => i.key)).toEqual(['star', 'delete'])
+    expect(admin[0].label).toBe('Add to favorites')
+    expect(admin.find((i) => i.key === 'delete')?.variant).toBe('danger')
+
+    const favMember = c['menuItemsFor']({ id: 'y', name: 'y', favorite: true, canDelete: false, children: [] })
+    expect(favMember.map((i) => i.key)).toEqual(['star']) // non-ADMIN: no delete entry
+    expect(favMember[0].label).toBe('Remove from favorites')
+  })
+
+  it('dispatches overflow-menu actions to star and delete', () => {
+    const c = new CaseDrawerComponent()
+    const stars: Array<{ id: string; starred: boolean }> = []
+    const deletes: string[] = []
+    c.starToggled.subscribe((e) => stars.push(e))
+    c.deleteRequested.subscribe((id) => deletes.push(id))
+    const node = { id: 'case-1', name: 'case-1', favorite: false, canDelete: true, children: [] }
+
+    c['onMenuAction'](node, 'star')
+    c['onMenuAction'](node, 'delete')
+
+    expect(stars).toEqual([{ id: 'case-1', starred: true }])
+    expect(deletes).toEqual(['case-1'])
+  })
 })

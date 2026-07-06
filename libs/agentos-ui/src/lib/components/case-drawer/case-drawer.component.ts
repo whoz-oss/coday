@@ -11,7 +11,7 @@ import {
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { Case } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { EntityListComponent, IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 import { CaseItemComponent, CaseListItem } from '../case-item/case-item.component'
 
 /**
@@ -33,7 +33,7 @@ export interface CaseTreeItem extends CaseListItem {
  */
 @Component({
   selector: 'agentos-case-drawer',
-  imports: [EntityListComponent, IconButtonComponent, NgTemplateOutlet],
+  imports: [EntityListComponent, IconButtonComponent, KebabMenuComponent, NgTemplateOutlet],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -107,10 +107,36 @@ export class CaseDrawerComponent implements OnChanges {
   }
 
   protected onStarToggled(item: CaseListItem): void {
-    // Optimistically flip locally so a rapid second click toggles from the new state
-    // (not the stale one) and the star icon updates immediately; the refresh reconciles.
+    // Optimistically flip locally so a rapid re-open of the menu reflects the new state
+    // (not the stale one); the refresh reconciles with the server.
     item.favorite = !item.favorite
     this.starToggled.emit({ id: item.id, starred: item.favorite })
+  }
+
+  /** Overflow-menu entries for a row: star toggle, plus delete when the caller may delete. */
+  protected menuItemsFor(node: CaseTreeItem): KebabMenuItem[] {
+    const items: KebabMenuItem[] = [
+      {
+        key: 'star',
+        label: node.favorite ? 'Remove from favorites' : 'Add to favorites',
+        icon: node.favorite ? 'star' : 'star_border',
+      },
+    ]
+    if (node.canDelete) {
+      items.push({ key: 'delete', label: 'Delete', icon: 'delete', variant: 'danger' })
+    }
+    return items
+  }
+
+  protected onMenuAction(node: CaseTreeItem, key: string): void {
+    switch (key) {
+      case 'star':
+        this.onStarToggled(node)
+        break
+      case 'delete':
+        this.onDeleteRequested(node.id)
+        break
+    }
   }
 }
 
