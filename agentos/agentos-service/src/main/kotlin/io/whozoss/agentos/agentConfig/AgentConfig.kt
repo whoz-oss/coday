@@ -6,6 +6,17 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
+ * A document referenced in an agent's optional-docs list.
+ *
+ * [path] is resolved relative to the namespace [configPath].
+ * [description] is injected into the instructions so the LLM knows when to ask for the file.
+ */
+data class OptionalDocReference(
+    val path: String,
+    val description: String? = null,
+)
+
+/**
  * Persistent configuration of an agent within a namespace.
  *
  * An AgentConfig defines how an agent behaves: its identity (name, description),
@@ -87,4 +98,23 @@ data class AgentConfig(
      * Examples: `["*"]` allows all agents, `["*Fixer"]` allows `BugFixer`, `StoryFixer`, etc.
      */
     val subAgents: List<String>? = null,
+    /**
+     * Paths to documents whose full content is injected into the agent's instructions.
+     *
+     * Three path patterns are supported (resolved relative to the namespace configPath):
+     * - explicit file path: single file, content injected verbatim
+     * - path ending with slash: directory listing (first-level only, no content)
+     * - path ending with slash-star: all readable files in the directory, content injected
+     *
+     * Only applicable for filesystem-backed agents (namespace with a configPath).
+     * Silently ignored when configPath is absent.
+     */
+    val mandatoryDocs: List<String>? = null,
+    /**
+     * Documents mentioned in the instructions but not loaded at startup.
+     *
+     * The LLM is told these documents exist and what they contain (via description),
+     * so it can ask for them on demand if needed.
+     */
+    val optionalDocs: List<OptionalDocReference>? = null,
 ) : Entity
