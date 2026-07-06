@@ -23,7 +23,7 @@
   The recursive sub-tree template is defined alongside and referenced by name.
 -->
 <ng-template #caseItemTpl let-item>
-  <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: item, depth: 0 }" />
+  <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: item, depth: 0 }" />
 </ng-template>
 
 <!-- Recursive row template: select + star + (ADMIN-gated) delete, then children -->
@@ -56,7 +56,7 @@
 
     @if (isExpanded(node.id) && node.children.length) {
       @for (child of node.children; track child.id) {
-        <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: child, depth: depth + 1 }" />
+        <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: child, depth: depth + 1 }" />
       }
     }
   </div>

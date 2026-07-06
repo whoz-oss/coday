@@ -1,7 +1,6 @@
-import { Component, inject, signal } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { Component, DestroyRef, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router'
-import { CaseControllerService } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { filter, map, merge, of } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
@@ -33,7 +32,7 @@ export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly caseState = inject(CaseStateService)
-  private readonly caseController = inject(CaseControllerService)
+  private readonly destroyRef = inject(DestroyRef)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -95,42 +94,39 @@ export class CaseShellComponent {
     if (!confirm(`Delete "${label}"?`)) {
       return
     }
-    // Soft-delete (the backend flips a `removed` flag); refresh the list on success.
-    this.caseController.deleteCase(caseId).subscribe({
-      next: () => {
+    // Soft-delete: the state service issues the request and reloads the list on success.
+    this.caseState
+      .deleteCase(caseId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
         // If the active case was deleted, leave its (now removed) chat view.
-        if (caseId === this.activeCaseId()) {
-          this.navigateToSectionHome()
-        }
-        this.refreshCases()
-      },
-      error: (err) => {
-        console.error(`[CaseShell] Failed to delete case ${caseId}:`, err)
-        alert('Could not delete the case. Please try again.')
-      },
-    })
+        next: () => {
+          if (caseId === this.activeCaseId()) {
+            this.navigateToSectionHome()
+          }
+        },
+        error: (err) => {
+          console.error(`[CaseShell] Failed to delete case ${caseId}:`, err)
+          alert('Could not delete the case. Please try again.')
+        },
+      })
   }
 
   protected onStarToggled(event: { id: string; starred: boolean }): void {
-    const request = event.starred ? this.caseController.starCase(event.id) : this.caseController.unstarCase(event.id)
-    request.subscribe({
-      next: () => this.refreshCases(),
-      error: (err) => {
-        console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err)
-        // Reload to revert the drawer's optimistic flip to the server truth, and tell the user.
-        this.refreshCases()
-        alert('Could not update the favorite. Please try again.')
-      },
-    })
+    // The state service flips the favorite optimistically and reverts it if the request fails.
+    this.caseState
+      .setStarred(event.id, event.starred)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err)
+          alert('Could not update the favorite. Please try again.')
+        },
+      })
   }
 
   /** Navigate to the case section home (the list / create view). */
   private navigateToSectionHome(): void {
     this.router.navigate(['.'], { relativeTo: this.route })
-  }
-
-  /** Called after a case is created to refresh the drawer list. */
-  refreshCases(): void {
-    this.caseState.loadCases(this.namespaceId)
   }
 }

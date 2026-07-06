@@ -349,14 +349,6 @@ class Neo4jPermissionRepository(
             throw e
         }
 
-    override fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String> =
-        try {
-            permissionNodeRepository.findStarredEntityIds(userId, entityType.label).toSet()
-        } catch (e: Exception) {
-            logger.error(e) { "Error listing starred entities for user=$userId, type=$entityType" }
-            emptySet() // fail-closed
-        }
-
     override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
         try {
             val result = mutableMapOf<String, DirectRelation>()

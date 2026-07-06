@@ -107,10 +107,9 @@ export class CaseDrawerComponent implements OnChanges {
   }
 
   protected onStarToggled(item: CaseListItem): void {
-    // Optimistically flip locally so a rapid re-open of the menu reflects the new state
-    // (not the stale one); the refresh reconciles with the server.
-    item.favorite = !item.favorite
-    this.starToggled.emit({ id: item.id, starred: item.favorite })
+    // Emit the desired state; CaseStateService applies the optimistic flip on the list signal,
+    // which rebuilds the tree (and re-groups favorites) reactively.
+    this.starToggled.emit({ id: item.id, starred: !item.favorite })
   }
 
   /** Overflow-menu entries for a row: star toggle, plus delete when the caller may delete. */

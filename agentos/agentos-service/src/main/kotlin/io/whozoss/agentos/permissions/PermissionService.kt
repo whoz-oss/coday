@@ -134,9 +134,6 @@ interface PermissionService {
      */
     fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
 
-    /** Ids of entities of the given type the user has starred. */
-    fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String>
-
     /**
      * The caller's direct relation (and starred flag) per entity of [entityType] they
      * have a direct edge on, keyed by entity id. One round-trip; used to enrich listings.

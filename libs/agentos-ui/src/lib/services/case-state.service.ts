@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
-import { Subscription } from 'rxjs'
+import { catchError, Observable, Subscription, tap, throwError } from 'rxjs'
 
 /**
  * CaseStateService — reactive state for the case list within a namespace.
@@ -49,6 +49,42 @@ export class CaseStateService {
         this.loadSubscription = null
       },
     })
+  }
+
+  /**
+   * Soft-delete a case, then reload the current namespace's list so it drops out of the
+   * drawer. Returns the request so the caller can react (e.g. leave the deleted case's view).
+   */
+  deleteCase(caseId: string): Observable<void> {
+    return this.caseController.deleteCase(caseId).pipe(tap(() => this.reloadCurrent()))
+  }
+
+  /**
+   * Star / unstar a case for the current user. The favorite flag is flipped optimistically
+   * in the list (so the drawer reflects it at once) and reverted locally if the request
+   * fails. Returns the request so the caller can surface an error.
+   */
+  setStarred(caseId: string, starred: boolean): Observable<void> {
+    this.patchFavorite(caseId, starred)
+    const request = starred ? this.caseController.starCase(caseId) : this.caseController.unstarCase(caseId)
+    return request.pipe(
+      catchError((err) => {
+        this.patchFavorite(caseId, !starred)
+        return throwError(() => err)
+      })
+    )
+  }
+
+  /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */
+  private patchFavorite(caseId: string, favorite: boolean): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, favorite } : c)))
+  }
+
+  /** Reload the currently held namespace (no-op before the first load). */
+  private reloadCurrent(): void {
+    if (this.currentNamespaceId) {
+      this.loadCases(this.currentNamespaceId)
+    }
   }
 
   /**

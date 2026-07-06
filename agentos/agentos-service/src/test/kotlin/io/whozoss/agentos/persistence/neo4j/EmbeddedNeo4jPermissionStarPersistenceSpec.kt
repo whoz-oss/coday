@@ -34,8 +34,8 @@ import java.util.UUID
  * [EmbeddedNeo4jTestConfiguration] harness driver — no Docker).
  *
  * Verifies both layers of the plumbing:
- * - the raw Cypher on [PermissionNodeNeo4jRepository] (`setStarred` / `findStarredEntityIds`)
- * - the typed delegation through [PermissionService] (`setStarred` / `listStarredEntityIds`)
+ * - the raw Cypher on [PermissionNodeNeo4jRepository] (`setStarred` / `findDirectRelations`)
+ * - the typed delegation through [PermissionService] (`setStarred` / `listDirectRelations`)
  */
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
@@ -81,10 +81,14 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             Case(metadata = EntityMetadata(), namespaceId = namespaceId),
         )
 
+    /** Case ids the user has starred, resolved via the surviving listDirectRelations API. */
+    private fun starredIds(userId: String): Set<String> =
+        permissionService.listDirectRelations(userId, EntityType.CASE).filterValues { it.starred }.keys
+
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
 
-        "setStarred(true) is visible via findStarredEntityIds; setStarred(false) removes it" {
+        "setStarred(true) marks the case starred; setStarred(false) clears it" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -102,10 +106,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
                 starred = true,
             )
-            permissionNodeRepository.findStarredEntityIds(
-                userId = user.id.toString(),
-                entityLabel = "Case",
-            ) shouldContain case.id.toString()
+            starredIds(user.id.toString()) shouldContain case.id.toString()
 
             permissionNodeRepository.setStarred(
                 userId = user.id.toString(),
@@ -113,22 +114,15 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
                 starred = false,
             )
-            permissionNodeRepository.findStarredEntityIds(
-                userId = user.id.toString(),
-                entityLabel = "Case",
-            ) shouldNotContain case.id.toString()
+            starredIds(user.id.toString()) shouldNotContain case.id.toString()
         }
 
-        "findStarredEntityIds returns empty for a user with no relation on the entity" {
+        "no starred ids are returned for a user with no relation on the entity" {
             val user = createUser()
             val namespace = createNamespace()
             createCase(namespace.id) // a case exists but the user has no edge to it
 
-            permissionNodeRepository
-                .findStarredEntityIds(
-                    userId = user.id.toString(),
-                    entityLabel = "Case",
-                ).shouldBeEmpty()
+            starredIds(user.id.toString()).shouldBeEmpty()
         }
 
         "setStarred is a no-op when the user has no direct relation on the entity" {
@@ -144,11 +138,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 starred = true,
             )
 
-            permissionNodeRepository
-                .findStarredEntityIds(
-                    userId = user.id.toString(),
-                    entityLabel = "Case",
-                ).shouldBeEmpty()
+            starredIds(user.id.toString()).shouldBeEmpty()
         }
 
         "starred is per-user: it is scoped to the caller's own edge (ADMIN vs MEMBER) and never leaks across users" {
@@ -178,8 +168,8 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
                 starred = true,
             )
-            permissionNodeRepository.findStarredEntityIds(userA.id.toString(), "Case") shouldContain caseId
-            permissionNodeRepository.findStarredEntityIds(userB.id.toString(), "Case") shouldNotContain caseId
+            starredIds(userA.id.toString()) shouldContain caseId
+            starredIds(userB.id.toString()) shouldNotContain caseId
 
             // B stars it via its MEMBER edge: B now sees it, and A is unaffected.
             permissionNodeRepository.setStarred(
@@ -188,8 +178,8 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
                 starred = true,
             )
-            permissionNodeRepository.findStarredEntityIds(userB.id.toString(), "Case") shouldContain caseId
-            permissionNodeRepository.findStarredEntityIds(userA.id.toString(), "Case") shouldContain caseId
+            starredIds(userB.id.toString()) shouldContain caseId
+            starredIds(userA.id.toString()) shouldContain caseId
 
             // B un-stars: A's star survives (isolation holds on unset too).
             permissionNodeRepository.setStarred(
@@ -198,11 +188,11 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
                 starred = false,
             )
-            permissionNodeRepository.findStarredEntityIds(userB.id.toString(), "Case") shouldNotContain caseId
-            permissionNodeRepository.findStarredEntityIds(userA.id.toString(), "Case") shouldContain caseId
+            starredIds(userB.id.toString()) shouldNotContain caseId
+            starredIds(userA.id.toString()) shouldContain caseId
         }
 
-        "PermissionService.setStarred / listStarredEntityIds round-trip via the typed API" {
+        "PermissionService.setStarred round-trip visible via listDirectRelations" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -214,10 +204,10 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             )
 
             permissionService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true)
-            permissionService.listStarredEntityIds(user.id.toString(), EntityType.CASE) shouldContain case.id.toString()
+            starredIds(user.id.toString()) shouldContain case.id.toString()
 
             permissionService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), false)
-            permissionService.listStarredEntityIds(user.id.toString(), EntityType.CASE) shouldNotContain case.id.toString()
+            starredIds(user.id.toString()) shouldNotContain case.id.toString()
         }
 
         "setStarred returns true when a direct edge exists and false when the user has none" {

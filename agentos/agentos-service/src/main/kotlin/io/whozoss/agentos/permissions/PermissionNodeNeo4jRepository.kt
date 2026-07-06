@@ -165,18 +165,6 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("starred") starred: Boolean,
     ): Long
 
-    @Query(
-        $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e)
-        WHERE $entityLabel IN labels(e) AND r.starred = true
-        RETURN DISTINCT e.id
-    """,
-    )
-    fun findStarredEntityIds(
-        @Param("userId") userId: String,
-        @Param("entityLabel") entityLabel: String,
-    ): List<String>
-
     /**
      * The caller's direct relation and starred flag for every entity of the given label
      * they have a direct ADMIN/MEMBER edge on, encoded as `"id|relation|starred"` per row.

@@ -125,7 +125,7 @@ describe('CaseShellComponent', () => {
   })
 
   describe('star', () => {
-    it('stars a case then refreshes the list', () => {
+    it('stars a case via the state service (optimistic, no extra reload)', () => {
       const component = makeComponent(`/agentos/${NS_ID}/cases`)
       expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
 
@@ -133,7 +133,8 @@ describe('CaseShellComponent', () => {
 
       expect(caseControllerMock.starCase).toHaveBeenCalledWith('case-1')
       expect(caseControllerMock.unstarCase).not.toHaveBeenCalled()
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(2)
+      // The optimistic update lives in the signal — a successful star does not reload the list.
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
     })
 
     it('unstars a case when toggled off', () => {
@@ -145,7 +146,7 @@ describe('CaseShellComponent', () => {
       expect(caseControllerMock.starCase).not.toHaveBeenCalled()
     })
 
-    it('reverts (reloads) and alerts the user when the star request fails', () => {
+    it('alerts the user when the star request fails (the service reverts locally)', () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
       const component = makeComponent(`/agentos/${NS_ID}/cases`)
@@ -154,31 +155,9 @@ describe('CaseShellComponent', () => {
       component['onStarToggled']({ id: 'case-1', starred: true })
 
       expect(errorSpy).toHaveBeenCalled()
-      // On failure we reload to revert the drawer's optimistic flip (2nd list call) and alert.
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(2)
       expect(alertSpy).toHaveBeenCalled()
-    })
-  })
-
-  describe('list resilience', () => {
-    it('survives a transient list-load failure and recovers on the next refresh', () => {
-      // A single failed load must NOT wedge the list: a later refresh (after delete/star)
-      // must still fetch and repopulate the drawer instead of being a silent no-op.
-      jest.spyOn(console, 'error').mockImplementation(() => undefined)
-      const cases = [caseWith('case-1')]
-      const listMine = jest
-        .fn()
-        .mockReturnValueOnce(throwError(() => new Error('boom')))
-        .mockReturnValue(of(cases))
-      const component = makeComponent(`/agentos/${NS_ID}/cases`, [], listMine)
-
-      // Construction-time load errored → empty list, but the stream stays alive.
-      expect(component['cases']()).toEqual([])
-
-      component['refreshCases']()
-
-      // Recovered: the second load populated the drawer.
-      expect(component['cases']()).toEqual(cases)
+      // No reload: the revert is a local signal patch inside CaseStateService.
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
     })
   })
 })

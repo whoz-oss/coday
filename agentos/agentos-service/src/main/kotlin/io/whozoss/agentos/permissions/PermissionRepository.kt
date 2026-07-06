@@ -133,9 +133,6 @@ interface PermissionRepository {
      */
     fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
 
-    /** Ids of entities of the given type that the user has starred (favorited). */
-    fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String>
-
     /**
      * The caller's direct relation (and starred flag) for every entity of [entityType]
      * they have a direct ADMIN/MEMBER edge on, keyed by entity id. Resolved in a single

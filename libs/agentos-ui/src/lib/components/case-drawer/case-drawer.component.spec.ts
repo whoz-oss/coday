@@ -33,20 +33,14 @@ describe('CaseDrawerComponent', () => {
     expect(emitted).toEqual([{ id: 'case-9', starred: false }])
   })
 
-  it('optimistically flips favorite so a rapid second toggle emits the opposite state', () => {
+  it('does not mutate the node on toggle (optimism lives in CaseStateService)', () => {
     const c = new CaseDrawerComponent()
-    const emitted: Array<{ id: string; starred: boolean }> = []
-    c.starToggled.subscribe((e) => emitted.push(e))
     const item = { id: 'case-9', name: 'case-9', favorite: false, canDelete: false }
 
     c['onStarToggled'](item)
-    c['onStarToggled'](item) // second click must read the flipped state, not the stale one
 
-    expect(emitted).toEqual([
-      { id: 'case-9', starred: true },
-      { id: 'case-9', starred: false },
-    ])
-    expect(item.favorite).toBe(false) // flipped twice → back to original
+    // The drawer only emits the desired state; it must not flip the node in place.
+    expect(item.favorite).toBe(false)
   })
 
   it('nests child cases under their parent (tree from parentCaseId)', () => {

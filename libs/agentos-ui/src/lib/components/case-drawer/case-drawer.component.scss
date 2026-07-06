@@ -58,7 +58,7 @@
     transition: background 0.1s ease;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.08);
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
     }
   }
 

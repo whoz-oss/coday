@@ -4,11 +4,21 @@ import { of, throwError } from 'rxjs'
 import { CaseStateService } from './case-state.service'
 
 describe('CaseStateService', () => {
-  const caseWith = (id: string): Case => ({ id, namespaceId: 'ns' }) as unknown as Case
-  let controllerMock: { listMineByParentCase: jest.Mock }
+  const caseWith = (id: string, favorite = false): Case => ({ id, namespaceId: 'ns', favorite }) as unknown as Case
+  let controllerMock: {
+    listMineByParentCase: jest.Mock
+    deleteCase: jest.Mock
+    starCase: jest.Mock
+    unstarCase: jest.Mock
+  }
 
   function makeService(listMineMock?: jest.Mock): CaseStateService {
-    controllerMock = { listMineByParentCase: listMineMock ?? jest.fn().mockReturnValue(of([])) }
+    controllerMock = {
+      listMineByParentCase: listMineMock ?? jest.fn().mockReturnValue(of([])),
+      deleteCase: jest.fn().mockReturnValue(of(undefined)),
+      starCase: jest.fn().mockReturnValue(of(undefined)),
+      unstarCase: jest.fn().mockReturnValue(of(undefined)),
+    }
     TestBed.configureTestingModule({
       providers: [CaseStateService, { provide: CaseControllerService, useValue: controllerMock }],
     })
@@ -56,5 +66,47 @@ describe('CaseStateService', () => {
 
     svc.loadCases('ns-1') // same namespace, reload fails → keep what we had
     expect(svc.cases()).toEqual([caseWith('a')])
+  })
+
+  it('deleteCase calls the controller and reloads the current namespace on success', () => {
+    const listMine = jest.fn().mockReturnValue(of([caseWith('a')]))
+    const svc = makeService(listMine)
+    svc.loadCases('ns-1')
+    expect(listMine).toHaveBeenCalledTimes(1)
+
+    svc.deleteCase('a').subscribe()
+
+    expect(controllerMock.deleteCase).toHaveBeenCalledWith('a')
+    expect(listMine).toHaveBeenCalledTimes(2) // reloaded after the delete
+  })
+
+  it('setStarred flips favorite optimistically and keeps it on success', () => {
+    const svc = makeService(jest.fn().mockReturnValue(of([caseWith('a', false)])))
+    svc.loadCases('ns-1')
+
+    svc.setStarred('a', true).subscribe()
+
+    expect(controllerMock.starCase).toHaveBeenCalledWith('a')
+    expect(svc.cases()[0].favorite).toBe(true)
+  })
+
+  it('setStarred reverts the optimistic favorite when the request fails', () => {
+    const svc = makeService(jest.fn().mockReturnValue(of([caseWith('a', false)])))
+    svc.loadCases('ns-1')
+    controllerMock.starCase.mockReturnValue(throwError(() => new Error('boom')))
+
+    svc.setStarred('a', true).subscribe({ error: () => undefined })
+
+    expect(svc.cases()[0].favorite).toBe(false) // reverted locally, no reload needed
+  })
+
+  it('setStarred uses unstarCase and clears favorite when starred=false', () => {
+    const svc = makeService(jest.fn().mockReturnValue(of([caseWith('a', true)])))
+    svc.loadCases('ns-1')
+
+    svc.setStarred('a', false).subscribe()
+
+    expect(controllerMock.unstarCase).toHaveBeenCalledWith('a')
+    expect(svc.cases()[0].favorite).toBe(false)
   })
 })
