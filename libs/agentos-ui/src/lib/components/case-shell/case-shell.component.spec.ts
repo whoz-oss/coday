@@ -18,11 +18,11 @@ describe('CaseShellComponent', () => {
     unstarCase: jest.Mock
   }
 
-  function makeComponent(url: string, cases: Case[] = []): CaseShellComponent {
+  function makeComponent(url: string, cases: Case[] = [], listMineMock?: jest.Mock): CaseShellComponent {
     routerMock = { url, events: EMPTY, navigate: jest.fn() }
     routeMock = { snapshot: { params: { namespaceId: NS_ID } } }
     caseControllerMock = {
-      listMineByParentCase: jest.fn().mockReturnValue(of(cases)),
+      listMineByParentCase: listMineMock ?? jest.fn().mockReturnValue(of(cases)),
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
       starCase: jest.fn().mockReturnValue(of(undefined)),
       unstarCase: jest.fn().mockReturnValue(of(undefined)),
@@ -156,6 +156,27 @@ describe('CaseShellComponent', () => {
       expect(errorSpy).toHaveBeenCalled()
       // No refresh on failure: listMineByParentCase stays at its single construction-time call.
       expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('list resilience', () => {
+    it('survives a transient list-load failure and recovers on the next refresh', () => {
+      // A single failed load must NOT kill the stream: a later refresh (after delete/star)
+      // must still fetch and repopulate the drawer instead of being a silent no-op.
+      const cases = [caseWith('case-1')]
+      const listMine = jest
+        .fn()
+        .mockReturnValueOnce(throwError(() => new Error('boom')))
+        .mockReturnValue(of(cases))
+      const component = makeComponent(`/agentos/${NS_ID}/cases`, [], listMine)
+
+      // Construction-time load errored → empty list, but the stream stays alive.
+      expect(component['cases']()).toEqual([])
+
+      component['refreshCases']()
+
+      // Recovered: the second load populated the drawer.
+      expect(component['cases']()).toEqual(cases)
     })
   })
 })

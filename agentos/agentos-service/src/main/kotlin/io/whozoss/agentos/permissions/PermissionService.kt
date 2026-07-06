@@ -128,11 +128,20 @@ interface PermissionService {
         action: Action,
     ): Set<String>
 
-    /** Sets the caller's per-user favorite flag on their direct relation to an entity. */
-    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean)
+    /**
+     * Sets the caller's per-user favorite flag on their direct relation to an entity.
+     * @return true if a direct relation was updated, false if the user has none.
+     */
+    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
 
     /** Ids of entities of the given type the user has starred. */
     fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String>
+
+    /**
+     * The caller's direct relation (and starred flag) per entity of [entityType] they
+     * have a direct edge on, keyed by entity id. One round-trip; used to enrich listings.
+     */
+    fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
 
     /**
      * Clears the permission cache for a specific user.

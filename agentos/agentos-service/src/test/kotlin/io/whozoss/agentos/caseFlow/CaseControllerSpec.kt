@@ -11,6 +11,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -67,7 +68,12 @@ class CaseControllerSpec : StringSpec({
         title = title,
     )
 
-    beforeTest { clearAllMocks() }
+    beforeTest {
+        clearAllMocks()
+        // Default: the caller has no direct relations (empty enrichment). Listing tests that
+        // assert `favorite`/`role` override this with a specific map.
+        every { permissionService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
+    }
 
     // -------------------------------------------------------------------------
     // Mapping
@@ -177,7 +183,6 @@ class CaseControllerSpec : StringSpec({
         val case2 = caseEntity(title = "b")
         val case3 = caseEntity(title = "c")
         every { userService.getCurrentUser() } returns caller
-        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true
@@ -196,7 +201,6 @@ class CaseControllerSpec : StringSpec({
     "listByParent uses findAccessibleByUserInNamespace when caller is not namespace ADMIN" {
         val ownCase = caseEntity(title = "mine")
         every { userService.getCurrentUser() } returns caller
-        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
@@ -219,7 +223,6 @@ class CaseControllerSpec : StringSpec({
 
     "listByParent non-admin path returns empty list when the user has no accessible case" {
         every { userService.getCurrentUser() } returns caller
-        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
@@ -239,8 +242,8 @@ class CaseControllerSpec : StringSpec({
         val plain = caseEntity(title = "plain")
         every { userService.getCurrentUser() } returns caller
         every {
-            permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE)
-        } returns setOf(starred.metadata.id.toString())
+            permissionService.listDirectRelations(callerId.toString(), EntityType.CASE)
+        } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true
@@ -257,8 +260,8 @@ class CaseControllerSpec : StringSpec({
         val plain = caseEntity(title = "plain")
         every { userService.getCurrentUser() } returns caller
         every {
-            permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE)
-        } returns setOf(starred.metadata.id.toString())
+            permissionService.listDirectRelations(callerId.toString(), EntityType.CASE)
+        } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns false
@@ -279,7 +282,7 @@ class CaseControllerSpec : StringSpec({
     "starCase delegates to permissionService.setStarred with starred=true for the current user" {
         val caseId = UUID.randomUUID()
         every { userService.getCurrentUser() } returns caller
-        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true) } just Runs
+        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true) } returns true
 
         controller.starCase(caseId)
 
@@ -288,16 +291,34 @@ class CaseControllerSpec : StringSpec({
         }
     }
 
+    "starCase throws 409 when the caller has no direct relation (setStarred wrote nothing)" {
+        val caseId = UUID.randomUUID()
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true) } returns false
+
+        val ex = shouldThrow<ResponseStatusException> { controller.starCase(caseId) }
+        ex.statusCode shouldBe HttpStatus.CONFLICT
+    }
+
     "unstarCase delegates to permissionService.setStarred with starred=false for the current user" {
         val caseId = UUID.randomUUID()
         every { userService.getCurrentUser() } returns caller
-        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false) } just Runs
+        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false) } returns true
 
         controller.unstarCase(caseId)
 
         verify(exactly = 1) {
             permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false)
         }
+    }
+
+    "unstarCase throws 409 when the caller has no direct relation (setStarred wrote nothing)" {
+        val caseId = UUID.randomUUID()
+        every { userService.getCurrentUser() } returns caller
+        every { permissionService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false) } returns false
+
+        val ex = shouldThrow<ResponseStatusException> { controller.unstarCase(caseId) }
+        ex.statusCode shouldBe HttpStatus.CONFLICT
     }
 
     // -------------------------------------------------------------------------
@@ -310,7 +331,6 @@ class CaseControllerSpec : StringSpec({
         val mine1 = caseEntity(title = "mine 1")
         val mine2 = caseEntity(title = "mine 2")
         every { userService.getCurrentUser() } returns caller
-        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(mine1, mine2)
 
         val result = controller.listMineByParent(namespaceId)
@@ -328,8 +348,11 @@ class CaseControllerSpec : StringSpec({
         val plain = caseEntity(title = "plain")
         every { userService.getCurrentUser() } returns caller
         every {
-            permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE)
-        } returns setOf(starred.metadata.id.toString())
+            permissionService.listDirectRelations(callerId.toString(), EntityType.CASE)
+        } returns mapOf(
+            starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true),
+            plain.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = false),
+        )
         every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starred, plain)
 
         val result = controller.listMineByParent(namespaceId)
@@ -338,9 +361,27 @@ class CaseControllerSpec : StringSpec({
         result.single { it.id == plain.metadata.id }.favorite shouldBe false
     }
 
+    "listMineByParent sets role from the caller's direct relation (ADMIN vs MEMBER)" {
+        val adminCase = caseEntity(title = "admin case")
+        val memberCase = caseEntity(title = "member case")
+        every { userService.getCurrentUser() } returns caller
+        every {
+            permissionService.listDirectRelations(callerId.toString(), EntityType.CASE)
+        } returns mapOf(
+            adminCase.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = false),
+            memberCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = false),
+        )
+        every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(adminCase, memberCase)
+
+        val result = controller.listMineByParent(namespaceId)
+
+        // The UI gates the delete affordance on role == "ADMIN".
+        result.single { it.id == adminCase.metadata.id }.role shouldBe "ADMIN"
+        result.single { it.id == memberCase.metadata.id }.role shouldBe "MEMBER"
+    }
+
     "listMineByParent returns empty list when the user has no directly-related case" {
         every { userService.getCurrentUser() } returns caller
-        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns emptyList()
 
         controller.listMineByParent(namespaceId) shouldBe emptyList()
@@ -466,7 +507,6 @@ class CaseControllerSpec : StringSpec({
         val superAdmin = caller.copy(isAdmin = true)
         val case1 = caseEntity()
         every { userService.getCurrentUser() } returns superAdmin
-        every { permissionService.listStarredEntityIds(callerId.toString(), EntityType.CASE) } returns emptySet()
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
         } returns true

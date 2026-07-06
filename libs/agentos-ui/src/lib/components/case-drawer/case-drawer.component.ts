@@ -10,8 +10,8 @@ import {
   ViewChild,
 } from '@angular/core'
 import { Case } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { CaseItemComponent } from '../case-item/case-item.component'
+import { EntityListComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseItemComponent, CaseListItem } from '../case-item/case-item.component'
 
 /**
  * CaseDrawerComponent — presentational drawer content for the case list.
@@ -40,9 +40,9 @@ export class CaseDrawerComponent implements OnChanges {
   @Output() deleteRequested = new EventEmitter<string>()
   @Output() starToggled = new EventEmitter<{ id: string; starred: boolean }>()
 
-  @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: EntityListItem }>
+  @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: CaseListItem }>
 
-  protected caseItems: EntityListItem[] = []
+  protected caseItems: CaseListItem[] = []
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['cases']) {
@@ -71,7 +71,10 @@ export class CaseDrawerComponent implements OnChanges {
     this.deleteRequested.emit(id)
   }
 
-  protected onStarToggled(item: EntityListItem): void {
-    this.starToggled.emit({ id: item.id, starred: !item.favorite })
+  protected onStarToggled(item: CaseListItem): void {
+    // Optimistically flip locally so a rapid second click toggles from the new state
+    // (not the stale one) and the star icon updates immediately; the refresh reconciles.
+    item.favorite = !item.favorite
+    this.starToggled.emit({ id: item.id, starred: item.favorite })
   }
 }

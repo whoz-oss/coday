@@ -155,6 +155,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e {id: $entityId})
         WHERE $entityLabel IN labels(e)
         SET r.starred = $starred
+        RETURN count(r)
     """,
     )
     fun setStarred(
@@ -162,7 +163,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("entityId") entityId: String,
         @Param("entityLabel") entityLabel: String,
         @Param("starred") starred: Boolean,
-    )
+    ): Long
 
     @Query(
         $$"""
@@ -172,6 +173,26 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     """,
     )
     fun findStarredEntityIds(
+        @Param("userId") userId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): List<String>
+
+    /**
+     * The caller's direct relation and starred flag for every entity of the given label
+     * they have a direct ADMIN/MEMBER edge on, encoded as `"id|relation|starred"` per row.
+     *
+     * Encoded into a single string column on purpose: Spring Data Neo4j cannot map a
+     * multi-value record (`RETURN a, b, c`) without a custom mapper. The caller decodes
+     * each row and collapses duplicate ids (a user may hold both edges on one entity).
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e)
+        WHERE $entityLabel IN labels(e)
+        RETURN e.id + '|' + type(r) + '|' + toString(coalesce(r.starred, false)) AS row
+    """,
+    )
+    fun findDirectRelations(
         @Param("userId") userId: String,
         @Param("entityLabel") entityLabel: String,
     ): List<String>

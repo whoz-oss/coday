@@ -3,7 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, filter, map, merge, of, switchMap } from 'rxjs'
+import { BehaviorSubject, catchError, filter, map, merge, of, switchMap } from 'rxjs'
 import { CaseDrawerComponent } from '../case-drawer/case-drawer.component'
 import { CaseItemComponent } from '../case-item/case-item.component'
 import { HeaderComponent } from '../header/header.component'
@@ -42,7 +42,11 @@ export class CaseShellComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   private readonly cases$ = this.refresh$.pipe(
-    switchMap(() => this.caseController.listMineByParentCase(this.namespaceId))
+    switchMap(() =>
+      // Keep the outer stream alive across transient failures, otherwise one failed load
+      // would terminate cases$ and every later refresh (after delete/star) would no-op.
+      this.caseController.listMineByParentCase(this.namespaceId).pipe(catchError(() => of([] as Case[])))
+    )
   )
 
   protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })

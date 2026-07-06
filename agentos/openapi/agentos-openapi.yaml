@@ -2048,6 +2048,12 @@ components:
           type: boolean
         favorite:
           type: boolean
+        role:
+          type: string
+          description: The caller's direct relation on this case
+          enum:
+          - ADMIN
+          - MEMBER
       required:
       - favorite
       - namespaceId

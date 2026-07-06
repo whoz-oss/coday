@@ -302,19 +302,18 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean) {
+    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
         try {
             permissionNodeRepository.setStarred(
                 userId = userId,
                 entityId = entityId,
                 entityLabel = entityType.label,
                 starred = starred,
-            )
+            ) > 0
         } catch (e: Exception) {
             logger.error(e) { "Error setting starred=$starred for user=$userId on $entityType:$entityId" }
             throw e
         }
-    }
 
     override fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String> =
         try {
@@ -322,6 +321,33 @@ class Neo4jPermissionRepository(
         } catch (e: Exception) {
             logger.error(e) { "Error listing starred entities for user=$userId, type=$entityType" }
             emptySet() // fail-closed
+        }
+
+    override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
+        try {
+            val result = mutableMapOf<String, DirectRelation>()
+            for (row in permissionNodeRepository.findDirectRelations(userId, entityType.label)) {
+                // Each row is "id|relation|starred" (see findDirectRelations).
+                val parts = row.split('|')
+                if (parts.size != 3) continue
+                val id = parts[0]
+                val relation = PermissionRelation.valueOf(parts[1])
+                val starred = parts[2].toBoolean()
+                val existing = result[id]
+                // A user may hold both edges on the same entity — ADMIN wins, and the
+                // entity is "starred" if the flag is set on either edge.
+                val mergedRelation =
+                    if (existing?.relation == PermissionRelation.ADMIN || relation == PermissionRelation.ADMIN) {
+                        PermissionRelation.ADMIN
+                    } else {
+                        PermissionRelation.MEMBER
+                    }
+                result[id] = DirectRelation(mergedRelation, (existing?.starred ?: false) || starred)
+            }
+            result
+        } catch (e: Exception) {
+            logger.error(e) { "Error listing direct relations for user=$userId, type=$entityType" }
+            emptyMap() // fail-closed
         }
 
     /**

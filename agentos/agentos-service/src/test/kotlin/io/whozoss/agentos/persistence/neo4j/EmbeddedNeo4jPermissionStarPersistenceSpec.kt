@@ -5,12 +5,15 @@ import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
+import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
@@ -215,6 +218,50 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
 
             permissionService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), false)
             permissionService.listStarredEntityIds(user.id.toString(), EntityType.CASE) shouldNotContain case.id.toString()
+        }
+
+        "setStarred returns true when a direct edge exists and false when the user has none" {
+            val user = createUser()
+            val namespace = createNamespace()
+            val case = createCase(namespace.id)
+
+            // No direct edge yet — the SET matches nothing, so nothing was persisted.
+            permissionService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe false
+
+            permissionNodeRepository.createAdminPermission(
+                userId = user.id.toString(),
+                entityId = case.id.toString(),
+                entityLabel = "Case",
+            )
+
+            // Direct edge present — the star lands.
+            permissionService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe true
+        }
+
+        "listDirectRelations returns the caller's relation and starred flag per entity (and omits un-related ones)" {
+            val user = createUser()
+            val namespace = createNamespace()
+            val adminCase = createCase(namespace.id)
+            val memberCase = createCase(namespace.id)
+            val unrelatedCase = createCase(namespace.id) // user has NO edge on this one
+
+            permissionNodeRepository.createAdminPermission(
+                userId = user.id.toString(),
+                entityId = adminCase.id.toString(),
+                entityLabel = "Case",
+            )
+            permissionNodeRepository.createMemberPermission(
+                userId = user.id.toString(),
+                entityId = memberCase.id.toString(),
+                entityLabel = "Case",
+            )
+            permissionService.setStarred(user.id.toString(), EntityType.CASE, adminCase.id.toString(), true)
+
+            val relations = permissionService.listDirectRelations(user.id.toString(), EntityType.CASE)
+
+            relations[adminCase.id.toString()] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
+            relations[memberCase.id.toString()] shouldBe DirectRelation(PermissionRelation.MEMBER, starred = false)
+            relations.containsKey(unrelatedCase.id.toString()) shouldBe false
         }
     }
 }

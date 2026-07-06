@@ -22,8 +22,15 @@ data class CaseResource(
     val created: Instant? = null,
     val removed: Boolean = false,
     /**
-     * Per-user favorite flag. Populated only by the case-list endpoint (`listByParent`);
+     * Per-user favorite flag. Populated by the case-list endpoints;
      * single-case fetches (get/create/update) return the default `false`.
      */
     val favorite: Boolean = false,
+    /**
+     * The caller's direct relation on this case (`ADMIN` or `MEMBER`), or `null` when the
+     * caller has no direct edge (e.g. transitive namespace-admin access). Populated by the
+     * case-list endpoints; lets the UI gate ADMIN-only actions (delete). Null on single-case fetches.
+     */
+    @field:Schema(description = "The caller's direct relation on this case", allowableValues = ["ADMIN", "MEMBER"])
+    val role: String? = null,
 )

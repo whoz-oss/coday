@@ -16,6 +16,10 @@ export interface Case {
   created?: string
   removed: boolean
   favorite: boolean
+  /**
+   * The caller\'s direct relation on this case
+   */
+  role?: CaseRoleEnum
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',
@@ -23,4 +27,8 @@ export enum CaseStatusEnum {
   IDLE = 'IDLE',
   KILLED = 'KILLED',
   ERROR = 'ERROR',
+}
+export enum CaseRoleEnum {
+  ADMIN = 'ADMIN',
+  MEMBER = 'MEMBER',
 }

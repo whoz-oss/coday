@@ -195,11 +195,14 @@ class PermissionServiceImpl(
         }
     }
 
-    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean) =
+    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
         permissionRepository.setStarred(userId, entityType, entityId, starred)
 
     override fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String> =
         permissionRepository.listStarredEntityIds(userId, entityType)
+
+    override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
+        permissionRepository.listDirectRelations(userId, entityType)
 
     override fun clearUserCache(userId: String) {
         try {

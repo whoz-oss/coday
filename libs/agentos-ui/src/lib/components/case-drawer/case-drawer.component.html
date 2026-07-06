@@ -32,12 +32,14 @@
       [title]="item.favorite ? 'Unstar case' : 'Star case'"
       (action)="onStarToggled(item)"
     />
-    <ds-icon-button
-      class="case-drawer-item__delete"
-      icon="delete"
-      variant="danger"
-      title="Delete case"
-      (action)="onDeleteRequested(item.id)"
-    />
+    @if (item.canDelete) {
+      <ds-icon-button
+        class="case-drawer-item__delete"
+        icon="delete"
+        variant="danger"
+        title="Delete case"
+        (action)="onDeleteRequested(item.id)"
+      />
+    }
   </div>
 </ng-template>

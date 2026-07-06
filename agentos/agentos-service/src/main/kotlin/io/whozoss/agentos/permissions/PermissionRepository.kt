@@ -126,10 +126,20 @@ interface PermissionRepository {
 
     /**
      * Sets the per-user "starred" (favorite) flag on the user's direct relation to an entity.
-     * No-op if the user has no direct ADMIN/MEMBER relation on the entity.
+     *
+     * @return true if a direct ADMIN/MEMBER relation was updated, false if the user has
+     *   none (the star was not persisted). Lets callers reject the operation instead of
+     *   reporting a success that did not happen.
      */
-    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean)
+    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
 
     /** Ids of entities of the given type that the user has starred (favorited). */
     fun listStarredEntityIds(userId: String, entityType: EntityType): Set<String>
+
+    /**
+     * The caller's direct relation (and starred flag) for every entity of [entityType]
+     * they have a direct ADMIN/MEMBER edge on, keyed by entity id. Resolved in a single
+     * round-trip so list endpoints can enrich each resource without a per-row query.
+     */
+    fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
 }

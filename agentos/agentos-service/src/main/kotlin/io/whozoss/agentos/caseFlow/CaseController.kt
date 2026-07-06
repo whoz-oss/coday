@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -131,7 +132,7 @@ class CaseController(
                 logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
                 caseService.findAccessibleByUserInNamespace(user.id, parentId)
             }
-        return withFavorites(cases, userId)
+        return withCallerMeta(cases, userId)
     }
 
     /**
@@ -153,20 +154,24 @@ class CaseController(
         val user = userService.getCurrentUser()
         logger.debug { "Listing directly-related cases for user ${user.id} in namespace $parentId" }
         val cases = caseService.findConcerningUserInNamespace(user.id, parentId)
-        return withFavorites(cases, user.id.toString())
+        return withCallerMeta(cases, user.id.toString())
     }
 
     /**
-     * Map domain [cases] to [CaseResource]s, setting the per-user `favorite` flag
-     * from the caller's starred set. Shared by [listByParent] and [listMineByParent]
-     * so the star-enrichment logic lives in one place.
+     * Map domain [cases] to [CaseResource]s, enriching each with [userId]'s direct
+     * relation (`role`) and favorite flag. A single companion query resolves the whole
+     * set (no per-case round-trip). Cases the user has no direct edge on get `role = null`
+     * and `favorite = false` (e.g. the namespace-admin fast path in [listByParent]).
      */
-    private fun withFavorites(
+    private fun withCallerMeta(
         cases: List<Case>,
         userId: String,
     ): List<CaseResource> {
-        val starredIds = permissionService.listStarredEntityIds(userId, EntityType.CASE)
-        return cases.map { toResource(it).copy(favorite = it.metadata.id.toString() in starredIds) }
+        val relations = permissionService.listDirectRelations(userId, EntityType.CASE)
+        return cases.map {
+            val meta = relations[it.metadata.id.toString()]
+            toResource(it).copy(favorite = meta?.starred ?: false, role = meta?.relation?.name)
+        }
     }
 
     /**
@@ -230,7 +235,7 @@ class CaseController(
         @PathVariable userId: UUID,
     ): List<CaseResource> {
         logger.debug { "Listing cases for user $userId" }
-        return caseService.findConcerningUser(userId).map { toResource(it) }
+        return withCallerMeta(caseService.findConcerningUser(userId), userId.toString())
     }
 
     /**
@@ -249,7 +254,7 @@ class CaseController(
                 ?: throw io.whozoss.agentos.exception
                     .ResourceNotFoundException("User not found: $externalId")
         logger.debug { "Listing cases for user ${user.id} (externalId=$externalId)" }
-        return caseService.findConcerningUser(user.id).map { toResource(it) }
+        return withCallerMeta(caseService.findConcerningUser(user.id), user.id.toString())
     }
 
     /**
@@ -273,7 +278,7 @@ class CaseController(
                 ?: throw io.whozoss.agentos.exception
                     .ResourceNotFoundException("Namespace not found: ${request.namespaceExternalId}")
         logger.debug { "Listing cases for user ${user.id} in namespace ${namespace.id}" }
-        return caseService.findConcerningUserInNamespace(user.id, namespace.id).map { toResource(it) }
+        return withCallerMeta(caseService.findConcerningUserInNamespace(user.id, namespace.id), user.id.toString())
     }
 
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
@@ -333,7 +338,14 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        permissionService.setStarred(userId, EntityType.CASE, id.toString(), true)
+        if (!permissionService.setStarred(userId, EntityType.CASE, id.toString(), true)) {
+            // READ can be granted transitively (namespace-admin) but starring writes on the
+            // caller's direct edge — reject instead of reporting a success that did not persist.
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Cannot star case $id: the caller has no direct relation on it",
+            )
+        }
         logger.info { "User $userId starred case $id" }
     }
 
@@ -345,7 +357,12 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        permissionService.setStarred(userId, EntityType.CASE, id.toString(), false)
+        if (!permissionService.setStarred(userId, EntityType.CASE, id.toString(), false)) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Cannot unstar case $id: the caller has no direct relation on it",
+            )
+        }
         logger.info { "User $userId unstarred case $id" }
     }
 
