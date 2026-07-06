@@ -49,10 +49,9 @@ logstashLogbackEncoder = "8.1"
 # and the transitive version pulled by com.google.genai:google-genai (Spring AI Gemini).
 okhttp = "4.12.0"
 
-# MCP Java SDK — version shipped by Spring AI 1.1.x BOM
-# NOTE: MCP SDK 1.1.x requires Jackson 3 (tools.jackson.*), incompatible with Spring Boot 3.x
-# which is pinned on Jackson 2 (com.fasterxml.jackson.*). Stay on 0.17.0 until Spring AI 2.x.
-mcpSdk = "0.17.2"
+# MCP Java SDK 2.0 — uses mcp-core + mcp-json-jackson2 for Jackson 2.x compatibility.
+# The parent artifact 'mcp' pulls mcp-json-jackson3 by default — use mcp-core + mcp-json-jackson2 instead.
+mcpSdk = "2.0.0"
 
 # AgentOS modules versions
 agentosSdk = "0.195.0"
@@ -135,7 +134,8 @@ testcontainers-neo4j = { module = "org.testcontainers:neo4j", version.ref = "tes
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 
 # MCP Java SDK
-mcp-sdk = { module = "io.modelcontextprotocol.sdk:mcp", version.ref = "mcpSdk" }
+mcp-core = { module = "io.modelcontextprotocol.sdk:mcp-core", version.ref = "mcpSdk" }
+mcp-json-jackson2 = { module = "io.modelcontextprotocol.sdk:mcp-json-jackson2", version.ref = "mcpSdk" }
 
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }

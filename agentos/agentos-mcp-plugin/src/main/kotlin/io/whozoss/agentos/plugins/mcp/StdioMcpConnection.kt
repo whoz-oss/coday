@@ -4,7 +4,7 @@ import io.modelcontextprotocol.client.McpClient
 import io.modelcontextprotocol.client.McpSyncClient
 import io.modelcontextprotocol.client.transport.ServerParameters
 import io.modelcontextprotocol.client.transport.StdioClientTransport
-import io.modelcontextprotocol.json.McpJsonMapper
+import io.modelcontextprotocol.json.McpJsonDefaults
 import io.modelcontextprotocol.spec.McpSchema
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest
 import io.modelcontextprotocol.spec.McpSchema.TextContent
@@ -16,7 +16,7 @@ import java.time.Instant
 /**
  * A live connection to a local MCP server process.
  *
- * Wraps [McpSyncClient] from the MCP Java SDK 0.17.x. The underlying child process is
+ * Wraps [McpSyncClient] from the MCP Java SDK 2.0. The underlying child process is
  * started when [connect] is called and remains alive until [close] is called.
  *
  * [lastUsed] is updated on every [callTool] invocation. The [McpConnectionPool]
@@ -59,7 +59,7 @@ class StdioMcpConnection(
         }
         val params = paramsBuilder.build()
 
-        transport = StdioClientTransport(params, McpJsonMapper.getDefault())
+        transport = StdioClientTransport(params, McpJsonDefaults.getMapper())
 
         client =
             McpClient
@@ -97,7 +97,7 @@ class StdioMcpConnection(
         arguments: Map<String, Any?>,
     ): String {
         lastUsed = Instant.now()
-        val request = CallToolRequest(toolName, arguments as Map<String, Any>)
+        val request = CallToolRequest.builder(toolName).arguments(arguments as Map<String, Any>).build()
         val result =
             try {
                 client.callTool(request)

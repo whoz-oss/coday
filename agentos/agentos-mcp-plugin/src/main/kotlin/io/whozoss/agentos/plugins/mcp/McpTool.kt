@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
 
 /**
@@ -41,7 +42,7 @@ class McpTool(
      */
     data class Input(val args: String? = null)
 
-    override fun execute(input: Input?, context: ToolContext): String {
+    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
         val arguments: Map<String, Any?> =
             when {
                 input?.args.isNullOrBlank() -> {
@@ -57,7 +58,11 @@ class McpTool(
                 }
             }
         logger.debug { "[MCP] Calling '${mcpTool.name()}' with args: $arguments" }
-        return connection.callTool(mcpTool.name(), arguments)
+        return runCatching { connection.callTool(mcpTool.name(), arguments) }
+            .fold(
+                onSuccess = { ToolExecutionResult.success(it) },
+                onFailure = { ToolExecutionResult.error(it.message ?: "Tool call failed", it::class.simpleName ?: "Error", it.message ?: "") },
+            )
     }
 
     /**
@@ -68,7 +73,7 @@ class McpTool(
      * wrap the raw JSON string in [Input] and re-serialize it inside [execute].
      * This keeps deserialization inside the plugin classloader as required.
      */
-    override fun executeWithJson(json: String?, context: ToolContext): String =
+    override suspend fun executeWithJson(json: String?, context: ToolContext): ToolExecutionResult =
         execute(Input(args = json), context)
 
     companion object : KLogging() {

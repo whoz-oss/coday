@@ -8,6 +8,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import java.util.UUID
 
 class McpToolUnitSpec : StringSpec({
@@ -93,6 +94,6 @@ class McpToolUnitSpec : StringSpec({
 
         val tool = makeTool(connection = connection)
         val result = tool.execute(McpTool.Input(args = "{}"), ctx)
-        result shouldBe "search results here"
+        result shouldBe ToolExecutionResult.success("search results here")
     }
 })

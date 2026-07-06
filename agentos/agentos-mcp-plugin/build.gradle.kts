@@ -29,7 +29,8 @@ dependencies {
     compileOnly(libs.bundles.jackson)
 
     // MCP Java SDK - for connecting to local MCP servers via stdio
-    implementation(libs.mcp.sdk)
+    implementation(libs.mcp.core)
+    implementation(libs.mcp.json.jackson2)
 
     // Testing
     testImplementation("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")

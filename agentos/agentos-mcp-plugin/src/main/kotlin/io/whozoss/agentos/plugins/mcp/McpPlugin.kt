@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.mcp
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.pf4j.Extension
@@ -63,6 +64,7 @@ class McpToolProvider : ToolPlugin {
     override fun provideTools(
         config: JsonNode?,
         configName: String?,
+        context: ToolContext?,
     ): List<StandardTool<*>> {
         if (config == null || config.isNull) {
             logger.warn { "MCP_STDIO integration '$configName': no config provided, skipping" }
