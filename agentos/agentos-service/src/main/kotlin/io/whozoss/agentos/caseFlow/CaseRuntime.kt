@@ -19,7 +19,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mu.KLogging
 import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** Holds a pending command to be executed sequentially after the current agent turn. */
+private data class PendingCommand(
+    val actor: Actor,
+    val content: List<MessageContent>,
+)
 
 /**
  * Runtime execution engine for a case.
@@ -94,6 +101,9 @@ class CaseRuntime(
     private val maxIterations = 100
     private var iterationCount = 0
 
+    /** Queue of commands to execute sequentially after each agent turn completes. */
+    private val commandQueue = ConcurrentLinkedQueue<PendingCommand>()
+
     private val _statusFlow = MutableStateFlow(initialStatus)
 
     // -------------------------------------------------------------------------
@@ -130,10 +140,20 @@ class CaseRuntime(
      * Request permanent termination of this runtime.
      * Sets both [stopRequested] (to break the run loop) and [killRequested] (so
      * [run] transitions to [CaseStatus.KILLED] rather than [CaseStatus.IDLE]).
+     * Also clears the command queue so no orphaned commands are left behind.
      */
     fun requestKill() {
         killRequested.set(true)
         interruptRequested.set(true)
+        commandQueue.clear()
+    }
+
+    /**
+     * Enqueue a command for sequential execution after the current agent turn.
+     * Used when a prompt resolves to multiple commands.
+     */
+    fun enqueueCommand(actor: Actor, content: List<MessageContent>) {
+        commandQueue.add(PendingCommand(actor, content))
     }
 
     fun isRunning(): Boolean = runInFlight.get()
@@ -256,11 +276,34 @@ class CaseRuntime(
         iterationCount = 0
 
         try {
-            while (!interruptRequested.get() && iterationCount < maxIterations) {
-                logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
-                processNextStep()
-                iterationCount++
-            }
+            do {
+                // Inner loop: process current agent turn
+                while (!interruptRequested.get() && iterationCount < maxIterations) {
+                    logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
+                    processNextStep()
+                    iterationCount++
+                }
+
+                // Agent turn finished (AgentFinishedEvent found) — check command queue
+                if (interruptRequested.get() && !killRequested.get() && iterationCount < maxIterations) {
+                    val nextCommand = commandQueue.poll()
+                    if (nextCommand != null) {
+                        logger.info {
+                            "[CaseRuntime $id] Draining command queue, ${commandQueue.size} command(s) remaining"
+                        }
+                        // Inject next command as a new user message
+                        addUserMessage(nextCommand.actor, nextCommand.content)
+                        // Reset for a new agent turn
+                        interruptRequested.set(false)
+                        iterationCount = 0
+                    } else {
+                        break // Queue empty, exit outer loop
+                    }
+                } else {
+                    break // Kill requested or max iterations, exit
+                }
+            } while (true)
+
             logger.info {
                 "[CaseRuntime $id] Exited loop - iterations: $iterationCount, " +
                     "interrupt: ${interruptRequested.get()}, kill: ${killRequested.get()}"
@@ -268,10 +311,12 @@ class CaseRuntime(
             when {
                 iterationCount >= maxIterations -> {
                     logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
+                    commandQueue.clear() // Don't leave orphaned commands
                     updateStatus(CaseStatus.ERROR)
                 }
 
                 killRequested.get() -> {
+                    commandQueue.clear() // Don't leave orphaned commands
                     updateStatus(CaseStatus.KILLED)
                 }
 
@@ -283,6 +328,7 @@ class CaseRuntime(
             }
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Error during execution" }
+            commandQueue.clear()
             updateStatus(CaseStatus.ERROR)
         } finally {
             runInFlight.set(false)

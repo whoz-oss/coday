@@ -1,6 +1,6 @@
 package io.whozoss.agentos.prompt
 
-import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.PromptResolutionException
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -29,9 +29,21 @@ import java.util.UUID
  * 5. User arguments are tokenized positionally (quote-aware) and mapped to [Prompt.parameters]
  *    by declaration order. Each `{{paramName}}` in content is replaced with the corresponding value.
  * 6. Missing arguments fall back to [PromptParameter.defaultValue].
- * 7. Any unresolved `{{...}}` placeholder after substitution throws [BadRequestException].
+ * 7. Any unresolved `{{...}}` placeholder after substitution throws [PromptResolutionException].
  *
- * The resolved content strings are joined with `\n\n` to produce a single message.
+ * The resolved content strings are returned as a list. Content lines that themselves
+ * start with `/` are resolved recursively, enabling prompt composition.
+ *
+ * **Cycle detection:**
+ * Maintains a call stack (ancestry path) of [PromptCallKey] pairs `(name, resolvedArgs)`.
+ * A cycle is detected when the same key appears again in the current ancestry.
+ * This correctly handles:
+ * - Same prompt, different arguments → allowed (may produce different output)
+ * - Same prompt, same arguments in ancestry → [PromptResolutionException]
+ * - Same prompt reused in sibling branches → allowed (stack unwinds between siblings)
+ *
+ * Depth is also capped at [MAX_PROMPT_DEPTH] to catch long chains that bypass
+ * argument-based cycle detection.
  */
 @Service
 class PromptCommandParser(
@@ -40,32 +52,44 @@ class PromptCommandParser(
     /**
      * Attempt to parse [text] as a prompt command in the context of [namespaceId] / [userId].
      *
-     * @return the resolved prompt content when [text] is a recognised prompt command,
-     *         or [text] unchanged when it does not start with `/` or matches no known prompt.
-     * @throws BadRequestException when the command matches a prompt but substitution
-     *         leaves unresolved placeholders (missing required arguments).
+     * @return a list of resolved strings when [text] is a recognised prompt command,
+     *         or `listOf(text)` when it does not start with `/` or matches no known prompt.
+     * @throws PromptResolutionException when a cycle is detected, the maximum nesting
+     *         depth is exceeded, or substitution leaves unresolved placeholders.
      */
     fun resolve(
         text: String,
         namespaceId: UUID,
         userId: UUID,
-    ): String {
-        if (!text.startsWith("/")) return text
+    ): List<String> = resolveInternal(text, namespaceId, userId, depth = 0, callStack = ArrayDeque())
+
+    private fun resolveInternal(
+        text: String,
+        namespaceId: UUID,
+        userId: UUID,
+        depth: Int,
+        callStack: ArrayDeque<PromptCallKey>,
+    ): List<String> {
+        if (!text.startsWith("/")) return listOf(text)
 
         val withoutSlash = text.removePrefix("/").trimStart()
         val spaceIdx = withoutSlash.indexOf(' ')
         val commandName = (if (spaceIdx == -1) withoutSlash else withoutSlash.substring(0, spaceIdx)).lowercase()
         val argString = if (spaceIdx == -1) "" else withoutSlash.substring(spaceIdx + 1).trim()
 
-        if (commandName.isBlank()) return text
+        if (commandName.isBlank()) return listOf(text)
 
         val prompt = promptService
             .findEffective(namespaceId, userId)
             .firstOrNull { it.name.lowercase() == commandName }
             ?: run {
                 logger.debug { "No prompt found for slash command '/$commandName' — passing text through" }
-                return text
+                return listOf(text)
             }
+
+        if (depth >= MAX_PROMPT_DEPTH) {
+            throw PromptResolutionException("Maximum prompt nesting depth ($MAX_PROMPT_DEPTH) exceeded")
+        }
 
         val tokens = tokenize(argString)
 
@@ -75,32 +99,45 @@ class PromptCommandParser(
             param.name to value
         }.toMap()
 
-        val resolved = prompt.content.map { line ->
-            var result = line
+        val callKey = PromptCallKey(commandName, args)
+        if (callStack.any { it == callKey }) {
+            val cycle = (callStack.map { it.name } + commandName).joinToString(" \u2192 ")
+            throw PromptResolutionException("Cycle detected in prompt resolution: $cycle")
+        }
 
-            // Replace {{ARGUMENTS}} with the raw argument string
-            result = result.replace(ARGUMENTS_PLACEHOLDER, argString)
-
-            // Replace {{paramName}} with positional values
-            for ((name, value) in args) {
-                result = result.replace("{{$name}}", value)
+        callStack.addLast(callKey)
+        try {
+            val resolved = prompt.content.map { line ->
+                var result = line
+                result = result.replace(ARGUMENTS_PLACEHOLDER, argString)
+                for ((name, value) in args) {
+                    result = result.replace("{{$name}}", value)
+                }
+                result
             }
 
-            result
-        }
+            // Validate: no placeholders should remain after substitution.
+            val remaining = resolved.flatMap { line ->
+                UNRESOLVED_REGEX.findAll(line).map { it.value }.toList()
+            }.toSet()
+            if (remaining.isNotEmpty()) {
+                throw PromptResolutionException(
+                    "Missing required arguments for /${prompt.name}: ${remaining.joinToString(", ")}",
+                )
+            }
 
-        // Validate: no placeholders should remain
-        val remaining = resolved.flatMap { line ->
-            UNRESOLVED_REGEX.findAll(line).map { it.value }.toList()
-        }.toSet()
-        if (remaining.isNotEmpty()) {
-            throw BadRequestException(
-                "Missing required arguments for /${prompt.name}: ${remaining.joinToString(", ")}",
-            )
-        }
+            logger.debug { "Resolved prompt command '/$commandName' (${tokens.size} args provided)" }
 
-        logger.debug { "Resolved prompt command '/$commandName' (${tokens.size} args provided)" }
-        return resolved.joinToString("\n\n")
+            return resolved.flatMap { line ->
+                val trimmed = line.trim()
+                when {
+                    trimmed.startsWith("/") -> resolveInternal(trimmed, namespaceId, userId, depth + 1, callStack)
+                    else -> listOf(line)
+                }
+            }
+        } finally {
+            callStack.removeLast()
+        }
     }
 
     /**
@@ -146,11 +183,24 @@ class PromptCommandParser(
         else -> token
     }
 
+    /**
+     * Identifies a prompt invocation in the call stack by name and resolved arguments.
+     * Two calls with the same name but different resolved arguments are distinct and
+     * do not constitute a cycle.
+     */
+    private data class PromptCallKey(
+        val name: String,
+        val args: Map<String, String>,
+    )
+
     companion object : KLogging() {
         /** Placeholder for the entire raw argument string. */
         private const val ARGUMENTS_PLACEHOLDER = "{{ARGUMENTS}}"
 
         /** Detects any unresolved `{{...}}` placeholder after substitution. */
         private val UNRESOLVED_REGEX = Regex("""\{\{\w+\}\}""")
+
+        /** Maximum recursive prompt nesting depth. */
+        private const val MAX_PROMPT_DEPTH = 10
     }
 }

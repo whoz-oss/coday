@@ -180,7 +180,7 @@ class CaseServiceImplSpec :
 
         val permissionService: PermissionService = mockk(relaxed = true)
         val promptCommandParser: PromptCommandParser = mockk(relaxed = true) {
-            every { resolve(any(), any(), any()) } answers { firstArg() }
+            every { resolve(any(), any(), any()) } answers { listOf(firstArg<String>()) }
         }
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
@@ -1647,6 +1647,100 @@ class CaseServiceImplSpec :
         // -------------------------------------------------------------------------
         // Rehydration: crash recovery from persisted AgentRunningEvent
         // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // Multi-line prompt resolution
+        // -------------------------------------------------------------------------
+
+        "multi-command prompt resolution executes each command as a separate sequential agent turn" {
+            // Override the default mock to return multiple commands
+            val multiCommandParser = mockk<PromptCommandParser> {
+                every { resolve(any(), any(), any()) } answers {
+                    val text = firstArg<String>()
+                    if (text.startsWith("/")) listOf("resolved-1", "resolved-2", "resolved-3")
+                    else listOf(text)
+                }
+            }
+
+            var runCallCount = 0
+            val countingAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    runCallCount++
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = agentId,
+                                agentName = agentName,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
+            }
+            val userService = mockk<UserService> {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            }
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                InMemoryCaseRepository(),
+                CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                userService,
+                namespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptCommandParser = multiCommandParser,
+            )
+
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val idleCount = java.util.concurrent.atomic.AtomicInteger(0)
+            val awaiter = scope.launch {
+                withTimeout(8_000) {
+                    runtime.events
+                        .filterIsInstance<CaseStatusEvent>()
+                        .first { event ->
+                            when {
+                                event.status == CaseStatus.ERROR -> true
+                                event.status == CaseStatus.IDLE -> idleCount.incrementAndGet() >= 3
+                                else -> false
+                            }
+                        }
+                }
+            }
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("/multi-prompt")),
+            )
+            awaiter.join()
+
+            runCallCount shouldBe 3
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
 
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
             // Regression: when a case is rehydrated from persistence after a crash,

@@ -660,6 +660,108 @@ class CaseRuntimeSpec : StringSpec() {
             } shouldBe true
         }
 
+        // -------------------------------------------------------------------------
+        // Command queue: sequential execution
+        // -------------------------------------------------------------------------
+
+        "enqueued commands are executed sequentially after the first agent turn" {
+            val runOrder = mutableListOf<String>()
+            val agentName = "seq-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val runtimeId = UUID.randomUUID()
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val agent = mockk<Agent>(name = "agent-$agentName") {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { this@mockk.name } returns agentName
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val events = firstArg<List<CaseEvent>>()
+                    val lastMsg = events.filterIsInstance<MessageEvent>().last()
+                    val text = lastMsg.content.filterIsInstance<MessageContent.Text>().first().content
+                    runOrder.add(text)
+                    flow {
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = lastMsg.caseId,
+                                agentId = agentId,
+                                agentName = agentName,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) }
+
+            lateinit var runtime: CaseRuntime
+            val runAgent = RecordingRunAgent { _, events ->
+                agent.run(events).collect { event ->
+                    savedEvents.add(event)
+                    runtime.emitEvent(event)
+                    runtime.pushEvents(listOf(event))
+                }
+            }
+
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = selectAgent.asCallback,
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = runAgent.asCallback,
+            )
+
+            // First message via addUserMessage, two more via enqueueCommand
+            runtime.addUserMessage(userActor, listOf(MessageContent.Text("command-1")))
+            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("command-2")))
+            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("command-3")))
+            runtime.run()
+
+            runAgent.callCount shouldBe 3
+            runOrder shouldBe listOf("command-1", "command-2", "command-3")
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "command queue is cleared on kill" {
+            val runtimeId = UUID.randomUUID()
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { _, _, _, _, _ ->
+                    // Kill during first agent turn
+                    runtime.requestKill()
+                },
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("should-not-run")))
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.KILLED
+        }
+
+        "command queue is cleared on error (max iterations)" {
+            val loopingAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = UUID.randomUUID())
+                every { name } returns "looping"
+                every { run(any<List<CaseEvent>>(), any()) } returns flow { /* never finishes */ }
+            }
+            val (runtime) = buildRuntime(agentName = "looping", agent = loopingAgent)
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("should-not-run")))
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.ERROR
+        }
+
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
             val agentName = "gemini-flash"
             val caseId = UUID.randomUUID()

@@ -8,6 +8,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.delegation.SubCaseManager
+import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
@@ -280,19 +281,59 @@ class CaseServiceImpl(
     ) {
         val runtime = getCaseRuntime(caseId)
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
-        val resolvedContent = when {
-            userId != null -> content.map { mc ->
-                when (mc) {
-                    is MessageContent.Text -> {
-                        val resolved = promptCommandParser.resolve(mc.content, runtime.namespaceId, userId)
-                        if (resolved != mc.content) MessageContent.Text(resolved) else mc
-                    }
-                    else -> mc
+
+        // Resolve prompt commands — a single user input may expand to multiple sequential
+        // commands (e.g. a /prompt alias). Each resolved command becomes a separate agent
+        // turn: first → agent → second → agent → … This preserves the invariant that the
+        // LLM always sees alternating user/assistant turns; consecutive user messages
+        // without an assistant response in between are rejected by providers like Anthropic.
+        //
+        // Resolution failures (cycle, depth exceeded, missing arguments) are caught here
+        // and surfaced as a WarnEvent in the runtime so the SSE client sees the error.
+        // The original user message is stored first so the conversation history is intact.
+        val resolvedCommands: List<String>? = if (userId != null) {
+            try {
+                content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
+                    promptCommandParser.resolve(mc.content, runtime.namespaceId, userId)
+                }
+            } catch (e: PromptResolutionException) {
+                logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
+                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                runtime.emitEvent(
+                    storeEvent(
+                        WarnEvent(
+                            namespaceId = runtime.namespaceId,
+                            caseId = caseId,
+                            message = "Prompt resolution failed: ${e.message}",
+                        ),
+                    ),
+                )
+                return
+            }
+        } else {
+            content.filterIsInstance<MessageContent.Text>().map { it.content }
+        }
+        val nonTextContent = content.filter { it !is MessageContent.Text }
+
+        when {
+            resolvedCommands.isNullOrEmpty() ->
+                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+            else -> {
+                // First command goes as the initial user message (with any non-text attachments).
+                // Subsequent commands are enqueued: the runtime drains them one-by-one after
+                // each agent turn completes, injecting each as a fresh user message.
+                runtime.addUserMessage(
+                    actor,
+                    listOf(MessageContent.Text(resolvedCommands.first())) + nonTextContent,
+                    answerToEventId,
+                    sessionContext,
+                )
+                resolvedCommands.drop(1).forEach { cmd ->
+                    runtime.enqueueCommand(actor, listOf(MessageContent.Text(cmd)))
                 }
             }
-            else -> content
         }
-        runtime.addUserMessage(actor, resolvedContent, answerToEventId, sessionContext)
+
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
     }
