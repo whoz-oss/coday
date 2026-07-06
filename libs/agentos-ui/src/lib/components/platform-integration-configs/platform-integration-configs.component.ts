@@ -18,7 +18,6 @@ import { IntegrationConfigItemComponent } from '../integration-config-item/integ
  */
 @Component({
   selector: 'agentos-platform-integration-configs',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent],
   templateUrl: './platform-integration-configs.component.html',
   styleUrl: './platform-integration-configs.component.scss',

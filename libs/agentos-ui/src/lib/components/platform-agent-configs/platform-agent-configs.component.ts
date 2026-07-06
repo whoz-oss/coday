@@ -18,7 +18,6 @@ import { AgentConfigItemComponent } from '../agent-config-item/agent-config-item
  */
 @Component({
   selector: 'agentos-platform-agent-configs',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, AgentConfigItemComponent],
   templateUrl: './platform-agent-configs.component.html',
   styleUrl: './platform-agent-configs.component.scss',
