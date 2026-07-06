@@ -67,8 +67,8 @@ class NamespacePermissionEndpointsSpec :
             )
 
         fun stubExistence() {
-            every { namespaceService.findById(namespaceId, false) } returns namespace
-            every { userService.findById(targetUserId, false) } returns target
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userService.getById(targetUserId) } returns target
             every { userService.getCurrentUser() } returns caller
         }
 
@@ -95,15 +95,15 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "grantAdmin returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId, false) } returns null
+            every { namespaceService.getById(namespaceId) } throws ResourceNotFoundException("Namespace not found: $namespaceId")
 
             shouldThrow<ResourceNotFoundException> { controller.grantAdmin(namespaceId, targetUserId) }
             verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
         }
 
         "grantAdmin returns 404 when target user not found" {
-            every { namespaceService.findById(namespaceId, false) } returns namespace
-            every { userService.findById(targetUserId, false) } returns null
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userService.getById(targetUserId) } throws ResourceNotFoundException("User not found: $targetUserId")
 
             shouldThrow<ResourceNotFoundException> { controller.grantAdmin(namespaceId, targetUserId) }
             verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
@@ -140,7 +140,7 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "revokeAdmin returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId, false) } returns null
+            every { namespaceService.getById(namespaceId) } throws ResourceNotFoundException("Namespace not found: $namespaceId")
 
             shouldThrow<ResourceNotFoundException> { controller.revokeAdmin(namespaceId, targetUserId) }
         }
@@ -175,8 +175,8 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "grantMember returns 404 when target user not found" {
-            every { namespaceService.findById(namespaceId, false) } returns namespace
-            every { userService.findById(targetUserId, false) } returns null
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userService.getById(targetUserId) } throws ResourceNotFoundException("User not found: $targetUserId")
 
             shouldThrow<ResourceNotFoundException> { controller.grantMember(namespaceId, targetUserId) }
         }

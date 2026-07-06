@@ -6,10 +6,16 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
-import io.whozoss.agentos.delegation.SubCaseLauncher
+import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
+import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -24,6 +30,7 @@ import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -35,6 +42,7 @@ import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -48,15 +56,17 @@ class CaseServiceImpl(
     private val userService: UserService,
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
+    private val permissionService: PermissionService,
+    private val caseNamingService: CaseNamingService,
 ) : CaseService,
-    SubCaseLauncher {
-    private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
-
+    SubCaseManager {
     /**
-     * Coroutine scope used to run case execution loops in the background.
-     * Each [run] call is launched here so HTTP threads are never blocked.
+     * Coroutine scope used to run case execution loops and fire-and-forget
+     * post-processing tasks (e.g. automatic naming) in the background.
+     * Each [run] call and naming trigger is launched here so HTTP threads are never blocked.
      */
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
@@ -65,6 +75,15 @@ class CaseServiceImpl(
      * Cancelled whenever the runtime leaves [activeRuntimes] (terminal status or eviction).
      */
     private val watcherJobs = ConcurrentHashMap<UUID, Job>()
+
+    /**
+     * Number of active coroutines running in the service scope.
+     * Counts all child jobs of the scope — watcher coroutines and any in-flight run() launches.
+     * Exposed for testing only: verifies that eviction watcher coroutines are properly
+     * cancelled after idle eviction and do not leak.
+     */
+    internal val activeCoroutineCount: Int
+        get() = scope.coroutineContext[Job]?.children?.count() ?: 0
 
     // ======================================================
     // EntityService
@@ -119,13 +138,13 @@ class CaseServiceImpl(
 
     override fun delete(id: UUID): Boolean {
         if (activeRuntimes.containsKey(id)) {
-            killCase(id)
+            killSingleCase(id)
         }
         return caseRepository.delete(id)
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { killCase(it.id) }
+        findByParent(parentId).forEach { killSingleCase(it.id) }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -175,6 +194,7 @@ class CaseServiceImpl(
      * The coroutine runs for the lifetime of the service scope. It is automatically
      * cancelled when [scope] is cancelled (service shutdown).
      */
+    @OptIn(FlowPreview::class)
     private fun startEvictionWatcher(
         caseId: UUID,
         runtime: CaseRuntime,
@@ -196,10 +216,11 @@ class CaseServiceImpl(
                             runtime.statusFlow.value == CaseStatus.IDLE
                         ) {
                             activeRuntimes.remove(caseId)
-                            // Remove from watcherJobs without cancelling: we are executing
-                            // inside this very coroutine, so cancel() would be a no-op and
-                            // is semantically misleading. The coroutine ends naturally here.
-                            watcherJobs.remove(caseId)
+                            // Cancel the watcher job: collect{} on the infinite
+                            // combine(StateFlow, StateFlow) never completes naturally.
+                            // Without cancel, the coroutine stays suspended forever,
+                            // retaining the CaseRuntime in its closure — a memory leak.
+                            watcherJobs.remove(caseId)?.cancel()
                             logger.info { "Case $caseId: evicted idle runtime (no SSE subscribers after ${idleEvictionGraceMs}ms grace)" }
                         } else {
                             logger.debug {
@@ -227,7 +248,7 @@ class CaseServiceImpl(
             isAgentAuthorized = { agentName, userId ->
                 userId == null ||
                     agentConfigService
-                        .findAvailableByNamespaceIdAndUserId(
+                        .findDeployedByNamespaceIdAndUserIdAndName(
                             namespaceId = case.namespaceId,
                             userId = userId,
                             agentName = agentName,
@@ -262,6 +283,10 @@ class CaseServiceImpl(
         runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
+        // Trigger post-processing after each user message (e.g. automatic title generation).
+        // Events are fetched fresh from the service so the newly stored MessageEvent is included.
+        val case = findById(caseId) ?: return
+        triggerNamingIfNeeded(case, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
     }
 
     // ======================================================
@@ -531,7 +556,7 @@ class CaseServiceImpl(
      * Called by the runtime's [CaseRuntime.storeEvent] callback —
      * the runtime itself handles adding to its list and emitting on the SSE flow.
      *
-     * [TextChunkEvent]s are streaming-only: they carry incremental text fragments
+     * [io.whozoss.agentos.sdk.caseEvent.TextChunkEvent]s are streaming-only: they carry incremental text fragments
      * that are superseded by the final [io.whozoss.agentos.sdk.caseEvent.MessageEvent].
      * Persisting them would bloat the event store without adding any replay value,
      * so they are returned as-is without being written to the repository.
@@ -565,6 +590,15 @@ class CaseServiceImpl(
             logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
         } else {
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
+        }
+
+        // Trigger post-processing on turn completion so processors can refine their
+        // work with the full agent response available (e.g. naming refinement on 2nd turn).
+        if (newStatus == CaseStatus.IDLE) {
+            val runtime = activeRuntimes[caseId]
+            if (runtime != null) {
+                triggerNamingIfNeeded(updated, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
+            }
         }
 
         val statusEvent =
@@ -604,23 +638,64 @@ class CaseServiceImpl(
         runtime.requestInterrupt()
     }
 
-    override fun killSubCase(caseId: UUID) = killCase(caseId)
+    /**
+     * Resolves a [User] by [userId] and builds the corresponding [Actor].
+     *
+     * Throws [ResourceNotFoundException] when no user exists for [userId].
+     * The display name is the user's full name when available, falling back to
+     * the UUID string so the actor is always identifiable in event history.
+     */
+    private fun resolveActor(userId: UUID): Actor {
+        val user =
+            userService.getById(userId)
+        return Actor(
+            id = userId.toString(),
+            displayName = user.displayName(),
+            role = ActorRole.USER,
+        )
+    }
 
-    override fun killCase(caseId: UUID) {
+    private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
-        // Propagate kill to all direct sub-cases first (depth-first recursion).
-        // Each recursive call will in turn kill its own sub-cases, so arbitrarily
-        // deep delegation chains are handled without any extra tracking.
-        caseRepository.findActiveByParentCaseId(caseId).forEach { subCase ->
-            logger.info { "Killing sub-case ${subCase.id} (parent: $caseId)" }
-            killCase(subCase.id)
-        }
-        // Signal the runtime loop to exit cleanly if it is currently running,
-        // then let handleStatusChange evict it via the isTerminal() path.
         activeRuntimes[caseId]?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
+    override fun killCase(caseId: UUID) {
+        logger.info { "Killing sub-case and its descendants: $caseId" }
+        val descendants = caseRepository.findActiveDescendants(caseId)
+        if (descendants.isNotEmpty()) {
+            logger.info { "Killing ${descendants.size} descendant(s) of sub-case $caseId" }
+        }
+        descendants.forEach { descendant -> killSingleCase(descendant.id) }
+        killSingleCase(caseId)
+    }
+
+    override fun resumeSubCase(
+        subCaseId: UUID,
+        agentName: String,
+        task: String,
+        userId: UUID,
+        allowedAgents: List<String>,
+    ): CaseRuntime {
+        val subCase =
+            findById(subCaseId)
+                ?: throw ResourceNotFoundException("Sub-case not found: $subCaseId")
+        check(subCase.status == CaseStatus.IDLE) {
+            "Sub-case $subCaseId is in status ${subCase.status}, expected IDLE to resume."
+        }
+        check(agentName in allowedAgents) {
+            "Agent '$agentName' is not in the delegation allowlist for sub-case $subCaseId."
+        }
+        val actor = resolveActor(userId)
+        val runtime = getCaseRuntime(subCaseId)
+        runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
+        scope.launch { runtime.run() }
+        logger.info { "Sub-case $subCaseId resumed, agent=$agentName" }
+        return runtime
+    }
+
+    @Transactional
     override fun startSubCase(
         parentCaseId: UUID,
         namespaceId: UUID,
@@ -628,19 +703,13 @@ class CaseServiceImpl(
         task: String,
         userId: UUID,
     ): CaseRuntime {
-        val user =
-            userService.findById(userId)
-                ?: throw ResourceNotFoundException("User not found: $userId")
-        val displayName =
-            listOfNotNull(user.firstname, user.lastname)
-                .joinToString(" ")
-                .ifBlank { userId.toString() }
-        val actor =
-            io.whozoss.agentos.sdk.actor.Actor(
-                id = userId.toString(),
-                displayName = displayName,
-                role = io.whozoss.agentos.sdk.actor.ActorRole.USER,
-            )
+        val ancestorDepth = caseRepository.countAncestorDepth(parentCaseId)
+        check(ancestorDepth < MAX_DELEGATION_DEPTH) {
+            "Delegation depth limit ($MAX_DELEGATION_DEPTH) reached for case $parentCaseId. " +
+                "Cannot create a sub-case at depth ${ancestorDepth + 1}."
+        }
+
+        val actor = resolveActor(userId)
         // Use @mention syntax so the normal selectAgent resolution picks up the
         // requested agent without any special-casing in the runtime.
         val mentionedTask = "@$agentName $task"
@@ -648,14 +717,42 @@ class CaseServiceImpl(
             create(
                 Case(
                     namespaceId = namespaceId,
-                    title = "Sub-case: $task".take(120),
+                    title = "Sub-case: $task".take(MAX_SUBCASE_TITLE_LENGTH),
                     parentCaseId = parentCaseId,
                 ),
             )
-        val runtime = getCaseRuntime(subCase.id)
+
+        // Create the [:PARENT_OF] graph edge so countAncestorDepth can traverse the chain.
+        // This runs inside the same @Transactional boundary as create() above: if the
+        // link fails, the sub-case node is rolled back too — no orphaned cases.
+        caseRepository.linkParentToChild(parentCaseId, subCase.id)
+
+        // Grant the delegating user ADMIN on the sub-case so they can list, open, and
+        // stream it — same grant that CaseController.create applies for user-created cases.
+        // The permission write runs outside the Neo4j transaction boundary (it is a separate
+        // Cypher MERGE). If it fails we kill the orphaned sub-case (setting it to KILLED status)
+        // and rethrow so the DelegationTool can surface a clear failure message to the LLM
+        // instead of leaving an inaccessible case in PENDING state in the database.
+        try {
+            permissionService.grantPermission(
+                userId.toString(),
+                EntityType.CASE,
+                subCase.id.toString(),
+                PermissionRelation.ADMIN,
+            )
+        } catch (e: Exception) {
+            logger.error(e) { "Auto-ADMIN grant failed for sub-case ${subCase.id} (user $userId) — killing sub-case" }
+            runCatching { killCase(subCase.id) }
+                .onFailure { killErr ->
+                    logger.warn(killErr) { "Failed to kill orphaned sub-case ${subCase.id} after permission grant failure" }
+                }
+            throw IllegalStateException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
+        }
+
+        val runtime = activeRuntimes[subCase.id]!!
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
         scope.launch { runtime.run() }
-        logger.info { "Sub-case ${subCase.id} started under parent $parentCaseId, agent=$agentName" }
+        logger.info { "Sub-case ${subCase.id} started under parent $parentCaseId, agent=$agentName (depth=${ancestorDepth + 1})" }
         return runtime
     }
 
@@ -668,7 +765,7 @@ class CaseServiceImpl(
         logger.info { "Shutting down CaseService..." }
         activeRuntimes.keys.toList().forEach {
             try {
-                killCase(it)
+                killSingleCase(it)
             } catch (e: Exception) {
                 logger.warn(e) { "Error killing case $it during shutdown" }
             }
@@ -703,7 +800,56 @@ class CaseServiceImpl(
         return lastRunningIndex < 0 || lastSelectedIndex > lastRunningIndex
     }
 
+    /**
+     * Launches a fire-and-forget naming coroutine when conditions warrant a (re)naming attempt.
+     *
+     * Triggers when **any** of the following holds:
+     * - The case title is blank or null (defensive: the default is never blank, but guards
+     *   against future changes to [Case] defaults).
+     * - The case has the auto-generated default title (`"Case <uuid>"`) AND we are at the
+     *   first user message — quick first-pass title before the agent responds.
+     * - The case has the auto-generated default title AND we are on the first agent turn
+     *   completion — refined title with the full first exchange available.
+     *
+     * Beyond the first agent turn the title is considered settled; further turns are skipped
+     * unless the title is blank.
+     */
+    private fun triggerNamingIfNeeded(
+        case: Case,
+        events: List<CaseEvent>,
+        emitEvent: (CaseEvent) -> Unit,
+    ) {
+        val titleIsBlank = case.title.isBlank()
+        val titleIsGenerated = case.title == "Case ${case.id}"
+        val userMessageCount = events.count { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val agentFinishedCount = events.count { it is AgentFinishedEvent }
+
+        val shouldTrigger =
+            (titleIsBlank || titleIsGenerated) &&
+                (titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1)
+
+        if (shouldTrigger) {
+            scope.launch {
+                runCatching { caseNamingService.nameCase(case, events, emitEvent) }
+                    .onFailure { e -> logger.error(e) { "[CaseNaming] Failed for case ${case.id}" } }
+            }
+        }
+    }
+
     companion object : KLogging() {
+        /**
+         * Maximum depth of delegation chains allowed.
+         *
+         * A top-level case has depth 0. Its direct sub-case has depth 1, etc.
+         * If a parent case is already at depth [MAX_DELEGATION_DEPTH] − 1, creating
+         * a child would reach the limit and is rejected. This prevents runaway
+         * delegation chains without forbidding legitimate multi-level orchestration.
+         */
+        private const val MAX_DELEGATION_DEPTH = 5
+
+        /** Maximum character length for a sub-case title derived from the task description. */
+        private const val MAX_SUBCASE_TITLE_LENGTH = 50
+
         /**
          * Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`.
          *

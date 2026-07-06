@@ -1,6 +1,7 @@
 package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -11,10 +12,21 @@ import java.util.UUID
 /**
  * SpEL-callable guard for [AiModelController].
  *
- * The standard `hasPermission(#id, 'AiModel', 'WRITE')` is unsuitable for create/list-by-parent
- * because permission is determined by the **parent AiProvider's namespace**, not by the AiModel
- * itself (which doesn't even exist yet at create time, and whose `namespaceId` is denormalised
- * from the provider).
+ * Permission is determined by the **parent AiProvider's scope** — an AiModel
+ * inherits the access rules of its provider:
+ *
+ * - Provider namespace-scoped (`namespaceId != null`): permission checked against
+ *   the namespace (READ or WRITE depending on the operation).
+ * - Provider platform-level (`namespaceId = null AND userId = null`): permission
+ *   checked with `entityId = null`, which [io.whozoss.agentos.permissions.PermissionServiceImpl]
+ *   resolves as READ open / WRITE super-admin only.
+ * - Provider user-scoped (deprecated, `namespaceId = null AND userId != null`): fail-closed.
+ *
+ * All checks delegate to [PermissionService.hasPermission] — no custom logic here.
+ *
+ * When the referenced provider does not exist, [ResourceNotFoundException] is thrown so
+ * the caller receives a 404, not a misleading 403 (existence and permission are separate
+ * concerns).
  *
  * Used in `@PreAuthorize` SpEL via the bean-reference syntax:
  * ```
@@ -29,34 +41,47 @@ class AiModelGuard(
     private val userService: UserService,
 ) {
     /**
-     * Returns true if the current user has WRITE on the namespace of the parent AiProvider
-     * referenced by [resource.aiProviderId]. Returns false (→ 403) for missing or user-scoped
-     * providers — a strict fail-closed posture aligned with  .
+     * Returns true if the current user has WRITE access on the scope of the parent
+     * [io.whozoss.agentos.aiProvider.AiProvider] referenced by [resource.aiProviderId].
+     *
+     * Throws [ResourceNotFoundException] when the referenced provider does not exist.
+     * Fail-closed (returns false) only for user-scoped providers (deprecated).
      */
     fun canCreate(resource: AiModelResource): Boolean {
         val providerId = resource.aiProviderId ?: return false
-        val provider = aiProviderService.findById(providerId) ?: return false
-        val nsId = provider.namespaceId ?: return false
-        return permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.WRITE)
+        val provider = aiProviderService.findById(providerId)
+            ?: throw ResourceNotFoundException("AiProvider not found: $providerId")
+        val nsId = provider.namespaceId
+        val userId = provider.userId
+        return when {
+            // User-scoped provider (deprecated): fail-closed
+            nsId == null && userId != null -> false
+            // Namespace-scoped or platform-level: check WRITE on the namespace (null = platform)
+            else -> permissionService.hasPermission(
+                currentUserId(), EntityType.NAMESPACE, nsId?.toString(), Action.WRITE,
+            )
+        }
     }
 
     /**
      * Returns true when the caller may invoke `listByParent(providerId)`.
      *
-     * Fail-closed posture:
-     * - Provider missing: returns false (→ 403). Avoids exposing the difference between
-     *   "not found" and "no permission" via two distinct response codes.
-     * - Provider user-scoped (legacy, no namespaceId): returns false (→ 403). The
-     *   controller body would otherwise call `findByAiProviderId` with no owner filter
-     *   and leak the AiModels of another user's provider to any authenticated caller.
-     *   The user-scoped path is deprecated by issue #809.
-     * - Provider namespace-scoped: requires namespace READ on the parent namespace,
-     *   evaluated by [PermissionService].
+     * Throws [ResourceNotFoundException] when the provider does not exist.
+     * Fail-closed (returns false) only for user-scoped providers (deprecated).
      */
     fun canListByProvider(providerId: UUID): Boolean {
-        val provider = aiProviderService.findById(providerId) ?: return false
-        val nsId = provider.namespaceId ?: return false
-        return permissionService.hasPermission(currentUserId(), EntityType.NAMESPACE, nsId.toString(), Action.READ)
+        val provider = aiProviderService.findById(providerId)
+            ?: throw ResourceNotFoundException("AiProvider not found: $providerId")
+        val nsId = provider.namespaceId
+        val userId = provider.userId
+        return when {
+            // User-scoped provider (deprecated): fail-closed
+            nsId == null && userId != null -> false
+            // Namespace-scoped or platform-level: check READ on the namespace (null = platform)
+            else -> permissionService.hasPermission(
+                currentUserId(), EntityType.NAMESPACE, nsId?.toString(), Action.READ,
+            )
+        }
     }
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()

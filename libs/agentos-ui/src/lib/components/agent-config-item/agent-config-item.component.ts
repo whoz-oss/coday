@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
 import { Router } from '@angular/router'
 import { AgentConfig } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
@@ -11,7 +11,6 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  */
 @Component({
   selector: 'agentos-agent-config-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './agent-config-item.component.html',
   styleUrl: './agent-config-item.component.scss',
@@ -20,10 +19,16 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
 export class AgentConfigItemComponent {
   private readonly router = inject(Router)
 
-  @Input({ required: true }) config!: AgentConfig
-  @Input({ required: true }) namespaceId!: string
+  readonly config = input.required<AgentConfig>()
+  /**
+   * namespaceId is required in namespace mode and must be omitted in platform mode.
+   * When platformMode is true, routes navigate to /agentos/admin/agent-configs/...
+   */
+  readonly namespaceId = input<string | undefined>(undefined)
+  /** Set to true for platform-level configs (no namespace scope). */
+  readonly platformMode = input(false)
 
-  @Output() deleteRequested = new EventEmitter<AgentConfig>()
+  readonly deleteRequested = output<AgentConfig>()
 
   protected readonly pendingDelete = signal(false)
 
@@ -36,10 +41,18 @@ export class AgentConfigItemComponent {
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', this.config.id, 'edit'])
+        if (this.platformMode()) {
+          this.router.navigate(['/agentos', 'admin', 'agent-configs', this.config().id, 'edit'])
+        } else {
+          this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'edit'])
+        }
         break
       case 'inspect':
-        this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', this.config.id, 'inspect'])
+        if (this.platformMode()) {
+          this.router.navigate(['/agentos', 'admin', 'agent-configs', this.config().id, 'inspect'])
+        } else {
+          this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'inspect'])
+        }
         break
       case 'delete':
         this.pendingDelete.set(true)
@@ -49,7 +62,7 @@ export class AgentConfigItemComponent {
 
   protected onDeleteConfirmed(): void {
     this.pendingDelete.set(false)
-    this.deleteRequested.emit(this.config)
+    this.deleteRequested.emit(this.config())
   }
 
   protected onDeleteCancelled(): void {

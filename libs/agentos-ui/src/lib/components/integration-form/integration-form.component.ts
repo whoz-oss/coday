@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
+import { of } from 'rxjs'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
@@ -39,7 +40,6 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-integration-form',
-  standalone: true,
   imports: [ReactiveFormsModule, JsonSchemaFormComponent],
   templateUrl: './integration-form.component.html',
   styleUrl: './integration-form.component.scss',
@@ -53,7 +53,10 @@ export class IntegrationFormComponent implements OnInit {
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+
+  /** True when editing/creating a platform-level integration config (no :namespaceId segment in route). */
+  protected readonly isPlatformMode = !this.namespaceId
 
   /**
    * Whether the current user can write at namespace scope (super-admin OR namespace ADMIN
@@ -62,10 +65,13 @@ export class IntegrationFormComponent implements OnInit {
    * would reject the create/update with 403. Defaults to `false` until the lookup resolves;
    * during that window the namespace option stays disabled (safe default — flickers admin
    * options on once the role lands, but never lets a non-admin slip through).
+   *
+   * In platform mode, always `true` — the page is only accessible to super-admins.
    */
-  protected readonly isAdmin = toSignal(this.namespaceRole.isAdminOfNamespace$(this.namespaceId), {
-    initialValue: false,
-  })
+  protected readonly isAdmin = toSignal(
+    this.isPlatformMode ? of(true) : this.namespaceRole.isAdminOfNamespace$(this.namespaceId!),
+    { initialValue: this.isPlatformMode }
+  )
 
   protected readonly form = new FormGroup({
     name: new FormControl<string>('', {
@@ -140,6 +146,7 @@ export class IntegrationFormComponent implements OnInit {
     // to `userOnNs` once the role lookup resolves. We watch `isAdmin` reactively rather
     // than reading it once at mount because the service is async — at mount time the signal
     // is still at its `false` initial value and we cannot tell admin from not-yet-resolved.
+    // In platform mode this effect is a no-op (isAdmin is always true).
     effect(() => {
       const admin = this.isAdmin()
       if (admin || this.isEditMode()) return
@@ -151,12 +158,13 @@ export class IntegrationFormComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.state.setNamespace(this.namespaceId)
+    if (this.namespaceId) {
+      this.state.setNamespace(this.namespaceId)
+    }
     const params = this.route.snapshot.paramMap
     const queryParams = this.route.snapshot.queryParamMap
 
     const integrationId = params.get('integrationId')
-    const hintedScope = this.parseScope(queryParams.get('scope'))
 
     if (integrationId) {
       this.isEditMode.set(true)
@@ -166,6 +174,14 @@ export class IntegrationFormComponent implements OnInit {
       return
     }
 
+    // In platform mode, scope is always 'platform' and the radio is locked.
+    if (this.isPlatformMode) {
+      this.scopeControl.setValue('platform')
+      this.scopeControl.disable()
+      return
+    }
+
+    const hintedScope = this.parseScope(queryParams.get('scope'))
     this.scopeControl.setValue(hintedScope)
     const templateId = queryParams.get('template')
     if (templateId) {
@@ -288,7 +304,7 @@ export class IntegrationFormComponent implements OnInit {
     const call$ =
       this.isEditMode() && this.existingConfig?.id
         ? this.state.update(this.existingConfig.id, draft, scope, this.existingConfig)
-        : this.state.create(draft, scope, this.namespaceId)
+        : this.state.create(draft, scope, this.namespaceId ?? null)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
@@ -301,7 +317,11 @@ export class IntegrationFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'integrations'])
+    if (this.isPlatformMode) {
+      this.router.navigate(['/agentos', 'admin', 'integration-configs'])
+    } else {
+      this.router.navigate(['/agentos', this.namespaceId, 'integrations'])
+    }
   }
 
   protected trackByType(_index: number, descriptor: IntegrationTypeDescriptor): string {

@@ -175,7 +175,13 @@
       @if (isRunning()) {
         <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
       } @else {
-        <ds-icon-button icon="send" variant="primary" title="Send (Enter)" [disabled]="!canSend" (action)="submit()" />
+        <ds-icon-button
+          icon="send"
+          variant="primary"
+          [title]="preferences.composerHint()"
+          [disabled]="!canSend"
+          (action)="submit()"
+        />
       }
 
       <ds-icon-button icon="cancel" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />

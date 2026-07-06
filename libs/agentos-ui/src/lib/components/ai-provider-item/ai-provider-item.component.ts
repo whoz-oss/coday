@@ -42,7 +42,6 @@ const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freez
  */
 @Component({
   selector: 'agentos-ai-provider-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './ai-provider-item.component.html',
   styleUrl: './ai-provider-item.component.scss',
@@ -52,6 +51,9 @@ export class AiProviderItemComponent {
   readonly config = input.required<AiProvider>()
   readonly scope = input.required<AiProviderScope>()
   readonly readOnly = input<boolean>(false)
+  /** Whether to display the scope badge. Set to false when the scope is already
+   * conveyed by the surrounding section (e.g. platform-level admin page). */
+  readonly showBadge = input<boolean>(true)
 
   readonly editRequested = output<AiProvider>()
   readonly deleteRequested = output<AiProvider>()

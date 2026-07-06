@@ -13,6 +13,7 @@
     "husky-setup": "husky",
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",
+    "regen": "nx run agentos-service:regenerate",
     "server": "nx run server:serve",
     "sync-deps": "tsx scripts/sync-project-dependencies.ts",
     "test": "nx run-many --target=test",

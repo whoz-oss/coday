@@ -11,7 +11,7 @@
 
 <!-- Item template: renders NamespaceItemComponent for each entity-list card slot -->
 <ng-template #namespaceItemTpl let-item>
-  @if (resolveNamespace(item.id); as ns) {
+  @if (namespacesById().get(item.id); as ns) {
     <agentos-namespace-item
       [namespace]="ns"
       (selected)="navigateToCases($event.id ?? '')"
@@ -21,6 +21,7 @@
       (aiProvidersRequested)="openAiProviders($event)"
       (aiModelsRequested)="openAiModels($event)"
       (agentConfigsRequested)="openAgentConfigs($event)"
+      (promptsRequested)="openPrompts($event)"
     />
   }
 </ng-template>

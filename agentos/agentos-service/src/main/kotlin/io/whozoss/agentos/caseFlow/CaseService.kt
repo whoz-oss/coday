@@ -1,7 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityService
-import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import java.util.UUID
 
@@ -141,34 +140,4 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun killCase(caseId: UUID)
 
-    // ========================================
-    // Delegation
-    // ========================================
-
-    /**
-     * Create a sub-case, inject an initial task message, and start the execution loop.
-     *
-     * The sub-case is linked to [parentCaseId] for traceability. The named [agentName]
-     * is selected explicitly (bypassing the normal @mention / last-agent resolution) by
-     * injecting the message as `@agentName task`.
-     *
-     * Returns the [CaseRuntime] of the sub-case so the caller can observe
-     * [CaseRuntime.statusFlow] to wait for completion (sync delegation).
-     *
-     * The caller is responsible for reading the result from the sub-case event history
-     * once [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE] is reached.
-     *
-     * @param parentCaseId The id of the delegating case, stored on the sub-case for traceability.
-     * @param namespaceId  The namespace the sub-case belongs to.
-     * @param agentName    The exact name of the agent that should handle the sub-case.
-     * @param task         The initial task prompt sent as the first user message.
-     * @param userId       The user on whose behalf the sub-case runs.
-     */
-    fun startSubCase(
-        parentCaseId: UUID,
-        namespaceId: UUID,
-        agentName: String,
-        task: String,
-        userId: UUID,
-    ): CaseRuntime
 }

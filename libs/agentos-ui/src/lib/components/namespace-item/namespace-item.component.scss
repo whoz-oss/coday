@@ -59,7 +59,16 @@
   }
 
   &:hover &__actions,
-  &:focus-within &__actions {
+  &:focus-within &__actions,
+  &--pending-delete &__actions {
     opacity: 1;
+  }
+
+  &__confirm-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-error, #ff3b30);
+    margin-right: 0.25rem;
+    white-space: nowrap;
   }
 }

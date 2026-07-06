@@ -10,7 +10,7 @@
 
 export interface AgentConfig {
   id?: string
-  namespaceId: string
+  namespaceId?: string
   name: string
   description?: string
   instructions?: string

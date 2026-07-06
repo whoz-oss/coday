@@ -14,7 +14,7 @@ import java.util.UUID
 
 /**
  * Decorator over a delegate [AgentConfigRepository] that augments [findByParent]
- * and [findAvailableByNamespaceIdAndUserId] with [AgentConfig] entries loaded from
+ * and [findDeployedByNamespaceIdAndUserIdAndName] with [AgentConfig] entries loaded from
  * YAML files on the filesystem.
  *
  * All write operations ([save], [delete], [deleteByParent]) are forwarded to the
@@ -37,14 +37,21 @@ class FilesystemAgentConfigRepository(
             ttl = ttl,
         )
 
-    override fun findAvailableByNamespaceIdAndUserId(
-        namespaceId: UUID,
-        userId: UUID,
+    override fun findDeployedByNamespaceIdAndUserIdAndName(
+        namespaceId: UUID?,
+        userId: UUID?,
         agentName: String?,
+        withDisabled: Boolean,
     ): List<AgentConfig> {
-        val fromDelegate = delegate.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
+        val fromDelegate =
+            delegate.findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId,
+                agentName = agentName,
+                withDisabled = withDisabled,
+            )
 
-        val fromFilesystem = retrieveFilesystemAgentConfigs(namespaceId)
+        val fromFilesystem = namespaceId?.let { retrieveFilesystemAgentConfigs(namespaceId) } ?: emptyList()
 
         // Filesystem agents are implicitly deployed on the namespace — include them
         // in the available set, applying the same merge rules as findByParent:
@@ -53,7 +60,7 @@ class FilesystemAgentConfigRepository(
         val filesystemAdditions =
             fromFilesystem
                 .filter { it.name.lowercase() !in delegateNames }
-                .filter { agentName == null || it.name.equals(agentName, ignoreCase = true) }
+                .filter { agentName == null || it.name.startsWith(agentName, ignoreCase = true) }
                 .map { it.copy(namespaceId = namespaceId) }
                 .sortedBy { it.name }
 
@@ -73,15 +80,19 @@ class FilesystemAgentConfigRepository(
     /**
      * Returns agents for [parentId], optionally filtered to published ones.
      *
-     * Delegates to the underlying repository with [withDisabled], then merges
-     * filesystem agents (which are always published by definition).
+     * When [parentId] is null (platform-level agents), delegates directly without
+     * filesystem augmentation — platform agents have no namespace configPath.
+     *
+     * When [parentId] is a namespace UUID, delegates to the underlying repository
+     * with [withDisabled], then merges filesystem agents (always published by definition).
      */
     override fun findByParent(
-        parentId: UUID,
+        parentId: UUID?,
         withDisabled: Boolean,
     ): List<AgentConfig> {
         val persisted = delegate.findByParent(parentId, withDisabled)
-        val fromFilesystem = filesystemAgents(parentId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() })
+        val fromFilesystem =
+            parentId?.let { filesystemAgents(parentId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() }) } ?: emptyList()
         val merged = persisted + fromFilesystem
         logger.debug {
             "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + ${fromFilesystem.size} filesystem = ${merged.size} total"
@@ -89,7 +100,7 @@ class FilesystemAgentConfigRepository(
         return merged
     }
 
-    override fun findByParent(parentId: UUID): List<AgentConfig> = findByParent(parentId, withDisabled = true)
+    override fun findByParent(parentId: UUID?): List<AgentConfig> = findByParent(parentId, withDisabled = true)
 
     /**
      * Loads and returns agent configs from the filesystem for [parentId].
@@ -120,14 +131,15 @@ class FilesystemAgentConfigRepository(
         }
         return AgentConfig(
             // Stable UUID derived from the name so identity survives restarts.
-            // namespaceId is a placeholder here; it is overwritten in findByParent.
+            // namespaceId is null here; it is overwritten in findByParent.
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-agent:${model.name}".toByteArray())),
-            namespaceId = PLACEHOLDER_NAMESPACE_ID,
+            namespaceId = null,
             name = model.name,
             description = model.description,
             instructions = model.instructions,
             modelName = model.modelName,
             integrations = model.integrations,
+            subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
@@ -135,12 +147,6 @@ class FilesystemAgentConfigRepository(
 
     companion object : KLogging() {
         private const val AGENTS_SUBDIR = "agents"
-
-        /**
-         * Placeholder used during YAML parsing before the real namespaceId is known.
-         * Always overwritten in [findByParent] before the config is returned.
-         */
-        private val PLACEHOLDER_NAMESPACE_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
     }
 }
 
@@ -166,4 +172,5 @@ private data class AgentConfigYamlModel(
     val instructions: String? = null,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
+    val subAgents: List<String>? = null,
 )

@@ -212,6 +212,7 @@ class AgentAdvanced(
                             caseId = caseId,
                             shouldContinue = shouldContinue,
                             emitEvent = { event -> emit(event) },
+                            context = context
                         )
                     }
                     emit(
@@ -966,6 +967,7 @@ class AgentAdvanced(
         caseId: UUID,
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
+        context: AgentAdvancedContext,
     ) {
         val userFullName =
             accumulatedEvents
@@ -985,6 +987,9 @@ class AgentAdvanced(
         // Build the final prompt in clear, composable sections
         val prompt =
             buildString {
+                appendLine("Available agents and tools:")
+                val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
+                appendLine(toolsDescription)
                 lastIntention?.let {
                     if (it.isFailedIntention) {
                         appendLine("Your analysis:")
@@ -994,7 +999,7 @@ class AgentAdvanced(
                         appendLine()
                         appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
                     } else {
-                        appendLine("Your analysis: ${it.intention}")
+                        appendLine("Your have decided to answer the user because: ${it.intention}")
                     }
                     appendLine()
                 }
@@ -1091,6 +1096,22 @@ class AgentAdvanced(
                     "Do not discriminate based on gender, ethnicity, religion, age, physical appearance, " +
                         "or any other protected attribute. If the user's request implies such a step, " +
                         "clarify with the user that this cannot be done.",
+                )
+                add(
+                    "GENDER-NEUTRAL LANGUAGE — HARD CONSTRAINT (not a preference):\n" +
+                            "You must NEVER output any gendered pronoun or gendered possessive when referring to a person. " +
+                            "Forbidden tokens (case-insensitive): 'he', 'she', 'him', 'her', 'hers', 'his', 'himself', 'herself', " +
+                            "'il', 'elle', 'lui', 'son', 'sa', 'ses'.\n" +
+                            "Never infer or assume a person's gender from their name, profile, or any other indirect signal. " +
+                            "Always refer to a person by their name, their job title, or a neutral noun " +
+                            "('this person', 'the candidate', 'the profile', 'the talent' / 'cette personne', 'le profil', 'le talent', 'le candidat'). " +
+                            "When a pronoun is grammatically unavoidable in English, use singular 'they/their/them'. " +
+                            "In French, never use a gendered pronoun or gendered agreement — repeat the name or use a neutral noun instead, " +
+                            "and rephrase the sentence if needed to avoid gendered agreement.\n" +
+                            "This applies even if the user uses gendered pronouns: do NOT mirror them, and do NOT correct the user. " +
+                            "Simply respond in gender-neutral language.\n" +
+                            "FINAL CHECK: Before returning any response, scan your entire output for the forbidden tokens above. " +
+                            "If any of them refers to a person, rewrite that sentence using the person's name or a neutral noun before sending.",
                 )
                 add(
                     "Do not reference technical IDs unless explicitly asked. Instead, use a readable format " +

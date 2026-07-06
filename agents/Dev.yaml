@@ -8,13 +8,6 @@ integrations:
   AI:
   MEMORY:
   GITHUB:
-    - add_issue_comment
-    - issue_read
-    - issue_write
-    - create_pull_request
-    - pull_request_read
-    - pull_request_review_write
-    - update_pull_request
   GIT:
   JIRA:
   DELEGATE:
@@ -58,3 +51,10 @@ mandatoryDocs:
   - ./agentos/README.md
   - ./agentos/agentos-sdk/README.md
   - ./agentos/docs/*
+
+subAgents:
+  - Gradlay
+  - Daemonay
+  - Nxay
+  - Searchay
+  - Reviewer

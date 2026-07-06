@@ -1,0 +1,44 @@
+<div class="admin-home">
+  <header class="admin-home__header">
+    <h1 class="admin-home__title">Administration</h1>
+    <p class="admin-home__subtitle">Platform-level settings, visible to super-admins only.</p>
+  </header>
+
+  <nav class="admin-home__sections">
+    <button class="admin-home__card" type="button" (click)="navigateTo('/agentos/admin/users')">
+      <span class="admin-home__card-icon">&#128100;</span>
+      <span class="admin-home__card-title">Users</span>
+      <span class="admin-home__card-description">Manage all platform users and their admin rights.</span>
+    </button>
+
+    <button class="admin-home__card" type="button" (click)="navigateTo('/agentos/admin/agent-configs')">
+      <span class="admin-home__card-icon">&#129302;</span>
+      <span class="admin-home__card-title">Platform agents</span>
+      <span class="admin-home__card-description">Manage agent configs shared across all namespaces.</span>
+    </button>
+
+    <button class="admin-home__card" type="button" (click)="navigateTo('/agentos/admin/integration-configs')">
+      <span class="admin-home__card-icon">&#128279;</span>
+      <span class="admin-home__card-title">Platform integrations</span>
+      <span class="admin-home__card-description">Manage integration configs shared across all namespaces.</span>
+    </button>
+
+    <button class="admin-home__card" type="button" (click)="navigateTo('/agentos/admin/ai-providers')">
+      <span class="admin-home__card-icon">&#129302;</span>
+      <span class="admin-home__card-title">Platform AI providers</span>
+      <span class="admin-home__card-description">Manage AI provider configs shared across all namespaces.</span>
+    </button>
+
+    <button class="admin-home__card" type="button" (click)="navigateTo('/agentos/admin/ai-models')">
+      <span class="admin-home__card-icon">&#129504;</span>
+      <span class="admin-home__card-title">Platform AI models</span>
+      <span class="admin-home__card-description">Manage AI model configs shared across all namespaces.</span>
+    </button>
+
+    <button class="admin-home__card" type="button" (click)="navigateTo('/agentos/admin/prompts')">
+      <span class="admin-home__card-icon">&#128196;</span>
+      <span class="admin-home__card-title">Platform prompts</span>
+      <span class="admin-home__card-description">Manage prompts shared across all namespaces.</span>
+    </button>
+  </nav>
+</div>

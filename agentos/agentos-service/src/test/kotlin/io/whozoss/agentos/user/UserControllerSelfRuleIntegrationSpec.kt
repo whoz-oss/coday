@@ -122,7 +122,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             )
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(targetUserId) } returns target
+            every { userService.getById(targetUserId) } returns target
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -147,7 +147,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             )
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(targetUserId) } returns target
+            every { userService.getById(targetUserId) } returns target
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -166,7 +166,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
         "PUT with isAdmin=false on SELF (caller=super-admin, existing isAdmin=true) preserves isAdmin=true" {
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(superAdminId) } returns superAdmin
+            every { userService.getById(superAdminId) } returns superAdmin
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -185,7 +185,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
         "PUT with isAdmin=true on SELF (caller=non-admin, existing isAdmin=false) preserves isAdmin=false" {
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns regularUser
-            every { userService.findById(regularUserId) } returns regularUser
+            every { userService.getById(regularUserId) } returns regularUser
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -213,7 +213,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             )
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(targetUserId) } returns target
+            every { userService.getById(targetUserId) } returns target
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(

@@ -20,7 +20,6 @@ import { UserItemComponent } from '../user-item/user-item.component'
  */
 @Component({
   selector: 'agentos-user-list',
-  standalone: true,
   imports: [EntityListComponent, UserItemComponent, IconButtonComponent],
   templateUrl: './user-list.component.html',
   styleUrl: './user-list.component.scss',

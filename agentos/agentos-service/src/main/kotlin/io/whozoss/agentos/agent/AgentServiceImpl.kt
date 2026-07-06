@@ -8,7 +8,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
-import io.whozoss.agentos.delegation.SubCaseLauncher
+import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
@@ -17,7 +17,6 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.reconciliation.ConfigMergeService
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -51,7 +50,6 @@ class AgentServiceImpl(
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
-    private val aiProviderReconciliationService: ConfigMergeService<AiProvider>,
     private val agentConfigService: AgentConfigService,
     private val intentionGenerator: AgentIntentionGenerator,
     private val confirmationManager: ConfirmationManager,
@@ -62,18 +60,47 @@ class AgentServiceImpl(
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
 ) : AgentService {
+    /**
+     * Resolves an agent by name for a given [context].
+     *
+     * **Matching semantics differ by path:**
+     * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
+     *   client-side with `.contains()` (case-insensitive substring). This is intentional for
+     *   interactive use cases where a partial name typed by a user should resolve loosely.
+     * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
+     *   a case-insensitive exact match, then falls back to platform agents.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match.
+     *
+     * **Scoping / shadowing rule (both paths):**
+     * Platform agents (namespaceId = null) are shadowed by namespace-scoped agents with the
+     * same name. Uniqueness is enforced *per level*: two configs at the same level (both
+     * namespace-scoped, or both platform) with the same name is an error; one config at each
+     * level is resolved by preferring the namespace-scoped one.
+     */
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
-        subCaseLauncher: SubCaseLauncher?,
+        subCaseManager: SubCaseManager?,
     ): Agent {
+        require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
-            agentConfigService.findByName(context.namespaceId, namePart)
-                ?: throw IllegalArgumentException(
-                    "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
-                )
+            if (context.userId != null) {
+                val namePartLowercase = namePart.lowercase()
+                val agentConfigs =
+                    agentConfigService
+                        .findDeployedByNamespaceIdAndUserIdAndName(
+                            namespaceId = context.namespaceId,
+                            userId = context.userId,
+                            agentName = null,
+                        ).filter { it.name.lowercase().contains(namePartLowercase) }
+                resolveWithShadowing(agentConfigs, namePart, context.namespaceId)
+            } else {
+                agentConfigService.findByName(context.namespaceId, namePart)
+            } ?: throw IllegalArgumentException(
+                "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+            )
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
-        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser, subCaseLauncher)
+        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser, subCaseManager)
         return instantiateAgent(definition, context, resolvedUser)
     }
 
@@ -98,12 +125,12 @@ class AgentServiceImpl(
 
     override fun resolveAgentName(
         namePart: String,
-        namespaceId: UUID,
+        namespaceId: UUID?,
         userId: UUID?,
     ): String? =
         if (userId != null) {
             agentConfigService
-                .findAvailableByNamespaceIdAndUserId(
+                .findDeployedByNamespaceIdAndUserIdAndName(
                     namespaceId = namespaceId,
                     userId = userId,
                     agentName = namePart,
@@ -112,6 +139,40 @@ class AgentServiceImpl(
         } else {
             agentConfigService.findByName(namespaceId, namePart)?.name
         }
+
+    // -------------------------------------------------------------------------
+    // Shadowing / uniqueness helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolves a single [AgentConfig] from [candidates] applying the platform-vs-namespace
+     * shadowing rule:
+     * - Namespace-scoped configs shadow platform configs with the same name.
+     * - Uniqueness is enforced *per level*: duplicate names at the same level are an error.
+     * - Returns null when [candidates] is empty.
+     *
+     * The precedence order is: namespace > platform.
+     */
+    private fun resolveWithShadowing(
+        candidates: List<AgentConfig>,
+        namePart: String,
+        namespaceId: UUID,
+    ): AgentConfig? {
+        val (namespaceCandidates, platformCandidates) = candidates.partition { it.namespaceId != null }
+
+        val duplicatesAtSameLevel = namespaceCandidates.size > 1 || platformCandidates.size > 1
+        if (duplicatesAtSameLevel) {
+            val culprit = if (namespaceCandidates.size > 1) "namespace" else "platform"
+            throw IllegalArgumentException(
+                "No unique AgentConfig found for name '$namePart': " +
+                    "${if (namespaceCandidates.size > 1) namespaceCandidates.size else platformCandidates.size} " +
+                    "$culprit-level configs match in namespace $namespaceId.",
+            )
+        }
+
+        // Namespace-scoped agent shadows the platform agent when both exist.
+        return namespaceCandidates.firstOrNull() ?: platformCandidates.firstOrNull()
+    }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
@@ -129,7 +190,7 @@ class AgentServiceImpl(
         agentConfig: AgentConfig,
         context: AgentExecutionContext,
         resolvedUser: User?,
-        subCaseLauncher: SubCaseLauncher? = null,
+        subCaseManager: SubCaseManager? = null,
     ): ResolvedAgentDefinition {
         val baseModel =
             agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
@@ -176,7 +237,15 @@ class AgentServiceImpl(
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
-                    buildDelegationTools(agentConfig, context, subCaseLauncher) +
+                    listOfNotNull(
+                        subCaseManager?.let {
+                            buildDelegationTools(
+                                config = agentConfig,
+                                context = context,
+                                subCaseManager = it,
+                            )
+                        },
+                    ) +
                     buildExchangeTools(agentConfig, context, toolContext),
             )
 
@@ -227,9 +296,11 @@ class AgentServiceImpl(
     }
 
     /**
-     * Resolve the [AiProvider] for a pre-resolved [baseModel]. When [userId] is non-null,
-     * applies 3-tier reconciliation on the provider. When null, falls back to direct
-     * repository lookup — preserves Epic 4 behaviour exactly.
+     * Resolve the [AiProvider] for a pre-resolved [baseModel].
+     *
+     * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
+     * fetches all four overlay layers in a single query and folds them by precedence.
+     * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -239,7 +310,7 @@ class AgentServiceImpl(
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
         val providerConfig =
             if (userId != null) {
-                aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+                aiProviderService.resolveProvider(namespaceId, userId, baseProvider.name)
             } else {
                 baseProvider
             }
@@ -284,7 +355,7 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
 
         return if (advancedExecution) {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
@@ -448,7 +519,7 @@ class AgentServiceImpl(
      * Resolves the [DelegationTool] for [config] if delegation is configured.
      *
      * Resolution steps:
-     * 1. Skip entirely when [subCaseLauncher] is null (no delegation support in this call
+     * 1. Skip entirely when [subCaseManager] is null (no delegation support in this call
      *    path) or [config.subAgents] is null/empty.
      * 2. Fetch the agents accessible to the current user in the namespace.
      * 3. Filter them by matching each accessible agent name against the [config.subAgents]
@@ -460,16 +531,19 @@ class AgentServiceImpl(
     private fun buildDelegationTools(
         config: AgentConfig,
         context: AgentExecutionContext,
-        subCaseLauncher: SubCaseLauncher?,
-    ): List<DelegationTool> {
+        subCaseManager: SubCaseManager,
+    ): DelegationTool? {
         val patterns = config.subAgents?.filter { it.isNotBlank() }
-        if (subCaseLauncher == null || patterns.isNullOrEmpty() || context.caseId == null) return emptyList()
+        if (patterns.isNullOrEmpty() || context.caseId == null) return null
 
         val accessibleNames =
             if (context.userId != null) {
                 agentConfigService
-                    .findAvailableByNamespaceIdAndUserId(context.namespaceId, context.userId)
-                    .map { it.name }
+                    .findDeployedByNamespaceIdAndUserIdAndName(
+                        namespaceId = context.namespaceId,
+                        userId = context.userId,
+                        agentName = null,
+                    ).map { it.name }
             } else {
                 agentConfigService
                     .findByNamespace(context.namespaceId, withDisabled = false)
@@ -481,18 +555,16 @@ class AgentServiceImpl(
 
         if (allowedAgents.isEmpty()) {
             logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
-            return emptyList()
+            return null
         }
 
         logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
-        return listOf(
-            DelegationTool(
-                subCaseLauncher = subCaseLauncher,
-                parentCaseId = context.caseId,
-                namespaceId = context.namespaceId,
-                allowedAgents = allowedAgents,
-                loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
-            ),
+        return DelegationTool(
+            subCaseManager = subCaseManager,
+            parentCaseId = context.caseId,
+            namespaceId = context.namespaceId,
+            allowedAgents = allowedAgents,
+            loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
         )
     }
 

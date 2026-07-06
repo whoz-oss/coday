@@ -160,7 +160,9 @@ class UserGroupServiceImpl(
             .takeIf { it.isNotEmpty() }
             ?.let { nonEmptyAgentIds ->
                 val found = agentConfigRepository.findByIds(nonEmptyAgentIds)
-                val validIds = found.filter { it.namespaceId == namespaceId }.map { it.id }.toSet()
+                // An agent is valid if it belongs to the target namespace OR is a platform agent
+                // (namespaceId = null), which can be added to any group in any namespace.
+                val validIds = found.filter { it.namespaceId == null || it.namespaceId == namespaceId }.map { it.id }.toSet()
                 val invalidIds = agentIds - validIds
                 if (invalidIds.isNotEmpty()) {
                     throw UnprocessableEntityException("Agent configs not found in namespace: $invalidIds")

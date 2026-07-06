@@ -10,7 +10,6 @@ import { EntityListItem } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-case-item',
-  standalone: true,
   template: '',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -21,8 +20,7 @@ export class CaseItemComponent {
   static toListItem(c: Case): EntityListItem {
     return {
       id: c.id ?? '',
-      // Cases don't have a user-facing name yet — display the full id
-      name: c.id ?? '—',
+      name: c.title ?? c.id ?? '—',
       description: undefined,
     }
   }

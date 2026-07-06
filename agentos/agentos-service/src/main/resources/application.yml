@@ -83,44 +83,13 @@ management:
       # 'always' so that Eureka can read the health status without credentials.
       # The health endpoint itself does not expose sensitive data.
       show-details: always
-  # Datadog metrics export — disabled by default, opt-in via environment variables.
-  # Set DATADOG_API_KEY (required) and DATADOG_METRICS_ENABLED=true to activate.
-  # DATADOG_SITE defaults to the US endpoint; override to 'datadoghq.eu' for EU tenants.
-  # prefer statsd if possible
-  datadog:
-    metrics:
-      export:
-        enabled: ${DATADOG_METRICS_ENABLED:false}
-        api-key: ${DATADOG_API_KEY:}
-        application-key: ${DATADOG_APP_KEY:}
-        uri: https://api.${DATADOG_SITE:datadoghq.eu}
-        # Push interval — 30s balances freshness against Datadog ingest costs.
-        step: 30s
-        # Disable metric metadata push — the /api/v1/metrics endpoint does not
-        # exist on datadoghq.eu and returns 404, logged misleadingly as Unauthorized.
-        # Metric data still flows correctly via /api/v1/series.
-        descriptions: false
-  # Common tags applied to all metrics exported by this service.
-  metrics:
-    tags:
-      application: agentos
-      environment: ${SPRING_PROFILES_ACTIVE:local}
-  # statsd configuration
-  # declared here for test purpose, should be in whoz conf directories
-  statsd:
-    metrics:
-      export:
-        enabled: true
-        flavor: datadog
-        host: localhost
-        port: 8127
 # cmd line to run datadog container
 # docker run -d \
 # -e DD_API_KEY=xxxxxx \
 # -e DD_SITE=datadoghq.eu \
 # -e DD_HOSTNAME=thomas.martin \
 # -e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true \
-# -p 8126:8126 -p 8127:8125 \
+# -p 8126:8126 -p 8127:8125/udp \
 # datadog/agent:latest
 
 agentos:
@@ -181,11 +150,16 @@ logging:
     io.whozoss.agentos.service: DEBUG
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
-    # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning)
-    # for optional node properties that are absent on some nodes. These are harmless
-    # — SDN queries all declared fields regardless of whether every node has them —
-    # but they flood the logs. Suppress at WARN, keep ERROR visible.
+    # Neo4j driver emits ClientNotification warnings (e.g. UnknownPropertyKeyWarning,
+    # UnknownRelationshipTypeWarning) for optional node properties or relationship types
+    # that are absent on some nodes. These are harmless — SDN queries all declared fields
+    # regardless of whether every node has them, and BELONGS_TO edges are absent until the
+    # first entity of each type is written — but they flood the logs on a fresh database.
+    # SDN routes these notifications through org.springframework.data.neo4j.cypher.*
+    # (ResultSummaries.logNotifications guards on cypherLog.isWarnEnabled). Setting the
+    # parent logger to ERROR suppresses all notification categories at once.
     org.neo4j.driver: ERROR
+    org.springframework.data.neo4j.cypher: ERROR
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
