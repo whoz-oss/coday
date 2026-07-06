@@ -158,7 +158,9 @@ spring-dependency-management = { id = "io.spring.dependency-management", version
 jackson = ["jackson-annotations", "jackson-core", "jackson-databind", "jackson-dataformat-yaml", "jackson-module-kotlin"]
 kotlin-common = ["kotlin-stdlib", "kotlin-reflect"]
 kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive", "kotlinx-coroutines-reactor"]
-spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-ollama", "spring-ai-openai", "spring-ai-mcp-client"]
+# spring-ai-mcp-client intentionally excluded: MCP is handled by agentos-mcp-plugin (PF4J),
+# and the Spring AI starter pulls MCP SDK 0.17.x which conflicts with the plugin's SDK 2.0.
+spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-ollama", "spring-ai-openai"]
 okhttp = ["okhttp", "okhttp-logging-interceptor"]
 testing-common = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "mockk"]
 testing-spring = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-extensions-spring", "mockk"]
