@@ -133,6 +133,8 @@ class CaseControllerSpec : StringSpec({
 
         result.id shouldBe saved.metadata.id
         result.namespaceId shouldBe namespaceId
+        // The creator holds a fresh direct ADMIN edge — surface it so the drawer enables delete at once.
+        result.role shouldBe "ADMIN"
         verify(exactly = 1) { caseService.create(any()) }
         verify(exactly = 1) {
             permissionService.grantPermission(
@@ -155,6 +157,8 @@ class CaseControllerSpec : StringSpec({
         val result = controller.create(r)
 
         result.id shouldBe saved.metadata.id
+        // Grant failed → no direct edge yet, so role is left null (not a misleading ADMIN).
+        result.role shouldBe null
         verify(exactly = 1) { caseService.create(any()) }
     }
 

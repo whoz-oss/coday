@@ -189,21 +189,26 @@ class CaseController(
         val created = super.create(resource)
         val caseId = created.id ?: error("Created case must have an id")
         val userId = userService.getCurrentUser().id.toString()
-        runCatching {
-            permissionService.grantPermission(
-                userId,
-                EntityType.CASE,
-                caseId.toString(),
-                PermissionRelation.ADMIN,
-            )
+        val granted =
+            runCatching {
+                permissionService.grantPermission(
+                    userId,
+                    EntityType.CASE,
+                    caseId.toString(),
+                    PermissionRelation.ADMIN,
+                )
+            }.onFailure { e ->
+                logger.warn(e) {
+                    "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
+                        "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
+                }
+            }.isSuccess
+        if (granted) {
             logger.info { "User $userId created case $caseId with auto-ADMIN grant" }
-        }.onFailure { e ->
-            logger.warn(e) {
-                "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
-                    "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
-            }
         }
-        return created
+        // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
+        // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
+        return if (granted) created.copy(role = PermissionRelation.ADMIN.name) else created
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])

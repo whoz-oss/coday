@@ -115,7 +115,12 @@ export class CaseShellComponent {
     const request = event.starred ? this.caseController.starCase(event.id) : this.caseController.unstarCase(event.id)
     request.subscribe({
       next: () => this.refreshCases(),
-      error: (err) => console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err),
+      error: (err) => {
+        console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err)
+        // Reload to revert the drawer's optimistic flip to the server truth, and tell the user.
+        this.refreshCases()
+        alert('Could not update the favorite. Please try again.')
+      },
     })
   }
 

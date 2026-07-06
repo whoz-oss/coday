@@ -22,14 +22,22 @@ export class CaseStateService {
   /** Tracks the in-flight load subscription so a newer call can cancel a stale one. */
   private loadSubscription: Subscription | null = null
 
+  /** Namespace of the currently held cases — used to detect a namespace switch. */
+  private currentNamespaceId: string | null = null
+
   /**
    * Load (or reload) the cases the current user is directly related to in a namespace.
    *
    * Uses the `/mine` listing (direct ADMIN/MEMBER edge only) so every listed case is
-   * starrable and carries a `role`. A failed load leaves the previous list in place and
-   * clears the in-flight handle, so a later reload (after delete/star) still runs.
+   * starrable and carries a `role`. On a same-namespace reload the previous list stays
+   * visible until the new data arrives (no flicker); on a namespace switch the list is
+   * cleared first, so a failed load can't leave the previous namespace's cases showing.
    */
   loadCases(namespaceId: string): void {
+    if (namespaceId !== this.currentNamespaceId) {
+      this.currentNamespaceId = namespaceId
+      this.cases.set([])
+    }
     this.loadSubscription?.unsubscribe()
     this.loadSubscription = this.caseController.listMineByParentCase(namespaceId).subscribe({
       next: (cases) => {

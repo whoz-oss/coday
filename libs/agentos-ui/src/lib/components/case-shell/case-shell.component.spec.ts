@@ -145,16 +145,18 @@ describe('CaseShellComponent', () => {
       expect(caseControllerMock.starCase).not.toHaveBeenCalled()
     })
 
-    it('logs and does not refresh when the star request fails', () => {
+    it('reverts (reloads) and alerts the user when the star request fails', () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
       const component = makeComponent(`/agentos/${NS_ID}/cases`)
       caseControllerMock.starCase.mockReturnValue(throwError(() => new Error('boom')))
 
       component['onStarToggled']({ id: 'case-1', starred: true })
 
       expect(errorSpy).toHaveBeenCalled()
-      // No refresh on failure: listMineByParentCase stays at its single construction-time call.
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
+      // On failure we reload to revert the drawer's optimistic flip (2nd list call) and alert.
+      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(2)
+      expect(alertSpy).toHaveBeenCalled()
     })
   })
 
