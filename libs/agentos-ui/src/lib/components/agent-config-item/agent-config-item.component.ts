@@ -24,7 +24,7 @@ export class AgentConfigItemComponent {
    * namespaceId is required in namespace mode and must be omitted in platform mode.
    * When platformMode is true, routes navigate to /agentos/admin/agent-configs/...
    */
-  readonly namespaceId = input<string>()
+  readonly namespaceId = input<string | undefined>(undefined)
   /** Set to true for platform-level configs (no namespace scope). */
   readonly platformMode = input(false)
 
