@@ -86,16 +86,15 @@ describe('CaseShellComponent', () => {
       expect(routerMock.navigate).not.toHaveBeenCalled()
     })
 
-    it('confirms with the same label the drawer row shows (the case id, not the title)', () => {
-      // The drawer renders CaseItemComponent.toListItem(c).name, which is c.id today
-      // (titles are not user-facing yet). The confirm must use that same label so the
-      // dialog identifies the row the user clicked.
+    it('confirms with the same label the drawer row shows (the case title)', () => {
+      // The drawer renders CaseItemComponent.toListItem(c).name (title ?? id). The confirm
+      // must use that same label so the dialog identifies the row the user clicked.
       const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
       const component = makeComponent(`/agentos/${NS_ID}/cases`, [caseWith('case-1', 'My Case')])
 
       component['onDeleteRequested']('case-1')
 
-      expect(confirmSpy).toHaveBeenCalledWith('Delete "case-1"?')
+      expect(confirmSpy).toHaveBeenCalledWith('Delete "My Case"?')
     })
 
     it('confirms with the case id when the case is not in the current list', () => {
@@ -161,8 +160,9 @@ describe('CaseShellComponent', () => {
 
   describe('list resilience', () => {
     it('survives a transient list-load failure and recovers on the next refresh', () => {
-      // A single failed load must NOT kill the stream: a later refresh (after delete/star)
+      // A single failed load must NOT wedge the list: a later refresh (after delete/star)
       // must still fetch and repopulate the drawer instead of being a silent no-op.
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const cases = [caseWith('case-1')]
       const listMine = jest
         .fn()

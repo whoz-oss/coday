@@ -67,6 +67,63 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/prompts/{id}:
+    get:
+      tags:
+      - prompt-controller
+      operationId: getByIdPrompt
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+    put:
+      tags:
+      - prompt-controller
+      operationId: updatePrompt
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Prompt"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+    delete:
+      tags:
+      - prompt-controller
+      operationId: deletePrompt
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     put:
       tags:
@@ -710,6 +767,96 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/prompts:
+    get:
+      tags:
+      - prompt-controller
+      summary: List Prompts by explicit scope
+      description: |-
+        Returns prompts for the given scope. `namespaceId` is required for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.
+
+        | scope          | namespaceId | returned prompts                  | required permission       |
+        |----------------|-------------|-----------------------------------|---------------------------|
+        | PLATFORM       | absent      | platform-level (null, null)       | authenticated             |
+        | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |
+        | USER           | absent      | user-global (null, me)            | authenticated             |
+        | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
+      operationId: listPrompt
+      parameters:
+      - name: scope
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - PLATFORM
+          - NAMESPACE
+          - USER
+          - USER_NAMESPACE
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+    post:
+      tags:
+      - prompt-controller
+      summary: Create a Prompt
+      description: |-
+        Scope is inferred from `(body.namespaceId, body.userId)`:
+
+        | body.namespaceId | body.userId      | scope           | required permission        |
+        |------------------|------------------|-----------------|----------------------------|
+        | null             | null             | platform        | Super Admin only           |
+        | present          | null             | namespace       | WRITE on the namespace     |
+        | null             | <currentUser.id> | user-global     | authenticated only         |
+        | present          | <currentUser.id> | user×namespace  | READ on the namespace      |
+
+        `body.userId` must equal the authenticated user's id when supplied. A `namespaceId` that does not exist returns 404.
+      operationId: createPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Prompt"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+  /api/prompts/by-ids:
+    post:
+      tags:
+      - prompt-controller
+      operationId: getByIdsPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
   /api/plugins/{pluginId}/stop:
     post:
       tags:
@@ -1172,6 +1319,7 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/CaseUpdatedEvent"
                   - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                   - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
@@ -1197,8 +1345,8 @@ paths:
         | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
+        | `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |
         | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
-
         `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
       operationId: listAiProvider
       parameters:
@@ -1230,7 +1378,7 @@ paths:
 
         | body.namespaceId | body.userId        | scope         | required permission                  |
         |------------------|--------------------|---------------|--------------------------------------|
-        | null             | null               | —             | 400 Bad Request                      |
+        | null             | null               | platform      | super-admin only                     |
         | present          | null               | NS-shared     | WRITE on the namespace               |
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
@@ -1439,6 +1587,53 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+  /api/prompts/effective:
+    get:
+      tags:
+      - prompt-controller
+      summary: Effective prompts for a namespace
+      description: "Returns the resolved set of prompts accessible in the given namespace\
+        \ context. Merges platform, namespace-shared, user-global and user×namespace\
+        \ layers by name, highest-priority layer wins. Requires READ on the namespace."
+      operationId: effectivePrompt
+      parameters:
+      - name: namespaceId
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+  /api/prompts/by-parentId/{parentId}:
+    get:
+      tags:
+      - prompt-controller
+      operationId: listByParentPrompt
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
   /api/plugins:
     get:
       tags:
@@ -1771,6 +1966,7 @@ paths:
                 - $ref: "#/components/schemas/AgentSelectedEvent"
                 - $ref: "#/components/schemas/AnswerEvent"
                 - $ref: "#/components/schemas/CaseStatusEvent"
+                - $ref: "#/components/schemas/CaseUpdatedEvent"
                 - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                 - $ref: "#/components/schemas/ErrorEvent"
                 - $ref: "#/components/schemas/IntentionGeneratedEvent"
@@ -1809,6 +2005,7 @@ paths:
                   - $ref: "#/components/schemas/AgentSelectedEvent"
                   - $ref: "#/components/schemas/AnswerEvent"
                   - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/CaseUpdatedEvent"
                   - $ref: "#/components/schemas/ConfirmationResolvedEvent"
                   - $ref: "#/components/schemas/ErrorEvent"
                   - $ref: "#/components/schemas/IntentionGeneratedEvent"
@@ -1821,6 +2018,20 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/ai-models/platform:
+    get:
+      tags:
+      - ai-model-controller
+      operationId: listPlatformLevelAiModel
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiModel"
   /api/ai-models/by-parentId/{parentId}:
     get:
       tags:
@@ -1966,6 +2177,65 @@ components:
           type: boolean
       required:
       - isAdmin
+    Prompt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        content:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          minItems: 1
+        parameters:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptParameter"
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - content
+      - name
+      - parameters
+    PromptParameter:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        defaultValue:
+          type: string
+          minLength: 1
+      required:
+      - defaultValue
+      - name
     Namespace:
       type: object
       properties:
@@ -2041,6 +2311,9 @@ components:
           - ERROR
         title:
           type: string
+        parentCaseId:
+          type: string
+          format: uuid
         created:
           type: string
           format: date-time
@@ -2175,6 +2448,15 @@ components:
           format: date-time
         enabled:
           type: boolean
+        subAgents:
+          type: array
+          description: "Glob patterns controlling which agents this agent may delegate\
+            \ to. When null or empty, no delegation capability is provided. '*' matches\
+            \ any sequence of characters (anchored, case-insensitive). Examples: ['*']\
+            \ allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
+            \ matches FixerHelper/FixerV2."
+          items:
+            type: string
       required:
       - createdOn
       - name
@@ -2229,6 +2511,7 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -2284,6 +2567,7 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -2291,6 +2575,7 @@ components:
           type: array
           items:
             type: string
+            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -2585,6 +2870,7 @@ components:
           - TextChunkEvent
           - PendingConfirmationEvent
           - ConfirmationResolvedEvent
+          - CaseUpdatedEvent
       required:
       - caseId
       - id
@@ -2611,6 +2897,20 @@ components:
       - metadata
       - namespaceId
       - status
+      - timestamp
+      - type
+    CaseUpdatedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          title:
+            type: string
+      required:
+      - caseId
+      - id
+      - metadata
+      - namespaceId
       - timestamp
       - type
     ConfirmationResolvedEvent:

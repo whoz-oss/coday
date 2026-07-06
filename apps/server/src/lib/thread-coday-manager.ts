@@ -516,23 +516,22 @@ class ThreadCodayInstance {
     }
     this.connections.clear()
 
-    // Run post-processing before killing Coday.
-    // Coday.run() calls cleanup() which nullifies context, so we must grab the thread
-    // from aiThreadService (still alive at this point) rather than coday.context.
+    // Grab thread and AI client BEFORE killing Coday (kill() nullifies context)
+    let threadForPostProcessing: any | undefined
+    let aiClientForPostProcessing: any | undefined
     if (this.coday) {
       const aiThreadService = this.coday.aiThreadService
-      const thread = this.coday.context?.aiThread ?? aiThreadService?.getCurrentThread()
+      threadForPostProcessing = this.coday.context?.aiThread ?? aiThreadService?.getCurrentThread()
       const aiClientProvider: AiClientProvider | undefined = this.coday.aiClientProvider
-      const aiClient = aiClientProvider?.getClient(undefined, 'SMALL') ?? aiClientProvider?.getClient(undefined)
-      if (thread && aiClient) {
-        const processor = new ThreadPostProcessor(aiClient, this.threadService)
-        processor.process(thread, this.projectName)
-      } else {
-        debugLog('THREAD_CODAY', `Skipping post-processing for thread ${this.threadId}: no thread or AI client`)
-      }
+      aiClientForPostProcessing =
+        aiClientProvider?.getClient(undefined, 'SMALL') ?? aiClientProvider?.getClient(undefined)
+      debugLog(
+        'THREAD_CODAY',
+        `Pre-kill snapshot for ${this.threadId}: thread=${!!threadForPostProcessing} (${threadForPostProcessing?.messagesLength ?? 0} msgs), aiClient=${!!aiClientForPostProcessing}`
+      )
     }
 
-    // Kill Coday instance (this will trigger cleanup of agents and MCP servers)
+    // Kill Coday FIRST — this triggers autoSave, persisting the full thread to disk
     if (this.coday) {
       try {
         await this.coday.kill()
@@ -540,6 +539,34 @@ class ThreadCodayInstance {
         debugLog('THREAD_CODAY', `Error during Coday kill:`, error)
       }
       this.coday = undefined
+    }
+
+    // THEN run post-processing (reads from disk after autoSave, so no stale overwrite)
+    // Await with a 10s timeout to not block shutdown indefinitely
+    if (threadForPostProcessing && aiClientForPostProcessing) {
+      const processor = new ThreadPostProcessor(aiClientForPostProcessing, this.threadService)
+      try {
+        const postProcessStart = Date.now()
+        const result = await Promise.race([
+          processor.process(threadForPostProcessing, this.projectName).then(() => 'completed' as const),
+          new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000)),
+        ])
+        if (result === 'timeout') {
+          debugLog(
+            'THREAD_CODAY',
+            `Post-processing TIMED OUT for thread ${this.threadId} after 10s (thread data is safe, only name/summary may be missing)`
+          )
+        } else {
+          debugLog(
+            'THREAD_CODAY',
+            `Post-processing completed for thread ${this.threadId} in ${Date.now() - postProcessStart}ms`
+          )
+        }
+      } catch (err) {
+        debugLog('THREAD_CODAY', `Post-processing error for thread ${this.threadId}:`, err)
+      }
+    } else {
+      debugLog('THREAD_CODAY', `Skipping post-processing for thread ${this.threadId}: no thread or AI client`)
     }
   }
 }

@@ -13,12 +13,7 @@ import {
   ViewChild,
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
-import { FormsModule } from '@angular/forms'
-import { MatIconModule } from '@angular/material/icon'
-import { MatIconButton } from '@angular/material/button'
 import { MatExpansionModule } from '@angular/material/expansion'
-import { MatFormFieldModule } from '@angular/material/form-field'
-import { MatInputModule } from '@angular/material/input'
 import { EntityCardComponent, EntityCardBadge } from '../entity-card/entity-card.component'
 
 export interface EntityListItem {
@@ -46,18 +41,8 @@ export interface GroupedItems {
  */
 @Component({
   selector: 'ds-entity-list',
-  standalone: true,
   host: { '[attr.title]': 'null' },
-  imports: [
-    FormsModule,
-    MatIconModule,
-    MatIconButton,
-    MatExpansionModule,
-    MatFormFieldModule,
-    MatInputModule,
-    EntityCardComponent,
-    NgTemplateOutlet,
-  ],
+  imports: [MatExpansionModule, EntityCardComponent, NgTemplateOutlet],
   templateUrl: './entity-list.component.html',
   styleUrl: './entity-list.component.scss',
 })

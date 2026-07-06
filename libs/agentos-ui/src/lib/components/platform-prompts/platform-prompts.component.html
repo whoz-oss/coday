@@ -1,0 +1,18 @@
+<ds-entity-list
+  title="Platform Prompts"
+  [items]="(promptItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No platform prompts defined yet. Add one above."
+  cardMinWidth="400px"
+  [itemTemplate]="promptItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="platform-prompts__back" type="button" (click)="goBack()">&#8592; Admin</button>
+</ds-entity-list>
+
+<!-- Item template: renders PromptItemComponent for each entity-list card slot -->
+<ng-template #promptItemTpl let-item>
+  @if (resolvePrompt(item.id); as prompt) {
+    <agentos-prompt-item [prompt]="prompt" [platformMode]="true" (deleteRequested)="deletePrompt($event)" />
+  }
+</ng-template>

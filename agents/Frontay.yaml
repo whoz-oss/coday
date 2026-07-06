@@ -73,3 +73,11 @@ mandatoryDocs:
   - ./libs/design-system/GUIDELINES.md
   - ./libs/agentos-ui/GUIDELINES.md
   - ./libs/agentos-api-client/GUIDELINES.md
+
+subAgents:
+  - Nxay
+  - Searchay
+  - Daemonay
+  - Reviewer
+  - Chromay
+  - Playwrighty

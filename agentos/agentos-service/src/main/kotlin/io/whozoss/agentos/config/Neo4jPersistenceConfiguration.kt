@@ -25,6 +25,9 @@ import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
+import io.whozoss.agentos.prompt.Neo4jPromptRepository
+import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
+import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
@@ -81,6 +84,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.feedback",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
+        "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.userGroup",
     ],
 )
@@ -172,6 +176,16 @@ class Neo4jPersistenceConfiguration {
     ): FeedbackRepository {
         logger.info { "[Persistence] Neo4jFeedbackRepository active" }
         return Neo4jFeedbackRepository(feedbackNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
+    fun neo4jPromptRepository(
+        promptNodeNeo4jRepository: PromptNodeNeo4jRepository,
+        objectMapper: ObjectMapper,
+        childLinkService: Neo4jChildLinkService,
+    ): PromptRepository {
+        logger.info { "[Persistence] Neo4jPromptRepository active" }
+        return Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
     }
 
     @Bean

@@ -2,9 +2,15 @@
   <div class="ai-provider-item__body">
     <div class="ai-provider-item__heading">
       <span class="ai-provider-item__name">{{ config().name }}</span>
-      <span class="ai-provider-item__badge" [attr.data-variant]="badge().variant" [attr.aria-label]="badge().ariaLabel">
-        {{ badge().label }}
-      </span>
+      @if (showBadge()) {
+        <span
+          class="ai-provider-item__badge"
+          [attr.data-variant]="badge().variant"
+          [attr.aria-label]="badge().ariaLabel"
+        >
+          {{ badge().label }}
+        </span>
+      }
     </div>
     <span class="ai-provider-item__type">{{ config().apiType }}</span>
     @if (config().baseUrl) {

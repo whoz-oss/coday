@@ -1,6 +1,6 @@
 <ds-entity-list
   title="Cases"
-  [items]="caseItems"
+  [items]="rootItems"
   [itemTemplate]="caseItemTpl"
   [showCreate]="true"
   emptyMessage="No cases yet. Start one below."
@@ -9,7 +9,6 @@
   contentMaxWidth="100%"
   (createRequested)="onCreateRequested()"
 >
-  <!-- Inject the close button into the toolbar-start slot, before the title -->
   <ds-icon-button
     toolbar-start
     icon="chevron_left"
@@ -19,27 +18,57 @@
   />
 </ds-entity-list>
 
-<!-- Minimal case item template: single-line row, active highlight, delete action -->
+<!--
+  Item template: renders one case row + its sub-cases recursively.
+  The recursive sub-tree template is defined alongside and referenced by name.
+-->
 <ng-template #caseItemTpl let-item>
-  <div class="case-drawer-item" [class.case-drawer-item--active]="item.id === activeCaseId">
-    <button type="button" class="case-drawer-item__select" (click)="onItemSelected(item.id)">
-      <span class="case-drawer-item__name">{{ item.name }}</span>
-    </button>
-    <ds-icon-button
-      class="case-drawer-item__star"
-      variant="default"
-      [icon]="item.favorite ? 'star' : 'star_border'"
-      [title]="item.favorite ? 'Unstar case' : 'Star case'"
-      (action)="onStarToggled(item)"
-    />
-    @if (item.canDelete) {
+  <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: item, depth: 0 }" />
+</ng-template>
+
+<!-- Recursive row template: select + star + (ADMIN-gated) delete, then children -->
+<ng-template #caseRowTpl let-node="node" let-depth="depth">
+  <div class="case-tree-node" [style.--depth]="depth">
+    <div class="case-tree-node__row" [class.case-tree-node__row--active]="node.id === activeCaseId">
+      <span class="case-tree-node__expand-slot">
+        @if (node.children.length) {
+          <button
+            type="button"
+            class="case-tree-node__toggle"
+            [title]="isExpanded(node.id) ? 'Collapse' : 'Expand'"
+            (click)="toggleExpand($event, node.id)"
+          >
+            <span class="case-tree-node__toggle-icon" [class.case-tree-node__toggle-icon--open]="isExpanded(node.id)"
+              >&rsaquo;</span
+            >
+          </button>
+        }
+      </span>
+      <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
+        <span class="case-tree-node__name">{{ node.name }}</span>
+      </button>
       <ds-icon-button
-        class="case-drawer-item__delete"
-        icon="delete"
-        variant="danger"
-        title="Delete case"
-        (action)="onDeleteRequested(item.id)"
+        class="case-tree-node__star"
+        variant="default"
+        [icon]="node.favorite ? 'star' : 'star_border'"
+        [title]="node.favorite ? 'Unstar case' : 'Star case'"
+        (action)="onStarToggled(node)"
       />
+      @if (node.canDelete) {
+        <ds-icon-button
+          class="case-tree-node__delete"
+          icon="delete"
+          variant="danger"
+          title="Delete case"
+          (action)="onDeleteRequested(node.id)"
+        />
+      }
+    </div>
+
+    @if (isExpanded(node.id) && node.children.length) {
+      @for (child of node.children; track child.id) {
+        <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: child, depth: depth + 1 }" />
+      }
     }
   </div>
 </ng-template>

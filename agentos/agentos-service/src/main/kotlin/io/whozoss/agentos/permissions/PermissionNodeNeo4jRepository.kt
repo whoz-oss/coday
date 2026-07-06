@@ -307,7 +307,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
           AND e.id IN $ids
           AND (e.removed IS NULL OR e.removed = false)
           AND (
-            ($checkPlatform AND e.namespaceId IS NULL)
+            ($checkPlatform AND e.namespaceId IS NULL AND e.userId IS NULL)
             OR EXISTS { (u)-[:ADMIN|MEMBER]->(e) }
             OR EXISTS { (e)-[:BELONGS_TO]->(n:Namespace)<-[:ADMIN|MEMBER]-(u) }
           )
@@ -329,7 +329,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
           AND e.id IN $ids
           AND (e.removed IS NULL OR e.removed = false)
           AND (
-            (u.isAdmin = true AND $checkPlatform AND e.namespaceId IS NULL)
+            (u.isAdmin = true AND $checkPlatform AND e.namespaceId IS NULL AND e.userId IS NULL)
             OR EXISTS { (u)-[:ADMIN]->(e) }
             OR EXISTS { (e)-[:BELONGS_TO]->(n:Namespace)<-[:ADMIN]-(u) }
           )
@@ -342,4 +342,24 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("ids") ids: Collection<String>,
         @Param("checkPlatform") checkPlatform: Boolean,
     ): List<String>
+
+    /**
+     * Returns true when an entity with [entityId] and label [entityLabel] is
+     * genuinely platform-scoped: both [namespaceId] and [userId] scalar properties
+     * are NULL on the node.
+     *
+     * Guards against user-global overlays (namespaceId IS NULL, userId IS NOT NULL)
+     * being mistakenly treated as platform-readable by any authenticated user.
+     */
+    @Query(
+        $$"""MATCH (e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+          AND e.namespaceId IS NULL
+          AND e.userId IS NULL
+        RETURN COUNT(e) > 0""",
+    )
+    fun isPlatformScoped(
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): Boolean
 }

@@ -20,6 +20,7 @@ data class CaseNode(
     val namespaceId: String,
     val status: String,
     val title: String,
+    val parentCaseId: String? = null,
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
@@ -42,6 +43,7 @@ data class CaseNode(
             namespaceId = UUID.fromString(namespaceId),
             status = CaseStatus.valueOf(status),
             title = title,
+            parentCaseId = parentCaseId?.let { UUID.fromString(it) },
         )
 
     companion object {
@@ -51,6 +53,7 @@ data class CaseNode(
                 namespaceId = case.namespaceId.toString(),
                 status = case.status.name,
                 title = case.title,
+                parentCaseId = case.parentCaseId?.toString(),
                 created = case.metadata.created,
                 createdBy = case.metadata.createdBy,
                 modified = case.metadata.modified,

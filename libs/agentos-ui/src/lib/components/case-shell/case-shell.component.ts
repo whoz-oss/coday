@@ -1,9 +1,10 @@
 import { Component, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router'
-import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
+import { CaseControllerService } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, catchError, filter, map, merge, of, switchMap } from 'rxjs'
+import { filter, map, merge, of } from 'rxjs'
+import { CaseStateService } from '../../services/case-state.service'
 import { CaseDrawerComponent } from '../case-drawer/case-drawer.component'
 import { CaseItemComponent } from '../case-item/case-item.component'
 import { HeaderComponent } from '../header/header.component'
@@ -13,7 +14,7 @@ import { HeaderComponent } from '../header/header.component'
  *
  * Responsibilities:
  * - Owns the ds-drawer layout: header + collapsible sidenav + routed content
- * - Loads and refreshes the case list for the current namespace
+ * - Delegates case list state to CaseStateService
  * - Passes cases to CaseDrawerComponent (presentational)
  * - Handles drawer toggle state
  * - Navigates on case selection / create
@@ -24,7 +25,6 @@ import { HeaderComponent } from '../header/header.component'
  */
 @Component({
   selector: 'agentos-case-shell',
-  standalone: true,
   imports: [RouterOutlet, DrawerComponent, CaseDrawerComponent, HeaderComponent, IconButtonComponent],
   templateUrl: './case-shell.component.html',
   styleUrl: './case-shell.component.scss',
@@ -32,30 +32,24 @@ import { HeaderComponent } from '../header/header.component'
 export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
+  private readonly caseState = inject(CaseStateService)
   private readonly caseController = inject(CaseControllerService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   protected readonly drawerOpen = signal(true)
 
-  /** Trigger to refresh the case list after mutations. */
-  private readonly refresh$ = new BehaviorSubject<void>(undefined)
+  protected readonly cases = this.caseState.cases
 
-  private readonly cases$ = this.refresh$.pipe(
-    switchMap(() =>
-      // Keep the outer stream alive across transient failures, otherwise one failed load
-      // would terminate cases$ and every later refresh (after delete/star) would no-op.
-      this.caseController.listMineByParentCase(this.namespaceId).pipe(catchError(() => of([] as Case[])))
-    )
-  )
-
-  protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
+  constructor() {
+    this.caseState.loadCases(this.namespaceId)
+  }
 
   /**
    * Active case id — derived reactively from router NavigationEnd events.
    *
    * `computed()` on `route.firstChild?.snapshot` does not work because the snapshot
-   * is not a signal and won't trigger re-evaluation on navigation.
+   * is not a signal and won’t trigger re-evaluation on navigation.
    * Instead we listen to Router events and extract the caseId from the URL.
    */
   protected readonly activeCaseId = toSignal(
@@ -132,6 +126,6 @@ export class CaseShellComponent {
 
   /** Called after a case is created to refresh the drawer list. */
   refreshCases(): void {
-    this.refresh$.next()
+    this.caseState.loadCases(this.namespaceId)
   }
 }

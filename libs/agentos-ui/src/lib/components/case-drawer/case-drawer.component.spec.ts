@@ -49,38 +49,30 @@ describe('CaseDrawerComponent', () => {
     expect(item.favorite).toBe(false) // flipped twice → back to original
   })
 
-  it('orders favorites first and groups them when at least one case is starred', () => {
+  it('nests child cases under their parent (tree from parentCaseId)', () => {
     const c = new CaseDrawerComponent()
     c.cases = [
-      { id: 'a', namespaceId: 'ns', favorite: false } as unknown as Case,
-      { id: 'b', namespaceId: 'ns', favorite: true } as unknown as Case,
+      { id: 'parent', namespaceId: 'ns', title: 'Parent' } as unknown as Case,
+      { id: 'child', namespaceId: 'ns', title: 'Child', parentCaseId: 'parent' } as unknown as Case,
     ]
     c.ngOnChanges({ cases: { currentValue: c.cases } } as unknown as SimpleChanges)
 
-    expect(c['caseItems'].map((i) => i.id)).toEqual(['b', 'a'])
-    expect(c['caseItems'][0].groupKey).toBe('favorites')
-    expect(c['caseItems'][1].groupKey).toBe('cases')
+    expect(c['rootItems'].map((i) => i.id)).toEqual(['parent'])
+    expect(c['rootItems'][0].children.map((i) => i.id)).toEqual(['child'])
   })
 
-  it('leaves the list flat (no groups) when no case is starred', () => {
-    const c = new CaseDrawerComponent()
-    c.cases = [{ id: 'a', namespaceId: 'ns', favorite: false } as unknown as Case]
-    c.ngOnChanges({ cases: { currentValue: c.cases } } as unknown as SimpleChanges)
-
-    expect(c['caseItems'][0].groupKey).toBeUndefined()
-  })
-
-  it('marks canDelete only for cases where the caller is a direct ADMIN', () => {
+  it('carries favorite and canDelete onto each tree node', () => {
     const c = new CaseDrawerComponent()
     c.cases = [
-      { id: 'admin-case', namespaceId: 'ns', favorite: false, role: CaseRoleEnum.ADMIN } as unknown as Case,
-      { id: 'member-case', namespaceId: 'ns', favorite: false, role: CaseRoleEnum.MEMBER } as unknown as Case,
+      { id: 'admin-fav', namespaceId: 'ns', favorite: true, role: CaseRoleEnum.ADMIN } as unknown as Case,
+      { id: 'member', namespaceId: 'ns', favorite: false, role: CaseRoleEnum.MEMBER } as unknown as Case,
     ]
     c.ngOnChanges({ cases: { currentValue: c.cases } } as unknown as SimpleChanges)
 
-    const byId = (id: string) => c['caseItems'].find((i) => i.id === id)!
-    // The delete button in the template is gated on canDelete.
-    expect(byId('admin-case').canDelete).toBe(true)
-    expect(byId('member-case').canDelete).toBe(false)
+    const byId = (id: string) => c['rootItems'].find((i) => i.id === id)!
+    // The delete button in the template is gated on canDelete (direct ADMIN only).
+    expect(byId('admin-fav').canDelete).toBe(true)
+    expect(byId('admin-fav').favorite).toBe(true)
+    expect(byId('member').canDelete).toBe(false)
   })
 })

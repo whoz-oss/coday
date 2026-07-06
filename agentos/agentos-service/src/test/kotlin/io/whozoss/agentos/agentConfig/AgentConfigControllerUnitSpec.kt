@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
 import io.kotest.assertions.throwables.shouldThrow
+import org.springframework.web.server.ResponseStatusException
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.clearAllMocks
@@ -391,8 +392,8 @@ class AgentConfigControllerUnitSpec : StringSpec({
     // listByParent (inherited)
     // -------------------------------------------------------------------------
 
-    "listByParent with null parentId throws NullPointerException (null unreachable via HTTP — UUID path segment cannot be null)" {
-        shouldThrow<NullPointerException> { controller.listByParent(null) }
+    "listByParent with null parentId throws ResponseStatusException 400 (null unreachable via HTTP — UUID path segment cannot be null)" {
+        shouldThrow<ResponseStatusException> { controller.listByParent(null) }
     }
 
     "listByParent returns configs for the given namespaceId" {

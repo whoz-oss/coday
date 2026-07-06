@@ -13,6 +13,7 @@ export interface Case {
   namespaceId: string
   status: CaseStatusEnum
   title?: string
+  parentCaseId?: string
   created?: string
   removed: boolean
   favorite: boolean

@@ -139,6 +139,7 @@ class FilesystemAgentConfigRepository(
             instructions = model.instructions,
             modelName = model.modelName,
             integrations = model.integrations,
+            subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
@@ -171,4 +172,5 @@ private data class AgentConfigYamlModel(
     val instructions: String? = null,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
+    val subAgents: List<String>? = null,
 )

@@ -19,7 +19,6 @@ export interface CaseListItem extends EntityListItem {
  */
 @Component({
   selector: 'agentos-case-item',
-  standalone: true,
   template: '',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -30,8 +29,7 @@ export class CaseItemComponent {
   static toListItem(c: Case): CaseListItem {
     return {
       id: c.id ?? '',
-      // Cases don't have a user-facing name yet — display the full id
-      name: c.id ?? '—',
+      name: c.title ?? c.id ?? '—',
       description: undefined,
       favorite: c.favorite,
       // Only a direct ADMIN can delete; MEMBER (or no direct relation) cannot.
