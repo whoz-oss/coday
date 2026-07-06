@@ -125,3 +125,13 @@ mandatoryDocs:
   - ./docs/to-rework/INTEGRATIONS.md
   - ./docs/to-rework/DEV_WORKFLOW.md
   - ./agentos/docs/multi-user-and-delegation.md
+
+subAgents:
+  - Sway
+  - Archay
+  - Frontay
+  - Dev
+  - Reviewer
+  - Searchay
+  - Chromay
+  - Playwrighty

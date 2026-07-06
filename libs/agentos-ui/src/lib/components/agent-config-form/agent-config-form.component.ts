@@ -62,7 +62,6 @@ interface BuiltInIntegrationRow {
  */
 @Component({
   selector: 'agentos-agent-config-form',
-  standalone: true,
   imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './agent-config-form.component.html',
   styleUrl: './agent-config-form.component.scss',
@@ -76,7 +75,14 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly integrationConfigState = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  /**
+   * namespaceId from the route, or undefined when operating in platform mode
+   * (route is /admin/agent-configs/... and has no :namespaceId segment).
+   */
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+
+  /** True when editing/creating a platform-level config (namespaceId IS NULL). */
+  protected readonly isPlatformMode = !this.namespaceId
 
   protected readonly form = new FormGroup({
     name: new FormControl<string>('', {
@@ -87,6 +93,7 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
     advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
+    enabled: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -107,6 +114,10 @@ export class AgentConfigFormComponent implements OnInit {
 
   protected get advancedExecutionControl() {
     return this.form.controls.advancedExecution
+  }
+
+  protected get enabledControl() {
+    return this.form.controls.enabled
   }
 
   // ── Sub-agents list ───────────────────────────────────────────────────────
@@ -130,7 +141,10 @@ export class AgentConfigFormComponent implements OnInit {
   /** Route to the inspect view — only valid in edit mode (agentConfigId is present). */
   protected inspectRoute(): string[] {
     const agentConfigId = this.route.snapshot.paramMap.get('agentConfigId') ?? ''
-    return ['/agentos', this.namespaceId, 'agent-configs', agentConfigId, 'inspect']
+    if (this.isPlatformMode) {
+      return ['/agentos', 'admin', 'agent-configs', agentConfigId, 'inspect']
+    }
+    return ['/agentos', this.namespaceId!, 'agent-configs', agentConfigId, 'inspect']
   }
 
   /** Integration rows built from the namespace's IntegrationConfig list. */
@@ -150,14 +164,20 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * In edit mode: load the agent config, the namespace integrations, and the platform
-   * integrations in parallel, then hydrate both the main form and the integration rows.
+   * In edit mode: load the agent config, the integrations, and hydrate both the main
+   * form and the integration rows.
+   *
+   * In platform mode: only platform integration configs are available (no namespace).
+   * In namespace mode: platform + namespace integrations are merged.
    */
   private loadConfigAndIntegrations(agentConfigId: string): void {
     this.isLoading.set(true)
+
     forkJoin({
       config: this.agentConfigController.getByIdAgentConfig(agentConfigId),
-      namespaceIntegrations: this.integrationConfigState.loadNamespaceConfigs(this.namespaceId),
+      namespaceIntegrations: this.namespaceId
+        ? this.integrationConfigState.loadNamespaceConfigs(this.namespaceId)
+        : of([]),
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
       builtInTypes: this.loadBuiltInTypes(),
     })
@@ -170,6 +190,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+          this.enabledControl.setValue(config.enabled ?? true)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, config.integrations ?? undefined))
@@ -191,7 +212,9 @@ export class AgentConfigFormComponent implements OnInit {
    */
   private loadIntegrations(existingIntegrations: AgentConfig['integrations']): void {
     forkJoin({
-      namespaceIntegrations: this.integrationConfigState.loadNamespaceConfigs(this.namespaceId),
+      namespaceIntegrations: this.namespaceId
+        ? this.integrationConfigState.loadNamespaceConfigs(this.namespaceId)
+        : of([]),
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
       builtInTypes: this.loadBuiltInTypes(),
     })
@@ -329,9 +352,17 @@ export class AgentConfigFormComponent implements OnInit {
   protected submit(): void {
     if (this.form.invalid || this.isSubmitting()) return
 
+    // Flush the "add pattern" input: if the user typed a pattern and clicked Save
+    // without pressing "+" or Enter, we include it rather than silently dropping it.
+    this.addSubAgent()
+
     this.isSubmitting.set(true)
 
-    const payload: AgentConfig = {
+    // createdOn / updatedOn are server-set audit fields — omitted on create, preserved from
+    // existingConfig on update via the spread. Cast is intentional: the backend accepts the
+    // payload without these fields in create mode.
+    // In platform mode, namespaceId is intentionally undefined (platform-level config).
+    const payload = {
       ...(this.existingConfig ?? {}),
       // `createdOn` / `updatedOn` are server-managed timestamps — omit them in the FE
       // payload; the backend ignores them on create and preserves them on update.
@@ -346,8 +377,9 @@ export class AgentConfigFormComponent implements OnInit {
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
       advancedExecution: this.advancedExecutionControl.value,
+      enabled: this.enabledControl.value,
       subAgents: this.buildSubAgentsPayload(),
-    }
+    } as AgentConfig
 
     const call$ = this.isEditMode()
       ? this.agentConfigController.updateAgentConfig(this.existingConfig!.id ?? '', payload)
@@ -364,6 +396,10 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
+    if (this.isPlatformMode) {
+      this.router.navigate(['/agentos', 'admin', 'agent-configs'])
+    } else {
+      this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
+    }
   }
 }

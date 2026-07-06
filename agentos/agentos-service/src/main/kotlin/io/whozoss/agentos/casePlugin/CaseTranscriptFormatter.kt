@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 
 /**
@@ -101,6 +102,7 @@ object CaseTranscriptFormatter {
             // ── Transient events — never persisted, silently ignored ───────────────
             is ThinkingEvent -> null
             is TextChunkEvent -> null
+            is CaseUpdatedEvent -> null
         }
 
     private fun renderContent(content: MessageContent): String =

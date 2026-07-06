@@ -1,3 +1,174 @@
+## 0.201.0 (2026-07-05)
+
+### 🚀 Features
+
+- #1010 auto-name cases ([#1083](https://github.com/whoz-oss/coday/pull/1083), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.200.0 (2026-07-04)
+
+### 🚀 Features
+
+- wz-32950 Prompt entity CRUD ([#1070](https://github.com/whoz-oss/coday/pull/1070))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- thomas.martin @thomasmartin-whoz
+
+## 0.199.0 (2026-07-03)
+
+### 🚀 Features
+
+- read subAgents on file-stored agents ([#1087](https://github.com/whoz-oss/coday/pull/1087))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.198.0 (2026-07-03)
+
+### 🚀 Features
+
+- wz-32509 define gender neutral into prompt guidelines ([b28d978c](https://github.com/whoz-oss/coday/commit/b28d978c))
+- wz-32509 define gender neutral into prompt guidelines ([#1085](https://github.com/whoz-oss/coday/pull/1085))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.197.0 (2026-07-03)
+
+### 🚀 Features
+
+- wz-33102 add awareness of available agents (decide whether to hand off) ([f5af7138](https://github.com/whoz-oss/coday/commit/f5af7138))
+- wz-33102 fix MR returns ([8f23099a](https://github.com/whoz-oss/coday/commit/8f23099a))
+- wz-33102 add awareness of available agents (decide whether to h… ([#1078](https://github.com/whoz-oss/coday/pull/1078))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.196.1 (2026-07-03)
+
+### 🩹 Fixes
+
+- prevent thread data loss on tab close + server shutdown ([c8a3ffbb](https://github.com/whoz-oss/coday/commit/c8a3ffbb))
+- prevent thread data loss on tab close + server shutdown ([#1086](https://github.com/whoz-oss/coday/pull/1086))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.196.0 (2026-07-03)
+
+### 🚀 Features
+
+- agent delegation via sub-cases ([#1051](https://github.com/whoz-oss/coday/pull/1051))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.195.0 (2026-07-03)
+
+### 🚀 Features
+
+- #31851 platform-level AiProvider and AiModel ([#1064](https://github.com/whoz-oss/coday/pull/1064), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.194.1 (2026-07-02)
+
+### 🩹 Fixes
+
+- wz-33145 cancel eviction watcher coroutine on idle eviction to p… ([#1079](https://github.com/whoz-oss/coday/pull/1079))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.194.0 (2026-07-01)
+
+### 🚀 Features
+
+- add platform level for AgentConfig.namespaceId ([#1056](https://github.com/whoz-oss/coday/pull/1056))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.193.0 (2026-07-01)
+
+### 🚀 Features
+
+- user preference for ENTER key behavior in the chat composer ([#1077](https://github.com/whoz-oss/coday/pull/1077), [#1016](https://github.com/whoz-oss/coday/issues/1016))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.192.0 (2026-06-30)
+
+### 🚀 Features
+
+- #1009 add dark mode to AgentOS UI ([#1066](https://github.com/whoz-oss/coday/pull/1066), [#1009](https://github.com/whoz-oss/coday/issues/1009))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.191.0 (2026-06-30)
+
+### 🚀 Features
+
+- wz-32804: clear conf for agentos datadog custom metrics ([#1074](https://github.com/whoz-oss/coday/pull/1074))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.190.3 (2026-06-30)
+
+### 🩹 Fixes
+
+- #1067 switch Anthropic completions to streaming for large token limits ([#1067](https://github.com/whoz-oss/coday/issues/1067))
+- #1067 switch Anthropic completions to streaming for large token … ([#1072](https://github.com/whoz-oss/coday/pull/1072), [#1067](https://github.com/whoz-oss/coday/issues/1067))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.190.2 (2026-06-30)
+
+### 🩹 Fixes
+
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([4cb204c6](https://github.com/whoz-oss/coday/commit/4cb204c6))
+- prevent thread loss on Ctrl+C by saving before MCP cleanup ([#1071](https://github.com/whoz-oss/coday/pull/1071))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.190.1 (2026-06-29)
+
+### 🩹 Fixes
+
+- suppress Neo4j ClientNotification warnings in logs ([#1065](https://github.com/whoz-oss/coday/pull/1065))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.190.0 (2026-06-26)
 
 ### 🚀 Features

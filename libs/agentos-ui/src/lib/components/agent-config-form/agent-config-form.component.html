@@ -8,6 +8,9 @@
     @if (isEditMode()) {
       <a class="agent-config-form__sibling-link" [routerLink]="inspectRoute()">View resolved definition &rarr;</a>
     }
+    @if (isPlatformMode) {
+      <span class="agent-config-form__platform-badge">Platform level</span>
+    }
   </header>
 
   @if (isLoading()) {
@@ -125,6 +128,14 @@
       </div>
 
       <div class="agent-config-form__field">
+        <label class="agent-config-form__toggle-label">
+          <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="enabledControl" />
+          <span class="agent-config-form__toggle-text">Enabled</span>
+        </label>
+        <p class="agent-config-form__toggle-hint">Disabled agents are excluded from namespace resolution.</p>
+      </div>
+
+      <div class="agent-config-form__field">
         <span class="agent-config-form__label">Sub-agents</span>
         <p class="agent-config-form__field-hint">
           Glob patterns for agents this agent may delegate to. <code class="agent-config-form__code">*</code> matches
@@ -134,7 +145,7 @@
 
         @if (subAgentRows().length > 0) {
           <ul class="agent-config-form__sub-agent-list">
-            @for (row of subAgentRows(); track row.control) {
+            @for (row of subAgentRows(); track $index) {
               <li class="agent-config-form__sub-agent-row">
                 <input
                   class="agent-config-form__input agent-config-form__sub-agent-input"

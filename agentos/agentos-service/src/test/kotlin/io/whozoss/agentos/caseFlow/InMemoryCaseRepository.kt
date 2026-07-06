@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.InMemoryEntityRepository
-import java.util.*
+import java.util.UUID
 
 /** Test-only in-memory implementation of [CaseRepository]. */
 class InMemoryCaseRepository : CaseRepository {
@@ -41,5 +41,45 @@ class InMemoryCaseRepository : CaseRepository {
     ): List<Case> = delegate.findByParent(namespaceId)
 
     override fun findActiveByParentCaseId(parentCaseId: UUID): List<Case> =
-        delegate.findAll().filter { it.parentCaseId == parentCaseId && !it.metadata.removed }
+        delegate.findAll().filter {
+            it.parentCaseId == parentCaseId &&
+                !it.metadata.removed &&
+                it.status != io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED &&
+                it.status != io.whozoss.agentos.sdk.caseFlow.CaseStatus.ERROR
+        }
+
+    /**
+     * In-memory BFS implementation of [findActiveDescendants].
+     *
+     * Traverses [Case.parentCaseId] links up to 10 levels deep and returns
+     * active, non-terminal descendants leaves-first (deepest level first).
+     * Used in unit tests that exercise [io.whozoss.agentos.caseFlow.CaseServiceImpl.killSingleCase].
+     */
+    override fun findActiveDescendants(caseId: UUID): List<Case> {
+        val all = delegate.findAll()
+        val result = mutableListOf<List<Case>>()
+        var frontier = listOf(caseId)
+        repeat(10) {
+            val nextLevel =
+                all.filter { c ->
+                    c.parentCaseId in frontier &&
+                        !c.metadata.removed &&
+                        c.status != io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED &&
+                        c.status != io.whozoss.agentos.sdk.caseFlow.CaseStatus.ERROR
+                }
+            if (nextLevel.isEmpty()) return@repeat
+            result.add(0, nextLevel) // prepend so deeper levels come first
+            frontier = nextLevel.map { it.id }
+        }
+        return result.flatten()
+    }
+
+    /** In tests, depth is not enforced — always returns 0. */
+    override fun countAncestorDepth(caseId: UUID): Int = 0
+
+    /** In tests, no graph edge is needed — no-op. */
+    override fun linkParentToChild(
+        parentCaseId: UUID,
+        childCaseId: UUID,
+    ): Unit = Unit
 }

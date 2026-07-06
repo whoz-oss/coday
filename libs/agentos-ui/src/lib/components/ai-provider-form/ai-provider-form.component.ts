@@ -37,7 +37,6 @@ const SCOPE_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-ai-provider-form',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './ai-provider-form.component.html',
   styleUrl: './ai-provider-form.component.scss',
@@ -50,17 +49,33 @@ export class AiProviderFormComponent implements OnInit {
   private readonly state = inject(AiProviderConfigStateService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  /**
+   * Namespace scoping this form. `undefined` when loaded from an admin route
+   * (`admin/ai-providers/new`, `admin/ai-providers/:id/edit`) — platform context.
+   * A concrete UUID when loaded from `/:namespaceId/ai-providers/*`.
+   */
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+
+  /**
+   * Whether this form is operating in platform-admin context.
+   * True when there is no `:namespaceId` param in the route (admin/* routes).
+   * In platform mode:
+   * - the scope selector is hidden (scope is implicitly 'namespace' = platform-level)
+   * - create payload has namespaceId: null (platform scope, namespaceId IS NULL)
+   * - navigateBack() returns to /agentos/admin/ai-providers
+   */
+  protected readonly isPlatformMode = this.namespaceId === undefined
 
   /**
    * Whether the current user can write at namespace scope (super-admin OR namespace ADMIN
    * by Neo4j relation). Drives the namespace radio option's disabled state — non-admins
    * cannot pick `scope='namespace'` because the backend would 403. Defaults to `false`
    * until the lookup resolves; safe — admins see options enable as soon as the role lands.
+   * In platform mode, always true (super-admin access is enforced by the backend).
    */
-  protected readonly isAdmin = toSignal(this.namespaceRole.isAdminOfNamespace$(this.namespaceId), {
-    initialValue: false,
-  })
+  protected readonly isAdmin = this.isPlatformMode
+    ? signal(true)
+    : toSignal(this.namespaceRole.isAdminOfNamespace$(this.namespaceId!), { initialValue: false })
 
   protected readonly apiTypeOptions = Object.values(AiProviderApiTypeEnum)
 
@@ -140,22 +155,25 @@ export class AiProviderFormComponent implements OnInit {
     // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
     // default, or via a hand-crafted URL), bounce the radio to `userOnNs` once the role
     // lookup resolves. We watch reactively because the role lookup is async.
-    effect(() => {
-      const admin = this.isAdmin()
-      if (admin || this.isEditMode()) return
-      if (this.scopeControl.value === 'namespace') {
-        this.scopeControl.setValue('userOnNs')
-      }
-    })
+    // In platform mode, scope is always 'namespace' (platform-level) and never bounced.
+    if (!this.isPlatformMode) {
+      effect(() => {
+        const admin = this.isAdmin()
+        if (admin || this.isEditMode()) return
+        if (this.scopeControl.value === 'namespace') {
+          this.scopeControl.setValue('userOnNs')
+        }
+      })
+    }
   }
 
   ngOnInit(): void {
-    this.state.setNamespace(this.namespaceId)
+    if (this.namespaceId) this.state.setNamespace(this.namespaceId)
     const params = this.route.snapshot.paramMap
     const queryParams = this.route.snapshot.queryParamMap
 
     const aiProviderId = params.get('aiProviderId')
-    const hintedScope = this.parseScope(queryParams.get('scope'))
+    const hintedScope = this.isPlatformMode ? 'namespace' : this.parseScope(queryParams.get('scope'))
 
     if (aiProviderId) {
       this.isEditMode.set(true)
@@ -301,10 +319,14 @@ export class AiProviderFormComponent implements OnInit {
     }
     const scope = this.form.getRawValue().scope
 
+    // In platform mode, namespaceId is null (platform scope: namespaceId IS NULL).
+    // The state service assembles the payload with namespaceId: null for the backend.
+    const namespaceIdForCreate = this.isPlatformMode ? null : (this.namespaceId ?? null)
+
     const call$ =
       this.isEditMode() && this.existingConfig?.id
         ? this.state.update(this.existingConfig.id, draft, scope, this.existingConfig)
-        : this.state.create(draft, scope, this.namespaceId)
+        : this.state.create(draft, scope, namespaceIdForCreate)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
@@ -317,7 +339,11 @@ export class AiProviderFormComponent implements OnInit {
   }
 
   private navigateBack(): void {
-    this.router.navigate(['/agentos', this.namespaceId, 'ai-providers'])
+    if (this.isPlatformMode) {
+      this.router.navigate(['/agentos', 'admin', 'ai-providers'])
+    } else {
+      this.router.navigate(['/agentos', this.namespaceId!, 'ai-providers'])
+    }
   }
 
   protected trackByScope(_index: number, opt: { value: AiProviderScope }): string {

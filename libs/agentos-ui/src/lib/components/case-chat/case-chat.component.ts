@@ -23,6 +23,7 @@ import {
   AgentSelectedEvent,
   CaseEvent,
   CaseStatusEvent,
+  CaseUpdatedEvent,
   Configuration,
   EnrichmentPhaseTrace,
   ErrorEvent,
@@ -33,8 +34,10 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
+import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 
@@ -87,7 +90,6 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-  standalone: true,
   imports: [IconButtonComponent, JsonPipe, DrawerComponent, ExchangeShellComponent],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
@@ -101,6 +103,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly exchangeState = inject(ExchangeStateService)
 
   private readonly config = inject(Configuration)
+  protected readonly preferences = inject(USER_PREFERENCES_PORT)
+  private readonly caseState = inject(CaseStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -422,6 +426,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
+          if (event.type === 'CaseUpdatedEvent') {
+            const updated = event as CaseUpdatedEvent
+            if (updated.title) {
+              this.caseState.updateCaseTitle(event.caseId, updated.title)
+            }
+            return
+          }
+
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
@@ -488,6 +500,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const eventNames = [
       'MessageEvent',
       'CaseStatusEvent',
+      'CaseUpdatedEvent',
       'AgentSelectedEvent',
       'AgentRunningEvent',
       'AgentFinishedEvent',
@@ -550,7 +563,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
     }

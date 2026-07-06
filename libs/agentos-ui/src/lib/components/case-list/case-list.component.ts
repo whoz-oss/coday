@@ -4,16 +4,16 @@ import { Component, inject, signal } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, CaseControllerService, Configuration } from '@whoz-oss/agentos-api-client'
 import { Observable } from 'rxjs'
+import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 
 /**
  * CaseListComponent — lists cases for the selected namespace.
  *
- * Pattern agentique : pas de bouton "Nouveau case" séparé.
- * Le premier message saisi crée le case et navigue vers le chat.
+ * Agentic pattern: no separate "New case" button. The first message typed creates the case and
+ * navigates to the chat.
  */
 @Component({
   selector: 'agentos-case-list',
-  standalone: true,
   imports: [AsyncPipe],
   templateUrl: './case-list.component.html',
   styleUrl: './case-list.component.scss',
@@ -24,6 +24,7 @@ export class CaseListComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly config = inject(Configuration)
   private readonly caseController = inject(CaseControllerService)
+  protected readonly preferences = inject(USER_PREFERENCES_PORT)
 
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -36,7 +37,7 @@ export class CaseListComponent {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
     }

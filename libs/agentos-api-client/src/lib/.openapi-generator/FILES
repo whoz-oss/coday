@@ -37,6 +37,7 @@ model/ai-provider.ts
 model/answer-event.ts
 model/case-event.ts
 model/case-status-event.ts
+model/case-updated-event.ts
 model/case.ts
 model/confirmation-resolved-event.ts
 model/enrichment-phase-trace.ts

@@ -38,7 +38,10 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AgentConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val namespaceId: UUID,
+    /**
+     * The namespace this agent belongs to, or `null` for platform-level agents.
+     */
+    val namespaceId: UUID?,
     val name: String,
     val description: String? = null,
     val instructions: String? = null,

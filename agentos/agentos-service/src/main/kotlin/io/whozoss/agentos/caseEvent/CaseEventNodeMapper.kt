@@ -19,6 +19,7 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -81,6 +82,10 @@ class CaseEventNodeMapper(
             is TextChunkEvent -> fromDomain(event)
             is PendingConfirmationEvent -> fromDomain(event)
             is ConfirmationResolvedEvent -> fromDomain(event)
+            // CaseUpdatedEvent is transient — it must never reach the persistence layer.
+            // storeEvent() in CaseServiceImpl skips TransientCaseEvent instances, so this
+            // branch is a programming-error guard rather than a reachable path.
+            is CaseUpdatedEvent -> error("CaseUpdatedEvent is transient and must not be persisted")
         }
 
     fun withRemoved(

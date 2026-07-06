@@ -3,8 +3,10 @@ import { afterNextRender, Component, DestroyRef, ElementRef, inject, signal, Vie
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, Configuration } from '@whoz-oss/agentos-api-client'
+import { CaseStateService } from '../../services/case-state.service'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { map, switchMap } from 'rxjs'
+import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
@@ -19,7 +21,6 @@ import { map, switchMap } from 'rxjs'
  */
 @Component({
   selector: 'agentos-case-home',
-  standalone: true,
   imports: [IconButtonComponent],
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
@@ -29,7 +30,9 @@ export class CaseHomeComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly config = inject(Configuration)
+  private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
+  protected readonly preferences = inject(USER_PREFERENCES_PORT)
 
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
 
@@ -53,7 +56,7 @@ export class CaseHomeComponent {
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
     }
@@ -73,14 +76,15 @@ export class CaseHomeComponent {
       })
       .pipe(
         // Step 2: send the first message before navigating, carry the case id through
-        switchMap((createdCase) =>
-          this.http
+        switchMap((createdCase) => {
+          this.caseState.addCase(createdCase)
+          return this.http
             .post(`${this.config.basePath}/api/cases/${createdCase.id}/messages`, {
               content: firstMessage,
               userId: 'default-user',
             })
             .pipe(map(() => createdCase))
-        ),
+        }),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe({

@@ -136,7 +136,7 @@
     font-size: 0.8rem;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.04);
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
     }
   }
 
@@ -226,7 +226,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.2rem 0.5rem;
-    background: rgba(0, 0, 0, 0.03);
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
     border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.06));
   }
 
@@ -317,7 +317,7 @@
     font-size: inherit;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.04);
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
     }
   }
 
@@ -421,13 +421,13 @@
     code {
       font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
       font-size: 0.85em;
-      background: rgba(0, 0, 0, 0.06);
+      background: var(--color-code-bg, rgba(0, 0, 0, 0.06));
       border-radius: 3px;
       padding: 0.1em 0.35em;
     }
 
     pre {
-      background: rgba(0, 0, 0, 0.06);
+      background: var(--color-code-bg, rgba(0, 0, 0, 0.06));
       border-radius: 6px;
       padding: 0.6em 0.8em;
       overflow-x: auto;
@@ -487,7 +487,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-radius: 50%;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 2px 12px var(--color-shadow, rgba(0, 0, 0, 0.12));
     // Fade in/out animation handled by @if in the template.
     animation: scroll-anchor-in 0.15s ease;
   }

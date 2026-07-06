@@ -195,7 +195,7 @@
             <ds-icon-button
               icon="send"
               variant="primary"
-              title="Send (Enter)"
+              [title]="preferences.composerHint()"
               [disabled]="!canSend"
               (action)="submit()"
             />
