@@ -31,7 +31,6 @@ export interface CaseTreeItem extends EntityListItem {
  */
 @Component({
   selector: 'agentos-case-drawer',
-  standalone: true,
   imports: [EntityListComponent, NgTemplateOutlet],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',

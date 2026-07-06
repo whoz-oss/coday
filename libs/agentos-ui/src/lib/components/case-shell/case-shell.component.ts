@@ -34,7 +34,6 @@ import { UserStateService } from '../../services/user-state.service'
  */
 @Component({
   selector: 'agentos-case-shell',
-  standalone: true,
   imports: [CaseDrawerComponent, CaseChatComponent, CaseHomeComponent],
   templateUrl: './case-shell.component.html',
   styleUrl: './case-shell.component.scss',

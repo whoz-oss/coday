@@ -15,7 +15,6 @@ import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-cli
  */
 @Component({
   selector: 'agentos-namespace-form',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './namespace-form.component.html',
   styleUrl: './namespace-form.component.scss',

@@ -19,7 +19,6 @@ import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.co
  */
 @Component({
   selector: 'agentos-platform-ai-providers',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent],
   templateUrl: './platform-ai-providers.component.html',
   styleUrl: './platform-ai-providers.component.scss',

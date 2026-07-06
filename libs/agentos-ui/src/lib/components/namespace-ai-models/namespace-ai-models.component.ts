@@ -28,7 +28,6 @@ import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
  */
 @Component({
   selector: 'agentos-namespace-ai-models',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, AiModelItemComponent, IconButtonComponent],
   templateUrl: './namespace-ai-models.component.html',
   styleUrl: './namespace-ai-models.component.scss',

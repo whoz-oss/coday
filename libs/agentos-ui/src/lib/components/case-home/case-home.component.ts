@@ -21,7 +21,6 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
  */
 @Component({
   selector: 'agentos-case-home',
-  standalone: true,
   imports: [IconButtonComponent],
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',

@@ -37,7 +37,6 @@ const SCOPE_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-ai-provider-form',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './ai-provider-form.component.html',
   styleUrl: './ai-provider-form.component.scss',

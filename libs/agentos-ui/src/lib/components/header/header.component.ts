@@ -18,7 +18,6 @@ import { UserStateService } from '../../services/user-state.service'
  */
 @Component({
   selector: 'agentos-header',
-  standalone: true,
   imports: [BackendStatusComponent],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
