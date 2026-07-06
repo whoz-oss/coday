@@ -115,12 +115,29 @@ class StdioMcpConnection(
 
     /**
      * Closes the MCP session and terminates the child process.
+     *
+     * Uses a bounded wait strategy to avoid blocking the eviction thread indefinitely
+     * if the child process ignores SIGTERM:
+     * 1. [McpSyncClient.closeGracefully] sends SIGTERM and waits up to 10 s (SDK default).
+     * 2. [McpSyncClient.close] is called as a hard fallback — it calls [Process.destroy]
+     *    and disposes the transport without waiting.
+     *
+     * The previous implementation called [StdioClientTransport.awaitForExit] which
+     * blocks indefinitely on [Process.waitFor] — a zombie process would deadlock
+     * the eviction thread forever.
+     *
      * Safe to call multiple times.
      */
     fun close() {
         logger.info { "[MCP] Closing connection (hash ${configHash.take(8)})" }
-        runCatching { client.closeGracefully() }
-        runCatching { transport.awaitForExit() }
+        // Attempt graceful shutdown: sends JSON-RPC close, SIGTERM, waits up to 10s.
+        val graceful = runCatching { client.closeGracefully() }.getOrDefault(false)
+        if (!graceful) {
+            // Graceful close timed out or threw — force-close the transport.
+            // McpSyncClient.close() calls transport.close() which is non-blocking.
+            logger.warn { "[MCP] Graceful close failed, forcing shutdown (hash ${configHash.take(8)})" }
+            runCatching { client.close() }
+        }
     }
 
     private fun formatResult(result: McpSchema.CallToolResult): String {

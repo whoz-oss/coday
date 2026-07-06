@@ -7,8 +7,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
-private const val EVICTION_PERIOD_MINUTES = 2L
-private const val MAX_POOL_SIZE = 20
+private const val EVICTION_PERIOD_MINUTES = 1L
+private const val MAX_POOL_SIZE = 200
 
 /**
  * Plugin-internal pool of live [StdioMcpConnection] instances.
