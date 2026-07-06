@@ -140,11 +140,7 @@ class FilesystemAgentConfigRepository(
             modelName = model.modelName,
             integrations = model.integrations,
             subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-            mandatoryDocs = model.mandatoryDocs?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-            optionalDocs = model.optionalDocs
-                ?.filter { it.path.isNotBlank() }
-                ?.map { OptionalDocReference(path = it.path, description = it.description) }
-                ?.takeIf { it.isNotEmpty() },
+            docs = (model.docs ?: model.mandatoryDocs)?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
@@ -178,12 +174,7 @@ private data class AgentConfigYamlModel(
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     val subAgents: List<String>? = null,
+    val docs: List<String>? = null,
+    // mandatoryDocs kept for backward compat with existing YAML files
     val mandatoryDocs: List<String>? = null,
-    val optionalDocs: List<OptionalDocYamlModel>? = null,
-)
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-private data class OptionalDocYamlModel(
-    val path: String = "",
-    val description: String? = null,
 )

@@ -31,38 +31,23 @@ class AgentDocumentResolver {
      */
     fun buildDocsBlock(
         configPath: String?,
-        mandatoryDocs: List<String>?,
-        optionalDocs: List<OptionalDocReference>?,
+        docs: List<String>?,
     ): String? {
-        if (configPath == null) return null
-        val hasMandatory = !mandatoryDocs.isNullOrEmpty()
-        val hasOptional = !optionalDocs.isNullOrEmpty()
-        if (!hasMandatory && !hasOptional) return null
+        if (configPath == null || docs.isNullOrEmpty()) return null
 
         val base = Path.of(configPath)
         return buildString {
-            if (hasMandatory) {
-                appendLine()
-                appendLine("Mandatory documents")
-                appendLine()
-                appendLine("Each of the following files are included entirely as deemed important.")
-                mandatoryDocs.orEmpty().forEach { entry ->
-                    val resolved = resolveMandatoryEntry(base, entry)
-                    resolved.forEach { (label, content) ->
-                        appendLine()
-                        appendLine("File: $label")
-                        appendLine()
-                        appendLine(content)
-                    }
-                }
-            }
-            if (hasOptional) {
-                appendLine()
-                appendLine("Optional documents or resources to refer for more details:")
-                optionalDocs.orEmpty().forEach { doc ->
-                    val description = doc.description?.takeIf { it.isNotBlank() } ?: doc.path
-                    appendLine("  - ./${doc.path}")
-                    appendLine("    $description")
+            appendLine()
+            appendLine("Mandatory documents")
+            appendLine()
+            appendLine("Each of the following files are included entirely as deemed important.")
+            docs.forEach { entry ->
+                val resolved = resolveMandatoryEntry(base, entry)
+                resolved.forEach { (label, content) ->
+                    appendLine()
+                    appendLine("File: $label")
+                    appendLine()
+                    appendLine(content)
                 }
             }
         }.trimEnd().takeIf { it.isNotBlank() }

@@ -214,8 +214,7 @@ class AgentServiceImpl(
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
                 configPath = namespace?.configPath,
-                mandatoryDocs = agentConfig.mandatoryDocs,
-                optionalDocs = agentConfig.optionalDocs,
+                docs = agentConfig.docs,
             )
         val toolContext =
             context.toToolContext(
@@ -453,8 +452,7 @@ class AgentServiceImpl(
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
         configPath: String? = null,
-        mandatoryDocs: List<String>? = null,
-        optionalDocs: List<io.whozoss.agentos.agentConfig.OptionalDocReference>? = null,
+        docs: List<String>? = null,
     ): String {
         val integrationsBlock =
             when {
@@ -505,7 +503,7 @@ class AgentServiceImpl(
                 }
             }
 
-        val docsBlock = agentDocumentResolver.buildDocsBlock(configPath, mandatoryDocs, optionalDocs)
+        val docsBlock = agentDocumentResolver.buildDocsBlock(configPath, docs)
 
         return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
             .joinToString("\n")
