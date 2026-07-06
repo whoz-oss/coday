@@ -61,10 +61,19 @@ class StdioMcpConnection(
 
         transport = StdioClientTransport(params, McpJsonDefaults.getMapper())
 
+        // The MCP SDK provides a single requestTimeout for ALL JSON-RPC calls
+        // (initialize, listTools, callTool, ping). We use the max of the two configured
+        // timeouts so that tool calls aren't cut short by the (typically shorter)
+        // connection timeout. The handshake timeout is enforced separately below.
+        //
+        // If the SDK ever adds per-request timeouts, this should be revisited:
+        // use config.timeoutSeconds for initialize/listTools and
+        // config.toolCallTimeoutSeconds for callTool.
+        val clientTimeout = maxOf(config.timeoutSeconds, config.toolCallTimeoutSeconds)
         client =
             McpClient
                 .sync(transport)
-                .requestTimeout(Duration.ofSeconds(config.timeoutSeconds))
+                .requestTimeout(Duration.ofSeconds(clientTimeout))
                 .build()
 
         try {
