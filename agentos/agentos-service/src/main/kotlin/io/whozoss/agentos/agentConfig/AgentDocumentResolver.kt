@@ -16,10 +16,11 @@ import kotlin.io.path.readText
 /**
  * Resolves and formats document content for filesystem-backed agents.
  *
- * Paths in [AgentConfig.docs] are resolved relative to [AgentConfig.agentDir]
- * (the directory containing the agent YAML file), not the namespace configPath.
+ * Entries in [AgentConfig.docs] are absolute paths pre-resolved at load time by
+ * [FilesystemAgentConfigRepository] relative to the agent YAML file. This component
+ * only reads and formats them — no base-path arithmetic needed here.
  *
- * Supports three path patterns:
+ * Three path patterns are supported:
  * - explicit file path: single file, content injected verbatim
  * - path ending with slash: directory listing (first-level entries, no content)
  * - path ending with slash-star: all readable files in the directory, content injected
@@ -33,19 +34,15 @@ class AgentDocumentResolver {
     /**
      * Builds the formatted block to inject into agent instructions.
      *
-     * Returns null when [docs] is empty/null or [agentDir] is null.
+     * Returns null when [docs] is empty or null.
      */
-    suspend fun buildDocsBlock(
-        agentDir: String?,
-        docs: List<String>?,
-    ): String? {
-        if (agentDir == null || docs.isNullOrEmpty()) return null
+    suspend fun buildDocsBlock(docs: List<String>?): String? {
+        if (docs.isNullOrEmpty()) return null
 
-        val base = Path.of(agentDir)
         val resolved: List<Pair<String, String>> =
             coroutineScope {
                 docs
-                    .map { entry -> async { resolveMandatoryEntry(base, entry) } }
+                    .map { entry -> async { resolveEntry(entry) } }
                     .flatMap { it.await() }
             }
 
@@ -65,22 +62,15 @@ class AgentDocumentResolver {
         }.trimEnd().takeIf { it.isNotBlank() }
     }
 
-    private suspend fun resolveMandatoryEntry(
-        base: Path,
-        entry: String,
-    ): List<Pair<String, String>> =
+    private suspend fun resolveEntry(entry: String): List<Pair<String, String>> =
         when {
-            entry.endsWith("/") -> resolveDirectoryListing(base, entry.trimEnd('/'))
-            entry.endsWith("/*") -> resolveDirectoryFiles(base, entry.removeSuffix("/*"))
-            else -> resolveSingleFile(base, entry)
+            entry.endsWith("/") -> resolveDirectoryListing(Path.of(entry.trimEnd('/')))
+            entry.endsWith("/*") -> resolveDirectoryFiles(Path.of(entry.removeSuffix("/*")))
+            else -> resolveSingleFile(Path.of(entry))
         }
 
-    private suspend fun resolveDirectoryListing(
-        base: Path,
-        relDir: String,
-    ): List<Pair<String, String>> =
+    private suspend fun resolveDirectoryListing(dir: Path): List<Pair<String, String>> =
         withContext(Dispatchers.IO) {
-            val dir = base.resolve(relDir)
             if (!dir.isDirectory()) {
                 logger.warn { "[AgentDocumentResolver] Directory not found: $dir" }
                 return@withContext emptyList()
@@ -93,18 +83,14 @@ class AgentDocumentResolver {
                             .sorted(Comparator.comparing { p: Path -> p.name })
                             .map { child ->
                                 val suffix = if (child.isDirectory()) "/" else ""
-                                "  - $relDir/${child.name}$suffix"
+                                "  - ${child.name}$suffix"
                             }.toList()
                     }
-            listOf("$relDir/" to entries.joinToString("\n"))
+            listOf("${dir.name}/" to entries.joinToString("\n"))
         }
 
-    private suspend fun resolveDirectoryFiles(
-        base: Path,
-        relDir: String,
-    ): List<Pair<String, String>> =
+    private suspend fun resolveDirectoryFiles(dir: Path): List<Pair<String, String>> =
         coroutineScope {
-            val dir = base.resolve(relDir)
             if (!dir.isDirectory()) {
                 logger.warn { "[AgentDocumentResolver] Directory not found: $dir" }
                 return@coroutineScope emptyList()
@@ -121,32 +107,20 @@ class AgentDocumentResolver {
                         }
                 }
             files
-                .map { file ->
-                    async {
-                        val relPath = "$relDir/${file.name}"
-                        readFileSafe(file, relPath)
-                    }
-                }.mapNotNull { it.await() }
+                .map { file -> async { readFileSafe(file) } }
+                .mapNotNull { it.await() }
         }
 
-    private suspend fun resolveSingleFile(
-        base: Path,
-        relPath: String,
-    ): List<Pair<String, String>> {
-        val file = base.resolve(relPath)
-        return listOfNotNull(readFileSafe(file, relPath))
-    }
+    private suspend fun resolveSingleFile(file: Path): List<Pair<String, String>> =
+        listOfNotNull(readFileSafe(file))
 
-    private suspend fun readFileSafe(
-        file: Path,
-        label: String,
-    ): Pair<String, String>? =
+    private suspend fun readFileSafe(file: Path): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             if (!file.isRegularFile()) {
                 logger.warn { "[AgentDocumentResolver] Not a regular file: $file" }
                 return@withContext null
             }
-            runCatching { label to file.readText() }
+            runCatching { file.name to file.readText() }
                 .onFailure { logger.warn(it) { "[AgentDocumentResolver] Could not read $file" } }
                 .getOrNull()
         }

@@ -140,8 +140,10 @@ class FilesystemAgentConfigRepository(
             modelName = model.modelName,
             integrations = model.integrations,
             subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-            docs = (model.docs ?: model.mandatoryDocs)?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-            agentDir = file.parent.toAbsolutePath().toString(),
+            docs = (model.docs ?: model.mandatoryDocs)
+                ?.filter { it.isNotBlank() }
+                ?.map { entry -> file.parent.resolve(entry).toAbsolutePath().normalize().toString() }
+                ?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )

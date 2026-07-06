@@ -213,7 +213,6 @@ class AgentServiceImpl(
                 agentIntegrations = agentConfig.integrations,
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
-                agentDir = agentConfig.agentDir,
                 docs = agentConfig.docs,
             )
         val toolContext =
@@ -451,7 +450,6 @@ class AgentServiceImpl(
         agentIntegrations: Map<String, List<String>?>?,
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
-        agentDir: String? = null,
         docs: List<String>? = null,
     ): String {
         val integrationsBlock =
@@ -503,7 +501,7 @@ class AgentServiceImpl(
                 }
             }
 
-        val docsBlock = agentDocumentResolver.buildDocsBlock(agentDir, docs)
+        val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
 
         return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
             .joinToString("\n")
