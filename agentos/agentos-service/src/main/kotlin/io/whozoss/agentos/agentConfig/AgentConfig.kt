@@ -110,4 +110,10 @@ data class AgentConfig(
      * Silently ignored when configPath is absent.
      */
     val docs: List<String>? = null,
+    /**
+     * Absolute path to the directory containing the agent YAML file.
+     * Set only for filesystem-backed agents; null for Neo4j-persisted agents.
+     * Used as the base path for resolving [docs] entries.
+     */
+    val agentDir: String? = null,
 ) : Entity

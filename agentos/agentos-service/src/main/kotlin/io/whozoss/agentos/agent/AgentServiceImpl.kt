@@ -213,7 +213,7 @@ class AgentServiceImpl(
                 agentIntegrations = agentConfig.integrations,
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
-                configPath = namespace?.configPath,
+                agentDir = agentConfig.agentDir,
                 docs = agentConfig.docs,
             )
         val toolContext =
@@ -446,12 +446,12 @@ class AgentServiceImpl(
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
      */
-    private fun buildInstructions(
+    private suspend fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
-        configPath: String? = null,
+        agentDir: String? = null,
         docs: List<String>? = null,
     ): String {
         val integrationsBlock =
@@ -503,7 +503,7 @@ class AgentServiceImpl(
                 }
             }
 
-        val docsBlock = agentDocumentResolver.buildDocsBlock(configPath, docs)
+        val docsBlock = agentDocumentResolver.buildDocsBlock(agentDir, docs)
 
         return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
             .joinToString("\n")
