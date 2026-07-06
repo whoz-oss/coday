@@ -143,13 +143,14 @@ export class CaseDrawerComponent implements OnChanges {
  * Group the root nodes into "Favorites" / "Others" accordion sections (favorites first)
  * when at least one root is favorited; otherwise leave them ungrouped (flat tree).
  *
- * Grouping is applied at the root level only — a favorited sub-case stays nested under
- * its parent (surfaced by its star icon), rather than being lifted out of the hierarchy.
+ * Grouping is applied at the root level only — a favorited sub-case stays nested under its
+ * parent (its favorite state is reachable via the row's "⋯" menu), rather than being lifted
+ * out of the hierarchy.
  */
 function groupFavorites(roots: CaseTreeItem[]): CaseTreeItem[] {
   if (!roots.some((r) => r.favorite)) return roots
   // Stable sort keeps the newest-first order within each section.
-  const sorted = [...roots].sort((a, b) => Number(b.favorite ?? false) - Number(a.favorite ?? false))
+  const sorted = [...roots].sort((a, b) => Number(b.favorite) - Number(a.favorite))
   for (const root of sorted) {
     root.groupKey = root.favorite ? 'favorites' : 'others'
     root.groupLabel = root.favorite ? 'Favorites' : 'Others'

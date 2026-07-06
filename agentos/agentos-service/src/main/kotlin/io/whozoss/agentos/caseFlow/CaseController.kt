@@ -241,7 +241,9 @@ class CaseController(
         @PathVariable userId: UUID,
     ): List<CaseResource> {
         logger.debug { "Listing cases for user $userId" }
-        return withCallerMeta(caseService.findConcerningUser(userId), userId.toString())
+        // No caller-meta enrichment: these list a *target* user's cases, so role/favorite
+        // (defined as the caller's) would be misleading; they stay at their defaults.
+        return caseService.findConcerningUser(userId).map { toResource(it) }
     }
 
     /**
@@ -260,7 +262,7 @@ class CaseController(
                 ?: throw io.whozoss.agentos.exception
                     .ResourceNotFoundException("User not found: $externalId")
         logger.debug { "Listing cases for user ${user.id} (externalId=$externalId)" }
-        return withCallerMeta(caseService.findConcerningUser(user.id), user.id.toString())
+        return caseService.findConcerningUser(user.id).map { toResource(it) }
     }
 
     /**
@@ -284,7 +286,7 @@ class CaseController(
                 ?: throw io.whozoss.agentos.exception
                     .ResourceNotFoundException("Namespace not found: ${request.namespaceExternalId}")
         logger.debug { "Listing cases for user ${user.id} in namespace ${namespace.id}" }
-        return withCallerMeta(caseService.findConcerningUserInNamespace(user.id, namespace.id), user.id.toString())
+        return caseService.findConcerningUserInNamespace(user.id, namespace.id).map { toResource(it) }
     }
 
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */

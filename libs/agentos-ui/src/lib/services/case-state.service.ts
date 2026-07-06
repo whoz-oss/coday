@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
-import { catchError, Observable, Subscription, tap, throwError } from 'rxjs'
+import { catchError, defer, Observable, Subscription, tap, throwError } from 'rxjs'
 
 /**
  * CaseStateService — reactive state for the case list within a namespace.
@@ -65,14 +65,18 @@ export class CaseStateService {
    * fails. Returns the request so the caller can surface an error.
    */
   setStarred(caseId: string, starred: boolean): Observable<void> {
-    this.patchFavorite(caseId, starred)
-    const request = starred ? this.caseController.starCase(caseId) : this.caseController.unstarCase(caseId)
-    return request.pipe(
-      catchError((err) => {
-        this.patchFavorite(caseId, !starred)
-        return throwError(() => err)
-      })
-    )
+    // defer so the optimistic flip is tied to subscription: an unsubscribed call never
+    // diverges the signal from the server, and the revert always pairs with the request.
+    return defer(() => {
+      this.patchFavorite(caseId, starred)
+      const request = starred ? this.caseController.starCase(caseId) : this.caseController.unstarCase(caseId)
+      return request.pipe(
+        catchError((err) => {
+          this.patchFavorite(caseId, !starred)
+          return throwError(() => err)
+        })
+      )
+    })
   }
 
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */

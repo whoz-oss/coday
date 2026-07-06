@@ -4,9 +4,12 @@ import { EntityListItem } from '@whoz-oss/design-system'
 
 /**
  * A drawer list item for a case. Extends the shared [EntityListItem] with the
- * case-specific `canDelete` affordance flag (kept off the design-system interface).
+ * case-specific `favorite` and `canDelete` flags (kept off the design-system interface,
+ * which only needs `groupKey`/`groupLabel`).
  */
 export interface CaseListItem extends EntityListItem {
+  /** Per-user favorite flag — drives the Favorites grouping and the star menu action. */
+  favorite: boolean
   /** Whether the caller may delete this case (direct ADMIN relation). Gates the delete button. */
   canDelete: boolean
 }
