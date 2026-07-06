@@ -27,7 +27,7 @@ import java.time.Instant
 class StdioMcpConnection(
     private val config: McpServerConfig,
     val configHash: String,
-) : McpConnectionPort {
+) : PooledMcpConnection {
     private lateinit var client: McpSyncClient
     private lateinit var transport: StdioClientTransport
 
@@ -35,7 +35,7 @@ class StdioMcpConnection(
     override var tools: List<Tool> = emptyList()
         private set
 
-    var lastUsed: Instant = Instant.now()
+    override var lastUsed: Instant = Instant.now()
         private set
 
     /**
@@ -124,7 +124,7 @@ class StdioMcpConnection(
      * Checks whether the underlying process is still alive.
      * Used by the pool before returning an existing connection.
      */
-    fun isAlive(): Boolean {
+    override fun isAlive(): Boolean {
         val alive = runCatching { client.ping() }.isSuccess
         logger.debug { "[MCP] isAlive check: ${if (alive) "OK" else "FAILED"} (hash ${configHash.take(8)})" }
         return alive
@@ -145,7 +145,7 @@ class StdioMcpConnection(
      *
      * Safe to call multiple times.
      */
-    fun close() {
+    override fun close() {
         val closeStart = System.currentTimeMillis()
         logger.info { "[MCP] Closing connection (hash ${configHash.take(8)})" }
         // Attempt graceful shutdown: sends JSON-RPC close, SIGTERM, waits up to 10s.

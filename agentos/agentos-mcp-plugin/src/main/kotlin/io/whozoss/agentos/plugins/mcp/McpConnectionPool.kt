@@ -26,12 +26,16 @@ private const val MAX_POOL_SIZE = 200
  * Thread safety: all mutable state is guarded by [ConcurrentHashMap] and
  * [synchronized] blocks on individual [PooledConnection] entries.
  */
-class McpConnectionPool {
-    private val pool = ConcurrentHashMap<String, PooledConnection>()
+class McpConnectionPool(
+    private val connectionFactory: (McpServerConfig, String) -> PooledMcpConnection = { config, hash ->
+        StdioMcpConnection(config, hash).also { it.connect() }
+    },
+) {
+    private val pool = ConcurrentHashMap<String, PoolEntry>()
     private lateinit var evictionExecutor: ScheduledExecutorService
 
-    private data class PooledConnection(
-        val connection: StdioMcpConnection,
+    private data class PoolEntry(
+        val connection: PooledMcpConnection,
         val config: McpServerConfig,
     )
 
@@ -57,6 +61,9 @@ class McpConnectionPool {
         logger.info { "[McpPool] Shutdown complete" }
     }
 
+    /** Returns the live connection for [hash], or null if not pooled. For testing only. */
+    internal fun getPooled(hash: String): PooledMcpConnection? = pool[hash]?.connection
+
     /**
      * Returns a healthy [StdioMcpConnection] for [config], creating one if needed.
      *
@@ -70,52 +77,50 @@ class McpConnectionPool {
      * @throws McpConnectionException if a new connection cannot be established.
      * @throws IllegalStateException if the pool is at capacity.
      */
-    fun acquire(config: McpServerConfig): StdioMcpConnection {
+    fun acquire(config: McpServerConfig): PooledMcpConnection {
         val hash = config.configHash()
-        var result: StdioMcpConnection? = null
 
         pool.compute(hash) { _, existing ->
-            result =
-                when {
-                    existing != null && existing.connection.isAlive() -> {
-                        logger.debug { "[McpPool] Reusing connection ${hash.take(8)} for '${config.label}'" }
-                        existing.connection
-                    }
-
-                    existing != null -> {
-                        logger.warn { "[McpPool] Connection ${hash.take(8)} is dead, reconnecting" }
-                        existing.connection.close()
-                        createConnection(config, hash)
-                    }
-
-                    else -> {
-                        check(pool.size < MAX_POOL_SIZE) {
-                            "[McpPool] Pool capacity reached ($MAX_POOL_SIZE). Cannot create new connection for '${config.label}'."
-                        }
-                        val currentSize = pool.size + 1
-                        if (currentSize > MAX_POOL_SIZE * 0.8) {
-                            logger.warn { "[McpPool] Pool capacity warning: $currentSize/$MAX_POOL_SIZE connections" }
-                        }
-                        createConnection(config, hash)
-                    }
+            when {
+                existing != null && existing.connection.isAlive() -> {
+                    logger.debug { "[McpPool] Reusing connection ${hash.take(8)} for '${config.label}'" }
+                    existing
                 }
-            PooledConnection(connection = result!!, config = config)
+
+                existing != null -> {
+                    logger.warn { "[McpPool] Connection ${hash.take(8)} is dead, reconnecting" }
+                    existing.connection.close()
+                    PoolEntry(connection = createConnection(config, hash), config = config)
+                }
+
+                else -> {
+                    check(pool.size < MAX_POOL_SIZE) {
+                        "[McpPool] Pool capacity reached ($MAX_POOL_SIZE). Cannot create new connection for '${config.label}'."
+                    }
+                    val currentSize = pool.size + 1
+                    if (currentSize > MAX_POOL_SIZE * 0.8) {
+                        logger.warn { "[McpPool] Pool capacity warning: $currentSize/$MAX_POOL_SIZE connections" }
+                    }
+                    PoolEntry(connection = createConnection(config, hash), config = config)
+                }
+            }
         }
 
-        return result!!
+        // compute() guarantees the entry exists after a non-null return
+        return pool[hash]?.connection
+            ?: error("[McpPool] Internal error: connection for ${hash.take(8)} not found after compute")
     }
 
     private fun createConnection(
         config: McpServerConfig,
         hash: String,
-    ): StdioMcpConnection {
-        val connection = StdioMcpConnection(config, hash)
-        connection.connect()
+    ): PooledMcpConnection {
+        val connection = connectionFactory(config, hash)
         logger.info { "[McpPool] New connection ${hash.take(8)} for '${config.label}' (pool size=${pool.size + 1})" }
         return connection
     }
 
-    private fun evictIdleConnections() {
+    internal fun evictIdleConnections() {
         val now = Instant.now()
         logger.debug { "[McpPool] Eviction scan at $now (pool size=${pool.size})" }
         val toEvict =

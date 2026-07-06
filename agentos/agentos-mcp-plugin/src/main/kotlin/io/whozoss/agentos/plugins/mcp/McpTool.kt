@@ -43,20 +43,18 @@ class McpTool(
     data class Input(val args: String? = null)
 
     override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
-        val arguments: Map<String, Any?> =
-            when {
-                input?.args.isNullOrBlank() -> {
-                    emptyMap()
-                }
-
-                else -> {
-                    runCatching { objectMapper.readValue<Map<String, Any?>>(input!!.args!!) }
-                        .getOrElse { e ->
-                            logger.warn { "[MCP] Could not parse args for tool '${mcpTool.name()}': ${e.message}" }
-                            emptyMap()
-                        }
-                }
+        val arguments: Map<String, Any?> = run {
+            val rawArgs = input?.args
+            if (rawArgs.isNullOrBlank()) {
+                emptyMap()
+            } else {
+                runCatching { objectMapper.readValue<Map<String, Any?>>(rawArgs) }
+                    .getOrElse { e ->
+                        logger.warn { "[MCP] Could not parse args for tool '${mcpTool.name()}': ${e.message}" }
+                        emptyMap()
+                    }
             }
+        }
         logger.trace { "[MCP] Calling '${mcpTool.name()}' with args: $arguments" }
         return runCatching { connection.callTool(mcpTool.name(), arguments) }
             .fold(
