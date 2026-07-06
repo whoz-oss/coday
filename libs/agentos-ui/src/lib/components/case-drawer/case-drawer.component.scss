@@ -101,12 +101,25 @@
     font-size: 0.8rem;
   }
 
-  &__star {
+  // Row actions (star + delete) stay hidden to keep the list light, and are
+  // revealed only when the row is hovered or focused (keyboard-accessible).
+  &__star,
+  &__delete {
     flex: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
   }
 
   &__delete {
-    flex: none;
     margin-inline-end: 0.25rem;
+  }
+
+  &__row:hover &__star,
+  &__row:hover &__delete,
+  &__row:focus-within &__star,
+  &__row:focus-within &__delete {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
