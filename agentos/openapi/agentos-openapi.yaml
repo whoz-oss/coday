@@ -489,8 +489,8 @@ paths:
           type: string
           format: uuid
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
   /api/agent-configs/{id}:
     get:
       tags:
@@ -759,11 +759,6 @@ paths:
         required: true
         schema:
           type: string
-          enum:
-          - PLATFORM
-          - NAMESPACE
-          - USER
-          - USER_NAMESPACE
       - name: namespaceId
         in: query
         required: false
@@ -1062,7 +1057,7 @@ paths:
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
 
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
 
         When called with no params, returns platform-level configs.
       operationId: listIntegrationConfig
@@ -1100,7 +1095,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15). A `namespaceId` that does not exist returns 404.
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404.
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -1308,17 +1303,6 @@ paths:
       tags:
       - ai-provider-controller
       summary: List AiProviders by scope
-      description: |-
-        Scope is inferred from the query params :
-
-        | query                                              | mode             | required permission                            |
-        |----------------------------------------------------|------------------|------------------------------------------------|
-        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
-        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
-        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
-        | `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |
-        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
       operationId: listAiProvider
       parameters:
       - name: namespaceId
@@ -1343,18 +1327,6 @@ paths:
     post:
       tags:
       - ai-provider-controller
-      summary: Create an AiProvider
-      description: |-
-        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
-
-        | body.namespaceId | body.userId        | scope         | required permission                  |
-        |------------------|--------------------|---------------|--------------------------------------|
-        | null             | null               | platform      | super-admin only                     |
-        | present          | null               | NS-shared     | WRITE on the namespace               |
-        | null             | <currentUser.id>   | user-global   | authenticated only                   |
-        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
-
-        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` that does not exist returns 404 (Decision 15 / AC7).
       operationId: createAiProvider
       requestBody:
         content:
@@ -1536,28 +1508,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
-  /api/users/by-parentId/{parentId}:
-    get:
-      tags:
-      - user-controller
-      operationId: listByParentUser
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/User"
   /api/prompts/effective:
     get:
       tags:
@@ -1591,7 +1541,6 @@ paths:
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -1705,28 +1654,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NamespaceUserListItem"
-  /api/namespaces/by-parentId/{parentId}:
-    get:
-      tags:
-      - namespace-controller
-      operationId: listByParentNamespace
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Namespace"
   /api/integration-types:
     get:
       tags:
@@ -1878,7 +1805,6 @@ paths:
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -1990,7 +1916,6 @@ paths:
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -2081,11 +2006,10 @@ paths:
     get:
       tags:
       - agent-config-controller
-      operationId: listByNamespaceAgentConfig
+      operationId: listByParentAgentConfig
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -2152,7 +2076,6 @@ components:
           type: array
           items:
             type: string
-            minLength: 1
           minItems: 1
         parameters:
           type: array
@@ -2199,17 +2122,10 @@ components:
           type: string
         configPath:
           type: string
-          description: "Optional filesystem path to a directory containing base configuration\
-            \ for this namespace (agents, tools, etc.)"
         externalId:
           type: string
-          description: "Optional external identifier for this namespace, e.g. a federation\
-            \ id from an external system"
         defaultAgentName:
           type: string
-          description: "Logical name of the default agent for this namespace. Resolved\
-            \ at runtime against AgentConfig entries (case-insensitive). When null,\
-            \ messages without an @mention will produce an explicit error."
       required:
       - name
     IntegrationConfig:
@@ -2399,9 +2315,7 @@ components:
           items:
             type: string
       required:
-      - createdOn
       - name
-      - updatedOn
     GroupsByExternalIdsRequest:
       type: object
       properties:
@@ -2414,6 +2328,7 @@ components:
           format: uuid
       required:
       - externalIds
+      - namespaceId
     UserGroupSummary:
       type: object
       properties:
@@ -2446,23 +2361,16 @@ components:
           format: uuid
         name:
           type: string
-          maxLength: 250
-          minLength: 0
         userExternalIdsToAdd:
           type: array
           items:
             type: string
-            minLength: 1
-          maxItems: 200
-          minItems: 0
           uniqueItems: true
         agentIds:
           type: array
           items:
             type: string
             format: uuid
-          maxItems: 200
-          minItems: 0
           uniqueItems: true
       required:
       - agentIds
@@ -2502,31 +2410,21 @@ components:
       properties:
         name:
           type: string
-          maxLength: 250
-          minLength: 0
         userExternalIdsToAdd:
           type: array
           items:
             type: string
-            minLength: 1
-          maxItems: 200
-          minItems: 0
           uniqueItems: true
         userExternalIdsToRemove:
           type: array
           items:
             type: string
-            minLength: 1
-          maxItems: 200
-          minItems: 0
           uniqueItems: true
         agentIds:
           type: array
           items:
             type: string
             format: uuid
-          maxItems: 200
-          minItems: 0
           uniqueItems: true
       required:
       - agentIds
@@ -2600,10 +2498,8 @@ components:
           type: boolean
         type:
           type: string
-          description: Optional category label. Ignored (cleared) when positive=true.
         comment:
           type: string
-          description: Optional free-text note. Ignored (cleared) when positive=true.
       required:
       - caseEventId
       - positive
@@ -3244,23 +3140,12 @@ components:
           type: string
         configPath:
           type: string
-          description: Optional filesystem path to a directory containing base configuration
-            for this namespace
         externalId:
           type: string
-          description: "Optional external identifier for this namespace, e.g. a federation\
-            \ id from an external system"
         defaultAgentName:
           type: string
-          description: Logical name of the default agent for this namespace. Null
-            means no default is configured. Name matching is case-insensitive.
         role:
           type: string
-          description: The caller's effective role on this namespace
-          enum:
-          - SUPER-ADMIN
-          - ADMIN
-          - MEMBER
       required:
       - id
       - name
@@ -3302,7 +3187,6 @@ components:
         configSchema:
           $ref: "#/components/schemas/JsonNode"
       required:
-      - configSchema
       - description
       - displayName
       - type
