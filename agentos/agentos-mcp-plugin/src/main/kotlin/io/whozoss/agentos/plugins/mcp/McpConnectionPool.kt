@@ -113,6 +113,7 @@ class McpConnectionPool {
 
     private fun evictIdleConnections() {
         val now = Instant.now()
+        logger.debug { "[McpPool] Eviction scan at $now (pool size=${pool.size})" }
         val toEvict =
             pool.entries.filter { (_, pooled) ->
                 val idleSeconds =
