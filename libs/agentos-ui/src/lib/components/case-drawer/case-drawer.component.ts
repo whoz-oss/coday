@@ -58,7 +58,7 @@ export class CaseDrawerComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['cases']) {
-      this.rootItems = buildTree(this.cases)
+      this.rootItems = groupFavorites(buildTree(this.cases))
     }
     if (changes['cases'] || changes['activeCaseId']) {
       this.autoExpandAncestors()
@@ -112,6 +112,24 @@ export class CaseDrawerComponent implements OnChanges {
     item.favorite = !item.favorite
     this.starToggled.emit({ id: item.id, starred: item.favorite })
   }
+}
+
+/**
+ * Group the root nodes into "Favorites" / "Others" accordion sections (favorites first)
+ * when at least one root is favorited; otherwise leave them ungrouped (flat tree).
+ *
+ * Grouping is applied at the root level only — a favorited sub-case stays nested under
+ * its parent (surfaced by its star icon), rather than being lifted out of the hierarchy.
+ */
+function groupFavorites(roots: CaseTreeItem[]): CaseTreeItem[] {
+  if (!roots.some((r) => r.favorite)) return roots
+  // Stable sort keeps the newest-first order within each section.
+  const sorted = [...roots].sort((a, b) => Number(b.favorite ?? false) - Number(a.favorite ?? false))
+  for (const root of sorted) {
+    root.groupKey = root.favorite ? 'favorites' : 'others'
+    root.groupLabel = root.favorite ? 'Favorites' : 'Others'
+  }
+  return sorted
 }
 
 /** Build a tree of CaseTreeItem from a flat Case list, sorted newest first at every level. */

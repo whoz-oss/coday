@@ -75,4 +75,27 @@ describe('CaseDrawerComponent', () => {
     expect(byId('admin-fav').favorite).toBe(true)
     expect(byId('member').canDelete).toBe(false)
   })
+
+  it('groups favorited roots under a Favorites section (favorites first)', () => {
+    const c = new CaseDrawerComponent()
+    c.cases = [
+      { id: 'plain', namespaceId: 'ns', favorite: false } as unknown as Case,
+      { id: 'fav', namespaceId: 'ns', favorite: true } as unknown as Case,
+    ]
+    c.ngOnChanges({ cases: { currentValue: c.cases } } as unknown as SimpleChanges)
+
+    expect(c['rootItems'].map((i) => i.id)).toEqual(['fav', 'plain'])
+    expect(c['rootItems'][0].groupKey).toBe('favorites')
+    expect(c['rootItems'][0].groupLabel).toBe('Favorites')
+    expect(c['rootItems'][1].groupKey).toBe('others')
+    expect(c['rootItems'][1].groupLabel).toBe('Others')
+  })
+
+  it('leaves roots ungrouped when nothing is favorited', () => {
+    const c = new CaseDrawerComponent()
+    c.cases = [{ id: 'a', namespaceId: 'ns', favorite: false } as unknown as Case]
+    c.ngOnChanges({ cases: { currentValue: c.cases } } as unknown as SimpleChanges)
+
+    expect(c['rootItems'][0].groupKey).toBeUndefined()
+  })
 })
