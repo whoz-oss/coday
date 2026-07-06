@@ -86,3 +86,7 @@ instructions: |
 
 mandatoryDocs:
   - ./apps/client-e2e/playwright.config.ts
+
+subAgents:
+  - Nxay
+  - Daemonay

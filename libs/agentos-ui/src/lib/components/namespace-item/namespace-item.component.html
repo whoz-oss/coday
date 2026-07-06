@@ -1,4 +1,4 @@
-<div class="namespace-item" role="listitem">
+<div class="namespace-item" role="listitem" [class.namespace-item--pending-delete]="pendingDelete()">
   <button class="namespace-item__body" type="button" (click)="onSelect()">
     <span class="namespace-item__name">{{ namespace.name }}</span>
     @if (namespace.description) {
@@ -7,6 +7,12 @@
   </button>
 
   <div class="namespace-item__actions">
-    <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    @if (pendingDelete()) {
+      <span class="namespace-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    }
   </div>
 </div>
