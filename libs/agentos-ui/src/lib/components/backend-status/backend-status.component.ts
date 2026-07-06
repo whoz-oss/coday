@@ -11,7 +11,6 @@ import { PluginControllerService } from '@whoz-oss/agentos-api-client'
  */
 @Component({
   selector: 'agentos-backend-status',
-  standalone: true,
   imports: [],
   templateUrl: './backend-status.component.html',
   styleUrl: './backend-status.component.scss',

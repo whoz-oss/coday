@@ -18,7 +18,6 @@ import { MarkdownPipe } from '../../pipes/markdown.pipe'
  */
 @Component({
   selector: 'agentos-agent-config-inspect',
-  standalone: true,
   imports: [RouterLink, MarkdownPipe],
   templateUrl: './agent-config-inspect.component.html',
   styleUrl: './agent-config-inspect.component.scss',

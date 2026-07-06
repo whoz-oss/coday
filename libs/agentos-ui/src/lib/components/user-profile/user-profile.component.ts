@@ -38,7 +38,6 @@ interface UserGlobalRecap {
  */
 @Component({
   selector: 'agentos-user-profile',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './user-profile.component.html',
   styleUrl: './user-profile.component.scss',

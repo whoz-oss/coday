@@ -88,7 +88,6 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-  standalone: true,
   imports: [IconButtonComponent, JsonPipe],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',

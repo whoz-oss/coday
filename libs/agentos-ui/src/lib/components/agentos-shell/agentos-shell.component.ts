@@ -10,7 +10,6 @@ import { THEME_PORT } from '../../services/theme.service'
  */
 @Component({
   selector: 'agentos-shell',
-  standalone: true,
   imports: [RouterOutlet],
   templateUrl: './agentos-shell.component.html',
   styleUrl: './agentos-shell.component.scss',

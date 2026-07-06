@@ -18,7 +18,6 @@ import { PromptItemComponent } from '../prompt-item/prompt-item.component'
  */
 @Component({
   selector: 'agentos-platform-prompts',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, PromptItemComponent],
   templateUrl: './platform-prompts.component.html',
   styleUrl: './platform-prompts.component.scss',

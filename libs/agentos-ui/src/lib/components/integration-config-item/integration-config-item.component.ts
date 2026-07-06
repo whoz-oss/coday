@@ -37,7 +37,6 @@ const SCOPE_BADGES: Readonly<Record<IntegrationScope, ScopeBadge>> = Object.free
  */
 @Component({
   selector: 'agentos-integration-config-item',
-  standalone: true,
   imports: [IconButtonComponent],
   templateUrl: './integration-config-item.component.html',
   styleUrl: './integration-config-item.component.scss',
