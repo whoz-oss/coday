@@ -13,6 +13,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptCommandParser
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
@@ -56,6 +57,7 @@ class CaseServiceImpl(
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
     private val permissionService: PermissionService,
+    private val promptCommandParser: PromptCommandParser,
 ) : CaseService,
     SubCaseManager {
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
@@ -277,7 +279,20 @@ class CaseServiceImpl(
         sessionContext: Map<String, Any?>?,
     ) {
         val runtime = getCaseRuntime(caseId)
-        runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+        val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        val resolvedContent = when {
+            userId != null -> content.map { mc ->
+                when (mc) {
+                    is MessageContent.Text -> {
+                        val resolved = promptCommandParser.resolve(mc.content, runtime.namespaceId, userId)
+                        if (resolved != mc.content) MessageContent.Text(resolved) else mc
+                    }
+                    else -> mc
+                }
+            }
+            else -> content
+        }
+        runtime.addUserMessage(actor, resolvedContent, answerToEventId, sessionContext)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
     }

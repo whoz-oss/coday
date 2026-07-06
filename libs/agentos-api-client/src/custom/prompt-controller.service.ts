@@ -111,6 +111,21 @@ export class PromptControllerService extends BaseService {
     })
   }
 
+  /**
+   * Returns the resolved set of prompts for the given namespace+user context.
+   * Merges platform, namespace-shared, user-global and user×namespace layers by name.
+   * Used for slash-command autocomplete in the chat composer.
+   */
+  listEffectivePrompts(namespaceId: string): Observable<Prompt[]> {
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.get<Prompt[]>(`${basePath}/api/prompts/effective`, {
+      headers: this.defaultHeaders,
+      params: { namespaceId },
+      ...(withCredentials ? { withCredentials } : {}),
+      context: new HttpContext(),
+    })
+  }
+
   /** Soft-delete a prompt. */
   deletePrompt(id: string): Observable<void> {
     const { basePath, withCredentials } = this.configuration

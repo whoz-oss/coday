@@ -35,4 +35,12 @@ export class PromptStateService {
   delete(id: string): Observable<unknown> {
     return this.promptController.deletePrompt(id)
   }
+
+  /**
+   * Returns the effective (merged) prompt list for a namespace+user context.
+   * Used for slash-command autocomplete in the chat composer.
+   */
+  listEffective(namespaceId: string): Observable<Prompt[]> {
+    return this.promptController.listEffectivePrompts(namespaceId)
+  }
 }

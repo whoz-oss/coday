@@ -1,0 +1,27 @@
+<ul class="prompt-autocomplete" role="listbox" aria-label="Slash commands">
+  @for (prompt of prompts(); track prompt.name; let i = $index) {
+    <li
+      #promptItem
+      class="prompt-autocomplete__item"
+      [class.prompt-autocomplete__item--active]="isActive(i)"
+      role="option"
+      tabindex="-1"
+      [attr.aria-selected]="isActive(i)"
+      (click)="onItemClick(prompt)"
+      (keydown.enter)="onItemClick(prompt)"
+      (mouseenter)="activeIndex.set(i)"
+    >
+      <span class="prompt-autocomplete__name">/{{ prompt.name }}</span>
+      @if (prompt.description) {
+        <span class="prompt-autocomplete__description">{{ prompt.description }}</span>
+      }
+      @if (prompt.parameters.length) {
+        <span class="prompt-autocomplete__params">
+          @for (p of prompt.parameters; track p.name) {
+            <span class="prompt-autocomplete__param">{{ p.name }}</span>
+          }
+        </span>
+      }
+    </li>
+  }
+</ul>

@@ -19,6 +19,7 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptCommandParser
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -178,6 +179,9 @@ class CaseServiceImplSpec :
         }
 
         val permissionService: PermissionService = mockk(relaxed = true)
+        val promptCommandParser: PromptCommandParser = mockk(relaxed = true) {
+            every { resolve(any(), any(), any()) } answers { firstArg() }
+        }
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
@@ -215,6 +219,7 @@ class CaseServiceImplSpec :
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 permissionService = permissionService,
+                promptCommandParser = promptCommandParser,
             )
         }
 
@@ -355,6 +360,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -578,6 +584,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -676,6 +683,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -747,6 +755,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -792,6 +801,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -861,6 +871,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -928,6 +939,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1033,6 +1045,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1130,6 +1143,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1410,6 +1424,7 @@ class CaseServiceImplSpec :
                 namespaceService,
                 caseConfig = CaseConfigProperties(),
                 permissionService = permissionService,
+                promptCommandParser = promptCommandParser,
             )
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
@@ -1543,6 +1558,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1695,6 +1711,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                 )
 
             // Insert the case directly into the repository so no runtime is created in
