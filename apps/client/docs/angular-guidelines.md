@@ -9,7 +9,6 @@ Every component is `standalone: true`. No NgModules. Imports are declared per-co
 ```typescript
 @Component({
   selector: 'app-my-component',
-  standalone: true,
   imports: [NgClass, RouterModule, MyOtherComponent],
   templateUrl: './my-component.html',
   styleUrl: './my-component.scss',
