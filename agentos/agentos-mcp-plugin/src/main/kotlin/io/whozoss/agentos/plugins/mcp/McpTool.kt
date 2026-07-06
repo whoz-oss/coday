@@ -57,7 +57,7 @@ class McpTool(
                         }
                 }
             }
-        logger.debug { "[MCP] Calling '${mcpTool.name()}' with args: $arguments" }
+        logger.trace { "[MCP] Calling '${mcpTool.name()}' with args: $arguments" }
         return runCatching { connection.callTool(mcpTool.name(), arguments) }
             .fold(
                 onSuccess = { ToolExecutionResult.success(it) },

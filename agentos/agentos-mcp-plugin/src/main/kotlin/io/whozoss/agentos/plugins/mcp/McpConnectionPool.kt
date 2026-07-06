@@ -92,6 +92,10 @@ class McpConnectionPool {
                         check(pool.size < MAX_POOL_SIZE) {
                             "[McpPool] Pool capacity reached ($MAX_POOL_SIZE). Cannot create new connection for '${config.label}'."
                         }
+                        val currentSize = pool.size + 1
+                        if (currentSize > MAX_POOL_SIZE * 0.8) {
+                            logger.warn { "[McpPool] Pool capacity warning: $currentSize/$MAX_POOL_SIZE connections" }
+                        }
                         createConnection(config, hash)
                     }
                 }
@@ -115,12 +119,14 @@ class McpConnectionPool {
         val now = Instant.now()
         logger.debug { "[McpPool] Eviction scan at $now (pool size=${pool.size})" }
         val toEvict =
-            pool.entries.filter { (_, pooled) ->
+            pool.entries.filter { (hash, pooled) ->
                 val idleSeconds =
                     java.time.Duration
                         .between(pooled.connection.lastUsed, now)
                         .toSeconds()
-                idleSeconds > pooled.config.idleTimeoutMinutes * 60
+                val threshold = pooled.config.idleTimeoutMinutes * 60
+                logger.trace { "[McpPool] Connection ${hash.take(8)}: idle ${idleSeconds}s / threshold ${threshold}s" }
+                idleSeconds > threshold
             }
         toEvict.forEach { (hash, pooled) ->
             logger.info { "[McpPool] Evicting idle connection ${hash.take(8)} for '${pooled.config.command}'" }

@@ -48,6 +48,7 @@ class StdioMcpConnection(
             "McpConnection only supports stdio transport; HTTP transport is not yet implemented"
         }
         val command = config.command!!
+        val connectStart = System.currentTimeMillis()
         logger.info { "[MCP] Connecting to server: $command ${config.args.joinToString(" ")}" }
 
         val paramsBuilder =
@@ -78,7 +79,9 @@ class StdioMcpConnection(
 
         try {
             val initResult = client.initialize()
+            val handshakeMs = System.currentTimeMillis() - connectStart
             logger.info { "[MCP] Connected: ${initResult.serverInfo?.name} ${initResult.serverInfo?.version}" }
+            logger.debug { "[MCP] Handshake completed in ${handshakeMs}ms (hash ${configHash.take(8)})" }
         } catch (e: Exception) {
             runCatching { client.closeGracefully() }
             throw McpConnectionException("Failed to initialise MCP session for command '$command': ${e.message}", e)
@@ -91,7 +94,8 @@ class StdioMcpConnection(
                 logger.warn { "[MCP] Could not list tools for '${config.command}': ${e.message}" }
                 emptyList()
             }
-        logger.info { "[MCP] Discovered ${tools.size} tool(s): ${tools.map { it.name() }.joinToString()}" }
+        logger.info { "[MCP] Discovered ${tools.size} tool(s)" }
+        logger.debug { "[MCP] Tool list: ${tools.map { it.name() }.joinToString()}" }
     }
 
     /**
@@ -120,7 +124,11 @@ class StdioMcpConnection(
      * Checks whether the underlying process is still alive.
      * Used by the pool before returning an existing connection.
      */
-    fun isAlive(): Boolean = runCatching { client.ping() }.isSuccess
+    fun isAlive(): Boolean {
+        val alive = runCatching { client.ping() }.isSuccess
+        logger.debug { "[MCP] isAlive check: ${if (alive) "OK" else "FAILED"} (hash ${configHash.take(8)})" }
+        return alive
+    }
 
     /**
      * Closes the MCP session and terminates the child process.
@@ -138,6 +146,7 @@ class StdioMcpConnection(
      * Safe to call multiple times.
      */
     fun close() {
+        val closeStart = System.currentTimeMillis()
         logger.info { "[MCP] Closing connection (hash ${configHash.take(8)})" }
         // Attempt graceful shutdown: sends JSON-RPC close, SIGTERM, waits up to 10s.
         val graceful = runCatching { client.closeGracefully() }.getOrDefault(false)
@@ -147,6 +156,8 @@ class StdioMcpConnection(
             logger.warn { "[MCP] Graceful close failed, forcing shutdown (hash ${configHash.take(8)})" }
             runCatching { client.close() }
         }
+        val closeMs = System.currentTimeMillis() - closeStart
+        logger.debug { "[MCP] Close completed in ${closeMs}ms (hash ${configHash.take(8)})" }
     }
 
     private fun formatResult(result: McpSchema.CallToolResult): String {
