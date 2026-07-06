@@ -76,10 +76,18 @@ class PromptServiceImpl(
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
     /**
-     * Validates business rules that cannot be expressed via Bean Validation:
+     * Validates business rules that apply after Bean Validation:
+     * - No element of [Prompt.content] may be blank (type-use @NotBlank on generic
+     *   type arguments is unreliable when the DTO lives in a separate module with
+     *   compileOnly validation dependencies, so the check lives here instead).
      * - Parameter names must be unique within the list.
      */
     private fun validate(prompt: Prompt) {
+        val blankIndex = prompt.content.indexOfFirst { it.isBlank() }
+        if (blankIndex >= 0) {
+            throw BadRequestException("content[$blankIndex] must not be blank")
+        }
+
         val duplicateName =
             prompt.parameters
                 .groupBy { it.name }
