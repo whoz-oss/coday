@@ -37,7 +37,7 @@ export class CaseHomeComponent {
 
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   protected readonly inputValue = signal('')
   protected readonly isCreating = signal(false)
@@ -91,7 +91,7 @@ export class CaseHomeComponent {
       .subscribe({
         next: (createdCase) => {
           // Step 3: navigate — no firstMessage in state, the message is already posted
-          this.router.navigate([createdCase.id ?? ''], { relativeTo: this.route })
+          this.router.navigate(['/agentos/home'], { queryParams: { ns: this.namespaceId, case: createdCase.id ?? '' } })
         },
         error: (err) => {
           console.error('[CaseHome] Failed to create case or send first message', err)

@@ -1,92 +1,306 @@
-import { Component, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
-import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router'
-import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
-import { filter, map, merge, of } from 'rxjs'
-import { CaseStateService } from '../../services/case-state.service'
+import { ActivatedRoute, Router } from '@angular/router'
+import {
+  Case,
+  CaseControllerService,
+  CaseStatusEnum,
+  NamespaceControllerService,
+  NamespaceListItem,
+} from '@whoz-oss/agentos-api-client'
+import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { CaseDrawerComponent } from '../case-drawer/case-drawer.component'
-import { HeaderComponent } from '../header/header.component'
+import { CaseChatComponent } from '../case-chat/case-chat.component'
+import { CaseHomeComponent } from '../case-home/case-home.component'
+import { THEME_PORT, ThemeMode } from '../../services/theme.service'
+import { UserStateService } from '../../services/user-state.service'
 
 /**
  * CaseShellComponent — smart layout container for the case section.
  *
  * Responsibilities:
- * - Owns the ds-drawer layout: header + collapsible sidenav + routed content
- * - Delegates case list state to CaseStateService
+ * - Owns the fixed sidebar layout: logo + namespace picker + case list
+ * - Loads and refreshes the case list for the current namespace
+ * - Loads all namespaces for the namespace picker
  * - Passes cases to CaseDrawerComponent (presentational)
- * - Handles drawer toggle state
+ * - Handles namespace switching via picker
  * - Navigates on case selection / create
  *
- * Child routes render inside the <router-outlet> in the main content area:
- *   ''          → CaseHomeComponent
- *   ':caseId'   → CaseChatComponent
+ * Active namespace and case are read from query params:
+ *   ?ns=<namespaceId>   → active namespace
+ *   ?case=<caseId>      → active case (renders CaseChatComponent when present)
+ *
+ * When no ?ns is present, auto-selects the first available namespace.
  */
 @Component({
   selector: 'agentos-case-shell',
   standalone: true,
-  imports: [RouterOutlet, DrawerComponent, CaseDrawerComponent, HeaderComponent, IconButtonComponent],
+  imports: [CaseDrawerComponent, CaseChatComponent, CaseHomeComponent],
   templateUrl: './case-shell.component.html',
   styleUrl: './case-shell.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
-  private readonly caseState = inject(CaseStateService)
+  private readonly caseController = inject(CaseControllerService)
+  private readonly namespaceController = inject(NamespaceControllerService)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  private readonly themePort = inject(THEME_PORT)
+  private readonly userState = inject(UserStateService)
 
-  protected readonly drawerOpen = signal(true)
+  protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)
 
-  protected readonly cases = this.caseState.cases
+  /** Controls visibility of the namespace dropdown menu */
+  protected readonly nsMenuOpen = signal(false)
 
-  constructor() {
-    this.caseState.loadCases(this.namespaceId)
-  }
+  /** Sidebar width in pixels — adjustable via drag handle */
+  protected readonly sidebarWidth = signal(300)
 
-  /**
-   * Active case id — derived reactively from router NavigationEnd events.
-   *
-   * `computed()` on `route.firstChild?.snapshot` does not work because the snapshot
-   * is not a signal and won’t trigger re-evaluation on navigation.
-   * Instead we listen to Router events and extract the caseId from the URL.
-   */
-  protected readonly activeCaseId = toSignal(
-    merge(
-      // Emit immediately for the current URL (handles component init and page refresh)
-      of(this.router.url),
-      // Then re-emit on every completed navigation
-      this.router.events.pipe(
-        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-        map((e) => e.urlAfterRedirects)
-      )
-    ).pipe(map((url) => this.extractCaseId(url))),
-    { initialValue: null as string | null }
+  /** Whether dark mode is currently active */
+  protected readonly isDark = computed(() => {
+    const t = this.themePort.theme()
+    if (t === 'dark') return true
+    if (t === 'light') return false
+    return typeof document !== 'undefined' && document.documentElement.hasAttribute('data-theme')
+  })
+
+  /** Shared technical logs toggle — passed down to CaseChatComponent via @Input */
+  protected readonly showTechnical = signal(false)
+
+  /** Whether to show the namespace picker (admin or multiple namespaces) */
+  protected readonly showNsPicker = computed(() => this.isAdmin() || this.namespaces().length > 1)
+
+  /** Controls visibility of the user context menu */
+  protected readonly menuOpen = signal(false)
+
+  /** Controls visibility of the mobile case switcher */
+  protected readonly mobileSwitcherOpen = signal(false)
+
+  // ---------------------------------------------------------------------------
+  // Query param streams
+  // ---------------------------------------------------------------------------
+
+  /** Active namespace id from ?ns query param */
+  private readonly namespaceId$ = this.route.queryParams.pipe(map((params) => (params['ns'] as string) ?? null))
+
+  private readonly _namespaceIdRaw = toSignal(this.namespaceId$)
+  protected readonly namespaceId = computed(() => this._namespaceIdRaw() ?? null)
+
+  /** Active case id from ?case query param */
+  private readonly _activeCaseIdRaw = toSignal(
+    this.route.queryParams.pipe(map((params) => (params['case'] as string) ?? null))
+  )
+  protected readonly activeCaseId = computed(() => this._activeCaseIdRaw() ?? null)
+
+  // ---------------------------------------------------------------------------
+  // Data
+  // ---------------------------------------------------------------------------
+
+  /** Trigger to refresh the case list after mutations. */
+  private readonly refresh$ = new BehaviorSubject<void>(undefined)
+
+  private readonly cases$ = this.namespaceId$.pipe(
+    switchMap((nsId) => {
+      if (!nsId) return [[] as Case[]]
+      return this.refresh$.pipe(switchMap(() => this.caseController.listByParentCase(nsId)))
+    })
   )
 
-  /**
-   * Extract the caseId segment from the current URL.
-   * URL pattern: /agentos/:namespaceId/cases/:caseId
-   */
-  private extractCaseId(url: string): string | null {
-    const match = url.match(/\/cases\/([^/?#]+)/)
-    return match?.[1] ?? null
+  protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
+
+  /** All namespaces available to the current user — for the namespace picker */
+  protected readonly namespaces = toSignal(this.namespaceController.listAllNamespace(), {
+    initialValue: [] as NamespaceListItem[],
+  })
+
+  /** Currently active namespace object, derived from the loaded list + query param */
+  protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
+
+  /** Initials of the current user for the menu trigger button */
+  protected readonly userInitials = computed(() => {
+    const user = this.userState.currentUser()
+    if (!user) return ''
+    const first = user.firstname?.[0] ?? ''
+    const last = user.lastname?.[0] ?? ''
+    return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
+  })
+
+  constructor() {
+    // Sync selectedNamespace whenever namespaces load or the ?ns param changes.
+    // When no ?ns is present, auto-select the first namespace and update the URL.
+    effect(() => {
+      const nsList = this.namespaces()
+      const nsId = this.namespaceId()
+      if (!nsList.length) return
+
+      if (nsId) {
+        const found = nsList.find((ns) => ns.id === nsId)
+        this.selectedNamespace.set(found ?? nsList[0] ?? null)
+      } else {
+        // No ?ns in URL → auto-select first namespace and navigate
+        const first = nsList[0]
+        if (first?.id) {
+          this.router.navigate(['/agentos/home'], { queryParams: { ns: first.id }, replaceUrl: true })
+        }
+      }
+    })
   }
 
-  protected toggleDrawer(): void {
-    this.drawerOpen.update((v) => !v)
+  // ---------------------------------------------------------------------------
+  // User interactions
+  // ---------------------------------------------------------------------------
+
+  protected toggleNsMenu(event?: MouseEvent): void {
+    event?.stopPropagation()
+    event?.preventDefault()
+    this.nsMenuOpen.update((v) => !v)
+  }
+
+  protected closeNsMenu(event: Event): void {
+    event.stopPropagation()
+    this.nsMenuOpen.set(false)
+  }
+
+  protected onNamespaceSelected(ns: NamespaceListItem): void {
+    this.selectedNamespace.set(ns)
+    this.nsMenuOpen.set(false)
+    this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
   }
 
   protected onCaseSelected(caseId: string): void {
-    this.router.navigate([caseId], { relativeTo: this.route })
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId(), case: caseId },
+    })
   }
 
   protected onCreateRequested(): void {
-    // Navigate to the home view where the user can start a new case
-    this.router.navigate(['.'], { relativeTo: this.route })
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId() },
+    })
   }
 
-  /** Called after a case is created to refresh the drawer list. */
+  protected navigateHome(): void {
+    this.router.navigate(['/agentos/home'])
+  }
+
+  protected navigateToNamespaces(): void {
+    this.router.navigate(['/agentos/namespaces'])
+  }
+
+  protected navigateToAdmin(): void {
+    this.router.navigate(['/agentos/admin'])
+  }
+
+  protected navigateToProfile(): void {
+    this.router.navigate(['/agentos/user'])
+  }
+
+  protected toggleTheme(): void {
+    const next: ThemeMode = this.isDark() ? 'light' : 'dark'
+    this.themePort.setTheme(next)
+  }
+
+  protected toggleMenu(event?: MouseEvent): void {
+    event?.stopPropagation()
+    event?.preventDefault()
+    this.menuOpen.update((v) => !v)
+  }
+
+  protected closeMenu(event: Event): void {
+    event.stopPropagation()
+    this.menuOpen.set(false)
+  }
+
+  protected onMenuNavigate(path: string): void {
+    this.menuOpen.set(false)
+    this.router.navigate([path])
+  }
+
+  protected onMenuToggleTheme(): void {
+    this.menuOpen.set(false)
+    this.toggleTheme()
+  }
+
+  protected onMenuToggleLogs(): void {
+    this.menuOpen.set(false)
+    this.showTechnical.update((v) => !v)
+  }
+
+  protected toggleMobileSwitcher(): void {
+    this.mobileSwitcherOpen.update((v) => !v)
+  }
+
+  protected onMobileCaseSelect(caseId: string): void {
+    this.mobileSwitcherOpen.set(false)
+    this.onCaseSelected(caseId)
+  }
+
+  protected onMobileCreateCase(): void {
+    this.mobileSwitcherOpen.set(false)
+    this.onCreateRequested()
+  }
+
+  protected readonly activeCaseTitle = computed(() => {
+    const id = this.activeCaseId()
+    if (!id) return 'New case'
+    const found = this.cases().find((c) => c.id === id)
+    return found?.title ?? id
+  })
+
+  protected readonly activeCaseStatus = computed(() => {
+    const id = this.activeCaseId()
+    if (!id) return 'idle'
+    const found = this.cases().find((c) => c.id === id)
+    return this.deriveMobileStatus(found?.status)
+  })
+
+  protected readonly activeCaseStatusLabel = computed(() => {
+    const id = this.activeCaseId()
+    if (!id) return ''
+    const found = this.cases().find((c) => c.id === id)
+    return found?.status?.toLowerCase() ?? ''
+  })
+
+  protected deriveMobileStatus(status: CaseStatusEnum | undefined): string {
+    switch (status) {
+      case CaseStatusEnum.RUNNING:
+        return 'run'
+      case CaseStatusEnum.KILLED:
+        return 'killed'
+      case CaseStatusEnum.ERROR:
+        return 'error'
+      default:
+        return 'idle'
+    }
+  }
+
+  /**
+   * Start a drag session to resize the sidebar.
+   * Clamps the width between 200px and 500px.
+   */
+  protected onResizeStart(event: MouseEvent): void {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = this.sidebarWidth()
+
+    const onMove = (e: MouseEvent): void => {
+      const delta = e.clientX - startX
+      const newWidth = Math.max(200, Math.min(500, startWidth + delta))
+      this.sidebarWidth.set(newWidth)
+    }
+
+    const onUp = (): void => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  /** Called after a case is created to refresh the sidebar list. */
   refreshCases(): void {
-    this.caseState.loadCases(this.namespaceId)
+    this.refresh$.next()
   }
 }
