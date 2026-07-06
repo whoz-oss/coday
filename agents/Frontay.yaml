@@ -5,6 +5,7 @@ integrations:
   FILES:
   AI:
   MEMORY:
+  JIRA:
   GITHUB:
     - add_issue_comment
     - create_issue
