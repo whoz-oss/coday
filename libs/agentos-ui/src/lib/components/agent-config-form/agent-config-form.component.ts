@@ -44,7 +44,6 @@ interface IntegrationRow {
  */
 @Component({
   selector: 'agentos-agent-config-form',
-  standalone: true,
   imports: [ReactiveFormsModule, RouterLink],
   templateUrl: './agent-config-form.component.html',
   styleUrl: './agent-config-form.component.scss',

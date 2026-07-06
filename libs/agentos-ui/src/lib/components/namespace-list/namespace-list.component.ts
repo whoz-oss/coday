@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
@@ -19,10 +19,10 @@ import { NamespaceItemComponent } from '../namespace-item/namespace-item.compone
  */
 @Component({
   selector: 'agentos-namespace-list',
-  standalone: true,
   imports: [AsyncPipe, NamespaceItemComponent, EntityListComponent],
   templateUrl: './namespace-list.component.html',
   styleUrl: './namespace-list.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceListComponent {
   private readonly router = inject(Router)
@@ -50,11 +50,11 @@ export class NamespaceListComponent {
   )
 
   /** Full namespace objects indexed by id — used to resolve itemTemplate events. */
-  private namespacesById = new Map<string, Namespace>()
+  protected readonly namespacesById = signal(new Map<string, Namespace>())
 
   constructor() {
     this.namespaces$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((namespaces) => {
-      this.namespacesById = new Map(namespaces.map((ns) => [ns.id ?? '', ns]))
+      this.namespacesById.set(new Map(namespaces.map((ns) => [ns.id ?? '', ns])))
     })
   }
 
@@ -99,11 +99,5 @@ export class NamespaceListComponent {
       .deleteNamespace(ns.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
-  }
-
-  // --- Item template helpers ---
-
-  protected resolveNamespace(id: string): Namespace | null {
-    return this.namespacesById.get(id) ?? null
   }
 }

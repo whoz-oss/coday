@@ -42,7 +42,6 @@ const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freez
  */
 @Component({
   selector: 'agentos-ai-provider-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './ai-provider-item.component.html',
   styleUrl: './ai-provider-item.component.scss',
