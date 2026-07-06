@@ -34,7 +34,6 @@ import { PromptStateService } from '../../services/prompt-state.service'
  */
 @Component({
   selector: 'agentos-prompt-form',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './prompt-form.component.html',
   styleUrl: './prompt-form.component.scss',

@@ -12,7 +12,6 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  */
 @Component({
   selector: 'agentos-prompt-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './prompt-item.component.html',
   styleUrl: './prompt-item.component.scss',

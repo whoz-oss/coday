@@ -23,7 +23,6 @@ import { HeaderComponent } from '../header/header.component'
  */
 @Component({
   selector: 'agentos-case-shell',
-  standalone: true,
   imports: [RouterOutlet, DrawerComponent, CaseDrawerComponent, HeaderComponent, IconButtonComponent],
   templateUrl: './case-shell.component.html',
   styleUrl: './case-shell.component.scss',

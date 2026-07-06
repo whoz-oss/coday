@@ -10,7 +10,6 @@ import { EntityListItem } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-case-item',
-  standalone: true,
   template: '',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

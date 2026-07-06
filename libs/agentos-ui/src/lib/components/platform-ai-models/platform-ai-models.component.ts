@@ -26,7 +26,6 @@ import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
  */
 @Component({
   selector: 'agentos-platform-ai-models',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, AiModelItemComponent],
   templateUrl: './platform-ai-models.component.html',
   styleUrl: './platform-ai-models.component.scss',

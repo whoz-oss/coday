@@ -14,7 +14,6 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  */
 @Component({
   selector: 'agentos-namespace-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './namespace-item.component.html',
   styleUrl: './namespace-item.component.scss',
