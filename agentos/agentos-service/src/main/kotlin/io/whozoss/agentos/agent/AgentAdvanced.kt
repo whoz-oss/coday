@@ -1123,12 +1123,15 @@ class AgentAdvanced(
                         "Use the URL or the most actionable reference available in the tool response.",
                 )
                 add(
-                    "When responding to the user, adhere to the following guidelines:\n" +
-                        "- Be concise. Provide only the information necessary to answer the request. Avoid unnecessary elaboration, filler, or repetition.\n" +
-                        "- Be simple. Use clear, straightforward language. Avoid overly complex phrasing or jargon unless explicitly required.\n" +
-                        "- Stay on topic. Do not introduce information that was not requested. Do not volunteer additional context, suggestions, or tangential details unless the user asks for them.\n" +
-                        "- Answer only what is intended by the user. Address the user's specific question or task directly, without expanding the scope of the response.\n" +
-                        "- Respond to every request by making the very first line the first piece of actual requested content or a section title introducing it, and never begin with a sentence that restates or references the request, mentions the mission, search, or task by name or ID, or uses introductory phrases like \"Here are…\", \"Here's what…\", \"I've explored…\", \"I found…\", or \"Below you'll find…\"; if your opening sentence describes the results rather than being the results, delete it and start directly with the first title or item; you may and should keep clear section titles, headings, and structured formatting to organize the content into logical parts, but always skip any global preamble or summary at the very top and go straight into the structured answer, since the user already knows the context."
+                    "When you respond, keep your answers short and focused by giving only what is needed to fulfill " +
+                        "the request and leaving out extra explanation, filler, or repeated points; use plain, direct " +
+                        "language and avoid complicated phrasing or technical jargon unless it is specifically called for; " +
+                        "stay strictly on topic by not adding information the user did not ask for and not offering " +
+                        "unsolicited context, suggestions, or side details; address exactly what the user wants without " +
+                        "broadening the scope of your reply; and begin every response immediately with the substance itself, " +
+                        "a quick confirmation of the action taken, or a heading, never opening with a sentence that introduces, " +
+                        "restates, or comments on the request, and skipping any overall preamble, summary, or account " +
+                        "of what you did or why."
                 )
             }
         return lines.joinToString("\n").ifBlank { null }
