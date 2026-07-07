@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http'
-import { afterNextRender, Component, DestroyRef, ElementRef, inject, signal, ViewChild } from '@angular/core'
+import { afterNextRender, Component, DestroyRef, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
@@ -27,7 +27,7 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
 })
-export class CaseHomeComponent {
+export class CaseHomeComponent implements OnInit {
   private readonly http = inject(HttpClient)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
@@ -40,7 +40,7 @@ export class CaseHomeComponent {
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
   @ViewChild(PromptAutocompleteComponent) private autocompleteRef?: PromptAutocompleteComponent
 
-  protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
+  protected namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   protected readonly inputValue = signal('')
   protected readonly isCreating = signal(false)
@@ -54,6 +54,21 @@ export class CaseHomeComponent {
   private readonly slashPrefix$ = new Subject<string>()
 
   protected readonly slashSuggestions = signal<Prompt[]>([])
+
+  ngOnInit(): void {
+    // React to ?ns query param changes — the component is reused across namespace switches.
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const newNs = params['ns'] as string
+      if (newNs && newNs !== this.namespaceId) {
+        this.namespaceId = newNs
+        // Reset autocomplete state so stale suggestions from the previous namespace are cleared.
+        this.effectivePrompts = []
+        this.promptsLoaded = false
+        this.slashSuggestions.set([])
+        this.inputValue.set('')
+      }
+    })
+  }
 
   constructor() {
     afterNextRender(() => {
