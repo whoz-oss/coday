@@ -1,3 +1,15 @@
+## 0.203.1 (2026-07-07)
+
+### 🩹 Fixes
+
+- #1023 migrate case drawer to signal inputs and preserve auto-expanded ancestors ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 migrate case drawer to signal inputs and preserve auto-exp… ([#1105](https://github.com/whoz-oss/coday/pull/1105), [#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.203.0 (2026-07-07)
 
 ### 🚀 Features
