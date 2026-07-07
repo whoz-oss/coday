@@ -59,7 +59,24 @@ class McpTool(
         return runCatching { connection.callTool(mcpTool.name(), arguments) }
             .fold(
                 onSuccess = { ToolExecutionResult.success(it) },
-                onFailure = { ToolExecutionResult.error(it.message ?: "Tool call failed", it::class.simpleName ?: "Error", it.message ?: "") },
+                onFailure = { e ->
+                    when (e) {
+                        is McpToolErrorException ->
+                            // The MCP server ran the tool but the tool itself failed.
+                            // Surface the error content to the agent so it can adapt.
+                            ToolExecutionResult.error(
+                                output = e.content,
+                                errorType = "MCP_TOOL_ERROR",
+                                errorMessage = e.message,
+                            )
+                        else ->
+                            ToolExecutionResult.error(
+                                output = e.message ?: "Tool call failed",
+                                errorType = e::class.simpleName ?: "Error",
+                                errorMessage = e.message ?: "",
+                            )
+                    }
+                },
             )
     }
 

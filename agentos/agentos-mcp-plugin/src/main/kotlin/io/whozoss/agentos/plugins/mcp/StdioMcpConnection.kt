@@ -111,14 +111,16 @@ class StdioMcpConnection(
      *
      * @param toolName The name of the MCP tool to call.
      * @param arguments Parsed arguments map (may be empty for no-arg tools).
-     * @return The tool result as a plain string, prefixed with `[TOOL ERROR] ` when
-     *   the MCP server signals a tool-level error via [McpSchema.CallToolResult.isError].
+     * @return The tool result as a plain string on success.
+     * @throws McpConnectionException if the underlying transport or JSON-RPC call fails.
+     * @throws McpToolErrorException if the MCP server signals a tool-level error
+     *   via [McpSchema.CallToolResult.isError]. The exception message carries the
+     *   formatted error content so callers can surface it to the agent.
      */
     override fun callTool(
         toolName: String,
         arguments: Map<String, Any?>,
     ): String {
-        // Fix 3: set lastUsed at entry so a long-running call doesn't get evicted mid-flight
         lastUsed = Instant.now()
         try {
             val request = CallToolRequest.builder(toolName).arguments(arguments as Map<String, Any>).build()
@@ -129,14 +131,12 @@ class StdioMcpConnection(
                     throw McpConnectionException("Tool call '$toolName' failed: ${e.message}", e)
                 }
             val formatted = formatResult(result)
-            // Fix 1: surface MCP-level tool errors so the agent can distinguish them from success
-            return if (result.isError() == true) {
-                "[TOOL ERROR] $formatted"
+            return if (result.isError == true) {
+                throw McpToolErrorException(toolName, formatted)
             } else {
                 formatted
             }
         } finally {
-            // Fix 3: update lastUsed after the call so long-running tools aren't evicted
             lastUsed = Instant.now()
         }
     }
@@ -218,8 +218,3 @@ private class CwdAwareStdioClientTransport(
             workingDirectory?.let { directory(it) }
         }
 }
-
-class McpConnectionException(
-    message: String,
-    cause: Throwable? = null,
-) : RuntimeException(message, cause)

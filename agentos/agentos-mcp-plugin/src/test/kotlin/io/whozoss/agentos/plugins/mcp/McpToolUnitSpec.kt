@@ -96,4 +96,27 @@ class McpToolUnitSpec : StringSpec({
         val result = tool.execute(McpTool.Input(args = "{}"), ctx)
         result shouldBe ToolExecutionResult.success("search results here")
     }
+
+    "MCP tool error becomes ToolExecutionResult.error with MCP_TOOL_ERROR type" {
+        val connection = mockk<McpConnectionPort>()
+        every { connection.callTool(any(), any()) } throws McpToolErrorException("search_repos", "repository not found")
+
+        val tool = makeTool(connection = connection)
+        val result = tool.execute(McpTool.Input(args = "{}"), ctx)
+
+        result.success shouldBe false
+        result.output shouldBe "repository not found"
+        result.errorType shouldBe "MCP_TOOL_ERROR"
+    }
+
+    "transport failure becomes ToolExecutionResult.error with exception type" {
+        val connection = mockk<McpConnectionPort>()
+        every { connection.callTool(any(), any()) } throws McpConnectionException("process died")
+
+        val tool = makeTool(connection = connection)
+        val result = tool.execute(McpTool.Input(args = "{}"), ctx)
+
+        result.success shouldBe false
+        result.errorType shouldBe "McpConnectionException"
+    }
 })
