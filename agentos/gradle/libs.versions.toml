@@ -54,6 +54,13 @@ agentosSdk = "0.202.0"
 agentosService = "0.202.0"
 
 [libraries]
+# Jakarta Validation API — annotation-only, for compileOnly use in agentos-sdk
+jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version = "3.0.2" }
+# Swagger / OpenAPI annotations — annotation-only, for compileOnly use in agentos-sdk.
+# swagger-annotations 2.x is the transitive dependency of springdoc-openapi-starter 2.x.
+# Must stay in sync with the springdoc version used in agentos-service.
+swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version = "2.2.28" }
+
 # Kotlin
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }

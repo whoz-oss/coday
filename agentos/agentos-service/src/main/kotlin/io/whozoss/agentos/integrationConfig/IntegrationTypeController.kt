@@ -1,6 +1,8 @@
 package io.whozoss.agentos.integrationConfig
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeApi
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor as SdkIntegrationTypeDescriptor
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -11,13 +13,8 @@ import org.springframework.web.bind.annotation.RestController
 
 /**
  * REST API exposing the catalogue of available integration types.
- *
- * These endpoints are read-only and return static descriptors. They do NOT manage
- * persisted [IntegrationConfig] entities (that is [IntegrationConfigController]'s job).
- *
- * Endpoints:
- *   GET /api/integration-types           - full catalogue, sorted by type
- *   GET /api/integration-types/{type}    - single descriptor by type identifier
+ * Implements [IntegrationTypeApi] so external consumers can declare a Feign client
+ * against the SDK interface.
  */
 @RestController
 @RequestMapping(
@@ -26,40 +23,25 @@ import org.springframework.web.bind.annotation.RestController
 )
 class IntegrationTypeController(
     private val integrationTypeRegistry: IntegrationTypeRegistry,
-) {
-    /**
-     * List all known integration types with their configuration schemas.
-     *
-     * GET /api/integration-types
-     */
-    /**
-     * Catalog of integration types — fail-closed posture (`isAuthenticated()`).
-     * Can be relaxed to `permitAll()` if the front-end signup page needs anonymous access.
-     */
+) : IntegrationTypeApi {
+
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    fun listTypes(): List<IntegrationTypeDescriptor> {
-        logger.info { "Listing all integration types" }
-        return integrationTypeRegistry.listTypes()
-    }
+    override fun listTypes(): List<SdkIntegrationTypeDescriptor> =
+        integrationTypeRegistry.listTypes().map { it.toSdkDto() }
 
-    /**
-     * Get a single integration type descriptor by its type identifier.
-     *
-     * GET /api/integration-types/{type}
-     *
-     * @param type  The integration type identifier (e.g. JIRA, GITHUB, SLACK). Case-sensitive.
-     * @throws ResourceNotFoundException if no descriptor exists for [type].
-     */
     @GetMapping("/{type}")
     @PreAuthorize("isAuthenticated()")
-    fun getType(
-        @PathVariable type: String,
-    ): IntegrationTypeDescriptor {
-        logger.info { "Getting integration type: $type" }
-        return integrationTypeRegistry.findByType(type)
-            ?: throw ResourceNotFoundException("Unknown integration type: $type")
-    }
+    override fun getType(@PathVariable type: String): SdkIntegrationTypeDescriptor =
+        (integrationTypeRegistry.findByType(type)
+            ?: throw ResourceNotFoundException("Unknown integration type: $type")).toSdkDto()
 
     companion object : KLogging()
 }
+
+private fun IntegrationTypeDescriptor.toSdkDto() = SdkIntegrationTypeDescriptor(
+    type = type,
+    displayName = displayName,
+    description = description,
+    configSchema = configSchema,
+)

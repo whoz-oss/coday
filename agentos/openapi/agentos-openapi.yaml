@@ -489,8 +489,8 @@ paths:
           type: string
           format: uuid
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
   /api/agent-configs/{id}:
     get:
       tags:
@@ -647,7 +647,7 @@ paths:
     get:
       tags:
       - user-group-controller
-      operationId: searchByNamespaceIdUserGroup
+      operationId: findByNamespaceIdUserGroup
       parameters:
       - name: namespaceId
         in: query
@@ -756,6 +756,7 @@ paths:
       parameters:
       - name: scope
         in: query
+        description: Scope of prompts to return.
         required: true
         schema:
           type: string
@@ -1062,7 +1063,7 @@ paths:
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
 
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
 
         When called with no params, returns platform-level configs.
       operationId: listIntegrationConfig
@@ -1100,7 +1101,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15). A `namespaceId` that does not exist returns 404.
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404.
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -1175,6 +1176,9 @@ paths:
     post:
       tags:
       - case-controller
+      summary: Add a message
+      description: "POST /api/cases/{caseId}/messages — add a user message to a running\
+        \ case."
       operationId: addMessageCase
       parameters:
       - name: caseId
@@ -1196,6 +1200,8 @@ paths:
     post:
       tags:
       - case-controller
+      summary: Kill a case
+      description: "POST /api/cases/{caseId}/kill — permanently terminate a case."
       operationId: killCase
       parameters:
       - name: caseId
@@ -1211,6 +1217,9 @@ paths:
     post:
       tags:
       - case-controller
+      summary: Interrupt a case
+      description: "POST /api/cases/{caseId}/interrupt — interrupt the current agent\
+        \ turn gracefully."
       operationId: interruptCase
       parameters:
       - name: caseId
@@ -1226,6 +1235,9 @@ paths:
     post:
       tags:
       - case-controller
+      summary: List cases by user and namespace (external IDs)
+      description: "POST /api/cases/by-user/in-namespace — list cases for a user scoped\
+        \ to a namespace, both identified by their external IDs."
       operationId: listByUserInNamespaceCase
       requestBody:
         content:
@@ -1309,16 +1321,17 @@ paths:
       - ai-provider-controller
       summary: List AiProviders by scope
       description: |-
-        Scope is inferred from the query params :
+        Scope is inferred from the query params:
 
-        | query                                              | mode             | required permission                            |
-        |----------------------------------------------------|------------------|------------------------------------------------|
-        | `?namespaceId=<uuid>`                              | NS-shared        | READ on the namespace (empty list if missing)  |
-        | `?namespaceId=<uuid>&userId=me`                    | user × namespace | authenticated                                  |
-        | `?namespaceId=none&userId=me`                      | user-global      | authenticated                                  |
-        | `?namespaceId=none` (no userId)                    | platform-level   | authenticated (read); super-admin (write)      |
-        | `?userId=me` (no namespace)                        | all caller's     | authenticated                                  |
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400 (cross-user listing is not exposed, mass-assignment guard, AC4). `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+        | query                            | mode             | required permission                            |
+        |----------------------------------|------------------|------------------------------------------------|
+        | (no params)                      | platform         | authenticated                                  |
+        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL` (listing is not exposed, mass-assignment guard, AC4).
       operationId: listAiProvider
       parameters:
       - name: namespaceId
@@ -1536,28 +1549,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
-  /api/users/by-parentId/{parentId}:
-    get:
-      tags:
-      - user-controller
-      operationId: listByParentUser
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/User"
   /api/prompts/effective:
     get:
       tags:
@@ -1566,7 +1557,7 @@ paths:
       description: "Returns the resolved set of prompts accessible in the given namespace\
         \ context. Merges platform, namespace-shared, user-global and user×namespace\
         \ layers by name, highest-priority layer wins. Requires READ on the namespace."
-      operationId: effectivePrompt
+      operationId: findEffectiveByNamespaceIdPrompt
       parameters:
       - name: namespaceId
         in: query
@@ -1591,7 +1582,6 @@ paths:
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -1705,28 +1695,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NamespaceUserListItem"
-  /api/namespaces/by-parentId/{parentId}:
-    get:
-      tags:
-      - namespace-controller
-      operationId: listByParentNamespace
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Namespace"
   /api/integration-types:
     get:
       tags:
@@ -1833,6 +1801,9 @@ paths:
     get:
       tags:
       - case-controller
+      summary: List cases by user
+      description: "GET /api/cases/by-user/{userId} — list all cases concerning a\
+        \ specific user."
       operationId: listByUserCase
       parameters:
       - name: userId
@@ -1854,6 +1825,9 @@ paths:
     get:
       tags:
       - case-controller
+      summary: List cases by user external ID
+      description: "GET /api/cases/by-user/external/{externalId} — list cases for\
+        \ a user identified by their IdP key."
       operationId: listByUserExternalIdCase
       parameters:
       - name: externalId
@@ -1874,11 +1848,13 @@ paths:
     get:
       tags:
       - case-controller
+      summary: List cases by namespace
+      description: "GET /api/cases/by-parentId/{parentId} — list all cases belonging\
+        \ to a namespace."
       operationId: listByParentCase
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -1990,7 +1966,6 @@ paths:
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -2081,11 +2056,10 @@ paths:
     get:
       tags:
       - agent-config-controller
-      operationId: listByNamespaceAgentConfig
+      operationId: listByParentAgentConfig
       parameters:
       - name: parentId
         in: path
-        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -2200,7 +2174,7 @@ components:
         configPath:
           type: string
           description: "Optional filesystem path to a directory containing base configuration\
-            \ for this namespace (agents, tools, etc.)"
+            \ for this namespace (agents, tools, etc.)."
         externalId:
           type: string
           description: "Optional external identifier for this namespace, e.g. a federation\
@@ -2391,17 +2365,16 @@ components:
           type: boolean
         subAgents:
           type: array
-          description: "Glob patterns controlling which agents this agent may delegate\
-            \ to. When null or empty, no delegation capability is provided. '*' matches\
-            \ any sequence of characters (anchored, case-insensitive). Examples: ['*']\
-            \ allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
-            \ matches FixerHelper/FixerV2."
           items:
             type: string
+            description: "Glob patterns controlling which agents this agent may delegate\
+              \ to. When null or empty, no delegation capability is provided. '*'\
+              \ matches any sequence of characters (anchored, case-insensitive). Examples:\
+              \ ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
+              \ matches FixerHelper/FixerV2."
+            minLength: 1
       required:
-      - createdOn
       - name
-      - updatedOn
     GroupsByExternalIdsRequest:
       type: object
       properties:
@@ -2414,6 +2387,7 @@ components:
           format: uuid
       required:
       - externalIds
+      - namespaceId
     UserGroupSummary:
       type: object
       properties:
@@ -2452,7 +2426,6 @@ components:
           type: array
           items:
             type: string
-            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -2508,7 +2481,6 @@ components:
           type: array
           items:
             type: string
-            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -2516,7 +2488,6 @@ components:
           type: array
           items:
             type: string
-            minLength: 1
           maxItems: 200
           minItems: 0
           uniqueItems: true
@@ -3244,19 +3215,13 @@ components:
           type: string
         configPath:
           type: string
-          description: Optional filesystem path to a directory containing base configuration
-            for this namespace
         externalId:
           type: string
-          description: "Optional external identifier for this namespace, e.g. a federation\
-            \ id from an external system"
         defaultAgentName:
           type: string
-          description: Logical name of the default agent for this namespace. Null
-            means no default is configured. Name matching is case-insensitive.
         role:
           type: string
-          description: The caller's effective role on this namespace
+          description: The caller's effective role on this namespace.
           enum:
           - SUPER-ADMIN
           - ADMIN
@@ -3302,7 +3267,6 @@ components:
         configSchema:
           $ref: "#/components/schemas/JsonNode"
       required:
-      - configSchema
       - description
       - displayName
       - type
@@ -3312,28 +3276,41 @@ components:
         agentConfigId:
           type: string
           format: uuid
+          description: The ID of the AgentConfig this definition was resolved from.
         name:
           type: string
+          description: The agent's display name.
         systemPrompt:
           type: string
+          description: "Privileged namespace context block sent as a separate system\
+            \ message, before instructions. Null when no namespace context is available."
         instructions:
           type: string
+          description: "Final system instructions sent to the LLM, including injected\
+            \ namespace / integration / user context blocks."
         resolvedModelApiName:
           type: string
+          description: The actual API model name sent to the provider.
         resolvedProviderName:
           type: string
+          description: The name of the resolved AI provider.
         tools:
           type: array
+          description: Summary of tools that would be made available to this agent.
           items:
             $ref: "#/components/schemas/AgentDefinitionToolSummary"
         advancedExecution:
           type: boolean
+          description: Whether the agent uses the advanced multi-step execution engine.
         namespaceId:
           type: string
           format: uuid
+          description: The namespace this agent belongs to.
         userId:
           type: string
           format: uuid
+          description: "The user whose overlay was applied, or null for namespace-only\
+            \ resolution."
       required:
       - advancedExecution
       - agentConfigId

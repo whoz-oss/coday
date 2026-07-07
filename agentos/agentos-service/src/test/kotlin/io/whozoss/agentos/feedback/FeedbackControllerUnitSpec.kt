@@ -11,6 +11,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.feedback.FeedbackInput
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata

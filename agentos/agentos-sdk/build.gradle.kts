@@ -18,6 +18,16 @@ java {
 }
 
 dependencies {
+    // Jakarta Validation API (@NotNull, @NotBlank, @Size, etc.) — annotation-only, never bundled.
+    // Allows api.* DTOs to carry constraint annotations so both the service (Bean Validation)
+    // and external consumers can share the same declared constraints.
+    compileOnly(libs.jakarta.validation.api)
+
+    // Swagger/OpenAPI annotations (@Schema etc.) — annotation-only, never bundled.
+    // Allows api.* DTOs to carry @Schema(name=...) so the generated OpenAPI spec uses
+    // clean schema names. Must stay aligned with the springdoc version in agentos-service.
+    compileOnly(libs.swagger.annotations)
+
     // Jackson annotations for JSON polymorphism on CaseEvent
     api(libs.jackson.annotations)
 

@@ -5,6 +5,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.aiProvider.AiModelDto
 import io.whozoss.agentos.user.UserService
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -47,7 +48,7 @@ class AiModelGuard(
      * Throws [ResourceNotFoundException] when the referenced provider does not exist.
      * Fail-closed (returns false) only for user-scoped providers (deprecated).
      */
-    fun canCreate(resource: AiModelResource): Boolean {
+    fun canCreate(resource: AiModelDto): Boolean {
         val providerId = resource.aiProviderId ?: return false
         val provider = aiProviderService.findById(providerId)
             ?: throw ResourceNotFoundException("AiProvider not found: $providerId")
