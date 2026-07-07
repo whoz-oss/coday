@@ -1,3 +1,13 @@
+## 0.202.0 (2026-07-07)
+
+### 🚀 Features
+
+- #1023 replace cases drawer routing with home sidebar navigation ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
 ## 0.201.1 (2026-07-07)
 
 ### 🩹 Fixes
