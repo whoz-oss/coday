@@ -47,54 +47,38 @@ interface AgentConfigNodeNeo4jRepository : Neo4jRepository<AgentConfigNode, Stri
      */
     @Query(
         $$"""
+            OPTIONAL MATCH (u:User {id: $userId})
+                WHERE NOT COALESCE(u.removed, false)
+            OPTIONAL MATCH (ns:Namespace {id: $namespaceId})
+                WHERE NOT COALESCE(ns.removed, false)
             MATCH (a:AgentConfig)
-            WHERE (a.namespaceId = $namespaceId OR a.namespaceId IS NULL)
-              AND ($withDisabled OR a.enabled)
-              AND NOT COALESCE(a.removed, false)
-              AND ($agentName IS NULL OR toLower(a.name) STARTS WITH toLower($agentName))
-              AND (
-                // No userId filter: namespace-scoped agents bypass DEPLOYED_TO,
-                // platform agents still require an explicit DEPLOYED_TO relation
-                (
-                    $userId IS NULL
-                    AND (
-                        a.namespaceId IS NOT NULL
-                        OR EXISTS {
-                            MATCH (a)-[:DEPLOYED_TO]->(ns:Namespace {id: $namespaceId})
-                            WHERE NOT COALESCE(ns.removed, false)
+            WHERE (a.namespaceId IS NULL OR a.namespaceId = $namespaceId)
+                AND ($withDisabled OR a.enabled)
+                AND NOT COALESCE(a.removed, false)
+                AND ($agentName IS NULL OR toLower(a.name) STARTS WITH toLower($agentName))
+                AND (
+                    // user is super-admin
+                    u.isAdmin = true
+                    
+                    // agent is deployed through user group
+                    OR EXISTS {
+                        MATCH (u)-[:MEMBER|ADMIN]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+                        WHERE NOT COALESCE(g.removed, false)
+                        MATCH (a)-[:DEPLOYED_TO]->(g)
+                    }
+                    
+                    // agent is deployed through namespace
+                    OR (
+                        EXISTS { 
+                            MATCH (a)-[:DEPLOYED_TO]->(ns)
                         }
-                        OR EXISTS {
-                            MATCH (a)-[:DEPLOYED_TO]->(g:UserGroup)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
-                            WHERE NOT COALESCE(g.removed, false)
-                                AND NOT COALESCE(ns.removed, false)
-                        }
+                        AND ($userId IS NULL
+                            OR EXISTS {
+                                MATCH (u)-[:MEMBER|ADMIN]->(ns)
+                            }
+                        )
                     )
                 )
-                // Super-admin bypass: sees all namespace-scoped agents without DEPLOYED_TO,
-                // but platform agents still require explicit deployment
-                OR (
-                    a.namespaceId IS NOT NULL
-                    AND EXISTS {
-                        MATCH (u:User {id: $userId, isAdmin: true})
-                        WHERE NOT COALESCE(u.removed, false)
-                    }
-                )
-                // DEPLOYED_TO via UserGroup: works for both namespace-scoped and platform agents
-                OR EXISTS {
-                    MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(g:UserGroup)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
-                    WHERE NOT COALESCE(u.removed, false)
-                        AND NOT COALESCE(ns.removed, false)
-                        AND NOT COALESCE(g.removed, false)
-                    MATCH (a)-[:DEPLOYED_TO]->(g)
-                }
-                // DEPLOYED_TO via Namespace: works for both namespace-scoped and platform agents
-                OR EXISTS {
-                    MATCH (u:User {id: $userId})-[:MEMBER|ADMIN]->(ns:Namespace {id: $namespaceId})
-                    WHERE NOT COALESCE(u.removed, false)
-                        AND NOT COALESCE(ns.removed, false)
-                    MATCH (a)-[:DEPLOYED_TO]->(ns)
-                }
-              )
             RETURN DISTINCT a ORDER BY a.name ASC
             """,
     )

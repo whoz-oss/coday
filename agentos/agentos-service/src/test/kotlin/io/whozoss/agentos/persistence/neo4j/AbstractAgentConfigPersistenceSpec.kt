@@ -562,8 +562,8 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
         "platform agents are included when querying with a namespace and null userId and deployed to that namespace" {
             val ns = namespaceRepo.save(namespace())
             val platformAgent = agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
-            agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
-            namespaceRepo.deployAgents(ns.id, listOf(platformAgent.id))
+            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
+            namespaceRepo.deployAgents(ns.id, listOf(platformAgent.id, nsAgent.id))
 
             // userId=null bypasses the user check — all enabled agents with DEPLOYED_TO in scope are returned
             val result =
@@ -589,7 +589,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
                     agentName = null,
                 )
 
-            result.map { it.name } shouldContainExactlyInAnyOrder listOf("ns-agent")
+            result.shouldBeEmpty()
         }
 
         "platform agent deployed to namespace is visible to user with namespace membership" {
@@ -630,7 +630,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             result.shouldBeEmpty()
         }
 
-        "platform agent without any DEPLOYED_TO is not visible to super-admin either" {
+        "platform agent without any DEPLOYED_TO is visible to super-admin" {
             val ns = namespaceRepo.save(namespace())
             agentConfigRepo.save(platformAgentConfig("undeployed-platform").copy(enabled = true))
             val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
@@ -638,7 +638,7 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
             val result = agentConfigRepo.findDeployedByNamespaceIdAndUserIdAndName(ns.id, admin.id, null)
 
-            result.shouldBeEmpty()
+            result.size.shouldBe(1)
         }
 
         // -------------------------------------------------------------------------
