@@ -122,18 +122,6 @@ class CaseRuntime(
     val statusFlow: StateFlow<CaseStatus> = _statusFlow.asStateFlow()
 
     /**
-     * Interrupt the current agent turn and return to [CaseStatus.IDLE].
-     *
-     * Sets [stopRequested] so the while-loop exits after the current [processNextStep]
-     * returns. [killRequested] is NOT set, so [run] transitions to [CaseStatus.IDLE]
-     * rather than [CaseStatus.KILLED] — the runtime stays alive and the SSE flow
-     * stays open for the next user message.
-     *
-     * Note: if [runAgent] is currently suspended mid-LLM-stream, the interrupt takes
-     * effect only after that stream completes. True mid-stream cancellation would
-     * require coroutine cancellation propagated into the agent flow.
-     */
-    /**
      * Interrupt the current agent turn, clear the command queue, and return to [CaseStatus.IDLE].
      *
      * Takes effect after the current [processNextStep] returns. The runtime stays alive

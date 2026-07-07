@@ -312,6 +312,11 @@ class CaseServiceImpl(
                         ),
                     ),
                 )
+                // run() must still be launched: addUserMessage stored a MessageEvent and
+                // an AgentSelectedEvent. Without run(), the runtime has a pending
+                // AgentSelectedEvent in its history but no execution loop to process it,
+                // leaving the case blocked in PENDING status forever.
+                scope.launch { runtime.run() }
                 return
             }
         } else {

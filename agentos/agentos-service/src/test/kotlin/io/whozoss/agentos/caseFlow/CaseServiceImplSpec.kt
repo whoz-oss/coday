@@ -1768,6 +1768,80 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
 
+        // -------------------------------------------------------------------------
+        // Prompt resolution failure: case must still reach IDLE
+        // -------------------------------------------------------------------------
+
+        "PromptResolutionException emits WarnEvent and case reaches IDLE" {
+            // Regression test for the missing scope.launch { runtime.run() } in the
+            // PromptResolutionException catch block.
+            //
+            // Before the fix, addMessage() caught the exception, called addUserMessage()
+            // (which stored MessageEvent + AgentSelectedEvent), emitted a WarnEvent,
+            // then returned without launching run(). The runtime had a pending
+            // AgentSelectedEvent in its history but no one ever called run(), so the
+            // case stayed in PENDING status forever — it never transitioned to IDLE.
+            //
+            // After the fix, run() is launched even when prompt resolution fails,
+            // and the runtime processes the AgentSelectedEvent normally.
+
+            val throwingPromptService = mockk<PromptService>(relaxed = true) {
+                every { findEffective(any(), any()) } throws
+                    io.whozoss.agentos.exception.PromptResolutionException("cycle detected")
+            }
+
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+            }
+            val userService = mockk<UserService> {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            }
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                InMemoryCaseRepository(),
+                caseEventService,
+                userService,
+                namespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = throwingPromptService,
+                caseNamingService = noOpCaseNamingService,
+            )
+
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("/some-prompt")),
+            )
+            awaiter.join()
+
+            // The case must reach IDLE — not stay blocked in PENDING
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // A WarnEvent must have been persisted describing the resolution failure
+            val persistedEvents = caseEventService.findByParent(case.id)
+            persistedEvents.filterIsInstance<WarnEvent>() shouldHaveAtLeastSize 1
+            persistedEvents
+                .filterIsInstance<WarnEvent>()
+                .any { it.message.contains("Prompt resolution failed") } shouldBe true
+        }
+
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
             // Regression: when a case is rehydrated from persistence after a crash,
             // the last persisted event may be an AgentRunningEvent (emitted by runAgent
