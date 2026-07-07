@@ -40,4 +40,11 @@ data class ExchangeStorageConfigProperties(
             "doc", "docx", "xls", "xlsx", "ppt", "pptx", "rtf", "odt", "ods",
             "js", "ts", "py", "java", "kt", "kts", "sh", "sql", "css", "scss", "ini", "toml", "properties",
         ),
+    /**
+     * Maximum size (in bytes) of a file the read/download endpoints will load into memory. Files above
+     * this are rejected rather than risking an OutOfMemoryError. Uploads are already capped by Spring's
+     * multipart limit, but agent-produced files (written via the file-plugin) are not, so this guards the
+     * read path. Overridable via `AGENTOS_EXCHANGE_READ_MAX_SIZE_BYTES`. Default 100 MB.
+     */
+    val readMaxSizeBytes: Long = 100L * 1024 * 1024,
 )

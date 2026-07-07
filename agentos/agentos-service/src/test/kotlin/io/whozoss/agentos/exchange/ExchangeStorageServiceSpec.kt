@@ -93,10 +93,10 @@ class ExchangeStorageServiceSpec :
             val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
             service.writeNew(root, "ok.txt", "ok".toByteArray(), ExchangeScope.CASE)
 
-            shouldThrow<IllegalArgumentException> {
+            shouldThrow<InvalidExchangePathException> {
                 service.readContent(root, "../escape.txt")
             }
-            shouldThrow<IllegalArgumentException> {
+            shouldThrow<InvalidExchangePathException> {
                 service.writeNew(root, "../escape.txt", "x".toByteArray(), ExchangeScope.CASE)
             }
         }
@@ -106,8 +106,8 @@ class ExchangeStorageServiceSpec :
             val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
             service.writeNew(root, "ok.txt", "ok".toByteArray(), ExchangeScope.CASE)
 
-            shouldThrow<IllegalArgumentException> { service.delete(root, "") }
-            shouldThrow<IllegalArgumentException> { service.readContent(root, "   ") }
+            shouldThrow<InvalidExchangePathException> { service.delete(root, "") }
+            shouldThrow<InvalidExchangePathException> { service.readContent(root, "   ") }
         }
 
         "caseRoot is sharded by the case creation date (UTC YYYY/MM/DD)" {
@@ -142,5 +142,77 @@ class ExchangeStorageServiceSpec :
                 )
 
             service.isUploadAllowed("malware.exe") shouldBe true
+        }
+
+        "isUploadAllowed derives the extension from the leaf filename only" {
+            val service = newService()
+            // a dot in a parent segment must not be mistaken for the extension
+            service.isUploadAllowed("v1.2/report") shouldBe false
+            service.isUploadAllowed("v1.2/report.txt") shouldBe true
+            // a backslash is also treated as a path separator
+            service.isUploadAllowed("dir\\report.pdf") shouldBe true
+        }
+
+        "isUploadAllowed matches case-insensitively against an uppercase operator override" {
+            val service =
+                ExchangeStorageService(
+                    ExchangeStorageConfigProperties(
+                        mountRoot = Files.createTempDirectory("exchange-test").toString(),
+                        allowedUploadExtensions = setOf("PDF", "DOCX"),
+                    ),
+                )
+
+            service.isUploadAllowed("report.pdf") shouldBe true
+            service.isUploadAllowed("notes.DOCX") shouldBe true
+            service.isUploadAllowed("evil.exe") shouldBe false
+        }
+
+        "a path with a NUL byte is rejected as an invalid path (not surfaced as a server error)" {
+            val service = newService()
+            val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
+            service.writeNew(root, "ok.txt", "ok".toByteArray(), ExchangeScope.CASE)
+
+            shouldThrow<InvalidExchangePathException> {
+                service.readContent(root, "foo\u0000.txt")
+            }
+        }
+
+        "reads reject a file larger than the configured read limit" {
+            val service =
+                ExchangeStorageService(
+                    ExchangeStorageConfigProperties(
+                        mountRoot = Files.createTempDirectory("exchange-test").toString(),
+                        readMaxSizeBytes = 4,
+                    ),
+                )
+            val root = service.namespaceRoot(UUID.randomUUID())
+            service.writeNew(root, "big.txt", "hello".toByteArray(), ExchangeScope.NAMESPACE)
+
+            shouldThrow<ExchangeFileTooLargeException> { service.readContent(root, "big.txt") }
+            shouldThrow<ExchangeFileTooLargeException> { service.readBytes(root, "big.txt") }
+        }
+
+        "listManifest lists a real file even if its name contains the former staging marker" {
+            // Regression guard: upload staging now lives outside every scope root (under
+            // <mountRoot>/.staging), so no name-based filter is applied and a real user file whose
+            // name happens to contain the former marker substring is listed normally.
+            val service = newService()
+            val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
+            service.writeNew(root, "notes.__exchange_staging__.md", "x".toByteArray(), ExchangeScope.CASE)
+
+            service.listManifest(root, ExchangeScope.CASE).map { it.filename } shouldContainExactlyInAnyOrder
+                listOf("notes.__exchange_staging__.md")
+        }
+
+        "listManifest skips the internal .staging subdirectory" {
+            val service = newService()
+            val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
+            service.writeNew(root, "real.txt", "x".toByteArray(), ExchangeScope.CASE)
+            // a leftover staging artifact under the internal .staging subdir must never surface
+            Files.createDirectories(root.resolve(".staging"))
+            Files.write(root.resolve(".staging").resolve("orphan.tmp"), "tmp".toByteArray())
+
+            service.listManifest(root, ExchangeScope.CASE).map { it.filename } shouldContainExactlyInAnyOrder
+                listOf("real.txt")
         }
     })

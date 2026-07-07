@@ -34,5 +34,6 @@ class ExchangeCapabilityService(
         userId: String,
         entityType: EntityType,
         entityId: String,
-    ): ExchangeCapability = if (canWrite(userId, entityType, entityId)) ExchangeCapability.READ_WRITE else ExchangeCapability.READ
+    ): ExchangeCapability =
+        if (canWrite(userId, entityType, entityId)) ExchangeCapability.READ_WRITE else ExchangeCapability.READ
 }

@@ -53,9 +53,10 @@ class CaseRuntime(
     val namespaceId: UUID,
     /**
      * The case's immutable creation timestamp — used to resolve the date-sharded exchange root.
-     * Defaulted only for test construction; production always supplies it via [buildRuntime].
+     * Required (no default) so every runtime resolves the same exchange shard as the controller
+     * ([io.whozoss.agentos.exchange.ExchangeController.caseRootFor]); production supplies it via [buildRuntime].
      */
-    val caseCreatedAt: Instant = Instant.EPOCH,
+    val caseCreatedAt: Instant,
     private val updateStatusCallback: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,

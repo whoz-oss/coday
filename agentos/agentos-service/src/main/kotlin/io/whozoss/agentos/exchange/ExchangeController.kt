@@ -8,6 +8,7 @@ import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -67,14 +68,7 @@ class ExchangeController(
     @HideOnAccessDenied
     fun getCaseFilesManifest(
         @PathVariable caseId: UUID,
-    ): ExchangeManifest {
-        val root = caseRootFor(caseId)
-        val files = exchangeStorageService.listManifest(root, ExchangeScope.CASE)
-        return ExchangeManifest(
-            files,
-            exchangeCapabilityService.capability(currentUserId(), EntityType.CASE, caseId.toString()),
-        )
-    }
+    ): ExchangeManifest = manifestFor(caseRootFor(caseId), ExchangeScope.CASE, EntityType.CASE, caseId)
 
     @GetMapping("/api/cases/{caseId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
@@ -82,10 +76,7 @@ class ExchangeController(
     fun getCaseFileContent(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
-    ): ExchangeFileContent {
-        val root = caseRootFor(caseId)
-        return mapStorageErrors { exchangeStorageService.readContent(root, path) }
-    }
+    ): ExchangeFileContent = contentFor(caseRootFor(caseId), path)
 
     @GetMapping("/api/cases/{caseId}/files/download", produces = [MediaType.APPLICATION_OCTET_STREAM_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
@@ -93,10 +84,7 @@ class ExchangeController(
     fun downloadCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
-    ): ResponseEntity<ByteArray> {
-        val root = caseRootFor(caseId)
-        return downloadResponse(mapStorageErrors { exchangeStorageService.readBytes(root, path) }, path)
-    }
+    ): ResponseEntity<ByteArray> = downloadFor(caseRootFor(caseId), path)
 
     @SwaggerRequestBody(
         content = [
@@ -116,27 +104,14 @@ class ExchangeController(
     fun uploadCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam("file") file: MultipartFile,
-    ): ExchangeFileEntry {
-        val root = caseRootFor(caseId)
-        val relativePath = uploadRelativePath(file)
-        if (!exchangeStorageService.isUploadAllowed(relativePath)) {
-            throw BadRequestException("File type not allowed for upload: '$relativePath'")
-        }
-        logger.info { "Uploading file '$relativePath' to case $caseId" }
-        return mapStorageErrors { exchangeStorageService.writeNew(root, relativePath, file.bytes, ExchangeScope.CASE) }
-    }
+    ): ExchangeFileEntry = uploadTo(caseRootFor(caseId), ExchangeScope.CASE, file, "case $caseId")
 
     @DeleteMapping("/api/cases/{caseId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     fun deleteCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
-    ): ExchangeDeleteResponse {
-        val root = caseRootFor(caseId)
-        mapStorageErrors { exchangeStorageService.delete(root, path) }
-        logger.info { "Deleted file '$path' from case $caseId" }
-        return ExchangeDeleteResponse(true, "Deleted $path")
-    }
+    ): ExchangeDeleteResponse = deleteFrom(caseRootFor(caseId), path, "case $caseId")
 
     // ========================================
     // Namespace scope (reads for any member; writes gated on Namespace WRITE = namespace admin / super-admin)
@@ -147,14 +122,13 @@ class ExchangeController(
     @HideOnAccessDenied
     fun getNamespaceFilesManifest(
         @PathVariable namespaceId: UUID,
-    ): ExchangeManifest {
-        val root = exchangeStorageService.namespaceRoot(namespaceId)
-        val files = exchangeStorageService.listManifest(root, ExchangeScope.NAMESPACE)
-        return ExchangeManifest(
-            files,
-            exchangeCapabilityService.capability(currentUserId(), EntityType.NAMESPACE, namespaceId.toString()),
+    ): ExchangeManifest =
+        manifestFor(
+            exchangeStorageService.namespaceRoot(namespaceId),
+            ExchangeScope.NAMESPACE,
+            EntityType.NAMESPACE,
+            namespaceId,
         )
-    }
 
     @GetMapping("/api/namespaces/{namespaceId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
@@ -162,10 +136,7 @@ class ExchangeController(
     fun getNamespaceFileContent(
         @PathVariable namespaceId: UUID,
         @RequestParam path: String,
-    ): ExchangeFileContent {
-        val root = exchangeStorageService.namespaceRoot(namespaceId)
-        return mapStorageErrors { exchangeStorageService.readContent(root, path) }
-    }
+    ): ExchangeFileContent = contentFor(exchangeStorageService.namespaceRoot(namespaceId), path)
 
     @GetMapping("/api/namespaces/{namespaceId}/files/download", produces = [MediaType.APPLICATION_OCTET_STREAM_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
@@ -173,10 +144,7 @@ class ExchangeController(
     fun downloadNamespaceFile(
         @PathVariable namespaceId: UUID,
         @RequestParam path: String,
-    ): ResponseEntity<ByteArray> {
-        val root = exchangeStorageService.namespaceRoot(namespaceId)
-        return downloadResponse(mapStorageErrors { exchangeStorageService.readBytes(root, path) }, path)
-    }
+    ): ResponseEntity<ByteArray> = downloadFor(exchangeStorageService.namespaceRoot(namespaceId), path)
 
     @SwaggerRequestBody(
         content = [
@@ -196,33 +164,76 @@ class ExchangeController(
     fun uploadNamespaceFile(
         @PathVariable namespaceId: UUID,
         @RequestParam("file") file: MultipartFile,
-    ): ExchangeFileEntry {
-        val root = exchangeStorageService.namespaceRoot(namespaceId)
-        val relativePath = uploadRelativePath(file)
-        if (!exchangeStorageService.isUploadAllowed(relativePath)) {
-            throw BadRequestException("File type not allowed for upload: '$relativePath'")
-        }
-        logger.info { "Uploading file '$relativePath' to namespace $namespaceId" }
-        return mapStorageErrors {
-            exchangeStorageService.writeNew(root, relativePath, file.bytes, ExchangeScope.NAMESPACE)
-        }
-    }
+    ): ExchangeFileEntry =
+        uploadTo(
+            exchangeStorageService.namespaceRoot(namespaceId),
+            ExchangeScope.NAMESPACE,
+            file,
+            "namespace $namespaceId",
+        )
 
     @DeleteMapping("/api/namespaces/{namespaceId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun deleteNamespaceFile(
         @PathVariable namespaceId: UUID,
         @RequestParam path: String,
-    ): ExchangeDeleteResponse {
-        val root = exchangeStorageService.namespaceRoot(namespaceId)
-        mapStorageErrors { exchangeStorageService.delete(root, path) }
-        logger.info { "Deleted file '$path' from namespace $namespaceId" }
-        return ExchangeDeleteResponse(true, "Deleted $path")
-    }
+    ): ExchangeDeleteResponse =
+        deleteFrom(exchangeStorageService.namespaceRoot(namespaceId), path, "namespace $namespaceId")
 
     // ========================================
     // Helpers
     // ========================================
+
+    /** Build the manifest for a scope root, embedding the caller's server-computed capability. */
+    private fun manifestFor(
+        root: Path,
+        scope: ExchangeScope,
+        entityType: EntityType,
+        entityId: UUID,
+    ): ExchangeManifest =
+        ExchangeManifest(
+            exchangeStorageService.listManifest(root, scope),
+            exchangeCapabilityService.capability(currentUserId(), entityType, entityId.toString()),
+        )
+
+    /** Read a file's text content under [root], mapping storage failures to HTTP statuses. */
+    private fun contentFor(
+        root: Path,
+        path: String,
+    ): ExchangeFileContent = mapStorageErrors { exchangeStorageService.readContent(root, path) }
+
+    /** Stream a file's raw bytes under [root] as an attachment download. */
+    private fun downloadFor(
+        root: Path,
+        path: String,
+    ): ResponseEntity<ByteArray> =
+        downloadResponse(mapStorageErrors { exchangeStorageService.readBytes(root, path) }, path)
+
+    /** Validate the upload against the extension allow-list, then create the file under [root]. */
+    private fun uploadTo(
+        root: Path,
+        scope: ExchangeScope,
+        file: MultipartFile,
+        logTarget: String,
+    ): ExchangeFileEntry {
+        val relativePath = uploadRelativePath(file)
+        if (!exchangeStorageService.isUploadAllowed(relativePath)) {
+            throw BadRequestException("File type not allowed for upload: '$relativePath'")
+        }
+        logger.info { "Uploading file '$relativePath' to $logTarget" }
+        return mapStorageErrors { exchangeStorageService.writeNew(root, relativePath, file.bytes, scope) }
+    }
+
+    /** Delete a file under [root], mapping storage failures to HTTP statuses. */
+    private fun deleteFrom(
+        root: Path,
+        path: String,
+        logTarget: String,
+    ): ExchangeDeleteResponse {
+        mapStorageErrors { exchangeStorageService.delete(root, path) }
+        logger.info { "Deleted file '$path' from $logTarget" }
+        return ExchangeDeleteResponse(true, "Deleted $path")
+    }
 
     /**
      * Resolve the date-sharded case storage root. Loads the case once for its namespace and
@@ -235,7 +246,11 @@ class ExchangeController(
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()
 
-    /** Relative path for an upload: the multipart filename (boundary resolution rejects traversal). */
+    /**
+     * Relative path for an upload: the multipart filename as-is. This method does not sanitise it;
+     * any traversal in the name is caught downstream by [ExchangeStorageService] path resolution,
+     * which confines the write to the scope root.
+     */
     private fun uploadRelativePath(file: MultipartFile): String =
         file.originalFilename?.takeIf { it.isNotBlank() }
             ?: throw BadRequestException("Uploaded file must have a filename")
@@ -244,11 +259,11 @@ class ExchangeController(
      * Translate storage-layer failures into the project's `@ResponseStatus` exceptions:
      * - [FileExistsException] / [FileAlreadyExistsException] (create-only collision, including the
      *   lost race of the atomic move) -> 409 [ConflictException]
-     * - a missing target -> 404 [ResourceNotFoundException]: a read/delete of an absent file
-     *   surfaces as [NoSuchFileException]; an `IllegalArgumentException("Path does not exist: ...")`
-     *   is also mapped to 404 (defensive).
+     * - a missing target -> 404 [ResourceNotFoundException] ([NoSuchFileException]).
      * - a non-UTF-8 file read -> 400 [BadRequestException] ([CharacterCodingException]).
-     * - any other [IllegalArgumentException] (traversal, over-long or illegal path) -> 400.
+     * - a file above the read limit -> 422 [UnprocessableEntityException] ([ExchangeFileTooLargeException]).
+     * - an invalid path (traversal, over-long segment, blank, illegal chars) -> 400 [BadRequestException]
+     *   ([InvalidExchangePathException]).
      */
     private fun <T> mapStorageErrors(block: () -> T): T =
         try {
@@ -258,16 +273,17 @@ class ExchangeController(
         } catch (e: FileAlreadyExistsException) {
             throw ConflictException(e.message ?: "File already exists", e)
         } catch (e: NoSuchFileException) {
-            throw ResourceNotFoundException(e.message ?: "File not found")
+            // Generic message on purpose: NoSuchFileException.message is the absolute server path
+            // (e.g. from root.toRealPath() on a never-written scope) and must not leak in the 404 body.
+            throw ResourceNotFoundException("File not found")
         } catch (e: CharacterCodingException) {
             throw BadRequestException("File is not valid UTF-8 text and cannot be displayed")
+        } catch (e: ExchangeFileTooLargeException) {
+            throw UnprocessableEntityException(e.message ?: "File is too large to read")
         } catch (e: IOException) {
             // e.g. "Is a directory" when the path targets a folder, or other non-file I/O errors.
             throw BadRequestException(e.message ?: "Invalid file operation")
-        } catch (e: IllegalArgumentException) {
-            if (e.message?.startsWith("Path does not exist") == true) {
-                throw ResourceNotFoundException(e.message ?: "File not found")
-            }
+        } catch (e: InvalidExchangePathException) {
             throw BadRequestException(e.message ?: "Invalid path")
         }
 

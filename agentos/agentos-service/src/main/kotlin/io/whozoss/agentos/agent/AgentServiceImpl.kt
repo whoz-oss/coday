@@ -582,6 +582,12 @@ class AgentServiceImpl(
      * executes these without a prompt — the same behaviour as any other writable FILE_ACCESS
      * integration, not a guarantee specific to the exchange.
      *
+     * Note on sensitive files: the file-plugin tools apply their own sensitive-file deny-list
+     * (SensitiveFilePatterns.DEFAULT_PATTERNS), so an agent cannot list/read files such as keys or
+     * `.env` even when they sit in the exchange. This is intentionally stricter than the user-facing
+     * [io.whozoss.agentos.exchange.ExchangeController] path, which applies no deny-list (users manage
+     * their own files); the two views of the same directory can therefore differ for such files.
+     *
      * Gating is fail-closed (enablement lives in [AgentConfig.integrations], not a dedicated flag):
      * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
      * - case exchange (read/write) requires the [ExchangeIntegrationTypes.CASE] key AND a live
@@ -605,6 +611,10 @@ class AgentServiceImpl(
             configName: String,
             allowedTools: List<String>?,
         ): List<StandardTool<*>> {
+            // Materialise the root before building the plugin tools even for a read-only grant: the
+            // file-plugin's BoundaryPathResolver canonicalises rootPath (toRealPath) at construction,
+            // which throws if the directory does not exist. This is why a read-only resolution (e.g.
+            // the debug getDefinition endpoint) still creates an empty scope dir.
             Files.createDirectories(root)
             val cfg =
                 objectMapper.createObjectNode()
@@ -624,7 +634,8 @@ class AgentServiceImpl(
         val caseCreatedAt = context.caseCreatedAt
         if (integrations.containsKey(ExchangeIntegrationTypes.CASE) && caseId != null && caseCreatedAt != null) {
             // The agent gets read/write on the case exchange by design (it produces files during a run).
-            // User-facing write is separately gated per case role by ExchangeController.caseCapability.
+            // User-facing write is separately gated: the exchange upload/delete endpoints require Case
+            // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
             tools += grant(
                 exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
                 readOnly = false,

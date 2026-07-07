@@ -150,7 +150,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.readContent(any(), "gone.txt") } throws
-                IllegalArgumentException("Path does not exist: gone.txt")
+                NoSuchFileException("gone.txt")
 
             mockMvc.perform(get("/api/cases/$caseId/files/content").param("path", "gone.txt"))
                 .andExpect(status().isNotFound)
@@ -161,10 +161,21 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.readContent(any(), "../escape.txt") } throws
-                IllegalArgumentException("Invalid path: path traversal not allowed (../escape.txt)")
+                InvalidExchangePathException("Invalid path: path traversal not allowed (../escape.txt)")
 
             mockMvc.perform(get("/api/cases/$caseId/files/content").param("path", "../escape.txt"))
                 .andExpect(status().isBadRequest)
+        }
+
+        "GET case content returns 422 when the file exceeds the read size limit" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { exchangeStorageService.readContent(any(), "huge.csv") } throws
+                ExchangeFileTooLargeException("File is too large to read")
+
+            mockMvc.perform(get("/api/cases/$caseId/files/content").param("path", "huge.csv"))
+                .andExpect(status().isUnprocessableEntity)
         }
 
         "GET case download streams bytes with a sanitized Content-Disposition filename" {
