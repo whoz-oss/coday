@@ -1,3 +1,51 @@
+## 0.204.1 (2026-07-07)
+
+### 🩹 Fixes
+
+- add maven-publish configuration to agentos-mcp-plugin ([#1106](https://github.com/whoz-oss/coday/pull/1106))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.204.0 (2026-07-07)
+
+### 🚀 Features
+
+- wz-31502 define verbosity guideline for agents ([594becbb](https://github.com/whoz-oss/coday/commit/594becbb))
+- wz-31502 rewrite verbosity guideline ([f10ee206](https://github.com/whoz-oss/coday/commit/f10ee206))
+- #wz-31170 add agentos-mcp-plugin with MCP stdio transport support ([#815](https://github.com/whoz-oss/coday/pull/815))
+- wz-31502 define verbosity guideline for agents ([#1100](https://github.com/whoz-oss/coday/pull/1100))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Thibault Drillien @thibault-drillien-whoz
+- vincent.audibert
+
+## 0.203.1 (2026-07-07)
+
+### 🩹 Fixes
+
+- #1023 migrate case drawer to signal inputs and preserve auto-expanded ancestors ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 migrate case drawer to signal inputs and preserve auto-exp… ([#1105](https://github.com/whoz-oss/coday/pull/1105), [#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.203.0 (2026-07-07)
+
+### 🚀 Features
+
+- wz-32749: migrate controllers to delegation + api interfaces into SDK ([#1090](https://github.com/whoz-oss/coday/pull/1090))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.202.0 (2026-07-07)
 
 ### 🚀 Features

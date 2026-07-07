@@ -1,0 +1,172 @@
+:host {
+  display: none; // hidden on desktop, shown via media query
+}
+
+.shell-topbar-mobile {
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  &__logo-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  &__logo-img {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    object-fit: contain;
+  }
+
+  // logo-text removed (logo only)
+
+  &__sep {
+    color: rgba(0, 0, 0, 0.25);
+    font:
+      400 12px 'Inter',
+      sans-serif;
+    flex: none;
+  }
+
+  // ── Namespace switcher ──
+  &__ns-wrap {
+    position: static;
+    min-width: 0;
+  }
+
+  &__ns-btn {
+    font:
+      600 12.5px 'Inter',
+      sans-serif;
+    color: var(--color-text, #161616);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  &__chevron {
+    color: rgba(0, 0, 0, 0.35);
+    font-size: 9px;
+    flex: none;
+  }
+
+  &__ns-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 299;
+  }
+
+  &__ns-menu {
+    position: fixed;
+    top: 44px;
+    left: 16px;
+    min-width: 180px;
+    background: var(--color-bg, #f4f3ef);
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
+    border-radius: 14px;
+    padding: 6px;
+    z-index: 300;
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.09),
+      0 1px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  &__ns-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text, #1b1916);
+    font: inherit;
+    font-size: 0.8rem;
+    transition: all 130ms;
+
+    &:hover {
+      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+    }
+
+    &--active {
+      background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
+      color: var(--color-primary, #016b71);
+    }
+  }
+
+  &__ns-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-primary, #5aadb5);
+    flex-shrink: 0;
+    border-radius: 50%;
+  }
+
+  &__ns-item-name {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // ── Avatar ──
+  &__avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  &__avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: oklch(0.94 0.03 255);
+    border: 1px solid oklch(0.82 0.06 255);
+    color: #2a5fc9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font:
+      600 10px 'Inter',
+      sans-serif;
+    cursor: pointer;
+    user-select: none;
+  }
+}
+
+@media (max-width: 900px) {
+  :host {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 16px;
+    min-height: 44px;
+    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    background: var(--color-bg, #fff);
+    flex-shrink: 0;
+    position: relative;
+  }
+}

@@ -1,11 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  EventEmitter,
-  Input,
-  OnChanges,
-  Output,
-  SimpleChanges,
+  computed,
+  input,
+  output,
+  signal,
   TemplateRef,
   ViewChild,
 } from '@angular/core'
@@ -36,57 +35,47 @@ export interface CaseTreeItem extends EntityListItem {
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CaseDrawerComponent implements OnChanges {
-  @Input() cases: Case[] = []
-  @Input() activeCaseId: string | null = null
+export class CaseDrawerComponent {
+  readonly cases = input<Case[]>([])
+  readonly activeCaseId = input<string | null>(null)
 
-  @Output() caseSelected = new EventEmitter<string>()
-  @Output() createRequested = new EventEmitter<void>()
+  readonly caseSelected = output<string>()
+  readonly createRequested = output<void>()
 
   @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: CaseTreeItem }>
 
-  /** Only root nodes — ds-entity-list iterates over these. */
-  protected rootItems: CaseTreeItem[] = []
+  /**
+   * Arbre reconstruit automatiquement quand cases() change.
+   * Remplace OnChanges qui ne se déclenche pas avec les signal inputs.
+   */
+  protected readonly rootItems = computed(() => buildTree(this.cases()))
 
-  /** IDs of nodes whose children are currently visible. */
-  protected expandedIds = new Set<string>()
+  /**
+   * Ancêtres du case actif à auto-expanded, recalculés quand
+   * rootItems() ou activeCaseId() change.
+   */
+  private readonly autoExpandedIds = computed(() => {
+    const id = this.activeCaseId()
+    if (!id) return new Set<string>()
+    const expanded = new Set<string>()
+    findAndCollectAncestors(this.rootItems(), id, expanded)
+    return expanded
+  })
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['cases']) {
-      this.rootItems = buildTree(this.cases)
-    }
-    if (changes['cases'] || changes['activeCaseId']) {
-      this.autoExpandAncestors()
-    }
-  }
-
-  /** Expand all ancestors of the active case so it is visible. */
-  private autoExpandAncestors(): void {
-    if (!this.activeCaseId) return
-    const findAndExpand = (nodes: CaseTreeItem[], targetId: string): boolean => {
-      for (const node of nodes) {
-        if (node.id === targetId) return true
-        if (node.children.length && findAndExpand(node.children, targetId)) {
-          this.expandedIds.add(node.id)
-          return true
-        }
-      }
-      return false
-    }
-    findAndExpand(this.rootItems, this.activeCaseId)
-  }
+  /** IDs des noeuds manuellement expand/collapse par l'utilisateur. */
+  protected readonly expandedIds = signal(new Set<string>())
 
   protected isExpanded(id: string): boolean {
-    return this.expandedIds.has(id)
+    return this.expandedIds().has(id) || this.autoExpandedIds().has(id)
   }
 
   protected toggleExpand(event: Event, id: string): void {
     event.stopPropagation()
-    if (this.expandedIds.has(id)) {
-      this.expandedIds.delete(id)
-    } else {
-      this.expandedIds.add(id)
-    }
+    this.expandedIds.update((set) => {
+      const next = new Set(set)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
   }
 
   protected onItemSelected(id: string): void {
@@ -125,11 +114,21 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
     }
   }
 
-  // Sort newest first at every level of the tree
   const sortDesc = (items: CaseTreeItem[]): CaseTreeItem[] =>
     items
       .sort((a, b) => ((createdAt.get(b.id) ?? '') > (createdAt.get(a.id) ?? '') ? 1 : -1))
       .map((item) => ({ ...item, children: sortDesc(item.children) }))
 
   return sortDesc(roots)
+}
+
+function findAndCollectAncestors(nodes: CaseTreeItem[], targetId: string, acc: Set<string>): boolean {
+  for (const node of nodes) {
+    if (node.id === targetId) return true
+    if (node.children.length && findAndCollectAncestors(node.children, targetId, acc)) {
+      acc.add(node.id)
+      return true
+    }
+  }
+  return false
 }
