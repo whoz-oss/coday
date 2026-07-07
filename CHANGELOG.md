@@ -1,3 +1,13 @@
+## 0.204.2 (2026-07-07)
+
+### 🩹 Fixes
+
+- #31851 platform agents require explicit DEPLOYED_TO relation ([#1101](https://github.com/whoz-oss/coday/pull/1101), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.204.1 (2026-07-07)
 
 ### 🩹 Fixes
