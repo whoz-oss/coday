@@ -620,6 +620,10 @@ class AgentServiceImpl(
                 objectMapper.createObjectNode()
                     .put("rootPath", root.toAbsolutePath().toString())
                     .put("readOnly", readOnly)
+                    // Align the agent read tool's size cap with the exchange's own read limit, so an
+                    // agent can read back a file the controller read/download path serves (the plugin
+                    // otherwise falls back to its smaller built-in default). The plugin key is megabytes.
+                    .put("readMaxSizeMb", (exchangeStorageService.readMaxSizeBytes / (1024 * 1024)).coerceAtLeast(1))
             logger.info { "Granting $configName (FILE_ACCESS, readOnly=$readOnly) to agent '${config.name}' at $root" }
             // Honour the per-tool allowlist via the same matcher every other integration uses
             // (accepts both bare and `configName__tool` forms); null = all tools.

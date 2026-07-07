@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multi
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.nio.file.DirectoryNotEmptyException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.NoSuchFileException
 import java.time.Instant
@@ -295,6 +296,21 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
 
             mockMvc.perform(delete("/api/cases/$caseId/files").param("path", "gone.txt"))
                 .andExpect(status().isNotFound)
+        }
+
+        "DELETE case file returns 400 without leaking the absolute path on a raw IOException" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            // deleting a non-empty directory throws DirectoryNotEmptyException, whose message is the
+            // absolute server path; it must not reach the 400 body (server.error.include-message=always).
+            val leakyPath = "/srv/exchange/$caseId/reports"
+            every { exchangeStorageService.delete(any(), "reports") } throws DirectoryNotEmptyException(leakyPath)
+
+            val result = mockMvc.perform(delete("/api/cases/$caseId/files").param("path", "reports"))
+                .andExpect(status().isBadRequest)
+                .andReturn()
+            result.resolvedException?.message shouldBe "Invalid file operation"
         }
 
         // -------------------------------------------------------------------------

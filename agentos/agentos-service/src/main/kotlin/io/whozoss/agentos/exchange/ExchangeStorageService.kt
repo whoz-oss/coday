@@ -46,6 +46,13 @@ class ExchangeStorageService(
     private val mountRoot: Path = Path.of(config.mountRoot)
 
     /**
+     * Read size cap (bytes) applied to the user-facing read/download path. Also surfaced to the agent
+     * file-plugin grant so the agent's read tool honours the same limit on the same directories rather
+     * than the plugin's smaller built-in default.
+     */
+    val readMaxSizeBytes: Long get() = config.readMaxSizeBytes
+
+    /**
      * Whether an upload with this relative path passes the configured extension allow-list.
      * An empty [ExchangeStorageConfigProperties.allowedUploadExtensions] allows any extension.
      *

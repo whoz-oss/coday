@@ -8,10 +8,8 @@
  * Do not edit the class manually.
  */
 
-export interface IntegrationTypeDescriptor {
-  type: string
-  displayName: string
-  description: string
-  configSchema?: any | null
-  builtIn: boolean
+export interface PromptParameter {
+  name: string
+  description?: string
+  defaultValue: string
 }

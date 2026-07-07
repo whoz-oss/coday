@@ -264,6 +264,8 @@ class ExchangeController(
      * - a file above the read limit -> 422 [UnprocessableEntityException] ([ExchangeFileTooLargeException]).
      * - an invalid path (traversal, over-long segment, blank, illegal chars) -> 400 [BadRequestException]
      *   ([InvalidExchangePathException]).
+     * - any other I/O failure (e.g. reading a directory, deleting a non-empty one) -> 400
+     *   [BadRequestException] ([IOException]; generic message, since the raw one carries the absolute path).
      */
     private fun <T> mapStorageErrors(block: () -> T): T =
         try {
@@ -284,8 +286,10 @@ class ExchangeController(
         } catch (e: ExchangeFileTooLargeException) {
             throw UnprocessableEntityException(e.message ?: "File is too large to read")
         } catch (e: IOException) {
-            // e.g. "Is a directory" when the path targets a folder, or other non-file I/O errors.
-            throw BadRequestException(e.message ?: "Invalid file operation")
+            // Generic message on purpose: a raw FileSystemException (e.g. DirectoryNotEmptyException when
+            // deleting a non-empty directory, or "Is a directory" when reading a folder) carries the
+            // absolute server path and must not leak in the 400 body — mirror the 404/409 branches above.
+            throw BadRequestException("Invalid file operation")
         } catch (e: InvalidExchangePathException) {
             throw BadRequestException(e.message ?: "Invalid path")
         }
