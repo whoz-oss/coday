@@ -7,11 +7,13 @@ import java.net.URLConnection
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
 import java.time.ZoneOffset
@@ -39,11 +41,6 @@ class ExchangeStorageService(
         // Cap manifest traversal depth (matches the file-plugin's SearchFilesTool) so a deeply
         // nested exchange tree can't turn a manifest request into an unbounded walk.
         private const val MANIFEST_MAX_DEPTH = 20
-
-        // Per-scope subdirectory holding in-flight upload staging files. Co-located under the scope
-        // root so the final move is a same-filesystem atomic rename that inherits the scope tree's
-        // group/ACL; excluded from the manifest walk by directory name.
-        private const val STAGING_DIR_NAME = ".staging"
     }
 
     private val mountRoot: Path = Path.of(config.mountRoot)
@@ -113,17 +110,6 @@ class ExchangeStorageService(
             emptySet(),
             MANIFEST_MAX_DEPTH,
             object : SimpleFileVisitor<Path>() {
-                override fun preVisitDirectory(
-                    dir: Path,
-                    attrs: BasicFileAttributes,
-                ): FileVisitResult =
-                    // The internal upload staging subdirectory is never part of the user-visible listing.
-                    if (dir != root && dir.fileName?.toString() == STAGING_DIR_NAME) {
-                        FileVisitResult.SKIP_SUBTREE
-                    } else {
-                        FileVisitResult.CONTINUE
-                    }
-
                 override fun visitFile(
                     file: Path,
                     attrs: BasicFileAttributes,
@@ -200,9 +186,10 @@ class ExchangeStorageService(
     }
 
     /**
-     * Atomically create a new file at [relativePath] under [root].
+     * Create a new file at [relativePath] under [root]. Create-only: fails if the target already
+     * exists (callers map to 409).
      *
-     * @throws FileExistsException if the target already exists (callers map to 409).
+     * @throws FileExistsException if the target already exists.
      * @throws InvalidExchangePathException if the path escapes the boundary.
      * @return metadata for the newly created file.
      */
@@ -214,31 +201,16 @@ class ExchangeStorageService(
     ): ExchangeFileEntry {
         Files.createDirectories(root)
         val resolved = resolveWithin(root, relativePath)
-        if (Files.exists(resolved)) {
-            throw FileExistsException("File already exists: $relativePath")
-        }
         resolved.parent?.let { Files.createDirectories(it) }
 
-        // Stage in a `.staging` subdirectory OF THE SCOPE ROOT (short, filename-independent name) then
-        // move into place. Co-locating the temp under the scope root keeps the move a same-filesystem
-        // rename that inherits the scope tree's group/ACL (a distant staging dir would rename across
-        // trees, dropping setgid/default-ACL inheritance and degrading to a non-atomic copy on a
-        // per-namespace mount), while the short name avoids inflating a long leaf past the OS NAME_MAX
-        // and the `.staging` dir is excluded from the manifest walk by name (see listManifest). A plain
-        // move (no REPLACE_EXISTING) throws FileAlreadyExistsException if a concurrent writer won the
-        // race, keeping writeNew create-only (ATOMIC_MOVE is avoided: it silently overwrites on POSIX).
-        val stagingDir = root.resolve(STAGING_DIR_NAME)
-        Files.createDirectories(stagingDir)
-        val tmpPath = stagingDir.resolve("${UUID.randomUUID()}.tmp")
+        // Write straight to the target with CREATE_NEW: the open atomically fails with
+        // FileAlreadyExistsException when the file already exists (create-only, with no exists-check
+        // TOCTOU). A mid-write failure is left to propagate as-is: deleting `resolved` here would race a
+        // concurrent writer that just won CREATE_NEW on the same path and unlink ITS file.
         try {
-            Files.write(tmpPath, bytes)
-            Files.move(tmpPath, resolved)
-        } finally {
-            try {
-                Files.deleteIfExists(tmpPath)
-            } catch (e: Exception) {
-                logger.warn(e) { "Failed to clean up temp file: $tmpPath" }
-            }
+            Files.write(resolved, bytes, StandardOpenOption.CREATE_NEW)
+        } catch (e: FileAlreadyExistsException) {
+            throw FileExistsException("File already exists: $relativePath")
         }
 
         // `resolved` is canonical (built from the resolver's real root), so relativize

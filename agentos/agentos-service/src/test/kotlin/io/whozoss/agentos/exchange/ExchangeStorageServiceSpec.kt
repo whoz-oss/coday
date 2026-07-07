@@ -192,27 +192,25 @@ class ExchangeStorageServiceSpec :
             shouldThrow<ExchangeFileTooLargeException> { service.readBytes(root, "big.txt") }
         }
 
-        "listManifest lists a real file even if its name contains the former staging marker" {
-            // Regression guard: upload staging now lives outside every scope root (under
-            // <mountRoot>/.staging), so no name-based filter is applied and a real user file whose
-            // name happens to contain the former marker substring is listed normally.
+        "writeNew stores the file directly with no leftover staging artifact" {
             val service = newService()
             val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
-            service.writeNew(root, "notes.__exchange_staging__.md", "x".toByteArray(), ExchangeScope.CASE)
+            service.writeNew(root, "report.txt", "hello".toByteArray(), ExchangeScope.CASE)
 
-            service.listManifest(root, ExchangeScope.CASE).map { it.filename } shouldContainExactlyInAnyOrder
-                listOf("notes.__exchange_staging__.md")
+            // the file itself and nothing else: no .tmp / .staging staging artifact remains
+            Files.newDirectoryStream(root).use { stream ->
+                stream.map { it.fileName.toString() }
+            } shouldContainExactlyInAnyOrder listOf("report.txt")
         }
 
-        "listManifest skips the internal .staging subdirectory" {
+        "an uploaded file whose path contains a .staging segment is listed (no hidden file)" {
+            // Regression guard: uploads write straight to the target (no staging directory), so a file
+            // stored under a `.staging` path segment is an ordinary file and must appear in the manifest.
             val service = newService()
             val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
-            service.writeNew(root, "real.txt", "x".toByteArray(), ExchangeScope.CASE)
-            // a leftover staging artifact under the internal .staging subdir must never surface
-            Files.createDirectories(root.resolve(".staging"))
-            Files.write(root.resolve(".staging").resolve("orphan.tmp"), "tmp".toByteArray())
+            service.writeNew(root, ".staging/report.txt", "x".toByteArray(), ExchangeScope.CASE)
 
-            service.listManifest(root, ExchangeScope.CASE).map { it.filename } shouldContainExactlyInAnyOrder
-                listOf("real.txt")
+            service.listManifest(root, ExchangeScope.CASE).map { it.path } shouldContainExactlyInAnyOrder
+                listOf(".staging/report.txt")
         }
     })
