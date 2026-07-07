@@ -1,3 +1,13 @@
+## 0.203.0 (2026-07-07)
+
+### 🚀 Features
+
+- wz-32749: migrate controllers to delegation + api interfaces into SDK ([#1090](https://github.com/whoz-oss/coday/pull/1090))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.202.0 (2026-07-07)
 
 ### 🚀 Features
