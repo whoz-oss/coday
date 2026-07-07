@@ -17,6 +17,7 @@ describe('ExchangeStateService', () => {
     deleteCaseFileExchange: jest.Mock
     uploadNamespaceFileExchange: jest.Mock
     deleteNamespaceFileExchange: jest.Mock
+    downloadCaseFileExchange: jest.Mock
   }
   let service: ExchangeStateService
 
@@ -51,11 +52,24 @@ describe('ExchangeStateService', () => {
       deleteCaseFileExchange: jest.fn(),
       uploadNamespaceFileExchange: jest.fn(),
       deleteNamespaceFileExchange: jest.fn(),
+      downloadCaseFileExchange: jest.fn(),
     }
     TestBed.configureTestingModule({
       providers: [ExchangeStateService, { provide: ExchangeControllerService, useValue: controller }],
     })
     service = TestBed.inject(ExchangeStateService)
+  })
+
+  describe('download', () => {
+    it('resolves { success: false } with the error when the request fails (no silent swallow)', async () => {
+      controller.downloadCaseFileExchange.mockReturnValue(throwError(() => ({ message: 'network down' })))
+      init()
+
+      const result = await service.downloadFile(ExchangeFileEntryScopeEnum.CASE, 'a.txt')
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('network down')
+    })
   })
 
   describe('case scope capability mapping', () => {

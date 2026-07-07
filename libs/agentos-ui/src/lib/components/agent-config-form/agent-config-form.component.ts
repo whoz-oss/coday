@@ -346,6 +346,18 @@ export class AgentConfigFormComponent implements OnInit {
       result[row.type] = null as any
     }
 
+    // Preserve any existing integration key the form could not represent this session — e.g. a
+    // built-in whose type list failed to load (loadBuiltInTypes falls back to []), or an integration
+    // config no longer available. Rebuilding the map purely from the visible rows would otherwise
+    // silently drop such a key when the user saves unrelated changes.
+    const renderable = new Set<string>([
+      ...this.integrationRows().map((r) => r.config.name ?? ''),
+      ...this.builtInRows().map((r) => r.type),
+    ])
+    for (const [key, value] of Object.entries(this.existingConfig?.integrations ?? {})) {
+      if (!renderable.has(key)) result[key] = value as any
+    }
+
     return Object.keys(result).length > 0 ? result : undefined
   }
 

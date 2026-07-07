@@ -219,26 +219,44 @@ export class ExchangeStateService {
   }
 
   // ── Download ──────────────────────────────────────────────────────────────────
-  downloadFile(scope: ExchangeScope, path: string): void {
+  downloadFile(scope: ExchangeScope, path: string): Promise<{ success: boolean; error?: string }> {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const id = isCase ? this.caseId : this.namespaceId
-    if (!id) return
+    if (!id) return Promise.resolve({ success: false, error: 'No active scope' })
     const filename = path.split('/').pop() ?? path
     const download$ = isCase
       ? this.controller.downloadCaseFileExchange(id, path)
       : this.controller.downloadNamespaceFileExchange(id, path)
     // The generated method is typed Observable<string> but requests responseType:'blob'
     // (Accept '*/*'), so at runtime it yields a Blob.
-    ;(download$ as unknown as Observable<Blob>).subscribe({
-      next: (body) => this.saveBlob(body, filename),
-      error: (err) => console.error('[exchange] download failed', err),
+    return new Promise((resolve) => {
+      ;(download$ as unknown as Observable<Blob>).subscribe({
+        next: (body) => {
+          this.saveBlob(body, filename)
+          resolve({ success: true })
+        },
+        error: (err: { message?: string }) => {
+          console.error('[exchange] download failed', err)
+          resolve({ success: false, error: err?.message ?? 'Download failed' })
+        },
+      })
     })
   }
 
-  /** Download every file of a scope, staggered 300 ms apart (ported from legacy). */
-  downloadAll(scope: ExchangeScope): void {
+  /**
+   * Download every file of a scope, staggered ~300 ms apart (ported from legacy).
+   * Returns the count of files that failed so the caller can surface a single summary error.
+   */
+  async downloadAll(scope: ExchangeScope): Promise<{ success: boolean; failedCount: number }> {
     const files = scope === ExchangeFileEntryScopeEnum.CASE ? this.caseFiles() : this.namespaceFiles()
-    files.forEach((file, index) => setTimeout(() => this.downloadFile(scope, file.path), index * 300))
+    let failedCount = 0
+    let index = 0
+    for (const file of files) {
+      if (index++ > 0) await new Promise((resolve) => setTimeout(resolve, 300))
+      const result = await this.downloadFile(scope, file.path)
+      if (!result.success) failedCount++
+    }
+    return { success: failedCount === 0, failedCount }
   }
 
   private saveBlob(body: Blob | string, filename: string): void {

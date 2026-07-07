@@ -126,22 +126,37 @@ export class ExchangeShellComponent implements OnInit, OnDestroy {
   // ── Upload (case or namespace, per the drawer section's scope) ────────────────
   protected async onUpload(payload: { scope: ExchangeScope; files: File[] }): Promise<void> {
     this.actionError.set(null)
+    // Upload every selected file even if one fails, then report all failures together — a leading
+    // failure (e.g. a duplicate) must not silently skip the rest of the batch.
+    const failures: { name: string; error: string }[] = []
     for (const file of payload.files) {
       const result = await this.state.uploadFile(payload.scope, file)
-      if (!result.success) {
-        this.actionError.set(result.error ?? 'Upload failed')
-        break
-      }
+      if (!result.success) failures.push({ name: file.name, error: result.error ?? 'Upload failed' })
+    }
+    if (failures.length === 1) {
+      this.actionError.set(failures[0]?.error ?? 'Upload failed')
+    } else if (failures.length > 1) {
+      this.actionError.set(
+        `${failures.length} of ${payload.files.length} files failed to upload: ${failures.map((f) => f.name).join(', ')}`
+      )
     }
   }
 
   // ── Download ──────────────────────────────────────────────────────────────────
-  protected onDownload(ref: ExchangeFileRef): void {
-    this.state.downloadFile(ref.scope, ref.path)
+  protected async onDownload(ref: ExchangeFileRef): Promise<void> {
+    this.actionError.set(null)
+    const result = await this.state.downloadFile(ref.scope, ref.path)
+    if (!result.success) this.actionError.set(result.error ?? 'Download failed')
   }
 
-  protected onDownloadAll(scope: ExchangeScope): void {
-    this.state.downloadAll(scope)
+  protected async onDownloadAll(scope: ExchangeScope): Promise<void> {
+    this.actionError.set(null)
+    const result = await this.state.downloadAll(scope)
+    if (result.failedCount > 0) {
+      this.actionError.set(
+        result.failedCount === 1 ? 'A file failed to download.' : `${result.failedCount} files failed to download.`
+      )
+    }
   }
 
   // ── Delete (confirmed, case or namespace) ──────────────────────────────────────

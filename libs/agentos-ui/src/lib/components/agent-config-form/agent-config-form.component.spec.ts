@@ -153,6 +153,22 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       const payload = controller.updateAgentConfig.mock.calls[0][1]
       expect(payload.integrations).toEqual({ [NAMESPACE]: null })
     })
+
+    it('preserves an already-enabled built-in when the integration-types endpoint is unavailable', () => {
+      // The types call fails → builtInRows is empty (fail-safe, no toggle rendered), but the agent
+      // already had CASE enabled: saving unrelated changes must NOT silently strip it from the map.
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: null } })))
+      integrationType.listTypesIntegrationType.mockReturnValue(throwError(() => new Error('boom')))
+      component.ngOnInit()
+
+      expect(internals().builtInRows()).toEqual([])
+
+      internals().submit()
+
+      const payload = controller.updateAgentConfig.mock.calls[0][1]
+      expect(payload.integrations).toEqual({ [CASE]: null })
+    })
   })
 
   describe('listing / gating', () => {
