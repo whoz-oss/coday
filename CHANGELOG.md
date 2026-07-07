@@ -1,3 +1,19 @@
+## 0.204.0 (2026-07-07)
+
+### 🚀 Features
+
+- wz-31502 define verbosity guideline for agents ([594becbb](https://github.com/whoz-oss/coday/commit/594becbb))
+- wz-31502 rewrite verbosity guideline ([f10ee206](https://github.com/whoz-oss/coday/commit/f10ee206))
+- #wz-31170 add agentos-mcp-plugin with MCP stdio transport support ([#815](https://github.com/whoz-oss/coday/pull/815))
+- wz-31502 define verbosity guideline for agents ([#1100](https://github.com/whoz-oss/coday/pull/1100))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Thibault Drillien @thibault-drillien-whoz
+- vincent.audibert
+
 ## 0.203.1 (2026-07-07)
 
 ### 🩹 Fixes
