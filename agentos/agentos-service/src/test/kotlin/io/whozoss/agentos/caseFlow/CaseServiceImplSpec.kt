@@ -20,7 +20,8 @@ import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.prompt.PromptCommandParser
+import io.whozoss.agentos.prompt.Prompt
+import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -183,9 +184,7 @@ class CaseServiceImplSpec :
         val noOpCaseNamingService: CaseNamingService = mockk(relaxed = true)
 
         val permissionService: PermissionService = mockk(relaxed = true)
-        val promptCommandParser: PromptCommandParser = mockk(relaxed = true) {
-            every { resolve(any(), any(), any()) } answers { listOf(firstArg<String>()) }
-        }
+        val promptService: PromptService = mockk(relaxed = true)
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
@@ -224,7 +223,7 @@ class CaseServiceImplSpec :
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 permissionService = permissionService,
-                promptCommandParser = promptCommandParser,
+                promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
             )
         }
@@ -366,7 +365,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -591,7 +590,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -691,7 +690,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -764,7 +763,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -811,7 +810,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -882,7 +881,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -951,7 +950,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1058,7 +1057,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1157,7 +1156,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1446,7 +1445,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val parentCase = service.create(Case(namespaceId = namespaceId))
@@ -1581,7 +1580,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1677,13 +1676,15 @@ class CaseServiceImplSpec :
         // -------------------------------------------------------------------------
 
         "multi-command prompt resolution executes each command as a separate sequential agent turn" {
-            // Override the default mock to return multiple commands
-            val multiCommandParser = mockk<PromptCommandParser> {
-                every { resolve(any(), any(), any()) } answers {
-                    val text = firstArg<String>()
-                    if (text.startsWith("/")) listOf("resolved-1", "resolved-2", "resolved-3")
-                    else listOf(text)
-                }
+            // Override the default promptService mock to return a real prompt with 3 content lines
+            val multiPromptService = mockk<PromptService>(relaxed = true) {
+                every { findEffective(any(), any()) } returns listOf(
+                    Prompt(
+                        metadata = EntityMetadata(),
+                        name = "multi-prompt",
+                        content = listOf("resolved-1", "resolved-2", "resolved-3"),
+                    ),
+                )
             }
 
             var runCallCount = 0
@@ -1733,7 +1734,7 @@ class CaseServiceImplSpec :
                 namespaceService,
                 caseConfig = CaseConfigProperties(),
                 permissionService = permissionService,
-                promptCommandParser = multiCommandParser,
+                promptService = multiPromptService,
                 caseNamingService = noOpCaseNamingService,
             )
 
@@ -1830,7 +1831,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-                    promptCommandParser = promptCommandParser,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
 

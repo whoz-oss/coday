@@ -1,12 +1,14 @@
 package io.whozoss.agentos.prompt
 
 import io.whozoss.agentos.exception.PromptResolutionException
-import mu.KLogging
-import org.springframework.stereotype.Service
-import java.util.UUID
+import mu.KotlinLogging
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Parses and resolves slash-command prompt invocations from user message text.
+ *
+ * All functions are pure — no state, no dependencies, no Spring wiring.
  *
  * A prompt command has the form:
  * ```
@@ -23,13 +25,16 @@ import java.util.UUID
  *
  * Resolution rules:
  * 1. The message must start with `/` followed immediately by a prompt name (no space).
- * 2. The effective prompt set for `(namespaceId, userId)` is resolved via [PromptService.findEffective].
- * 3. If no prompt matches the name, the original text is returned unchanged.
- * 4. `{{ARGUMENTS}}` is replaced with the raw argument string verbatim.
- * 5. User arguments are tokenized positionally (quote-aware) and mapped to [Prompt.parameters]
+ * 2. If the text does not start with `/`, it is returned unchanged.
+ * 3. The caller provides a `promptsProvider` lambda that lazily loads the effective
+ *    prompt set on first need. The lambda is called at most once per [resolve] call;
+ *    all recursive resolution is done in-memory against the returned snapshot.
+ * 4. If no prompt matches the name, the original text is returned unchanged.
+ * 5. `{{ARGUMENTS}}` is replaced with the raw argument string verbatim.
+ * 6. User arguments are tokenized positionally (quote-aware) and mapped to [Prompt.parameters]
  *    by declaration order. Each `{{paramName}}` in content is replaced with the corresponding value.
- * 6. Missing arguments fall back to [PromptParameter.defaultValue].
- * 7. Any unresolved `{{...}}` placeholder after substitution throws [PromptResolutionException].
+ * 7. Missing arguments fall back to [PromptParameter.defaultValue].
+ * 8. Any unresolved `{{...}}` placeholder after substitution throws [PromptResolutionException].
  *
  * The resolved content strings are returned as a list. Content lines that themselves
  * start with `/` are resolved recursively, enabling prompt composition.
@@ -38,20 +43,29 @@ import java.util.UUID
  * Maintains a call stack (ancestry path) of [PromptCallKey] pairs `(name, resolvedArgs)`.
  * A cycle is detected when the same key appears again in the current ancestry.
  * This correctly handles:
- * - Same prompt, different arguments → allowed (may produce different output)
- * - Same prompt, same arguments in ancestry → [PromptResolutionException]
- * - Same prompt reused in sibling branches → allowed (stack unwinds between siblings)
+ * - Same prompt, different arguments \u2192 allowed (may produce different output)
+ * - Same prompt, same arguments in ancestry \u2192 [PromptResolutionException]
+ * - Same prompt reused in sibling branches \u2192 allowed (stack unwinds between siblings)
  *
  * Depth is also capped at [MAX_PROMPT_DEPTH] to catch long chains that bypass
  * argument-based cycle detection.
  */
-@Service
-class PromptCommandParser(
-    private val promptService: PromptService,
-) {
+object PromptCommandParser {
+    /** Placeholder for the entire raw argument string. */
+    private const val ARGUMENTS_PLACEHOLDER = "{{ARGUMENTS}}"
+
+    /** Detects any unresolved `{{...}}` placeholder after substitution. */
+    private val UNRESOLVED_REGEX = Regex("""\{\{\w+\}\}""")
+
+    /** Maximum recursive prompt nesting depth. */
+    private const val MAX_PROMPT_DEPTH = 10
+
     /**
-     * Attempt to parse [text] as a prompt command in the context of [namespaceId] / [userId].
+     * Attempt to parse [text] as a prompt command.
      *
+     * @param promptsProvider lazy supplier of the effective prompt list. Called at most
+     *        once, and only when [text] starts with `/`. The caller controls when and
+     *        how the prompts are loaded (typically via [PromptService.findEffective]).
      * @return a list of resolved strings when [text] is a recognised prompt command,
      *         or `listOf(text)` when it does not start with `/` or matches no known prompt.
      * @throws PromptResolutionException when a cycle is detected, the maximum nesting
@@ -59,14 +73,16 @@ class PromptCommandParser(
      */
     fun resolve(
         text: String,
-        namespaceId: UUID,
-        userId: UUID,
-    ): List<String> = resolveInternal(text, namespaceId, userId, depth = 0, callStack = ArrayDeque())
+        promptsProvider: () -> List<Prompt>,
+    ): List<String> {
+        if (!text.startsWith("/")) return listOf(text)
+        val effectivePrompts = promptsProvider()
+        return resolveInternal(text, effectivePrompts, depth = 0, callStack = ArrayDeque())
+    }
 
     private fun resolveInternal(
         text: String,
-        namespaceId: UUID,
-        userId: UUID,
+        effectivePrompts: List<Prompt>,
         depth: Int,
         callStack: ArrayDeque<PromptCallKey>,
     ): List<String> {
@@ -79,11 +95,9 @@ class PromptCommandParser(
 
         if (commandName.isBlank()) return listOf(text)
 
-        val prompt = promptService
-            .findEffective(namespaceId, userId)
-            .firstOrNull { it.name.lowercase() == commandName }
+        val prompt = effectivePrompts.firstOrNull { it.name.lowercase() == commandName }
             ?: run {
-                logger.debug { "No prompt found for slash command '/$commandName' — passing text through" }
+                logger.debug { "No prompt found for slash command '/$commandName' \u2014 passing text through" }
                 return listOf(text)
             }
 
@@ -131,7 +145,7 @@ class PromptCommandParser(
             return resolved.flatMap { line ->
                 val trimmed = line.trim()
                 when {
-                    trimmed.startsWith("/") -> resolveInternal(trimmed, namespaceId, userId, depth + 1, callStack)
+                    trimmed.startsWith("/") -> resolveInternal(trimmed, effectivePrompts, depth + 1, callStack)
                     else -> listOf(line)
                 }
             }
@@ -192,15 +206,4 @@ class PromptCommandParser(
         val name: String,
         val args: Map<String, String>,
     )
-
-    companion object : KLogging() {
-        /** Placeholder for the entire raw argument string. */
-        private const val ARGUMENTS_PLACEHOLDER = "{{ARGUMENTS}}"
-
-        /** Detects any unresolved `{{...}}` placeholder after substitution. */
-        private val UNRESOLVED_REGEX = Regex("""\{\{\w+\}\}""")
-
-        /** Maximum recursive prompt nesting depth. */
-        private const val MAX_PROMPT_DEPTH = 10
-    }
 }

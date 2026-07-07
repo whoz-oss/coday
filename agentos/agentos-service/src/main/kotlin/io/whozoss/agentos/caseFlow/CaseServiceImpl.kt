@@ -14,6 +14,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptCommandParser
+import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -58,7 +59,7 @@ class CaseServiceImpl(
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
     private val permissionService: PermissionService,
-    private val promptCommandParser: PromptCommandParser,
+    private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
 ) : CaseService,
     SubCaseManager {
@@ -295,7 +296,9 @@ class CaseServiceImpl(
         val resolvedCommands: List<String>? = if (userId != null) {
             try {
                 content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
-                    promptCommandParser.resolve(mc.content, runtime.namespaceId, userId)
+                    PromptCommandParser.resolve(mc.content) {
+                        promptService.findEffective(runtime.namespaceId, userId)
+                    }
                 }
             } catch (e: PromptResolutionException) {
                 logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
