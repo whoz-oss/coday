@@ -11,16 +11,14 @@
       (keydown.enter)="onItemClick(prompt)"
       (mouseenter)="activeIndex.set(i)"
     >
-      <span class="prompt-autocomplete__name">/{{ prompt.name }}</span>
+      <span class="prompt-autocomplete__name">
+        /{{ prompt.name }}
+        @for (p of prompt.parameters; track p.name) {
+          <span class="prompt-autocomplete__param">{{ '{' }}{{ '{' }}{{ p.name }}{{ '}' }}{{ '}' }}</span>
+        }
+      </span>
       @if (prompt.description) {
         <span class="prompt-autocomplete__description">{{ prompt.description }}</span>
-      }
-      @if (prompt.parameters.length) {
-        <span class="prompt-autocomplete__params">
-          @for (p of prompt.parameters; track p.name) {
-            <span class="prompt-autocomplete__param">{{ p.name }}</span>
-          }
-        </span>
       }
     </li>
   }
