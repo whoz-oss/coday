@@ -21,6 +21,17 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
  * - Timeout values, when provided, must be positive.
  *
  * Throws [IllegalArgumentException] with a descriptive message on any violation.
+ *
+ * ## Security / Trust Boundary
+ *
+ * For **stdio** transport, [McpServerConfig.command], [McpServerConfig.args] and
+ * [McpServerConfig.env] are used to spawn an arbitrary child process on the host.
+ * Configuring an `MCP_STDIO` integration is therefore equivalent to granting
+ * **remote code execution** on the server.
+ *
+ * Access to `MCP_STDIO` integration creation MUST be restricted to platform
+ * administrators. No executable allow-list is enforced at the plugin level;
+ * authorization is delegated to the integration management layer.
  */
 object McpConfigParser {
 

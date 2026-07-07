@@ -49,7 +49,9 @@ class StdioMcpConnection(
         }
         val command = config.command!!
         val connectStart = System.currentTimeMillis()
-        logger.info { "[MCP] Connecting to server: $command ${config.args.joinToString(" ")}" }
+        // Fix 4: log arg count at INFO, full args only at DEBUG (args may contain credentials)
+        logger.info { "[MCP] Connecting to server: $command (${config.args.size} args)" }
+        logger.debug { "[MCP] Full command: $command ${config.args.joinToString(" ")}" }
 
         val paramsBuilder =
             ServerParameters
@@ -60,7 +62,13 @@ class StdioMcpConnection(
         }
         val params = paramsBuilder.build()
 
-        transport = StdioClientTransport(params, McpJsonDefaults.getMapper())
+        // Fix 5: use CwdAwareStdioClientTransport when cwd is configured
+        transport =
+            if (config.cwd != null) {
+                CwdAwareStdioClientTransport(params, McpJsonDefaults.getMapper(), java.io.File(config.cwd))
+            } else {
+                StdioClientTransport(params, McpJsonDefaults.getMapper())
+            }
 
         // The MCP SDK provides a single requestTimeout for ALL JSON-RPC calls
         // (initialize, listTools, callTool, ping). We use the max of the two configured
@@ -103,21 +111,34 @@ class StdioMcpConnection(
      *
      * @param toolName The name of the MCP tool to call.
      * @param arguments Parsed arguments map (may be empty for no-arg tools).
-     * @return The tool result as a plain string.
+     * @return The tool result as a plain string, prefixed with `[TOOL ERROR] ` when
+     *   the MCP server signals a tool-level error via [McpSchema.CallToolResult.isError].
      */
     override fun callTool(
         toolName: String,
         arguments: Map<String, Any?>,
     ): String {
+        // Fix 3: set lastUsed at entry so a long-running call doesn't get evicted mid-flight
         lastUsed = Instant.now()
-        val request = CallToolRequest.builder(toolName).arguments(arguments as Map<String, Any>).build()
-        val result =
-            try {
-                client.callTool(request)
-            } catch (e: Exception) {
-                throw McpConnectionException("Tool call '$toolName' failed: ${e.message}", e)
+        try {
+            val request = CallToolRequest.builder(toolName).arguments(arguments as Map<String, Any>).build()
+            val result =
+                try {
+                    client.callTool(request)
+                } catch (e: Exception) {
+                    throw McpConnectionException("Tool call '$toolName' failed: ${e.message}", e)
+                }
+            val formatted = formatResult(result)
+            // Fix 1: surface MCP-level tool errors so the agent can distinguish them from success
+            return if (result.isError() == true) {
+                "[TOOL ERROR] $formatted"
+            } else {
+                formatted
             }
-        return formatResult(result)
+        } finally {
+            // Fix 3: update lastUsed after the call so long-running tools aren't evicted
+            lastUsed = Instant.now()
+        }
     }
 
     /**
@@ -177,6 +198,25 @@ class StdioMcpConnection(
     }
 
     companion object : KLogging()
+}
+
+/**
+ * Fix 5: A [StdioClientTransport] subclass that sets the working directory on the
+ * spawned child process.
+ *
+ * [StdioClientTransport.getProcessBuilder] is `protected` and designed for extension.
+ * When [workingDirectory] is non-null it is applied via [ProcessBuilder.directory];
+ * otherwise the subclass is a transparent pass-through.
+ */
+private class CwdAwareStdioClientTransport(
+    params: ServerParameters,
+    jsonMapper: io.modelcontextprotocol.json.McpJsonMapper,
+    private val workingDirectory: java.io.File?,
+) : StdioClientTransport(params, jsonMapper) {
+    override fun getProcessBuilder(): ProcessBuilder =
+        super.getProcessBuilder().apply {
+            workingDirectory?.let { directory(it) }
+        }
 }
 
 class McpConnectionException(
