@@ -40,5 +40,5 @@ interface PromptApi : EntityCrudApi<PromptDto> {
      * GET /api/prompts/effective?namespaceId=UUID — effective merged prompt set.
      * Requires READ on the namespace.
      */
-    fun effective(namespaceId: UUID): List<PromptDto>
+    fun findEffectiveByNamespaceId(namespaceId: UUID): List<PromptDto>
 }

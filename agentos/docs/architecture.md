@@ -45,8 +45,7 @@ The `api.*` packages define the canonical HTTP contract for AgentOS: both the me
 signatures (`*Api` interfaces) and the data types (`*Dto` classes) used as request
 bodies and responses.
 
-**SDK dependencies are intentionally minimal** — no `spring-web`, no Spring MVC
-annotations of any kind:
+**SDK dependencies are intentionally minimal** — no Spring MVC annotations of any kind:
 - `jakarta.validation.api` (`compileOnly`) — `@NotBlank`, `@NotNull`, `@Size`, etc.
   on DTO fields. Shared constraints benefit both the service (Bean Validation) and
   consumers that choose to apply them client-side.

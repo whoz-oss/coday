@@ -28,31 +28,27 @@ import java.util.UUID
 class UserGroupController(
     private val userGroupService: UserGroupService,
 ) : UserGroupApi {
-
     @GetMapping
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
-    override fun searchByNamespaceId(@RequestParam namespaceId: UUID): List<UserGroupSearchResult> =
-        userGroupService.findByNamespaceId(namespaceId).map { it.toSdkDto() }
+    override fun findByNamespaceId(
+        @RequestParam namespaceId: UUID,
+    ): List<UserGroupSearchResult> = userGroupService.findByNamespaceId(namespaceId).map { it.toDto() }
 
     @GetMapping("/{userGroupId}")
     @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'READ')")
     @HideOnAccessDenied
-    override fun getById(@PathVariable userGroupId: UUID): UserGroupSearchResult =
-        userGroupService.findByIdWithDetails(userGroupId)?.toSdkDto()
+    override fun getById(
+        @PathVariable userGroupId: UUID,
+    ): UserGroupSearchResult =
+        userGroupService.findByIdWithDetails(userGroupId)?.toDto()
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
-    override fun create(@Valid @RequestBody request: io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest): UserGroupSearchResult =
-        userGroupService.createFromRequest(
-            UserGroupCreateRequest(
-                namespaceId = request.namespaceId,
-                name = request.name,
-                userExternalIdsToAdd = request.userExternalIdsToAdd,
-                agentIds = request.agentIds,
-            )
-        ).toSdkDto()
+    override fun create(
+        @Valid @RequestBody request: io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest,
+    ): UserGroupSearchResult = userGroupService.createFromRequest(request).toDto()
 
     @PostMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'WRITE')")
@@ -60,20 +56,23 @@ class UserGroupController(
         @PathVariable userGroupId: UUID,
         @Valid @RequestBody request: io.whozoss.agentos.sdk.api.userGroup.UserGroupUpdateRequest,
     ): UserGroupSearchResult =
-        userGroupService.updateFromRequest(
-            userGroupId,
-            UserGroupUpdateRequest(
-                name = request.name,
-                userExternalIdsToAdd = request.userExternalIdsToAdd,
-                userExternalIdsToRemove = request.userExternalIdsToRemove,
-                agentIds = request.agentIds,
-            )
-        ).toSdkDto()
+        userGroupService
+            .updateFromRequest(
+                userGroupId,
+                UserGroupUpdateRequest(
+                    name = request.name,
+                    userExternalIdsToAdd = request.userExternalIdsToAdd,
+                    userExternalIdsToRemove = request.userExternalIdsToRemove,
+                    agentIds = request.agentIds,
+                ),
+            ).toDto()
 
     @DeleteMapping("/{userGroupId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'DELETE')")
-    override fun delete(@PathVariable userGroupId: UUID) {
+    override fun delete(
+        @PathVariable userGroupId: UUID,
+    ) {
         val deleted = userGroupService.delete(userGroupId)
         if (!deleted) throw ResponseStatusException(HttpStatus.NOT_FOUND)
     }
@@ -83,7 +82,7 @@ class UserGroupController(
 // Extension: service-internal UserGroupSearchResult → SDK UserGroupSearchResult
 // ---------------------------------------------------------------------------
 
-private fun io.whozoss.agentos.userGroup.UserGroupSearchResult.toSdkDto() =
+private fun io.whozoss.agentos.userGroup.UserGroupSearchResult.toDto() =
     UserGroupSearchResult(
         userGroupId = userGroupId,
         namespaceId = namespaceId,

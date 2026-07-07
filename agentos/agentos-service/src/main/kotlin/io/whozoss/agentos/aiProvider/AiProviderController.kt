@@ -57,36 +57,37 @@ class AiProviderController(
     private val userService: UserService,
     private val permissionService: PermissionService,
 ) : AiProviderApi {
-
-    private val crud = ScopedOwnershipCrudDelegate<AiProviderDto>(
-        entityLabel = "AiProvider",
-        userService = userService,
-        namespaceService = namespaceService,
-        permissionService = permissionService,
-        ownerOf = { (it as AiProvider).userId },
-        userIdOf = { it.userId },
-        namespaceIdOf = { it.namespaceId },
-        buildEntity = { resource, resolvedNs, resolvedUser ->
-            AiProvider(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                namespaceId = resolvedNs,
-                userId = resolvedUser,
-                name = resource.name,
-                description = resource.description,
-                apiType = resource.apiType!!,
-                baseUrl = resource.baseUrl,
-                apiKey = resource.apiKey,
-                headers = resource.headers ?: emptyMap(),
-            )
-        },
-        crud = EntityCrudDelegate(
-            service = aiProviderService,
+    private val crud =
+        ScopedOwnershipCrudDelegate<AiProviderDto>(
+            entityLabel = "AiProvider",
             userService = userService,
-            permissions = permissionService,
-            entityType = EntityType.AI_PROVIDER,
-            toResource = { toDto(it as AiProvider) },
-        ),
-    )
+            namespaceService = namespaceService,
+            permissionService = permissionService,
+            ownerOf = { (it as AiProvider).userId },
+            userIdOf = { it.userId },
+            namespaceIdOf = { it.namespaceId },
+            buildEntity = { resource, resolvedNs, resolvedUser ->
+                AiProvider(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = resolvedNs,
+                    userId = resolvedUser,
+                    name = resource.name,
+                    description = resource.description,
+                    apiType = resource.apiType!!,
+                    baseUrl = resource.baseUrl,
+                    apiKey = resource.apiKey,
+                    headers = resource.headers ?: emptyMap(),
+                )
+            },
+            crud =
+                EntityCrudDelegate(
+                    service = aiProviderService,
+                    userService = userService,
+                    permissions = permissionService,
+                    entityType = EntityType.AI_PROVIDER,
+                    toResource = { toDto(it as AiProvider) },
+                ),
+        )
 
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'AiProvider', 'READ')")
@@ -103,13 +104,31 @@ class AiProviderController(
      * `GET /{id}` returns them via the evaluator’s ownership branch. This override
      * unions membership-visible IDs with rows the caller owns — bounded by input size.
      */
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PostMapping(
+        "/by-ids",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
     ): List<AiProviderDto> = crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
 
-    @Operation(summary = "List AiProviders by scope")
+    @Operation(
+        summary = "List AiProviders by scope",
+        description =
+            "Scope is inferred from the query params:\n\n" +
+                "| query                            | mode             | required permission                            |\n" +
+                "|----------------------------------|------------------|------------------------------------------------|\n" +
+                "| (no params)                      | platform         | authenticated                                  |\n" +
+                "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
+                "| `?namespaceId=<uuid>&userId=me`  | user \u00d7 namespace | authenticated                                  |\n" +
+                "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
+                "| `?userId=me` (no namespace)      | all caller's     | authenticated                                  |\n\n" +
+                "`userId` accepts ONLY the literal sentinel `me` \u2014 a UUID returns 400. " +
+                "`namespaceId=none` is the sentinel for `namespaceId IS NULL` (listing is not exposed, " +
+                "mass-assignment guard, AC4).",
+    )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     override fun list(
@@ -131,6 +150,20 @@ class AiProviderController(
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+        summary = "Create an AiProvider",
+        description =
+            "Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :\n\n" +
+                "| body.namespaceId | body.userId        | scope         | required permission                  |\n" +
+                "|------------------|--------------------|---------------|--------------------------------------|\n" +
+                "| null             | null               | platform      | super-admin only                     |\n" +
+                "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
+                "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
+                "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
+                "`body.userId` (when supplied) MUST equal the authenticated user's id — sending a different " +
+                "user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` " +
+                "that does not exist returns 404 (Decision 15 / AC7).",
+    )
     override fun create(
         @Valid @RequestBody resource: AiProviderDto,
     ): AiProviderDto {
@@ -141,17 +174,18 @@ class AiProviderController(
             if (!me.isAdmin) {
                 throw AccessDeniedException("Platform-level AiProvider requires Super Admin")
             }
-            val entity = AiProvider(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                namespaceId = null,
-                userId = null,
-                name = resource.name,
-                description = resource.description,
-                apiType = resource.apiType!!,
-                baseUrl = resource.baseUrl,
-                apiKey = resource.apiKey,
-                headers = resource.headers ?: emptyMap(),
-            )
+            val entity =
+                AiProvider(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = null,
+                    name = resource.name,
+                    description = resource.description,
+                    apiType = resource.apiType!!,
+                    baseUrl = resource.baseUrl,
+                    apiKey = resource.apiKey,
+                    headers = resource.headers ?: emptyMap(),
+                )
             return toDto(aiProviderService.create(entity))
         }
 
@@ -166,8 +200,9 @@ class AiProviderController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: AiProviderDto,
     ): AiProviderDto {
-        val existing = aiProviderService.findById(id)
-            ?: throw ResourceNotFoundException("AiProvider not found: $id")
+        val existing =
+            aiProviderService.findById(id)
+                ?: throw ResourceNotFoundException("AiProvider not found: $id")
         return toDto(
             aiProviderService.update(
                 existing.copy(
@@ -201,7 +236,10 @@ class AiProviderController(
      * - blank string (“”) → clear the credential
      * - non-blank → replace
      */
-    private fun resolveApiKey(incoming: String?, current: String?): String? =
+    private fun resolveApiKey(
+        incoming: String?,
+        current: String?,
+    ): String? =
         when {
             isMasked(incoming) -> current
             incoming == null -> current

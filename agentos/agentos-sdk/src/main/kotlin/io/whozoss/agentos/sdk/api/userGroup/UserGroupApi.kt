@@ -18,7 +18,7 @@ import java.util.UUID
 interface UserGroupApi {
 
     /** GET /api/user-groups?namespaceId={uuid} — list all groups in a namespace. */
-    fun searchByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult>
+    fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult>
 
     fun getById(userGroupId: UUID): UserGroupSearchResult
 

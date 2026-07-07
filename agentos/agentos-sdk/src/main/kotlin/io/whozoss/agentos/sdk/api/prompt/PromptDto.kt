@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.api.prompt
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -34,7 +35,9 @@ data class PromptDto(
     val userId: UUID? = null,
     @field:NotBlank val name: String,
     val description: String? = null,
-    @field:NotEmpty val content: List<String>,
+    @field:NotEmpty
+    @field:ArraySchema(schema = Schema(minLength = 1))
+    val content: List<String>,
     @field:Valid val parameters: List<PromptParameterDto> = emptyList(),
     val createdBy: String? = null,
     val createdOn: Instant? = null,

@@ -2,6 +2,8 @@ package io.whozoss.agentos.sdk.api.feedback
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
+import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.NotNull
 import java.util.UUID
 
 /**
@@ -22,8 +24,12 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class FeedbackInput(
+    @field:NotNull(message = "caseEventId must not be null")
     val caseEventId: UUID,
+    @field:NotNull(message = "positive must not be null")
     val positive: Boolean,
+    @field:Schema(description = "Optional category label. Ignored (cleared) when positive=true.")
     val type: String? = null,
+    @field:Schema(description = "Optional free-text note. Ignored (cleared) when positive=true.")
     val comment: String? = null,
 )

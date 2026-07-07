@@ -14,20 +14,29 @@ import java.util.UUID
 /**
  * Holder for the five standard CRUD operations shared across all entity controllers.
  *
- * Controllers take this as a constructor parameter and call it explicitly by name:
+ * Controllers instantiate this delegate inline and call it explicitly by name:
  *
  * ```kotlin
  * class FooController(
- *     private val crud: EntityCrudDelegate<FooDto>,
- *     ...
+ *     private val fooService: FooService,
+ *     private val userService: UserService,
+ *     private val permissionService: PermissionService,
  * ) : FooApi {
+ *
+ *     private val crudDelegate = EntityCrudDelegate(
+ *         service = fooService,
+ *         userService = userService,
+ *         permissions = permissionService,
+ *         entityType = EntityType.FOO,
+ *         toResource = { toDto(it as Foo) },
+ *     )
  *
  *     @PostMapping("/by-ids", ...)
  *     override fun getByIds(request: SdkGetByIdsRequest) =
- *         crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
+ *         crudDelegate.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
  *
  *     @DeleteMapping("/{id}")
- *     override fun delete(@PathVariable id: UUID) = crud.delete(id)
+ *     override fun delete(@PathVariable id: UUID) = crudDelegate.delete(id)
  * }
  * ```
  *
@@ -173,13 +182,3 @@ class EntityCrudDelegate<ResourceType>(
     }
 }
 
-/**
- * Request body for `POST /by-ids`.
- *
- * @param ids List of entity UUIDs to fetch.
- * @param withRemoved When true, soft-deleted entities are included in the result.
- */
-data class GetByIdsRequest(
-    val ids: List<UUID>,
-    val withRemoved: Boolean = false,
-)

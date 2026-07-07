@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.api.namespace
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import io.swagger.v3.oas.annotations.media.Schema
 import java.util.UUID
 
 /**
@@ -21,5 +22,9 @@ data class NamespaceUserListItem(
     val email: String,
     val firstname: String? = null,
     val lastname: String? = null,
+    @field:Schema(
+        description = "The user's direct role on this namespace.",
+        allowableValues = ["ADMIN", "MEMBER"],
+    )
     val role: String,
 )

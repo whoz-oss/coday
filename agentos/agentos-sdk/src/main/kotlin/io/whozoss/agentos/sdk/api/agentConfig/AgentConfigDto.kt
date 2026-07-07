@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.agentConfig
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
+import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import java.time.Instant
@@ -46,12 +47,17 @@ data class AgentConfigDto(
     val updatedBy: String? = null,
     val updatedOn: Instant? = null,
     val enabled: Boolean? = null,
-    @field:Schema(
-        description = "Glob patterns controlling which agents this agent may delegate to. " +
-            "When null or empty, no delegation capability is provided. " +
-            "'*' matches any sequence of characters (anchored, case-insensitive). " +
-            "Examples: ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, " +
-            "['Fixer*'] matches FixerHelper/FixerV2.",
+    @field:ArraySchema(
+        schema =
+            Schema(
+                minLength = 1,
+                description =
+                    "Glob patterns controlling which agents this agent may delegate to. " +
+                        "When null or empty, no delegation capability is provided. " +
+                        "'*' matches any sequence of characters (anchored, case-insensitive). " +
+                        "Examples: ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, " +
+                        "['Fixer*'] matches FixerHelper/FixerV2.",
+            ),
     )
     val subAgents: List<String>? = null,
 )

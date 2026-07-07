@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.api.namespace
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import io.swagger.v3.oas.annotations.media.Schema
 import java.util.UUID
 
 /**
@@ -22,5 +23,9 @@ data class NamespaceListItem(
     val configPath: String? = null,
     val externalId: String? = null,
     val defaultAgentName: String? = null,
+    @field:Schema(
+        description = "The caller's effective role on this namespace.",
+        allowableValues = ["SUPER-ADMIN", "ADMIN", "MEMBER"],
+    )
     val role: String,
 )

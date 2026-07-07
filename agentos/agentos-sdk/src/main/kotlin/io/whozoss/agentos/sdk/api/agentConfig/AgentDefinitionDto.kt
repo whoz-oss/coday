@@ -13,33 +13,36 @@ import java.util.UUID
  * that would be made available to the agent.
  *
  * Useful for debugging agent configurations without starting a case.
- *
- * @property agentConfigId The ID of the [AgentConfigDto] this definition was resolved from.
- * @property name The agent's display name.
- * @property systemPrompt Privileged namespace context block sent as a separate system message,
- *   before [instructions]. Null when no namespace context is available.
- * @property instructions Final system instructions sent to the LLM, including injected
- *   namespace / integration / user context blocks.
- * @property resolvedModelApiName The actual API model name sent to the provider.
- * @property resolvedProviderName The name of the resolved AI provider.
- * @property tools Summary of tools that would be made available to this agent.
- * @property advancedExecution Whether the agent uses the advanced multi-step execution engine.
- * @property namespaceId The namespace this agent belongs to.
- * @property userId The user whose overlay was applied, or null for namespace-only resolution.
  */
 @Schema(name = "AgentDefinition")
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class AgentDefinitionDto(
+    @field:Schema(description = "The ID of the AgentConfig this definition was resolved from.")
     val agentConfigId: UUID,
+    @field:Schema(description = "The agent's display name.")
     val name: String,
+    @field:Schema(
+        description = "Privileged namespace context block sent as a separate system message, " +
+            "before instructions. Null when no namespace context is available.",
+    )
     val systemPrompt: String?,
+    @field:Schema(
+        description = "Final system instructions sent to the LLM, including injected " +
+            "namespace / integration / user context blocks.",
+    )
     val instructions: String?,
+    @field:Schema(description = "The actual API model name sent to the provider.")
     val resolvedModelApiName: String,
+    @field:Schema(description = "The name of the resolved AI provider.")
     val resolvedProviderName: String,
+    @field:Schema(description = "Summary of tools that would be made available to this agent.")
     val tools: List<ToolSummary>,
+    @field:Schema(description = "Whether the agent uses the advanced multi-step execution engine.")
     val advancedExecution: Boolean,
+    @field:Schema(description = "The namespace this agent belongs to.")
     val namespaceId: UUID,
+    @field:Schema(description = "The user whose overlay was applied, or null for namespace-only resolution.")
     val userId: UUID?,
 ) {
     /**

@@ -36,7 +36,7 @@ class EntityControllerBatchSpec : StringSpec({
     val service = mockk<EntityService<TestEntity, UUID>>()
     val userService = mockk<UserService>()
     val permissionService = mockk<PermissionService>()
-    val crud = EntityCrudDelegate(
+    val crudDelegate = EntityCrudDelegate(
         service = service,
         userService = userService,
         permissions = permissionService,
@@ -65,7 +65,7 @@ class EntityControllerBatchSpec : StringSpec({
     beforeTest { clearAllMocks() }
 
     "getByIds short-circuits to empty list on empty input WITHOUT calling userService or permissionService" {
-        crud.getByIds(GetByIdsRequest(ids = emptyList())) shouldBe emptyList()
+        crudDelegate.getByIds(GetByIdsRequest(ids = emptyList())) shouldBe emptyList()
         verify(exactly = 0) { userService.getCurrentUser() }
         verify(exactly = 0) { permissionService.filterVisibleIds(any(), any(), any(), any()) }
         verify(exactly = 0) { service.findByIds(any(), any()) }
@@ -77,7 +77,7 @@ class EntityControllerBatchSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         every { service.findByIds(setOf(a.id, b.id), false) } returns listOf(a, b)
 
-        val result = crud.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id)))
+        val result = crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id)))
 
         result.map { it.tag } shouldContainExactly listOf("alpha", "beta")
         verify(exactly = 0) { permissionService.filterVisibleIds(any(), any(), any(), any()) }
@@ -95,7 +95,7 @@ class EntityControllerBatchSpec : StringSpec({
         // Delegate fetches all requested IDs then filters in-process — stub the full set.
         every { service.findByIds(setOf(a.id, b.id), false) } returns listOf(a, b)
 
-        val result = crud.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id)))
+        val result = crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id)))
 
         result.map { it.tag } shouldContainExactly listOf("visible")
     }
@@ -108,7 +108,7 @@ class EntityControllerBatchSpec : StringSpec({
         } returns emptySet()
         every { service.findByIds(any(), any()) } returns emptyList()
 
-        crud.getByIds(GetByIdsRequest(ids = listOf(a.id))) shouldBe emptyList()
+        crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id))) shouldBe emptyList()
     }
 
     "getByIds returns empty list when admin sees no matching entity (findByIds returns empty)" {
@@ -116,7 +116,7 @@ class EntityControllerBatchSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         every { service.findByIds(setOf(a.id), false) } returns emptyList()
 
-        crud.getByIds(GetByIdsRequest(ids = listOf(a.id))) shouldBe emptyList()
+        crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id))) shouldBe emptyList()
     }
 
     "getByIds preserves input order" {
@@ -127,7 +127,7 @@ class EntityControllerBatchSpec : StringSpec({
         // Service may return in any order — crud must reorder to match input.
         every { service.findByIds(setOf(a.id, b.id, c.id), false) } returns listOf(c, a, b)
 
-        val result = crud.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id, c.id)))
+        val result = crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id, b.id, c.id)))
 
         result.map { it.tag } shouldContainExactly listOf("first", "second", "third")
     }
@@ -138,7 +138,7 @@ class EntityControllerBatchSpec : StringSpec({
         every { service.findByIds(setOf(a.id), false) } returns listOf(a)
 
         // Input has 3 copies of the same id; output also has 3 copies.
-        val result = crud.getByIds(GetByIdsRequest(ids = listOf(a.id, a.id, a.id)))
+        val result = crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id, a.id, a.id)))
 
         result.size shouldBe 3
         result.all { it.tag == "dup" } shouldBe true
@@ -150,7 +150,7 @@ class EntityControllerBatchSpec : StringSpec({
         every { userService.getCurrentUser() } returns superAdmin
         every { service.findByIds(setOf(a.id, missingId), false) } returns listOf(a)
 
-        val result = crud.getByIds(GetByIdsRequest(ids = listOf(a.id, missingId)))
+        val result = crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id, missingId)))
 
         result.map { it.tag } shouldContainExactly listOf("found")
     }
@@ -158,7 +158,7 @@ class EntityControllerBatchSpec : StringSpec({
     "getByIds rejects oversized input batches with HTTP 400 (DoS protection)" {
         val oversizedIds = List(EntityCrudDelegate.MAX_BATCH_SIZE + 1) { UUID.randomUUID() }
 
-        val ex = shouldThrow<ResponseStatusException> { crud.getByIds(GetByIdsRequest(ids = oversizedIds)) }
+        val ex = shouldThrow<ResponseStatusException> { crudDelegate.getByIds(GetByIdsRequest(ids = oversizedIds)) }
 
         ex.statusCode shouldBe HttpStatus.BAD_REQUEST
         verify(exactly = 0) { userService.getCurrentUser() }
@@ -171,7 +171,7 @@ class EntityControllerBatchSpec : StringSpec({
         every { service.findByIds(ids.toSet(), false) } returns emptyList()
 
         // Should not throw — exactly at the cap is allowed.
-        crud.getByIds(GetByIdsRequest(ids = ids)) shouldBe emptyList()
+        crudDelegate.getByIds(GetByIdsRequest(ids = ids)) shouldBe emptyList()
     }
 
     "getByIds tolerates malformed UUIDs returned by permissionService (silent drop, fail-closed)" {
@@ -184,7 +184,7 @@ class EntityControllerBatchSpec : StringSpec({
         } returns setOf(a.id.toString(), "not-a-uuid")
         every { service.findByIds(setOf(a.id), false) } returns listOf(a)
 
-        val result = crud.getByIds(GetByIdsRequest(ids = listOf(a.id)))
+        val result = crudDelegate.getByIds(GetByIdsRequest(ids = listOf(a.id)))
 
         result.map { it.tag } shouldContainExactly listOf("ok")
     }

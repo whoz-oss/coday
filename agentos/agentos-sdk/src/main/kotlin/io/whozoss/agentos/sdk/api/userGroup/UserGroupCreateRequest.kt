@@ -1,6 +1,8 @@
 package io.whozoss.agentos.sdk.api.userGroup
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import java.util.UUID
 
 /**
@@ -15,7 +17,11 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class UserGroupCreateRequest(
     val namespaceId: UUID,
+    @field:NotBlank
+    @field:Size(max = 250)
     val name: String,
+    @field:Size(max = 200)
     val userExternalIdsToAdd: Set<String> = emptySet(),
+    @field:Size(max = 200)
     val agentIds: Set<UUID> = emptySet(),
 )

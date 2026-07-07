@@ -1,6 +1,7 @@
 package io.whozoss.agentos.prompt
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.entity.OverlayScope
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
+import io.swagger.v3.oas.annotations.media.Schema as ApiSchema
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 
 /**
@@ -122,6 +124,10 @@ class PromptController(
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     override fun list(
+        @Parameter(
+            description = "Scope of prompts to return.",
+            schema = ApiSchema(allowableValues = ["PLATFORM", "NAMESPACE", "USER", "USER_NAMESPACE"]),
+        )
         @RequestParam scope: String,
         @RequestParam(required = false) namespaceId: UUID?,
     ): List<PromptDto> {
@@ -179,7 +185,7 @@ class PromptController(
     )
     @GetMapping("/effective")
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
-    override fun effective(
+    override fun findEffectiveByNamespaceId(
         @RequestParam namespaceId: UUID,
     ): List<PromptDto> {
         val currentUser = userService.getCurrentUser()
@@ -212,9 +218,12 @@ class PromptController(
         val currentUser = userService.getCurrentUser()
         val me = currentUser.id
 
-        // Phase 1 — mass-assignment guard
+        // Phase 1 — validation
         if (resource.userId != null && resource.userId != me) {
             throw BadRequestException("userId in body must match authenticated user or be omitted")
+        }
+        if (resource.content.any { it.isBlank() }) {
+            throw BadRequestException("content elements must not be blank")
         }
 
         // Phase 2 — scope determination
