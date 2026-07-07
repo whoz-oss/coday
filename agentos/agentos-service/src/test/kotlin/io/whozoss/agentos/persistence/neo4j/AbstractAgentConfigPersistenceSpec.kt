@@ -552,30 +552,20 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
 
         // -------------------------------------------------------------------------
         // findAvailableByNamespaceIdAndUserId — platform agents (namespaceId = null)
+        //
+        // Platform agents require an explicit DEPLOYED_TO relation to either:
+        //   - the queried namespace directly, OR
+        //   - a UserGroup in that namespace the user is a member of
+        // A platform agent without any DEPLOYED_TO relation is never returned.
         // -------------------------------------------------------------------------
 
-        "platform agents are included when querying with a namespace and null userId" {
+        "platform agents are included when querying with a namespace and null userId and deployed to that namespace" {
             val ns = namespaceRepo.save(namespace())
-            agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
+            val platformAgent = agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
             agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
+            namespaceRepo.deployAgents(ns.id, listOf(platformAgent.id))
 
-            // namespaceId=null on the Cypher repo — platform agents only, no userId filter
-            val result =
-                agentConfigNodeNeo4jRepo.findDeployedByNamespaceIdAndUserId(
-                    namespaceId = null,
-                    userId = null,
-                    agentName = null,
-                )
-
-            result.map { it.name } shouldContainExactlyInAnyOrder listOf("platform-agent")
-        }
-
-        "platform agents are visible alongside namespace agents when namespaceId matches and userId is null" {
-            val ns = namespaceRepo.save(namespace())
-            agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
-            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
-
-            // userId=null bypasses the deployment check — all enabled agents in scope are returned
+            // userId=null bypasses the user check — all enabled agents with DEPLOYED_TO in scope are returned
             val result =
                 agentConfigNodeNeo4jRepo.findDeployedByNamespaceIdAndUserId(
                     namespaceId = ns.id.toString(),
@@ -586,31 +576,69 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             result.map { it.name } shouldContainExactlyInAnyOrder listOf("platform-agent", "ns-agent")
         }
 
-        "platform agents are visible alongside namespace agents when userId is set and namespaceId matches" {
-            // Covers the OR a.namespaceId IS NULL branch inside the userId IS NOT NULL condition:
-            // platform agents (namespaceId IS NULL) must always appear, regardless of whether
-            // the user has an explicit deployment or membership in the queried namespace.
-            val (ns, _, alice) = setupGroupAccess(listOf("ns-agent"))
-            val platformAgent = agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
+        "platform agent without DEPLOYED_TO is not returned even when userId is null" {
+            val ns = namespaceRepo.save(namespace())
+            agentConfigRepo.save(platformAgentConfig("undeployed-platform").copy(enabled = true))
+            agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
+            // no deployAgents call — platform agent has no DEPLOYED_TO relation
 
-            val result = agentConfigNodeNeo4jRepo.findDeployedByNamespaceIdAndUserId(ns.id.toString(), alice.id.toString(), null)
+            val result =
+                agentConfigNodeNeo4jRepo.findDeployedByNamespaceIdAndUserId(
+                    namespaceId = ns.id.toString(),
+                    userId = null,
+                    agentName = null,
+                )
 
-            result.map { it.name } shouldContainExactlyInAnyOrder listOf("ns-agent", "platform-agent")
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("ns-agent")
         }
 
-        "platform agents are visible to a user with no deployment in the namespace" {
-            // Regression guard: a user with no group membership and no namespace deployment
-            // must still receive platform agents. This test would catch the regression if
-            // OR a.namespaceId IS NULL were removed — the previous test would not, because
-            // alice already has access via her group.
+        "platform agent deployed to namespace is visible to user with namespace membership" {
             val ns = namespaceRepo.save(namespace())
+            val platformAgent = agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
+            val nsAgent = agentConfigRepo.save(agentConfig(ns.id, "ns-agent").copy(enabled = true))
             val alice = userRepo.save(user("alice@example.com"))
-            agentConfigRepo.save(platformAgentConfig("platform-agent").copy(enabled = true))
-            // no group, no namespace deployment, no namespace membership for alice
+            namespaceRepo.deployAgents(ns.id, listOf(platformAgent.id, nsAgent.id))
+            grantMember("alice@example.com", ns.id.toString())
 
             val result = agentConfigRepo.findDeployedByNamespaceIdAndUserIdAndName(ns.id, alice.id, null)
 
-            result.map { it.name } shouldContainExactlyInAnyOrder listOf("platform-agent")
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("platform-agent", "ns-agent")
+        }
+
+        "platform agent deployed to a UserGroup is visible to member of that group" {
+            val ns = namespaceRepo.save(namespace())
+            val platformAgent = agentConfigRepo.save(platformAgentConfig("platform-via-group").copy(enabled = true))
+            val group = userGroupRepo.save(userGroup(ns.id))
+            val alice = userRepo.save(user("alice@example.com"))
+            userGroupRepo.addAgents(group.id, listOf(platformAgent.id))
+            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
+
+            val result = agentConfigRepo.findDeployedByNamespaceIdAndUserIdAndName(ns.id, alice.id, null)
+
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("platform-via-group")
+        }
+
+        "platform agent without any DEPLOYED_TO is not visible to user even with namespace membership" {
+            val ns = namespaceRepo.save(namespace())
+            agentConfigRepo.save(platformAgentConfig("undeployed-platform").copy(enabled = true))
+            val alice = userRepo.save(user("alice@example.com"))
+            grantMember("alice@example.com", ns.id.toString())
+            // no deployAgents call
+
+            val result = agentConfigRepo.findDeployedByNamespaceIdAndUserIdAndName(ns.id, alice.id, null)
+
+            result.shouldBeEmpty()
+        }
+
+        "platform agent without any DEPLOYED_TO is not visible to super-admin either" {
+            val ns = namespaceRepo.save(namespace())
+            agentConfigRepo.save(platformAgentConfig("undeployed-platform").copy(enabled = true))
+            val admin = userRepo.save(user("admin@example.com").copy(isAdmin = true))
+            // no deployAgents call
+
+            val result = agentConfigRepo.findDeployedByNamespaceIdAndUserIdAndName(ns.id, admin.id, null)
+
+            result.shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
