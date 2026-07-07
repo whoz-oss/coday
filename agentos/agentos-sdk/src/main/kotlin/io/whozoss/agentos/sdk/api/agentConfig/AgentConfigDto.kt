@@ -47,10 +47,11 @@ data class AgentConfigDto(
     val updatedBy: String? = null,
     val updatedOn: Instant? = null,
     val enabled: Boolean? = null,
-    @field:ArraySchema(
+    @ArraySchema(
         schema =
             Schema(
                 minLength = 1,
+                implementation = String::class,
                 description =
                     "Glob patterns controlling which agents this agent may delegate to. " +
                         "When null or empty, no delegation capability is provided. " +

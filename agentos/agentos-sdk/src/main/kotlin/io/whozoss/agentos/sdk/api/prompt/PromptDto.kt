@@ -36,7 +36,7 @@ data class PromptDto(
     @field:NotBlank val name: String,
     val description: String? = null,
     @field:NotEmpty
-    @field:ArraySchema(schema = Schema(minLength = 1))
+    @ArraySchema(schema = Schema(implementation = String::class, minLength = 1))
     val content: List<String>,
     @field:Valid val parameters: List<PromptParameterDto> = emptyList(),
     val createdBy: String? = null,

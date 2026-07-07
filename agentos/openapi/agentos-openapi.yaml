@@ -2125,6 +2125,7 @@ components:
         content:
           type: array
           items:
+            type: string
             minLength: 1
           minItems: 1
         parameters:
@@ -2365,6 +2366,7 @@ components:
         subAgents:
           type: array
           items:
+            type: string
             description: "Glob patterns controlling which agents this agent may delegate\
               \ to. When null or empty, no delegation capability is provided. '*'\
               \ matches any sequence of characters (anchored, case-insensitive). Examples:\
@@ -2473,21 +2475,29 @@ components:
       properties:
         name:
           type: string
+          maxLength: 250
+          minLength: 0
         userExternalIdsToAdd:
           type: array
           items:
             type: string
+          maxItems: 200
+          minItems: 0
           uniqueItems: true
         userExternalIdsToRemove:
           type: array
           items:
             type: string
+          maxItems: 200
+          minItems: 0
           uniqueItems: true
         agentIds:
           type: array
           items:
             type: string
             format: uuid
+          maxItems: 200
+          minItems: 0
           uniqueItems: true
       required:
       - agentIds
