@@ -39,6 +39,7 @@ enum class CaseEventType(
     TEXT_CHUNK("TextChunkEvent"),
     PENDING_CONFIRMATION("PendingConfirmationEvent"),
     CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
+    CASE_UPDATED("CaseUpdatedEvent"),
     ;
 
     fun isFirstLevel(): Boolean = this in listOf(MESSAGE, QUESTION, ANSWER)
@@ -81,6 +82,7 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = TextChunkEvent::class, name = "TextChunkEvent"),
     JsonSubTypes.Type(value = PendingConfirmationEvent::class, name = "PendingConfirmationEvent"),
     JsonSubTypes.Type(value = ConfirmationResolvedEvent::class, name = "ConfirmationResolvedEvent"),
+    JsonSubTypes.Type(value = CaseUpdatedEvent::class, name = "CaseUpdatedEvent"),
 )
 sealed interface CaseEvent : Entity {
     val namespaceId: UUID
@@ -432,4 +434,25 @@ data class ConfirmationResolvedEvent(
     val resultText: String = "",
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.CONFIRMATION_RESOLVED
+}
+
+/**
+ * Emitted when a [io.whozoss.agentos.sdk.caseFlow.Case] is updated outside of the normal
+ * agent execution flow (e.g. automatic title generation).
+ *
+ * Transient: streamed to SSE clients for real-time UI refresh but never persisted —
+ * the durable state is already written directly on the Case entity before this event
+ * is emitted.
+ *
+ * @param title New case title when it was updated, null when unchanged.
+ */
+data class CaseUpdatedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val title: String? = null,
+) : CaseEvent,
+    TransientCaseEvent {
+    override val type: CaseEventType = CaseEventType.CASE_UPDATED
 }

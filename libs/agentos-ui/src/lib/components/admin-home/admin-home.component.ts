@@ -13,7 +13,6 @@ import { Router } from '@angular/router'
  */
 @Component({
   selector: 'agentos-admin-home',
-  standalone: true,
   imports: [],
   templateUrl: './admin-home.component.html',
   styleUrl: './admin-home.component.scss',

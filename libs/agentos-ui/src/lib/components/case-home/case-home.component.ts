@@ -2,7 +2,12 @@ import { HttpClient } from '@angular/common/http'
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, signal, ViewChild } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
+<<<<<<< feature/fdelsert/WZ-32968_prompt_call
 import { Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
+=======
+import { Case, Configuration } from '@whoz-oss/agentos-api-client'
+import { CaseStateService } from '../../services/case-state.service'
+>>>>>>> master
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -22,8 +27,12 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
  */
 @Component({
   selector: 'agentos-case-home',
+<<<<<<< feature/fdelsert/WZ-32968_prompt_call
   standalone: true,
   imports: [IconButtonComponent, PromptAutocompleteComponent],
+=======
+  imports: [IconButtonComponent],
+>>>>>>> master
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
 })
@@ -32,6 +41,7 @@ export class CaseHomeComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly config = inject(Configuration)
+  private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly promptState = inject(PromptStateService)
@@ -39,7 +49,7 @@ export class CaseHomeComponent {
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
   @ViewChild(PromptAutocompleteComponent) private autocompleteRef?: PromptAutocompleteComponent
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   protected readonly inputValue = signal('')
   protected readonly isCreating = signal(false)
@@ -160,20 +170,21 @@ export class CaseHomeComponent {
       })
       .pipe(
         // Step 2: send the first message before navigating, carry the case id through
-        switchMap((createdCase) =>
-          this.http
+        switchMap((createdCase) => {
+          this.caseState.addCase(createdCase)
+          return this.http
             .post(`${this.config.basePath}/api/cases/${createdCase.id}/messages`, {
               content: firstMessage,
               userId: 'default-user',
             })
             .pipe(map(() => createdCase))
-        ),
+        }),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe({
         next: (createdCase) => {
           // Step 3: navigate — no firstMessage in state, the message is already posted
-          this.router.navigate([createdCase.id ?? ''], { relativeTo: this.route })
+          this.router.navigate(['/agentos/home'], { queryParams: { ns: this.namespaceId, case: createdCase.id ?? '' } })
         },
         error: (err) => {
           console.error('[CaseHome] Failed to create case or send first message', err)

@@ -21,7 +21,6 @@ import { PromptItemComponent } from '../prompt-item/prompt-item.component'
  */
 @Component({
   selector: 'agentos-namespace-prompts',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, PromptItemComponent],
   templateUrl: './namespace-prompts.component.html',
   styleUrl: './namespace-prompts.component.scss',

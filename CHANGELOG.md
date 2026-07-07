@@ -1,3 +1,35 @@
+## 0.202.0 (2026-07-07)
+
+### 🚀 Features
+
+- #1023 replace cases drawer routing with home sidebar navigation ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.201.1 (2026-07-07)
+
+### 🩹 Fixes
+
+- #1098 bugfix ExcelJS import ([#1098](https://github.com/whoz-oss/coday/issues/1098))
+- #1098 bugfix ExcelJS import ([#1099](https://github.com/whoz-oss/coday/pull/1099), [#1098](https://github.com/whoz-oss/coday/issues/1098))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.201.0 (2026-07-05)
+
+### 🚀 Features
+
+- #1010 auto-name cases ([#1083](https://github.com/whoz-oss/coday/pull/1083), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.200.0 (2026-07-04)
 
 ### 🚀 Features

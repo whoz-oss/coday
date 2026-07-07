@@ -18,7 +18,6 @@ import { UserStateService } from '../../services/user-state.service'
  */
 @Component({
   selector: 'agentos-header',
-  standalone: true,
   imports: [BackendStatusComponent],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
@@ -31,7 +30,7 @@ export class HeaderComponent implements OnInit {
   protected readonly currentUser = this.userState.currentUser
 
   protected navigateHome(): void {
-    this.router.navigate(['/agentos'])
+    this.router.navigate(['/agentos/home'])
   }
 
   protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)

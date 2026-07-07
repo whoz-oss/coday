@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
@@ -14,23 +14,22 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  */
 @Component({
   selector: 'agentos-namespace-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './namespace-item.component.html',
   styleUrl: './namespace-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  @Input({ required: true }) namespace!: Namespace
+  readonly namespace = input.required<Namespace>()
 
-  @Output() selected = new EventEmitter<Namespace>()
-  @Output() editRequested = new EventEmitter<Namespace>()
-  @Output() integrationsRequested = new EventEmitter<Namespace>()
-  @Output() aiProvidersRequested = new EventEmitter<Namespace>()
-  @Output() aiModelsRequested = new EventEmitter<Namespace>()
-  @Output() agentConfigsRequested = new EventEmitter<Namespace>()
-  @Output() promptsRequested = new EventEmitter<Namespace>()
-  @Output() deleteRequested = new EventEmitter<Namespace>()
+  readonly selected = output<Namespace>()
+  readonly editRequested = output<Namespace>()
+  readonly integrationsRequested = output<Namespace>()
+  readonly aiProvidersRequested = output<Namespace>()
+  readonly aiModelsRequested = output<Namespace>()
+  readonly agentConfigsRequested = output<Namespace>()
+  readonly promptsRequested = output<Namespace>()
+  readonly deleteRequested = output<Namespace>()
 
   protected readonly pendingDelete = signal(false)
 
@@ -45,28 +44,28 @@ export class NamespaceItemComponent {
   ]
 
   protected onSelect(): void {
-    this.selected.emit(this.namespace)
+    this.selected.emit(this.namespace())
   }
 
   protected onMenuAction(key: string): void {
     switch (key) {
       case 'edit':
-        this.editRequested.emit(this.namespace)
+        this.editRequested.emit(this.namespace())
         break
       case 'integrations':
-        this.integrationsRequested.emit(this.namespace)
+        this.integrationsRequested.emit(this.namespace())
         break
       case 'ai-providers':
-        this.aiProvidersRequested.emit(this.namespace)
+        this.aiProvidersRequested.emit(this.namespace())
         break
       case 'ai-models':
-        this.aiModelsRequested.emit(this.namespace)
+        this.aiModelsRequested.emit(this.namespace())
         break
       case 'agent-configs':
-        this.agentConfigsRequested.emit(this.namespace)
+        this.agentConfigsRequested.emit(this.namespace())
         break
       case 'prompts':
-        this.promptsRequested.emit(this.namespace)
+        this.promptsRequested.emit(this.namespace())
         break
       case 'delete':
         this.pendingDelete.set(true)
@@ -76,7 +75,7 @@ export class NamespaceItemComponent {
 
   protected onDeleteConfirmed(): void {
     this.pendingDelete.set(false)
-    this.deleteRequested.emit(this.namespace)
+    this.deleteRequested.emit(this.namespace())
   }
 
   protected onDeleteCancelled(): void {

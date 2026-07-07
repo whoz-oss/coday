@@ -9,6 +9,7 @@ import {
   effect,
   ElementRef,
   inject,
+  input,
   NgZone,
   OnDestroy,
   OnInit,
@@ -24,6 +25,7 @@ import {
   AgentSelectedEvent,
   CaseEvent,
   CaseStatusEvent,
+  CaseUpdatedEvent,
   Configuration,
   EnrichmentPhaseTrace,
   ErrorEvent,
@@ -35,6 +37,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { Prompt } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -90,8 +93,12 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
+<<<<<<< feature/fdelsert/WZ-32968_prompt_call
   standalone: true,
   imports: [IconButtonComponent, JsonPipe, PromptAutocompleteComponent],
+=======
+  imports: [IconButtonComponent, JsonPipe],
+>>>>>>> master
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -104,6 +111,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
+<<<<<<< feature/fdelsert/WZ-32968_prompt_call
   private readonly promptState = inject(PromptStateService)
 
   // caseId lives on the current route; namespaceId lives on the parent route (case-shell).
@@ -111,6 +119,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly namespaceId = (this.route.snapshot.params['namespaceId'] ??
     this.route.snapshot.parent?.params['namespaceId'] ??
     this.route.snapshot.parent?.parent?.params['namespaceId']) as string
+=======
+  private readonly caseState = inject(CaseStateService)
+
+  // Read from snapshot initially; updated reactively in ngOnInit via route.queryParams
+  private caseId = this.route.snapshot.queryParams['case'] as string
+  private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
+>>>>>>> master
 
   /** Markdown renderer shared across all message pre-computations. */
   private readonly markdownRenderer = this.buildMarkdownRenderer()
@@ -175,6 +190,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly showTechnical = signal<boolean>(
     localStorage.getItem(CaseChatComponent.SHOW_TECHNICAL_KEY) === 'true'
   )
+  readonly showTechnicalOverride = input(false)
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
@@ -196,6 +212,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private scrollListenerCleanup: (() => void) | null = null
 
   constructor() {
+<<<<<<< feature/fdelsert/WZ-32968_prompt_call
     // Slash-command autocomplete: debounce input, load prompts on first `/`, filter locally.
     // We carry the prefix through the pipeline so the subscribe callback can filter
     // correctly even if the user has continued typing before the HTTP response arrives.
@@ -215,6 +232,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         this.promptsLoaded = true
         this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
       })
+=======
+    // Sync showTechnical from parent shell override
+    effect(() => {
+      this.showTechnical.set(this.showTechnicalOverride())
+    })
+>>>>>>> master
 
     // Restore focus to the composer whenever we return to an interactive state.
     effect(() => {
@@ -339,8 +362,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.connectSse()
 
     // Re-initialise when navigating between cases (same component instance reused by the router)
-    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
-      const newCaseId = params['caseId'] as string
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const newCaseId = params['case'] as string
       if (newCaseId && newCaseId !== this.caseId) {
         this.caseId = newCaseId
         this.reinitialise()
@@ -456,6 +479,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
+          if (event.type === 'CaseUpdatedEvent') {
+            const updated = event as CaseUpdatedEvent
+            if (updated.title) {
+              this.caseState.updateCaseTitle(event.caseId, updated.title)
+            }
+            return
+          }
+
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
@@ -504,6 +535,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const eventNames = [
       'MessageEvent',
       'CaseStatusEvent',
+      'CaseUpdatedEvent',
       'AgentSelectedEvent',
       'AgentRunningEvent',
       'AgentFinishedEvent',
