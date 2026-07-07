@@ -6,7 +6,6 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
-import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -59,11 +58,8 @@ class CaseServiceImpl(
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
     private val permissionService: PermissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
     private val promptCommandParser: PromptCommandParser,
-=======
     private val caseNamingService: CaseNamingService,
->>>>>>> master
 ) : CaseService,
     SubCaseManager {
     /**

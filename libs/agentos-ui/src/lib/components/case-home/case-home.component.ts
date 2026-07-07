@@ -2,12 +2,8 @@ import { HttpClient } from '@angular/common/http'
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, signal, ViewChild } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
 import { Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
-=======
-import { Case, Configuration } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
->>>>>>> master
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -27,12 +23,7 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
  */
 @Component({
   selector: 'agentos-case-home',
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
-  standalone: true,
   imports: [IconButtonComponent, PromptAutocompleteComponent],
-=======
-  imports: [IconButtonComponent],
->>>>>>> master
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
 })

@@ -224,11 +224,8 @@ class CaseServiceImplSpec :
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                 promptCommandParser = promptCommandParser,
-=======
                 caseNamingService = noOpCaseNamingService,
->>>>>>> master
             )
         }
 
@@ -369,11 +366,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -597,11 +591,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -700,11 +691,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -776,11 +764,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -826,11 +811,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -900,11 +882,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -972,11 +951,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1082,11 +1058,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1184,11 +1157,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1455,41 +1425,6 @@ class CaseServiceImplSpec :
                 mockk<NamespaceService> {
                     every { findById(namespaceId) } returns namespace
                 }
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
-                every { findActiveByParentCaseId(any()) } answers { delegate.findActiveByParentCaseId(firstArg()) }
-                every { findActiveDescendants(any()) } answers { delegate.findActiveDescendants(firstArg()) }
-                every { countAncestorDepth(any()) } answers { delegate.countAncestorDepth(firstArg()) }
-                every { linkParentToChild(any(), any()) } throws RuntimeException("simulated Neo4j link failure")
-            }
-            val namespace = Namespace(
-                metadata = EntityMetadata(id = namespaceId),
-                name = "test-namespace",
-                defaultAgentName = agentName,
-            )
-            val namespaceService = mockk<NamespaceService> {
-                every { findById(namespaceId) } returns namespace
-            }
-            val agentService = mockk<AgentService> {
-                every { resolveAgentName(any(), any(), any()) } returns agentName
-                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
-            }
-            val userService = mockk<UserService> {
-                every { findById(userId) } returns activeUser
-                every { getById(userId) } returns activeUser
-            }
-            val service = CaseServiceImpl(
-                agentService,
-                allowAllAgentConfigService,
-                AgentConfigProperties(),
-                throwingRepo,
-                CaseEventServiceImpl(InMemoryCaseEventRepository()),
-                userService,
-                namespaceService,
-                caseConfig = CaseConfigProperties(),
-                permissionService = permissionService,
-                promptCommandParser = promptCommandParser,
-            )
-=======
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -1511,9 +1446,9 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptCommandParser = promptCommandParser,
                     caseNamingService = noOpCaseNamingService,
                 )
->>>>>>> master
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
             shouldThrow<RuntimeException> {
@@ -1646,11 +1581,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1802,6 +1734,7 @@ class CaseServiceImplSpec :
                 caseConfig = CaseConfigProperties(),
                 permissionService = permissionService,
                 promptCommandParser = multiCommandParser,
+                caseNamingService = noOpCaseNamingService,
             )
 
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1897,11 +1830,8 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
                     promptCommandParser = promptCommandParser,
-=======
                     caseNamingService = noOpCaseNamingService,
->>>>>>> master
                 )
 
             // Insert the case directly into the repository so no runtime is created in

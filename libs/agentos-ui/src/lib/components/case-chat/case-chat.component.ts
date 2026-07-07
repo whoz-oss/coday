@@ -93,12 +93,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
-  standalone: true,
   imports: [IconButtonComponent, JsonPipe, PromptAutocompleteComponent],
-=======
-  imports: [IconButtonComponent, JsonPipe],
->>>>>>> master
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -111,21 +106,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
+  private readonly caseState = inject(CaseStateService)
   private readonly promptState = inject(PromptStateService)
 
-  // caseId lives on the current route; namespaceId lives on the parent route (case-shell).
-  private caseId = this.route.snapshot.params['caseId'] as string
-  private readonly namespaceId = (this.route.snapshot.params['namespaceId'] ??
-    this.route.snapshot.parent?.params['namespaceId'] ??
-    this.route.snapshot.parent?.parent?.params['namespaceId']) as string
-=======
-  private readonly caseState = inject(CaseStateService)
-
-  // Read from snapshot initially; updated reactively in ngOnInit via route.queryParams
+  // caseId and namespaceId are read from query params (?case=...&ns=...).
+  // The case-shell renders this component directly (not via router-outlet),
+  // so route params are empty — all context comes through query params.
   private caseId = this.route.snapshot.queryParams['case'] as string
   private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
->>>>>>> master
 
   /** Markdown renderer shared across all message pre-computations. */
   private readonly markdownRenderer = this.buildMarkdownRenderer()
@@ -212,7 +200,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private scrollListenerCleanup: (() => void) | null = null
 
   constructor() {
-<<<<<<< feature/fdelsert/WZ-32968_prompt_call
     // Slash-command autocomplete: debounce input, load prompts on first `/`, filter locally.
     // We carry the prefix through the pipeline so the subscribe callback can filter
     // correctly even if the user has continued typing before the HTTP response arrives.
@@ -232,12 +219,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         this.promptsLoaded = true
         this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
       })
-=======
+
     // Sync showTechnical from parent shell override
     effect(() => {
       this.showTechnical.set(this.showTechnicalOverride())
     })
->>>>>>> master
 
     // Restore focus to the composer whenever we return to an interactive state.
     effect(() => {
@@ -272,7 +258,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Two-pass approach:
    * 1. Build a complete ToolCall map (request merged with its response)
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
-   *    so TOOL_RESPONSE doesn’t create a second item — it’s already merged.
+   *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
@@ -361,7 +347,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.connectSse()
 
-    // Re-initialise when navigating between cases (same component instance reused by the router)
+    // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       const newCaseId = params['case'] as string
       if (newCaseId && newCaseId !== this.caseId) {
@@ -520,7 +506,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
-          // For other events: don’t force isRunning=true.
+          // For other events: don't force isRunning=true.
           // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
         })
       } catch (err) {

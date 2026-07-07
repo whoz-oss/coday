@@ -23,7 +23,6 @@ import { Prompt } from '@whoz-oss/agentos-api-client'
  */
 @Component({
   selector: 'agentos-prompt-autocomplete',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './prompt-autocomplete.component.html',
   styleUrl: './prompt-autocomplete.component.scss',
