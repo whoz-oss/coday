@@ -1,3 +1,13 @@
+## 0.204.1 (2026-07-07)
+
+### 🩹 Fixes
+
+- add maven-publish configuration to agentos-mcp-plugin ([#1106](https://github.com/whoz-oss/coday/pull/1106))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.204.0 (2026-07-07)
 
 ### 🚀 Features
