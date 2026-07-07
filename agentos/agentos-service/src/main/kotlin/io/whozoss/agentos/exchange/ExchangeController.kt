@@ -257,8 +257,8 @@ class ExchangeController(
 
     /**
      * Translate storage-layer failures into the project's `@ResponseStatus` exceptions:
-     * - [FileExistsException] / [FileAlreadyExistsException] (create-only collision, including the
-     *   lost race of the atomic move) -> 409 [ConflictException]
+     * - [FileExistsException] / [FileAlreadyExistsException] (create-only collision: the target already
+     *   exists, or a path segment collides with an existing file) -> 409 [ConflictException]
      * - a missing target -> 404 [ResourceNotFoundException] ([NoSuchFileException]).
      * - a non-UTF-8 file read -> 400 [BadRequestException] ([CharacterCodingException]).
      * - a file above the read limit -> 422 [UnprocessableEntityException] ([ExchangeFileTooLargeException]).
@@ -271,7 +271,10 @@ class ExchangeController(
         } catch (e: FileExistsException) {
             throw ConflictException(e.message ?: "File already exists", e)
         } catch (e: FileAlreadyExistsException) {
-            throw ConflictException(e.message ?: "File already exists", e)
+            // Generic message on purpose: a raw FileAlreadyExistsException (e.g. from createDirectories
+            // on a parent segment that already exists as a file) carries the absolute server path and
+            // must not leak in the 409 body — mirror the 404 branch below.
+            throw ConflictException("File already exists", e)
         } catch (e: NoSuchFileException) {
             // Generic message on purpose: NoSuchFileException.message is the absolute server path
             // (e.g. from root.toRealPath() on a never-written scope) and must not leak in the 404 body.

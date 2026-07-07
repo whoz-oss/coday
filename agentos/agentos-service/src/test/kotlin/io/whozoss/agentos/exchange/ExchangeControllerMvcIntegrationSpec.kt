@@ -3,6 +3,7 @@ package io.whozoss.agentos.exchange
 import com.ninjasquad.springmockk.MockkBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
@@ -26,6 +27,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multi
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.NoSuchFileException
 import java.time.Instant
 import java.util.UUID
@@ -223,6 +225,27 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
 
             mockMvc.perform(multipart("/api/cases/$caseId/files").file(file))
                 .andExpect(status().isConflict)
+        }
+
+        "POST case file returns 409 without leaking the absolute path on a raw FileAlreadyExistsException" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns true
+            // e.g. createDirectories on a parent segment that is an existing file: the raw NIO exception's
+            // message is the absolute server path, which must not reach the 409 response.
+            val leakyPath = "/srv/exchange/$caseId/report.txt"
+            every { exchangeStorageService.writeNew(any(), "report.txt", any(), ExchangeScope.CASE) } throws
+                FileAlreadyExistsException(leakyPath)
+
+            val file = MockMultipartFile("file", "report.txt", "text/plain", "data".toByteArray())
+
+            val result = mockMvc.perform(multipart("/api/cases/$caseId/files").file(file))
+                .andExpect(status().isConflict)
+                .andReturn()
+            // the mapped 409 must carry a generic message, not the raw absolute server path
+            // (which server.error.include-message=always would otherwise render into the body).
+            result.resolvedException?.message shouldBe "File already exists"
         }
 
         "POST case file returns 403 when WRITE is denied" {

@@ -77,8 +77,8 @@ at the computed scope root and filters the tool set through the shared
 
 ## Safety
 
-- **Create-only writes**: staged to a sibling temp file then moved into place. A concurrent writer
-  loses the race with a conflict, never a silent overwrite.
+- **Create-only writes**: written straight to the target with an atomic create-new open. A concurrent
+  writer loses the create-new race with a conflict, never a silent overwrite.
 - **Path containment**: the resolved path must stay within the scope root. Traversal (`../`) and
   symlink escapes are rejected.
 - **No phantom directories**: reads and deletes on a never-written scope return 404 without
