@@ -1,0 +1,67 @@
+<div class="shell-topbar-mobile__brand">
+  <!-- Logo + home -->
+  <button class="shell-topbar-mobile__logo-btn" type="button" title="Home" (click)="homeClicked.emit()">
+    <img src="CODAY-Logo.png" alt="Coday" class="shell-topbar-mobile__logo-img" />
+  </button>
+
+  <span class="shell-topbar-mobile__sep">/</span>
+
+  <!-- Namespace switcher -->
+  <div class="shell-topbar-mobile__ns-wrap">
+    <button class="shell-topbar-mobile__ns-btn" type="button" (click)="nsMenuToggled.emit($event)">
+      {{ selectedNamespace()?.name ?? '' }}
+      <span class="shell-topbar-mobile__chevron">&#9662;</span>
+    </button>
+
+    @if (nsMenuOpen()) {
+      <div
+        class="shell-topbar-mobile__ns-backdrop"
+        role="presentation"
+        tabindex="-1"
+        (click)="nsMenuClosed.emit($event)"
+        (keyup.escape)="nsMenuClosed.emit($event)"
+      ></div>
+      <div class="shell-topbar-mobile__ns-menu">
+        @for (ns of namespaces(); track ns.id) {
+          <button
+            class="shell-topbar-mobile__ns-item"
+            [class.shell-topbar-mobile__ns-item--active]="ns.id === selectedNamespace()?.id"
+            (click)="namespaceSelected.emit(ns)"
+          >
+            <span class="shell-topbar-mobile__ns-dot"></span>
+            <span class="shell-topbar-mobile__ns-item-name">{{ ns.name }}</span>
+            @if (ns.id === selectedNamespace()?.id) {
+              <span>&#10003;</span>
+            }
+          </button>
+        }
+      </div>
+    }
+  </div>
+</div>
+
+<!-- Avatar + user menu -->
+<div class="shell-topbar-mobile__avatar-wrap">
+  <div
+    class="shell-topbar-mobile__avatar"
+    tabindex="0"
+    role="button"
+    aria-label="User menu"
+    (click)="menuToggled.emit($event)"
+    (keyup.enter)="menuToggled.emit(undefined)"
+  >
+    {{ userInitials() || '\u00b7\u00b7\u00b7' }}
+  </div>
+
+  <agentos-shell-user-menu
+    [open]="menuOpen()"
+    [isAdmin]="isAdmin()"
+    [isDark]="isDark()"
+    [showTechnical]="showTechnical()"
+    variant="mobile"
+    (navigateTo)="navigateTo.emit($event)"
+    (themeToggled)="themeToggled.emit()"
+    (logsToggled)="logsToggled.emit()"
+    (closed)="menuClosed.emit($event)"
+  />
+</div>
