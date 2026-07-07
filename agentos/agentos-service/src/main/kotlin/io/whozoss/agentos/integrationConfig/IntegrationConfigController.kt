@@ -39,7 +39,7 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * Unified REST API for [IntegrationConfig] entities — covers the **four scopes**
  * (platform, NS-shared, user × namespace, user-global) under a single set of routes.
  *
- * Standard read and delete operations are delegated to [crud] (a
+ * Standard read and delete operations are delegated to [scopedOwnershipCrudDelegate] (a
  * [ScopedOwnershipCrudDelegate] wrapping an [EntityCrudDelegate]). [create], [update],
  * [list], and [listByParent] are explicit overrides because they carry logic that is
  * specific to this controller (platform-scope guard, immutable-field preservation,
@@ -69,7 +69,7 @@ class IntegrationConfigController(
     private val userService: UserService,
     private val permissionService: PermissionService,
 ) : IntegrationConfigApi {
-    private val crud =
+    private val scopedOwnershipCrudDelegate =
         ScopedOwnershipCrudDelegate(
             entityLabel = "IntegrationConfig",
             userService = userService,
@@ -106,13 +106,13 @@ class IntegrationConfigController(
     @HideOnAccessDenied
     override fun getById(
         @PathVariable id: UUID,
-    ): IntegrationConfigDto = crud.getById(id)
+    ): IntegrationConfigDto = scopedOwnershipCrudDelegate.getById(id)
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
-    ): List<IntegrationConfigDto> = crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
+    ): List<IntegrationConfigDto> = scopedOwnershipCrudDelegate.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
 
     /**
      * Hard-break stub for the legacy `GET /by-parentId/{parentId}`. Hidden from
@@ -211,7 +211,7 @@ class IntegrationConfigController(
         }
 
         // Non-platform scopes — delegate handles userId guard + namespace authz.
-        return crud.create(resource)
+        return scopedOwnershipCrudDelegate.create(resource)
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -249,7 +249,7 @@ class IntegrationConfigController(
             integrationConfigService.findById(id)
                 ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
         requireAdminForPlatform(existing.namespaceId, existing.userId)
-        crud.delete(id)
+        scopedOwnershipCrudDelegate.delete(id)
     }
 
     // ---------------------------------------------------------------------------
