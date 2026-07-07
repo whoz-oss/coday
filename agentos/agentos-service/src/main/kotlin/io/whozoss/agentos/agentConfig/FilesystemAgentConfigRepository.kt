@@ -142,7 +142,18 @@ class FilesystemAgentConfigRepository(
             subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
             docs = (model.docs ?: model.mandatoryDocs)
                 ?.filter { it.isNotBlank() }
-                ?.map { entry -> file.parent.resolve(entry).toAbsolutePath().normalize().toString() }
+                ?.map { entry ->
+                    // Preserve the trailing pattern marker ('/' or '/*') before normalization:
+                    // Path.normalize() strips trailing slashes, which would make the
+                    // directory-listing pattern (endsWith("/")) undetectable downstream.
+                    val suffix = when {
+                        entry.endsWith("/*") -> "/*"
+                        entry.endsWith("/") -> "/"
+                        else -> ""
+                    }
+                    val rawPath = entry.removeSuffix(suffix)
+                    file.parent.resolve(rawPath).toAbsolutePath().normalize().toString() + suffix
+                }
                 ?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,

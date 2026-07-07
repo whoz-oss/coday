@@ -98,16 +98,5 @@ data class AgentConfig(
      * Only applicable for filesystem-backed agents (namespace with a configPath).
      * Silently ignored when configPath is absent.
      */
-    /**
-     * Paths to documents whose full content is injected into the agent's instructions.
-     *
-     * For filesystem-backed agents, entries are stored as absolute paths resolved at
-     * load time relative to the agent YAML file. Three path patterns are supported:
-     * - explicit file path: single file, content injected verbatim
-     * - path ending with slash: directory listing (first-level only, no content)
-     * - path ending with slash-star: all readable files in the directory, content injected
-     *
-     * Always null for Neo4j-persisted agents.
-     */
     val docs: List<String>? = null,
 ) : Entity

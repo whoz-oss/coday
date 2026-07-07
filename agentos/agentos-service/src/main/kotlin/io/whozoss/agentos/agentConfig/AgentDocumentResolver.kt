@@ -27,6 +27,11 @@ import kotlin.io.path.readText
  *
  * File reads are parallelised via coroutines. Errors on individual entries are
  * logged and skipped: a missing doc never aborts the agent.
+ *
+ * Security: each resolved path is validated against SENSITIVE_FILE_PATTERNS before
+ * reading. YAML is admin-authored, but this deny-list prevents accidental injection
+ * of secrets when a slash-star glob covers a directory that happens to contain a .env
+ * or a private key.
  */
 @Component
 class AgentDocumentResolver {
@@ -120,10 +125,48 @@ class AgentDocumentResolver {
                 logger.warn { "[AgentDocumentResolver] Not a regular file: $file" }
                 return@withContext null
             }
+            if (isSensitiveFile(file.name)) {
+                logger.warn { "[AgentDocumentResolver] Skipping sensitive file: $file" }
+                return@withContext null
+            }
             runCatching { file.name to file.readText() }
                 .onFailure { logger.warn(it) { "[AgentDocumentResolver] Could not read $file" } }
                 .getOrNull()
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private val SENSITIVE_FILE_PATTERNS =
+            listOf(
+                ".env",
+                ".env.*",
+                "credentials.json",
+                "*.key",
+                "*.pem",
+                "token.json",
+                "auth-profiles.json",
+                "*.p12",
+                "*.pfx",
+                "id_rsa",
+                "id_dsa",
+                "id_ecdsa",
+                "id_ed25519",
+            )
+
+        private fun isSensitiveFile(fileName: String): Boolean =
+            SENSITIVE_FILE_PATTERNS.any { pattern -> matchesGlob(fileName, pattern) }
+
+        private fun matchesGlob(
+            name: String,
+            pattern: String,
+        ): Boolean {
+            val regex =
+                Regex(
+                    pattern
+                        .split("*")
+                        .joinToString(".*") { Regex.escape(it) },
+                    RegexOption.IGNORE_CASE,
+                )
+            return regex.matches(name)
+        }
+    }
 }
