@@ -329,7 +329,7 @@ class CaseServiceImpl(
                     sessionContext,
                 )
                 resolvedCommands.drop(1).forEach { cmd ->
-                    runtime.enqueueCommand(actor, listOf(MessageContent.Text(cmd)))
+                    runtime.enqueueCommand(listOf(MessageContent.Text(cmd)))
                 }
             }
         }

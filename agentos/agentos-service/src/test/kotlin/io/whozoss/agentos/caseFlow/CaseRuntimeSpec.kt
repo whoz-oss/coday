@@ -317,10 +317,10 @@ class CaseRuntimeSpec : StringSpec() {
         // shouldContinue lambda contract
         // -------------------------------------------------------------------------
 
-        "shouldContinue lambda returns false after requestInterrupt is called" {
-            // Verifies that the lambda CaseRuntime passes to runAgent correctly reflects
-            // the interruptRequested flag. The runAgent callback captures the lambda and
-            // can poll it to decide whether to keep going.
+        "shouldContinue lambda returns true after requestInterrupt (interrupt does not stop mid-stream LLM)" {
+            // requestInterrupt() stops the run loop after the current agent turn completes,
+            // but does NOT signal the LLM to stop mid-stream. Only requestKill() does that.
+            // shouldContinue reflects killRequested only.
             val runtimeId = UUID.randomUUID()
             var capturedShouldContinue: (() -> Boolean)? = null
 
@@ -334,25 +334,16 @@ class CaseRuntimeSpec : StringSpec() {
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
-                        // Simulate a long-running agent: don't push AgentFinishedEvent
-                        // so we can inspect shouldContinue before the loop exits naturally.
                     },
                 )
 
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
 
-            // After run() returns the loop has exited. The lambda was captured during
-            // execution; reset flags and verify the expected behaviour.
-            // requestInterrupt sets interruptRequested = true; run() clears it at the
-            // start of the next run(), but we can verify via a fresh interrupt call.
             capturedShouldContinue shouldNotBe null
-
-            // Before any interrupt the runtime is idle — shouldContinue reads the flag
-            // which was reset to false at the top of run().
-            // Trigger a new interrupt and verify the lambda reflects it.
             runtime.requestInterrupt()
-            capturedShouldContinue!!.invoke() shouldBe false
+            // interrupt does not affect shouldContinue — only kill does
+            capturedShouldContinue!!.invoke() shouldBe true
         }
 
         "shouldContinue lambda returns false after requestKill is called" {
@@ -715,8 +706,8 @@ class CaseRuntimeSpec : StringSpec() {
 
             // First message via addUserMessage, two more via enqueueCommand
             runtime.addUserMessage(userActor, listOf(MessageContent.Text("command-1")))
-            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("command-2")))
-            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("command-3")))
+            runtime.enqueueCommand(listOf(MessageContent.Text("command-2")))
+            runtime.enqueueCommand(listOf(MessageContent.Text("command-3")))
             runtime.run()
 
             runAgent.callCount shouldBe 3
@@ -741,7 +732,7 @@ class CaseRuntimeSpec : StringSpec() {
             )
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("should-not-run")))
+            runtime.enqueueCommand(listOf(MessageContent.Text("should-not-run")))
             runtime.run()
 
             runtime.statusFlow.value shouldBe CaseStatus.KILLED
@@ -756,7 +747,7 @@ class CaseRuntimeSpec : StringSpec() {
             val (runtime) = buildRuntime(agentName = "looping", agent = loopingAgent)
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.enqueueCommand(userActor, listOf(MessageContent.Text("should-not-run")))
+            runtime.enqueueCommand(listOf(MessageContent.Text("should-not-run")))
             runtime.run()
 
             runtime.statusFlow.value shouldBe CaseStatus.ERROR
