@@ -10,7 +10,7 @@ import {
   ViewChild,
 } from '@angular/core'
 import { Case } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { NgTemplateOutlet } from '@angular/common'
 
 /**
@@ -31,7 +31,7 @@ export interface CaseTreeItem extends EntityListItem {
  */
 @Component({
   selector: 'agentos-case-drawer',
-  imports: [EntityListComponent, IconButtonComponent, NgTemplateOutlet],
+  imports: [EntityListComponent, NgTemplateOutlet],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -42,7 +42,6 @@ export class CaseDrawerComponent implements OnChanges {
 
   @Output() caseSelected = new EventEmitter<string>()
   @Output() createRequested = new EventEmitter<void>()
-  @Output() closeRequested = new EventEmitter<void>()
 
   @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: CaseTreeItem }>
 
