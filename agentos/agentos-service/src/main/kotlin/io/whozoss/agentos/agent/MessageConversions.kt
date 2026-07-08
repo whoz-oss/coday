@@ -60,11 +60,13 @@ private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
  * The XML tagging convention (`<agent=Name>`, `<user name="...">`) is deliberately kept
  * consistent with the Coday `AiClient.convertAgentMessages` implementation.
  */
-internal fun MessageEvent.toSpringAiMessage(currentAgentId: String): Message {
-    val textContent =
+internal fun MessageEvent.toSpringAiMessage(currentAgentId: String, compressor: io.whozoss.agentos.util.IdCompressor? = null): Message {
+    var textContent =
         content
             .filterIsInstance<MessageContent.Text>()
             .joinToString("\n") { it.content }
+
+    textContent = compressor?.compress(textContent) ?: textContent
 
     return when (actor.role) {
         ActorRole.USER -> {

@@ -139,15 +139,18 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
             val fullPrompt = listOfNotNull(prompt, retryHint).joinToString("\n\n")
 
             try {
-                val messages = context.buildMessages(events, fullPrompt)
+                val compressor = io.whozoss.agentos.util.IdCompressor()
+                val messages = context.buildMessages(events, fullPrompt, compressor)
                 val response = context.chatClient
                     .prompt(Prompt(messages))
                     .call()
                     .content() ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
 
-                logger.trace { "Intention generation response:\n$response" }
+                val uncompressedResponse = compressor.uncompress(response)
 
-                val (intention, toolName) = parseIntentionAndTool(response, toolNames)
+                logger.trace { "Intention generation response:\n$uncompressedResponse" }
+
+                val (intention, toolName) = parseIntentionAndTool(uncompressedResponse, toolNames)
                 AttemptSuccess(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,

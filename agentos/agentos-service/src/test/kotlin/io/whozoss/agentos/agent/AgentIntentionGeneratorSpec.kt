@@ -446,4 +446,95 @@ class AgentIntentionGeneratorSpec :
             result.intention shouldContain "Missing <toolName> tag"
             result.isFailedIntention shouldBe true
         }
+
+        // -------------------------------------------------------------------------
+        // ID compression in intention generation
+        // -------------------------------------------------------------------------
+
+        "generate sends compressed IDs to the LLM and uncompresses the response before parsing" {
+            // Arrange: a user message containing a real UUID.
+            // The LLM receives a compressed alias and echoes it back in the XML response.
+            // generate() must uncompress the response before parsing so the stored
+            // intention contains the original UUID, not the short alias.
+            val realUuid = "550e8400-e29b-41d4-a716-446655440000"
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            // Compute the compressed alias the same way IdCompressor will.
+            val predictingCompressor = io.whozoss.agentos.util.IdCompressor()
+            val sampleText = "<user name=\"User One\">$realUuid</user>"
+            val compressedSample = predictingCompressor.compress(sampleText)
+            val alias = compressedSample
+                .substringAfter("<user name=\"User One\">")
+                .substringBefore("</user>")
+
+            // The LLM echoes the alias back in the intention.
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>Profile $alias updated.</intention><toolName>Answer</toolName>"
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = emptyList(),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text(realUuid)),
+                ),
+            )
+
+            val result = makeGenerator().generate(context, events, namespaceId, caseId)
+
+            // The stored intention must contain the original UUID, not the alias.
+            result.intention shouldContain realUuid
+            result.intention.contains(alias) shouldBe false
+            result.toolName shouldBe "Answer"
+        }
+
+        "generate sends compressed IDs in the prompt — LLM never sees raw UUIDs" {
+            // Verify the prompt actually sent to the LLM contains the alias, not the UUID.
+            val realUuid = "550e8400-e29b-41d4-a716-446655440000"
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>Done.</intention><toolName>Answer</toolName>"
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = emptyList(),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val events = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text(realUuid)),
+                ),
+            )
+
+            makeGenerator().generate(context, events, namespaceId, caseId)
+
+            // The raw UUID must NOT appear in any message sent to the LLM.
+            val promptText = promptSlot.captured.instructions.joinToString(" ") { it.text }
+            promptText.contains(realUuid) shouldBe false
+            // A compressed alias (UI prefix) must be present instead.
+            promptText.contains("UI") shouldBe true
+        }
     })

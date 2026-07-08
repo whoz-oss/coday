@@ -1025,7 +1025,11 @@ class AgentAdvanced(
                 } ?: appendLine("Now, continue your conversation with the user.")
             }
 
-        val messages = context.buildMessages(accumulatedEvents, prompt)
+        val compressor = io.whozoss.agentos.util.IdCompressor()
+        val messages = context.buildMessages(accumulatedEvents, prompt, compressor)
+        // StreamingDecompressor must be created AFTER buildMessages so the compressor
+        // map is fully populated before the first chunk arrives.
+        val streamingDecompressor = compressor.StreamingDecompressor()
 
         logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
@@ -1043,13 +1047,22 @@ class AgentAdvanced(
                     response.result.output.text
                         ?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
-                    contentBuilder.append(chunk)
-                    emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+                    val decompressedChunk = streamingDecompressor.feed(chunk)
+                    if (decompressedChunk.isNotEmpty()) {
+                        contentBuilder.append(decompressedChunk)
+                        emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = decompressedChunk))
+                    }
                 }
                 response.result.metadata.finishReason
                     ?.takeIf { it.isNotBlank() }
                     ?.let { lastFinishReason = it }
             }
+        // Flush any remaining carry after the stream ends
+        val flushed = streamingDecompressor.flush()
+        if (flushed.isNotEmpty()) {
+            contentBuilder.append(flushed)
+            emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = flushed))
+        }
         if (isTruncated(lastFinishReason)) {
             val msg =
                 "LLM response was truncated (finish_reason=$lastFinishReason). " +
@@ -1376,25 +1389,27 @@ Output requirements:
             }
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
-        val messages = context.buildMessages(events, prompt)
+        val compressor = io.whozoss.agentos.util.IdCompressor()
+        val messages = context.buildMessages(events, prompt, compressor)
         val raw = callLlmForParameters(messages)
+        val uncompressedRaw = compressor.uncompress(raw)
 
-        logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
+        logger.trace { "[$name] generateParameters raw response for '$toolName': $uncompressedRaw" }
 
-        return if (isValidJson(raw)) {
+        return if (isValidJson(uncompressedRaw)) {
             AttemptSuccess(
                 ToolRequestEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     toolRequestId = toolRequestId,
                     toolName = toolName,
-                    args = raw,
+                    args = uncompressedRaw,
                     enrichmentPhases = enrichmentTraces,
                 ),
             )
         } else {
-            logger.warn { "[$name] generateParameters: invalid JSON for '$toolName'. Raw: $raw" }
-            AttemptFailure(raw)
+            logger.warn { "[$name] generateParameters: invalid JSON for '$toolName'. Raw: $uncompressedRaw" }
+            AttemptFailure(uncompressedRaw)
         }
     }
 
@@ -1481,7 +1496,8 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 - Only include properties defined in the schema.
             """.trimIndent()
 
-        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt)
+        val compressor = io.whozoss.agentos.util.IdCompressor()
+        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt, compressor)
 
         logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
@@ -1491,7 +1507,8 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                 .call()
                 .content()
                 ?.trim() ?: "{}"
-        val phaseJson = stripJsonFence(rawJson)
+        val uncompressedJson = compressor.uncompress(rawJson)
+        val phaseJson = stripJsonFence(uncompressedJson)
 
         logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 

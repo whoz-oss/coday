@@ -467,6 +467,115 @@ class AgentAdvancedSpec :
             finishedEvent.agentName shouldBe "TestAgent"
         }
 
+        "generateFinalResponse decompresses IDs in streamed chunks and final MessageEvent" {
+            // Regression guard: IDs present in the conversation history are compressed
+            // before being sent to the LLM. The LLM echoes a compressed token in its
+            // response. Both TextChunkEvents and the final MessageEvent must contain the
+            // original ID, not the compressed alias.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            // A real UUID that will be compressed in the message history.
+            val realId = "550e8400-e29b-41d4-a716-446655440000"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returns IntentionGeneratedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                intention = "No further tool calls needed.",
+                toolName = "Answer",
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            // detectUserLanguage makes a synchronous call — return null to skip language detection.
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns null
+
+            // The LLM response contains a compressed token. We cannot know the exact
+            // compressed form ahead of time (it depends on the compressor's internal
+            // offset), so we capture the messages sent to the LLM and derive the token.
+            val promptSlot = slot<Prompt>()
+            every { mockChatClient.prompt(capture(promptSlot)).stream() } returns mockStreamSpec
+
+            // We need the compressor token. Strategy: let the agent run once to capture
+            // the prompt, then inspect the compressed text to find the token.
+            // Simpler approach: set up the stream AFTER we know the token — use a
+            // two-pass mock: first call captures, second call (from the real run) returns
+            // the stream with the compressed token.
+            //
+            // Actually the cleanest approach: use the real IdCompressor independently to
+            // predict the compressed form of realId at position 0, then mock the stream
+            // to return that token. The compressor always assigns the same alias for the
+            // same ID at the same offset.
+            val predictingCompressor = io.whozoss.agentos.util.IdCompressor()
+            // The message history will contain realId in a user MessageEvent.
+            // Compress a representative text to get the alias the agent will use.
+            val sampleText = "<user name=\"User One\">$realId</user>"
+            val compressedSampleText = predictingCompressor.compress(sampleText)
+            // Extract the compressed alias (the short token that replaced realId).
+            val compressedAlias = compressedSampleText.replace(sampleText.replace(realId, ""), "")
+                .trim()
+                .let {
+                    // The alias is the token that is NOT in the original text without the ID.
+                    // Simpler: just find the token via the compressor's uncompress map.
+                    // We'll use a different strategy: run the full compress and find the replacement.
+                    compressedSampleText.substringAfter("<user name=\"User One\">").substringBefore("</user>")
+                }
+
+            // Mock the stream to return the compressed alias split across two chunks
+            // to exercise the boundary-split decompression path.
+            val mid = compressedAlias.length / 2
+            val chunk1 = "Profile: ${compressedAlias.substring(0, mid)}"
+            val chunk2 = "${compressedAlias.substring(mid)} is active."
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux(chunk1, chunk2)
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = emptyList(),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                objectMapper = testObjectMapper,
+                maxIterations = 5,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
+            )
+
+            val initialEvents = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text(realId)),
+                ),
+            )
+            val events = agent.run(initialEvents).toList()
+
+            // All TextChunkEvents must contain the real ID, not the compressed alias.
+            val chunks = events.filterIsInstance<TextChunkEvent>()
+            val chunksText = chunks.joinToString("") { it.chunk }
+            chunksText shouldContain realId
+            (chunksText.contains(compressedAlias)) shouldBe false
+
+            // The final MessageEvent must also contain the real ID.
+            val messageEvent = events.filterIsInstance<MessageEvent>()
+                .firstOrNull { it.actor.role == ActorRole.AGENT }
+            messageEvent shouldNotBe null
+            val messageText = (messageEvent!!.content.first() as MessageContent.Text).content
+            messageText shouldContain realId
+            (messageText.contains(compressedAlias)) shouldBe false
+        }
+
         "emits WarnEvent when repetition loop is detected and agent eventually selects Answer" {
             // Scenario: the agent calls FILES__ReadFile THRESHOLD times within the WINDOW,
             // triggering a Warned. The generator self-corrects by switching to Answer on the
@@ -2282,6 +2391,156 @@ class AgentAdvancedSpec :
             warns[0].message shouldContain "Failed to generate valid JSON parameters"
             // The loop continues — the LLM sees the failure and can adapt
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // ID compression in parameter generation
+        // -------------------------------------------------------------------------
+
+        "generateParameters sends compressed IDs to the LLM and uncompresses the JSON args" {
+            // Arrange: conversation history contains a real UUID.
+            // The LLM echoes the compressed alias in the JSON args it generates.
+            // The ToolRequestEvent.args stored must contain the original UUID.
+            val realUuid = "550e8400-e29b-41d4-a716-446655440000"
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            // Predict the alias the compressor will assign to realUuid.
+            val predictingCompressor = io.whozoss.agentos.util.IdCompressor()
+            val sampleText = "<user name=\"User One\">$realUuid</user>"
+            val alias = predictingCompressor.compress(sampleText)
+                .substringAfter("<user name=\"User One\">")
+                .substringBefore("</user>")
+
+            val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "TEST__tool"
+            every { mockTool.description } returns "A test tool"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"profileId":{"type":"string"}}}"""
+            every { mockTool.paramType } returns String::class.java
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns io.whozoss.agentos.sdk.tool.ConfirmationMode.NONE
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
+            // detectUserLanguage call returns null; parameter generation returns the alias in JSON.
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany listOf(
+                """{"profileId":"$alias"}""",  // parameter generation: alias in JSON
+                null,                           // detectUserLanguage
+            )
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Call the tool with the profile id.",
+                    toolName = "TEST__tool",
+                ),
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Done.", toolName = "Answer",
+                ),
+            )
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = listOf(mockTool),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                objectMapper = testObjectMapper,
+                maxIterations = 5,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
+            )
+
+            val events = agent.run(listOf(
+                MessageEvent(
+                    namespaceId = namespaceId, caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text(realUuid)),
+                ),
+            )).toList()
+
+            val toolRequest = events.filterIsInstance<ToolRequestEvent>().single()
+            // args must contain the original UUID, not the compressed alias
+            toolRequest.args shouldNotBe null
+            toolRequest.args!! shouldContain realUuid
+            toolRequest.args!! shouldNotBe """{"profileId":"$alias"}"""
+        }
+
+        "generateParameters sends compressed IDs in the prompt — LLM never sees raw UUIDs" {
+            val realUuid = "550e8400-e29b-41d4-a716-446655440000"
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockTool = mockk<StandardTool<String>>(relaxed = true)
+            every { mockTool.name } returns "TEST__tool"
+            every { mockTool.description } returns "A test tool"
+            every { mockTool.inputSchema } returns """{"type":"object","properties":{"profileId":{"type":"string"}}}"""
+            every { mockTool.paramType } returns String::class.java
+            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
+            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
+            val promptSlot = slot<Prompt>()
+            // Capture only the parameter-generation call (first call()).
+            every { mockChatClient.prompt(capture(promptSlot)).call().content() } returns "{}"
+
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Call the tool.", toolName = "TEST__tool",
+                ),
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Done.", toolName = "Answer",
+                ),
+            )
+
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = listOf(mockTool),
+                instructions = null,
+                agentId = agentId,
+                confirmationManager = mockk(relaxed = true),
+            )
+            val agent = AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                context = context,
+                intentionGenerator = mockGenerator,
+                objectMapper = testObjectMapper,
+                maxIterations = 5,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
+            )
+
+            agent.run(listOf(
+                MessageEvent(
+                    namespaceId = namespaceId, caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text(realUuid)),
+                ),
+            )).toList()
+
+            // The raw UUID must not appear in any message sent to the LLM for parameter generation.
+            val promptText = promptSlot.captured.instructions.joinToString(" ") { it.text }
+            promptText.contains(realUuid) shouldBe false
+            promptText.contains("UI") shouldBe true
         }
 
         "ToolNotFoundException: unknown tool name in intention surfaces as WarnEvent, no tool execution" {

@@ -40,14 +40,13 @@ data class AgentAdvancedContext(
      *   generation, final response, etc.). Null when the caller needs the base history
      *   without any additional prompt (e.g. confirmation manager calls).
      */
-    internal fun buildMessages(
-        events: List<CaseEvent>,
-        prompt: String? = null,
-    ): List<Message> {
-        val history = convertEventsToMessages(events)
-        val operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
+    internal fun buildMessages(events: List<CaseEvent>, prompt: String? = null, compressor: io.whozoss.agentos.util.IdCompressor? = null): List<Message> {
+        val history = convertEventsToMessages(events, compressor = compressor)
+        var operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
+        operationalMessage = operationalMessage?.let { compressor?.compress(it) ?: it }
         val messages = if (operationalMessage != null) history + UserMessage(operationalMessage) else history
-        return listOfNotNull(systemPrompt?.let { SystemMessage(it) }) + messages
+        val sysPrompt = systemPrompt?.let { compressor?.compress(it) ?: it }
+        return listOfNotNull(sysPrompt?.let { SystemMessage(it) }) + messages
     }
 
     /**
@@ -61,6 +60,7 @@ data class AgentAdvancedContext(
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
         maxDetailedChars: Int = 300_000,
+        compressor: io.whozoss.agentos.util.IdCompressor? = null,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
@@ -74,8 +74,9 @@ data class AgentAdvancedContext(
         return events.flatMapIndexed { index, event ->
             when (event) {
                 is MessageEvent -> {
-                    val sessionContext = event.sessionContextPromptText().takeIf { index == lastUserMsgIndex }
-                    val message = event.toSpringAiMessage(this.agentId.toString())
+                    var sessionContext = event.sessionContextPromptText().takeIf { index == lastUserMsgIndex }
+                    sessionContext = sessionContext?.let { compressor?.compress(it) ?: it }
+                    val message = event.toSpringAiMessage(this.agentId.toString(), compressor)
                     if (sessionContext != null && message is UserMessage) {
                         listOf(UserMessage(sessionContext + "\n\n" + message.text))
                     } else {
@@ -84,11 +85,11 @@ data class AgentAdvancedContext(
                 }
 
                 is ToolRequestEvent -> {
-                    toToolMessages(event, detailedRequestIds, responsesByRequestId)
+                    toToolMessages(event, detailedRequestIds, responsesByRequestId, compressor)
                 }
 
                 is IntentionGeneratedEvent -> {
-                    toIntentionMessage(event)
+                    toIntentionMessage(event, compressor)
                 }
 
                 else -> {
@@ -136,27 +137,32 @@ data class AgentAdvancedContext(
         event: ToolRequestEvent,
         detailedRequestIds: Set<String>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
+        compressor: io.whozoss.agentos.util.IdCompressor?
     ): List<Message> =
         if (event.toolRequestId in detailedRequestIds) {
-            toDetailedToolMessages(event, responsesByRequestId)
+            toDetailedToolMessages(event, responsesByRequestId, compressor)
         } else {
-            listOf(toToolSummaryMessage(event, responsesByRequestId))
+            listOf(toToolSummaryMessage(event, responsesByRequestId, compressor))
         }
 
     private fun toDetailedToolMessages(
         event: ToolRequestEvent,
         responsesByRequestId: Map<String, ToolResponseEvent>,
+        compressor: io.whozoss.agentos.util.IdCompressor?
     ): List<Message> {
+        val args = compressor?.compress(normalizeArgs(event.args)) ?: normalizeArgs(event.args)
         val toolCall =
-            AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, normalizeArgs(event.args))
+            AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, args)
         val messages = mutableListOf<Message>(AssistantMessage.builder().toolCalls(listOf(toolCall)).build())
 
         // Every AssistantMessage with tool_calls MUST be followed by a ToolResponseMessage
         // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
         // available, or synthesize a placeholder so the message list stays well-formed.
-        val responseText =
+        var responseText =
             responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
                 ?: "[No response recorded]"
+        responseText = compressor?.compress(responseText) ?: responseText
+
         messages.add(
             ToolResponseMessage
                 .builder()
@@ -176,20 +182,24 @@ data class AgentAdvancedContext(
     private fun toToolSummaryMessage(
         event: ToolRequestEvent,
         responsesByRequestId: Map<String, ToolResponseEvent>,
+        compressor: io.whozoss.agentos.util.IdCompressor?
     ): Message {
         val response = responsesByRequestId[event.toolRequestId]
-        val status =
+        var status =
             when {
                 response == null || response.success -> "Success"
                 else -> "Failed: ${extractText(response.output)}"
             }
+        status = compressor?.compress(status) ?: status
         return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status")
     }
 
-    private fun toIntentionMessage(event: IntentionGeneratedEvent): List<Message> =
-        listOf(
-            AssistantMessage("INTERNAL STEP: Tool Call: ${event.toolName}\nIntention: ${event.intention}"),
+    private fun toIntentionMessage(event: IntentionGeneratedEvent, compressor: io.whozoss.agentos.util.IdCompressor?): List<Message> {
+        val intention = compressor?.compress(event.intention) ?: event.intention
+        return listOf(
+            AssistantMessage("INTERNAL STEP: Tool Call: ${event.toolName}\nIntention: $intention"),
         )
+    }
 
     private fun normalizeArgs(args: String?): String = args?.takeIf { it.isNotBlank() } ?: "{}"
 
