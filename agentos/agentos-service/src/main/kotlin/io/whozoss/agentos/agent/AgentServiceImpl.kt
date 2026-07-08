@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -59,6 +60,7 @@ class AgentServiceImpl(
     private val caseEventService: CaseEventService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
+    private val agentDocumentResolver: AgentDocumentResolver,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -206,9 +208,10 @@ class AgentServiceImpl(
                 userId = context.userId,
             )
         val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val namespace = namespaceService.findById(context.namespaceId)
         val namespaceSystemPrompt =
             buildNamespaceSystemPrompt(
-                namespaceId = context.namespaceId,
+                namespace = namespace,
                 context = context,
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
@@ -219,6 +222,7 @@ class AgentServiceImpl(
                 agentIntegrations = agentConfig.integrations,
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+                docs = agentConfig.docs,
             )
         val toolContext =
             context.toToolContext(
@@ -409,12 +413,12 @@ class AgentServiceImpl(
      * plugins returning null or throwing are silently skipped.
      */
     private suspend fun buildNamespaceSystemPrompt(
-        namespaceId: UUID,
+        namespace: io.whozoss.agentos.namespace.Namespace?,
         context: AgentExecutionContext,
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
     ): String {
-        val namespace = namespaceService.findById(namespaceId)
+        val namespaceId = context.namespaceId
         val toolContext = context.toToolContext(resolvedUser?.externalId, null)
         val integrationDescriptions =
             coroutineScope {
@@ -456,11 +460,12 @@ class AgentServiceImpl(
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
      */
-    private fun buildInstructions(
+    private suspend fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
+        docs: List<String>? = null,
     ): String {
         val integrationsBlock =
             when {
@@ -511,7 +516,9 @@ class AgentServiceImpl(
                 }
             }
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock)
+        val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
+
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
             .joinToString("\n")
     }
 

@@ -92,4 +92,16 @@ data class AgentConfig(
      * Examples: `["*"]` allows all agents, `["*Fixer"]` allows `BugFixer`, `StoryFixer`, etc.
      */
     val subAgents: List<String>? = null,
+    /**
+     * Paths to documents whose full content is injected into the agent's instructions.
+     *
+     * Three path patterns are supported (resolved relative to the namespace configPath):
+     * - explicit file path: single file, content injected verbatim
+     * - path ending with slash: directory listing (first-level only, no content)
+     * - path ending with slash-star: all readable files in the directory, content injected
+     *
+     * Only applicable for filesystem-backed agents (namespace with a configPath).
+     * Silently ignored when configPath is absent.
+     */
+    val docs: List<String>? = null,
 ) : Entity

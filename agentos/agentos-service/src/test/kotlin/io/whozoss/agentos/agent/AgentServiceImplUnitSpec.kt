@@ -16,6 +16,7 @@ import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -57,26 +58,28 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolRegistryService: ToolRegistryService = mockk(relaxed = true)
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
+    private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
-            chatClientProvider,
-            toolResolverService,
-            aiModelService,
-            aiProviderService,
-            namespaceService,
-            integrationConfigService,
-            userService,
-            agentConfigService,
-            intentionGenerator,
-            confirmationManager,
-            testObjectMapper,
-            toolRegistryService,
-            toolMetricsService,
-            caseEventService,
-            exchangeStorageService,
-            exchangeCapabilityService,
+            chatClientProvider = chatClientProvider,
+            toolResolverService = toolResolverService,
+            aiModelService = aiModelService,
+            aiProviderService = aiProviderService,
+            namespaceService = namespaceService,
+            integrationConfigService = integrationConfigService,
+            userService = userService,
+            agentConfigService = agentConfigService,
+            intentionGenerator = intentionGenerator,
+            confirmationManager = confirmationManager,
+            objectMapper = testObjectMapper,
+            toolRegistryService = toolRegistryService,
+            toolMetricsService = toolMetricsService,
+            caseEventService = caseEventService,
+            exchangeStorageService = exchangeStorageService,
+            exchangeCapabilityService = exchangeCapabilityService,
+            agentDocumentResolver = agentDocumentResolver,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -508,22 +511,23 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val localIntegrationService = mockk<IntegrationConfigService>()
             val localService =
                 AgentServiceImpl(
-                    chatClientProvider,
-                    toolResolverService,
-                    aiModelService,
-                    aiProviderService,
-                    namespaceService,
-                    localIntegrationService,
-                    userService,
-                    agentConfigService,
-                    intentionGenerator,
-                    confirmationManager,
-                    testObjectMapper,
-                    toolRegistryService,
-                    toolMetricsService,
-                    caseEventService,
-                    exchangeStorageService,
-                    exchangeCapabilityService,
+                    chatClientProvider = chatClientProvider,
+                    toolResolverService = toolResolverService,
+                    aiModelService = aiModelService,
+                    aiProviderService = aiProviderService,
+                    namespaceService = namespaceService,
+                    integrationConfigService = localIntegrationService,
+                    userService = userService,
+                    agentConfigService = agentConfigService,
+                    intentionGenerator = intentionGenerator,
+                    confirmationManager = confirmationManager,
+                    objectMapper = testObjectMapper,
+                    toolRegistryService = toolRegistryService,
+                    toolMetricsService = toolMetricsService,
+                    caseEventService = caseEventService,
+                    exchangeStorageService = exchangeStorageService,
+                    exchangeCapabilityService = exchangeCapabilityService,
+                    agentDocumentResolver = agentDocumentResolver,
                 )
             val configs =
                 listOf(
